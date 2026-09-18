@@ -145,3 +145,107 @@ Hệ thống dev server đang chạy tại:
 - 🏠 **Trang chọn Cổng**: `http://localhost:5174/`
 - 🔐 **Cổng Quản trị Admin**: `http://localhost:5174/#admin`
 - 👤 **Cổng Khách hàng**: `http://localhost:5174/#customer`
+
+---
+
+## 🔧 PHẦN BACKEND API (ASP.NET Core + Dapper + SQL Server)
+
+> **Ngày bắt đầu Backend**: 18/09/2026
+> **Người thực hiện đầu tiên**: Giang
+> **Trạng thái**: ⏳ Đang chờ các thành viên nhóm hoàn thành phần còn lại
+
+### Công nghệ Backend
+
+| Thành phần | Công nghệ | Phiên bản |
+|------------|-----------|-----------|
+| Framework | ASP.NET Core Web API | .NET 10.0 |
+| ORM / Data Access | Dapper | 2.1.86 |
+| Database | SQL Server 2022 (Docker) | Port 14333 |
+| API Docs | Swagger / Swashbuckle | 10.2.3 |
+
+### Phần Giang đã hoàn thành ✅
+
+| STT | File | Loại | Nội dung |
+|:---:|------|:----:|----------|
+| 1 | `CrmBackend/Models/TaiKhoan.cs` | **NEW** | Model TaiKhoan + LoginRequest/LoginResponse DTOs |
+| 2 | `CrmBackend/Models/KhachHang.cs` | **NEW** | Model KhachHang + Create/Update DTOs |
+| 3 | `CrmBackend/Models/XeKhachHang.cs` | **NEW** | Model XeKhachHang + Create/GiaHanBaoHanh DTOs |
+| 4 | `CrmBackend/Controllers/KhachHangController.cs` | **MODIFY** | Full CRUD: GetAll, GetById, Create, Update, Delete, ToggleKhoa, ThongKeTuoi (7 endpoints) |
+| 5 | `CrmBackend/Controllers/XeKhachHangController.cs` | **NEW** | Full CRUD: GetAll, GetById, GetByKhachHang, Create, GiaHanBaoHanh, Delete (6 endpoints) |
+| 6 | `CrmBackend/Program.cs` | **MODIFY** | Đọc config từ appsettings.json, thêm CORS port 5174 |
+| 7 | `CrmBackend/appsettings.json` | **MODIFY** | Sửa port SQL Server 1433 → 14333 (đúng Docker) |
+| 8 | `HUONG_DAN_NHOM.md` | **NEW** | Hướng dẫn làm việc nhóm chi tiết cho Backend |
+
+### API Endpoints đã hoạt động (13 endpoints)
+
+| # | Method | Route | Chức năng | Test |
+|---|--------|-------|-----------|:----:|
+| 1 | GET | `/api/KhachHang` | Danh sách khách hàng | ✅ |
+| 2 | GET | `/api/KhachHang/{id}` | Chi tiết 1 KH | ✅ |
+| 3 | POST | `/api/KhachHang` | Thêm KH mới | ✅ |
+| 4 | PUT | `/api/KhachHang/{id}` | Sửa thông tin KH | ✅ |
+| 5 | DELETE | `/api/KhachHang/{id}` | Xóa KH | ✅ |
+| 6 | PUT | `/api/KhachHang/khoa/{id}` | Khóa/Mở khóa tài khoản | ✅ |
+| 7 | GET | `/api/KhachHang/thong-ke-tuoi` | Biểu đồ phân bố tuổi | ✅ |
+| 8 | GET | `/api/XeKhachHang` | Danh sách xe KH | ✅ |
+| 9 | GET | `/api/XeKhachHang/{id}` | Chi tiết 1 xe | ✅ |
+| 10 | GET | `/api/XeKhachHang/khach-hang/{maKh}` | Xe theo KH | ✅ |
+| 11 | POST | `/api/XeKhachHang` | Thêm xe cho KH | ✅ |
+| 12 | PUT | `/api/XeKhachHang/gia-han/{id}` | Gia hạn bảo hành | ✅ |
+| 13 | DELETE | `/api/XeKhachHang/{id}` | Xóa xe | ✅ |
+
+---
+
+## 🌿 GITHUB & QUẢN LÝ NHÁNH
+
+> **Repo**: https://github.com/YangLe0405web/dailyphutungxe.git
+
+### Cấu trúc nhánh
+
+```
+main                                        ← Code ổn định, production
+  └── develop                               ← Nhánh tổng hợp từ các feature
+        ├── feature/giang-customer-vehicle   ✅ DONE (đã merge vào develop)
+        ├── feature/phuong-phutung-xemau     ⏳ Chờ Phương
+        ├── feature/minh-donhang-lichhen     ⏳ Chờ Minh
+        ├── feature/nghia-phanhoi-khaosat    ⏳ Chờ Nghĩa
+        └── feature/loc-staff-revenue        ⏳ Chờ Lộc
+```
+
+### File hướng dẫn nhóm
+
+- 📋 `HUONG_DAN_NHOM.md` — Hướng dẫn chi tiết từ Clone → Docker → Build → Code → Test → Push
+- 📊 `crm-frontend/BANG_MODEL_CHIA_VIEC.csv` — Bảng phân công model theo nhóm
+- 🧪 `crm-frontend/BANG_TEST_API_QA.csv` — Bảng test case API cho QA
+
+---
+
+## 📌 TIẾN ĐỘ NHÓM — BACKEND MODELS
+
+| STT | Model | Người làm | Trạng thái | Ghi chú |
+|:---:|-------|:---------:|:----------:|---------|
+| 1 | Customer | Giang | ✅ Xong | 7 endpoints, đã test Swagger |
+| 2 | Vehicle (xe KH) | Giang | ✅ Xong | 6 endpoints, đã test Swagger |
+| 3 | ShowroomVehicle | Phương | ⏳ Chờ | Cần tạo Model + Controller |
+| 4 | Part (phụ tùng) | Phương | ⏳ Chờ | Cần tạo Model + Controller |
+| 5 | CartItem / Cart | Minh | ⏳ Chờ | — |
+| 6 | Order (đơn hàng) | Minh | ⏳ Chờ | Controller cũ có sẵn, cần bổ sung CRUD |
+| 7 | Appointment | Minh | ⏳ Chờ | Controller cũ có sẵn, cần bổ sung CRUD |
+| 8 | Feedback | Nghĩa | ⏳ Chờ | Cần tạo Model + Controller |
+| 9 | Survey & Question | Nghĩa | ⏳ Chờ | Cần tạo Model + Controller |
+| 10 | SurveyResponse | Nghĩa | ⏳ Chờ | Cần tạo Model + Controller |
+| 11 | StaffAccount | Lộc | ⏳ Chờ | Cần tạo Model + Controller + Login |
+| 12 | RevenueAnalytics | Lộc | ⏳ Chờ | Cần tạo Controller thống kê |
+
+---
+
+## ⏳ CÔNG VIỆC TIẾP THEO (SAU KHI NHÓM XONG BACKEND)
+
+> **Hiện tại đang DỪNG chờ các thành viên hoàn thành phần Backend của mình.**
+> Khi tất cả Models & Controllers đã merge vào nhánh `develop`, sẽ tiến hành:
+
+1. **Kết nối Frontend ↔ Backend** — Thay mockData bằng `fetch()` gọi API thật
+2. **Tích hợp Login/Auth** — JWT hoặc Session-based authentication
+3. **Deploy lên server** — Docker Compose cho cả FE + BE + DB
+4. **Kiểm thử tích hợp** — End-to-end test toàn bộ luồng
+
