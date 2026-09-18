@@ -1,0 +1,79 @@
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,400;0,500;0,600;0,700;0,800;1,700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import 'tailwindcss';
+
+@theme {
+  --font-display: 'Barlow Condensed', 'Inter', ui-sans-serif, sans-serif;
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  /* Racing Red */
+  --color-red-950: #1a0202;
+  --color-red-900: #3b0606;
+  --color-red-800: #7f1d1d;
+  --color-red-700: #b91c1c;
+  --color-red-600: #dc2626;
+  --color-red-500: #ef4444;
+  --color-red-400: #f87171;
+  --color-red-100: #fee2e2;
+  --color-red-50:  #fff5f5;
+
+  /* Zinc/Dark */
+  --color-zinc-950: #09090b;
+  --color-zinc-900: #18181b;
+  --color-zinc-800: #27272a;
+  --color-zinc-700: #3f3f46;
+  --color-zinc-600: #52525b;
+  --color-zinc-500: #71717a;
+  --color-zinc-400: #a1a1aa;
+  --color-zinc-300: #d4d4d8;
+  --color-zinc-200: #e4e4e7;
+  --color-zinc-100: #f4f4f5;
+  --color-zinc-50:  #fafafa;
+
+  /* Semantic */
+  --color-success: #16a34a;
+  --color-success-bg: #dcfce7;
+  --color-warning: #d97706;
+  --color-warning-bg: #fef3c7;
+  --color-info: #2563eb;
+  --color-info-bg: #dbeafe;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html {
+  font-family: var(--font-sans);
+  background: var(--color-zinc-50);
+  color: var(--color-zinc-900);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--color-zinc-300); border-radius: 4px; }
+body { scrollbar-width: thin; scrollbar-color: var(--color-zinc-300) transparent; }
+
+/* Transitions */
+button { font-family: inherit; transition: all 0.15s ease; }
+input, select, textarea { font-family: inherit; }
+
+/* Racing stripe utility */
+.racing-stripe {
+  background: linear-gradient(135deg, var(--color-zinc-950) 0%, var(--color-red-800) 50%, var(--color-zinc-950) 100%);
+}
+
+.racing-card {
+  background: white;
+  border: 1px solid var(--color-zinc-200);
+  border-radius: 12px;
+}
+
+/* Dark panel */
+.dark-panel {
+  background: var(--color-zinc-900);
+  color: white;
+}

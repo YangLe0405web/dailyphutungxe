@@ -1,0 +1,10 @@
+{
+  "description": "Streamlines motorcycle dealership management with customer tracking, inventory, feedback, surveys, and insightful sales reports for better business decisions.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

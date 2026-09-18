@@ -1,0 +1,17 @@
+services:
+  crm-database:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: crm_sql_server
+    user: root
+    environment:
+      - ACCEPT_EULA=Y
+      - MSSQL_SA_PASSWORD=YourStrong@Password123
+      - MSSQL_MEMORY_LIMIT_MB=700
+    ports:
+      - "14333:1433"
+    volumes:
+      - mssql_data:/var/opt/mssql/data
+      - ./init-db/init.sql:/init.sql
+
+volumes:
+  mssql_data:
