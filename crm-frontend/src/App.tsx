@@ -26,17 +26,6 @@ type Mode = 'admin' | 'customer' | null;
 type AdminPage = 'dashboard' | 'sales' | 'appointments' | 'customers' | 'feedback' | 'reports' | 'parts' | 'vehicles' | 'staff';
 type CustomerPage = 'store' | 'vehicles' | 'booking' | 'dashboard' | 'checkout';
 
-const adminPages: Record<AdminPage, React.ReactElement> = {
-  dashboard: <DashboardPage />, 
-  sales: <SalesPage />, 
-  appointments: <SalesPage />, 
-  customers: <CustomersPage />, 
-  feedback: <FeedbackPage />, 
-  reports: <ReportsPage />, 
-  parts: <PartsPage />, 
-  vehicles: <VehiclesPage />, 
-  staff: <StaffRolesPage />,
-};
 
 /* ── Landing / Mode selector ── */
 function Landing({ onSelect }: { onSelect: (m: Mode) => void }) {
@@ -186,7 +175,19 @@ export default function App() {
         onLogout={() => setCurrentStaff(null)}
         onHome={() => setMode(null)}
       >
-        {adminPages[adminPage]}
+        {adminPage === 'dashboard' && <DashboardPage />}
+        {(adminPage === 'sales' || adminPage === 'appointments') && (
+          <SalesPage
+            activeTab={adminPage === 'appointments' ? 'appointments' : 'orders'}
+            onTabChange={(tab) => setAdminPage(tab === 'orders' ? 'sales' : 'appointments')}
+          />
+        )}
+        {adminPage === 'customers' && <CustomersPage />}
+        {adminPage === 'feedback' && <FeedbackPage />}
+        {adminPage === 'reports' && <ReportsPage />}
+        {adminPage === 'parts' && <PartsPage />}
+        {adminPage === 'vehicles' && <VehiclesPage />}
+        {adminPage === 'staff' && <StaffRolesPage />}
       </AdminLayout>
     );
   }

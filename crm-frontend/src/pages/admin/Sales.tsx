@@ -30,8 +30,20 @@ function StatusBadge({ status, configs }: { status: string; configs: { key: stri
 const thSt: React.CSSProperties = { padding: '10px 16px', fontSize: 11, fontWeight: 600, textAlign: 'left', color: 'var(--color-zinc-500)', textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' };
 const tdSt: React.CSSProperties = { padding: '14px 16px', fontSize: 13, color: 'var(--color-zinc-800)', borderTop: '1px solid var(--color-zinc-100)' };
 
-export default function SalesPage() {
-  const [activeTab, setActiveTab] = useState<'orders' | 'appointments'>('orders');
+export interface SalesPageProps {
+  activeTab?: 'orders' | 'appointments';
+  onTabChange?: (tab: 'orders' | 'appointments') => void;
+}
+
+export default function SalesPage({ activeTab: controlledTab, onTabChange }: SalesPageProps = {}) {
+  const [internalTab, setInternalTab] = useState<'orders' | 'appointments'>('orders');
+  const activeTab = controlledTab ?? internalTab;
+
+  function handleTabChange(tab: 'orders' | 'appointments') {
+    setInternalTab(tab);
+    onTabChange?.(tab);
+  }
+
   const [orders, setOrders] = useState<Order[]>(mockOrders);
   const [appointments, setAppointments] = useState<Appointment[]>(mockAppointments);
 
@@ -48,14 +60,21 @@ export default function SalesPage() {
   return (
     <div className="p-6 lg:p-8">
       <div className="mb-6">
-        <div style={{ fontFamily: 'var(--font-display)', fontSize: 30, fontWeight: 800, color: 'var(--color-zinc-900)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>QUẢN LÝ BÁN HÀNG</div>
-        <p className="text-sm mt-1" style={{ color: 'var(--color-zinc-500)' }}>Theo dõi đơn hàng và lịch hẹn dịch vụ</p>
+        <div style={{ fontFamily: 'var(--font-display)', fontSize: 30, fontWeight: 800, color: 'var(--color-zinc-900)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+          {activeTab === 'orders' ? 'QUẢN LÝ ĐƠN HÀNG' : 'LỊCH HẸN DỊCH VỤ'}
+        </div>
+        <p className="text-sm mt-1" style={{ color: 'var(--color-zinc-500)' }}>
+          {activeTab === 'orders' ? 'Theo dõi, tra cứu và cập nhật trạng thái các đơn đặt hàng phụ tùng' : 'Quản lý lịch hẹn bảo dưỡng, sửa chữa và đăng ký lái thử xe của khách hàng'}
+        </p>
       </div>
 
       {/* Tabs */}
       <div className="flex gap-2 mb-5">
-        {[{ key: 'orders', label: `Đơn hàng (${orders.length})` }, { key: 'appointments', label: `Lịch hẹn (${appointments.length})` }].map(t => (
-          <button key={t.key} onClick={() => setActiveTab(t.key as typeof activeTab)}
+        {[
+          { key: 'orders', label: `📦 Đơn hàng (${orders.length})` }, 
+          { key: 'appointments', label: `📅 Lịch hẹn (${appointments.length})` }
+        ].map(t => (
+          <button key={t.key} onClick={() => handleTabChange(t.key as 'orders' | 'appointments')}
             className="px-5 py-2.5 rounded-xl text-sm font-600 transition-all"
             style={{
               background: activeTab === t.key ? 'var(--color-zinc-950)' : 'white',
