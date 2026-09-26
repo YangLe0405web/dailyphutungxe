@@ -13,6 +13,7 @@ import CustomersPage from './pages/admin/Customers';
 import FeedbackPage from './pages/admin/Feedback';
 import PartsPage from './pages/admin/Parts';
 import VehiclesPage from './pages/admin/Vehicles';
+import SuppliersPage from './pages/admin/Suppliers';
 import StaffRolesPage from './pages/admin/StaffRoles';
 
 // Customer pages
@@ -23,7 +24,7 @@ import Checkout from './pages/customer/Checkout';
 import VehiclesShowroom from './pages/customer/VehiclesShowroom';
 
 type Mode = 'admin' | 'customer' | null;
-type AdminPage = 'dashboard' | 'sales' | 'appointments' | 'customers' | 'feedback' | 'reports' | 'parts' | 'vehicles' | 'staff';
+type AdminPage = 'dashboard' | 'sales' | 'appointments' | 'customers' | 'feedback' | 'reports' | 'parts' | 'vehicles' | 'suppliers' | 'staff';
 type CustomerPage = 'store' | 'vehicles' | 'booking' | 'dashboard' | 'checkout';
 
 
@@ -187,6 +188,7 @@ export default function App() {
         {adminPage === 'reports' && <ReportsPage />}
         {adminPage === 'parts' && <PartsPage />}
         {adminPage === 'vehicles' && <VehiclesPage />}
+        {adminPage === 'suppliers' && <SuppliersPage />}
         {adminPage === 'staff' && <StaffRolesPage />}
       </AdminLayout>
     );

@@ -861,3 +861,327 @@ export const ageDistributionData = [
 export function formatVND(n: number): string {
   return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(n);
 }
+
+/* ───────────────────────── SUPPLIERS & PURCHASE RECEIPTS ───────────────────────── */
+export interface Supplier {
+  id: string;
+  tenNhaCungCap: string;
+  maSoThue: string;
+  nguoiLienHe: string;
+  soDienThoai: string;
+  email: string;
+  diaChi: string;
+  nhomHang: string[];
+  chietKhau: number; // % chiết khấu đại lý
+  danhGia: number;   // 1-5 sao uy tín
+  trangThai: 'DangHopTac' | 'TamNgung';
+  ghiChu?: string;
+  soLuongMatHang: number;
+}
+
+export interface ReceiptItem {
+  id: string;
+  maSanPham: string;
+  tenSanPham: string;
+  loai: 'PhuTung' | 'XeMay';
+  donViTinh: string;
+  soLuong: number;
+  donGiaNhap: number;
+  thanhTien: number;
+}
+
+export interface PurchaseReceipt {
+  id: string;
+  nhaCungCapId: string;
+  tenNhaCungCap: string;
+  ngayLap: string;
+  ngayNhap: string;
+  nguoiLap: string;
+  nguoiGiaoHang?: string;
+  soDienThoaiGiao?: string;
+  tongTien: number;
+  trangThai: 'DaNhapKho' | 'ChoDuyet' | 'DaHuy';
+  ghiChu: string;
+  chiTiet: ReceiptItem[];
+}
+
+export const mockSuppliers: Supplier[] = [
+  {
+    id: 'NCC001',
+    tenNhaCungCap: 'Công ty Honda Việt Nam (HVN)',
+    maSoThue: '2500150335',
+    nguoiLienHe: 'Trần Minh Tuấn (Trưởng ban Phân phối)',
+    soDienThoai: '1800 8001',
+    email: 'cr@honda.com.vn',
+    diaChi: 'Phường Phúc Thắng, TP. Phúc Yên, Vĩnh Phúc',
+    nhomHang: ['Xe máy nguyên chiếc', 'Phụ tùng chính hãng Honda', 'Dầu nhờn Pro Honda'],
+    chietKhau: 12,
+    danhGia: 5.0,
+    trangThai: 'DangHopTac',
+    ghiChu: 'Hợp đồng đại lý ủy quyền HEAD cấp 1. Hạn mức công nợ 60 ngày.',
+    soLuongMatHang: 8,
+  },
+  {
+    id: 'NCC002',
+    tenNhaCungCap: 'Công ty TNHH Yamaha Motor Việt Nam',
+    maSoThue: '0100774342',
+    nguoiLienHe: 'Lê Hoàng Nam (Phụ trách Đại lý KV Miền Nam)',
+    soDienThoai: '1800 1588',
+    email: 'dealer@yamaha-motor.com.vn',
+    diaChi: 'Xã Trung Giã, Huyện Sóc Sơn, TP. Hà Nội',
+    nhomHang: ['Xe máy nguyên chiếc', 'Phụ tùng Yamalube chính hãng'],
+    chietKhau: 11.5,
+    danhGia: 4.9,
+    trangThai: 'DangHopTac',
+    ghiChu: 'Đại lý phân phối xe máy và phụ tùng Yamaha Town.',
+    soLuongMatHang: 6,
+  },
+  {
+    id: 'NCC003',
+    tenNhaCungCap: 'Công ty TNHH Dầu nhớt Motul Châu Á (Việt Nam)',
+    maSoThue: '0303889123',
+    nguoiLienHe: 'Nguyễn Văn Đạt (Kinh doanh KV TP.HCM)',
+    soDienThoai: '028 3754 0999',
+    email: 'sales-vn@motul.com',
+    diaChi: 'Đường số 7, KCN Tân Tạo, Q. Bình Tân, TP.HCM',
+    nhomHang: ['Dầu nhớt', 'Chăm sóc xe & Phụ gia động cơ'],
+    chietKhau: 18,
+    danhGia: 5.0,
+    trangThai: 'DangHopTac',
+    ghiChu: 'Nhà phân phối độc quyền dòng Motul 300V, 7100, Scooter Power LE.',
+    soLuongMatHang: 12,
+  },
+  {
+    id: 'NCC004',
+    tenNhaCungCap: 'Michelin Châu Á - Thái Bình Dương (Văn phòng VN)',
+    maSoThue: '0309998124',
+    nguoiLienHe: 'Phạm Thanh Sơn (Quản lý Phân phối Vỏ xe máy)',
+    soDienThoai: '028 3822 5577',
+    email: 'tw-sales.vn@michelin.com',
+    diaChi: 'Tầng 14, Tòa nhà Sun Wah, 115 Nguyễn Huệ, Quận 1, TP.HCM',
+    nhomHang: ['Lốp xe chính hãng', 'Vỏ không ruột thể thao'],
+    chietKhau: 15,
+    danhGia: 4.8,
+    trangThai: 'DangHopTac',
+    ghiChu: 'Dòng sản phẩm Pilot Street 2, City Extra, MotoGP Edition.',
+    soLuongMatHang: 8,
+  },
+  {
+    id: 'NCC005',
+    tenNhaCungCap: 'Brembo Racing & Braking Systems VN (Đại diện ủy quyền)',
+    maSoThue: '0314567890',
+    nguoiLienHe: 'Võ Minh Trí (Giám đốc Kỹ thuật & Bán hàng)',
+    soDienThoai: '0909 123 789',
+    email: 'info@brembovietnam.vn',
+    diaChi: 'Khu Đô Thị Phú Mỹ Hưng, Quận 7, TP.HCM',
+    nhomHang: ['Phanh & Thắng đĩa', 'Phụ kiện hiệu năng cao', 'Dầu thắng thể thao'],
+    chietKhau: 14,
+    danhGia: 4.9,
+    trangThai: 'DangHopTac',
+    ghiChu: 'Cung cấp heo dầu 2 piston, 4 piston, cùm tay thắng RCS Corsa Corta.',
+    soLuongMatHang: 10,
+  },
+  {
+    id: 'NCC006',
+    tenNhaCungCap: 'Công ty CP Phụ tùng Daichi Việt Nam',
+    maSoThue: '0106789123',
+    nguoiLienHe: 'Đỗ Quốc Hùng (Trưởng phòng Cung ứng Tổng hợp)',
+    soDienThoai: '024 3789 9988',
+    email: 'kinhdoanh@daichi.vn',
+    diaChi: 'Số 45 Trần Thái Tông, Cầu Giấy, Hà Nội',
+    nhomHang: ['Bugi', 'Truyền động', 'Lọc gió', 'Phụ tùng thay thế định kỳ'],
+    chietKhau: 20,
+    danhGia: 4.7,
+    trangThai: 'DangHopTac',
+    ghiChu: 'Nhà phân phối sỉ chính hãng Bugi NGK, Dây curoa Bando, Nhông sên dĩa DID.',
+    soLuongMatHang: 24,
+  },
+];
+
+export const mockPurchaseReceipts: PurchaseReceipt[] = [
+  {
+    id: 'PN-2025001',
+    nhaCungCapId: 'NCC003',
+    tenNhaCungCap: 'Công ty TNHH Dầu nhớt Motul Châu Á (Việt Nam)',
+    ngayLap: '2025-02-15 08:30',
+    ngayNhap: '2025-02-15 14:00',
+    nguoiLap: 'Lê Văn Kỹ Thuật',
+    nguoiGiaoHang: 'Đặng Quốc Huy (Tài xế giao vận Motul)',
+    soDienThoaiGiao: '0933 445 566',
+    tongTien: 31200000,
+    trangThai: 'DaNhapKho',
+    ghiChu: 'Nhập bổ sung đợt đầu tháng cho kho dịch vụ bảo dưỡng và quầy bán lẻ lẻ',
+    chiTiet: [
+      {
+        id: 'CT001',
+        maSanPham: 'PT001',
+        tenSanPham: 'Nhớt Motul 7100 4T 10W40 1L Full Synthetic',
+        loai: 'PhuTung',
+        donViTinh: 'Chai',
+        soLuong: 100,
+        donGiaNhap: 220000,
+        thanhTien: 22000000,
+      },
+      {
+        id: 'CT002',
+        maSanPham: 'PT011',
+        tenSanPham: 'Nhớt Motul Scooter Expert LE 10W40 0.8L',
+        loai: 'PhuTung',
+        donViTinh: 'Chai',
+        soLuong: 80,
+        donGiaNhap: 115000,
+        thanhTien: 9200000,
+      },
+    ],
+  },
+  {
+    id: 'PN-2025002',
+    nhaCungCapId: 'NCC001',
+    tenNhaCungCap: 'Công ty Honda Việt Nam (HVN)',
+    ngayLap: '2025-02-18 09:15',
+    ngayNhap: '2025-02-19 10:30',
+    nguoiLap: 'Nguyễn Thị Sale',
+    nguoiGiaoHang: 'Vũ Mạnh Cường (Xe lồng Honda Express)',
+    soDienThoaiGiao: '0912 334 455',
+    tongTien: 428000000,
+    trangThai: 'DaNhapKho',
+    ghiChu: 'Đợt nhận xe máy trưng bày showroom và giao cho khách đã đặt cọc trước',
+    chiTiet: [
+      {
+        id: 'CT003',
+        maSanPham: 'XM001',
+        tenSanPham: 'Honda SH 160i ABS 2025 (Đen mờ / Trắng bạc)',
+        loai: 'XeMay',
+        donViTinh: 'Chiếc',
+        soLuong: 3,
+        donGiaNhap: 84000000,
+        thanhTien: 252000000,
+      },
+      {
+        id: 'CT004',
+        maSanPham: 'XM004',
+        tenSanPham: 'Honda Air Blade 125 Smartkey 2025',
+        loai: 'XeMay',
+        donViTinh: 'Chiếc',
+        soLuong: 4,
+        donGiaNhap: 44000000,
+        thanhTien: 176000000,
+      },
+    ],
+  },
+  {
+    id: 'PN-2025003',
+    nhaCungCapId: 'NCC006',
+    tenNhaCungCap: 'Công ty CP Phụ tùng Daichi Việt Nam',
+    ngayLap: '2025-02-22 10:00',
+    ngayNhap: '2025-02-22 15:30',
+    nguoiLap: 'Lê Văn Kỹ Thuật',
+    nguoiGiaoHang: 'Lê Thanh Bình (Logistics Daichi)',
+    soDienThoaiGiao: '0978 991 122',
+    tongTien: 25500000,
+    trangThai: 'DaNhapKho',
+    ghiChu: 'Nhập phụ tùng hao mòn định kỳ phục vụ mùa bảo dưỡng xe đầu năm',
+    chiTiet: [
+      {
+        id: 'CT005',
+        maSanPham: 'PT004',
+        tenSanPham: 'Bugi NGK Laser Iridium Moto CPR8EAIX-9',
+        loai: 'PhuTung',
+        donViTinh: 'Cái',
+        soLuong: 40,
+        donGiaNhap: 180000,
+        thanhTien: 7200000,
+      },
+      {
+        id: 'CT006',
+        maSanPham: 'PT007',
+        tenSanPham: 'Dây Curoa Bando Bando V-Belt SH/AirBlade',
+        loai: 'PhuTung',
+        donViTinh: 'Sợi',
+        soLuong: 30,
+        donGiaNhap: 310000,
+        thanhTien: 9300000,
+      },
+      {
+        id: 'CT007',
+        maSanPham: 'PT008',
+        tenSanPham: 'Nhông Sên Dĩa DID Vàng 428HD Exciter/Winner',
+        loai: 'PhuTung',
+        donViTinh: 'Bộ',
+        soLuong: 25,
+        donGiaNhap: 360000,
+        thanhTien: 9000000,
+      },
+    ],
+  },
+  {
+    id: 'PN-2025004',
+    nhaCungCapId: 'NCC004',
+    tenNhaCungCap: 'Michelin Châu Á - Thái Bình Dương (Văn phòng VN)',
+    ngayLap: '2025-02-25 14:20',
+    ngayNhap: '2025-02-26 09:00',
+    nguoiLap: 'Lê Văn Kỹ Thuật',
+    nguoiGiaoHang: 'Nguyễn Tấn Đạt (Kho vận Michelin Sóng Thần)',
+    soDienThoaiGiao: '0908 667 788',
+    tongTien: 38250000,
+    trangThai: 'ChoDuyet',
+    ghiChu: 'Lô lốp Michelin City Extra vỏ trước/sau xe tay ga và xe số. Đang đợi kiểm tra quy cách ngoại quan.',
+    chiTiet: [
+      {
+        id: 'CT008',
+        maSanPham: 'PT006',
+        tenSanPham: 'Lốp Xe Michelin City Extra 90/90-14 Không Ruột',
+        loai: 'PhuTung',
+        donViTinh: 'Cái',
+        soLuong: 45,
+        donGiaNhap: 510000,
+        thanhTien: 22950000,
+      },
+      {
+        id: 'CT009',
+        maSanPham: 'PT012',
+        tenSanPham: 'Lốp Xe Michelin Pilot Street 2 110/70-17 Bánh Sau',
+        loai: 'PhuTung',
+        donViTinh: 'Cái',
+        soLuong: 20,
+        donGiaNhap: 765000,
+        thanhTien: 15300000,
+      },
+    ],
+  },
+  {
+    id: 'PN-2025005',
+    nhaCungCapId: 'NCC005',
+    tenNhaCungCap: 'Brembo Racing & Braking Systems VN (Đại diện ủy quyền)',
+    ngayLap: '2025-02-26 16:45',
+    ngayNhap: '2025-02-27 11:00',
+    nguoiLap: 'Trần Văn Quản Lý',
+    nguoiGiaoHang: 'Trương Hoàng Phúc',
+    soDienThoaiGiao: '0945 112 233',
+    tongTien: 54000000,
+    trangThai: 'ChoDuyet',
+    ghiChu: 'Linh kiện phanh cao cấp Brembo chính hãng kèm thẻ xác thực QR code chống hàng giả',
+    chiTiet: [
+      {
+        id: 'CT010',
+        maSanPham: 'PT003',
+        tenSanPham: 'Heo Dầu Brembo 2 Piston Đối Xứng Chính Hãng',
+        loai: 'PhuTung',
+        donViTinh: 'Bộ',
+        soLuong: 15,
+        donGiaNhap: 2600000,
+        thanhTien: 39000000,
+      },
+      {
+        id: 'CT011',
+        maSanPham: 'PT015',
+        tenSanPham: 'Đĩa Thắng Thể Thao Brembo Oro 260mm',
+        loai: 'PhuTung',
+        donViTinh: 'Cái',
+        soLuong: 10,
+        donGiaNhap: 1500000,
+        thanhTien: 15000000,
+      },
+    ],
+  },
+];
