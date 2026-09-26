@@ -17,91 +17,157 @@ interface Vehicle {
 const initialVehicles: Vehicle[] = [
   {
     id: 'XM001',
-    tenXe: 'Honda SH 160i ABS',
+    tenXe: 'Honda SH 160i ABS 2025',
     hang: 'Honda',
     phanKhuc: 'Tay ga',
     giaNiemYet: 95900000,
-    mauSac: 'Đen mờ, Trắng bạc, Đỏ đen',
-    moTa: 'Flagship tay ga cao cấp',
-    hinhAnh: 'https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=400&h=300&fit=crop&auto=format',
+    mauSac: 'Đen mờ, Đỏ đen, Xám xi măng, Trắng bạc',
+    moTa: 'Flagship tay ga cao cấp của Honda với phanh ABS 2 kênh, động cơ 156.9cc eSP+ 4 van, Smart Key',
+    hinhAnh: 'https://images.unsplash.com/photo-1568772585407-9361f9bf3a87?w=800&auto=format&fit=crop&q=80',
     coTheLaiThu: true,
   },
   {
     id: 'XM002',
-    tenXe: 'Honda PCX 160 ABS',
+    tenXe: 'Honda Air Blade 160 ABS',
     hang: 'Honda',
     phanKhuc: 'Tay ga',
-    giaNiemYet: 75900000,
-    mauSac: 'Xanh, Đỏ, Đen',
-    moTa: 'Tay ga thể thao tiết kiệm',
-    hinhAnh: 'https://images.unsplash.com/photo-1568772585407-9361f9bf3a87?w=400&h=300&fit=crop&auto=format',
+    giaNiemYet: 56690000,
+    mauSac: 'Đỏ đen, Xanh xám, Đen vàng đồng',
+    moTa: 'Tay ga thể thao mạnh mẽ, động cơ eSP+ 160cc, cốp rộng 23.2L tích hợp cổng sạc USB',
+    hinhAnh: 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=800&auto=format&fit=crop&q=80',
     coTheLaiThu: true,
   },
   {
     id: 'XM003',
-    tenXe: 'Yamaha Exciter 155 VVA',
-    hang: 'Yamaha',
-    phanKhuc: 'Côn tay',
-    giaNiemYet: 56990000,
-    mauSac: 'Xanh đen, Đỏ trắng',
-    moTa: 'Côn tay thể thao VVA',
-    hinhAnh: 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=400&h=300&fit=crop&auto=format',
+    tenXe: 'Honda Lead 125cc (Bản Đặc Biệt)',
+    hang: 'Honda',
+    phanKhuc: 'Tay ga',
+    giaNiemYet: 42790000,
+    mauSac: 'Bạc nhám, Đen mờ, Trắng ngọc',
+    moTa: 'Cốp xe siêu lớn 37L đựng 2 mũ bảo hiểm, cổng sạc USB, động cơ eSP+ 4 van êm ái',
+    hinhAnh: 'https://images.unsplash.com/photo-1558981359-219d6364c9c8?w=800&auto=format&fit=crop&q=80',
     coTheLaiThu: true,
   },
   {
     id: 'XM004',
-    tenXe: 'Honda Air Blade 125 Smart',
+    tenXe: 'Honda Vision 110 Thể Thao',
     hang: 'Honda',
     phanKhuc: 'Tay ga',
-    giaNiemYet: 50490000,
-    mauSac: 'Đỏ, Xanh, Đen',
-    moTa: 'Tay ga phổ thông cao cấp',
-    hinhAnh: 'https://images.unsplash.com/photo-1609630875171-b1321377ee65?w=400&h=300&fit=crop&auto=format',
-    coTheLaiThu: true,
+    giaNiemYet: 36612000,
+    mauSac: 'Xám xi măng, Đen bóng, Xanh dương',
+    moTa: 'Xe tay ga quốc dân nhỏ gọn thanh lịch, vành đúc 16 inch cao ráo, Smart Key, siêu tiết kiệm xăng',
+    hinhAnh: 'https://images.unsplash.com/photo-1525160354320-d8e92641c563?w=800&auto=format&fit=crop&q=80',
+    coTheLaiThu: false,
   },
   {
     id: 'XM005',
-    tenXe: 'Yamaha Grande Hybrid',
-    hang: 'Yamaha',
-    phanKhuc: 'Tay ga',
-    giaNiemYet: 58990000,
-    mauSac: 'Hồng, Xanh lam, Trắng',
-    moTa: 'Hybrid Smart Motor Generator',
-    hinhAnh: 'https://images.unsplash.com/photo-1558981359-219d6364c9c8?w=400&h=300&fit=crop&auto=format',
+    tenXe: 'Honda Winner X 150 ABS',
+    hang: 'Honda',
+    phanKhuc: 'Côn tay',
+    giaNiemYet: 50560000,
+    mauSac: 'Đỏ đen xanh thể thao, Đen nhám bạc',
+    moTa: 'Côn tay thể thao trang bị ly hợp chống trượt Assist & Slipper, xích phốt O-ring, phanh ABS trước',
+    hinhAnh: 'https://images.unsplash.com/photo-1609630875171-b1321377ee65?w=800&auto=format&fit=crop&q=80',
     coTheLaiThu: true,
   },
   {
     id: 'XM006',
-    tenXe: 'Honda Vision 110 Smart',
+    tenXe: 'Honda Wave Alpha 110 Cổ Điển',
     hang: 'Honda',
-    phanKhuc: 'Tay ga',
-    giaNiemYet: 33490000,
-    mauSac: 'Đen bóng, Trắng ngọc',
-    moTa: 'Tay ga phổ thông thanh lịch',
-    hinhAnh: 'https://images.unsplash.com/photo-1449426468159-d96dbf08f19f?w=400&h=300&fit=crop&auto=format',
+    phanKhuc: 'Xe số',
+    giaNiemYet: 19290000,
+    mauSac: 'Xám cổ điển, Vàng trắng, Đỏ đen',
+    moTa: 'Xe số bền bỉ tiết kiệm nhiên liệu số 1, chi phí vận hành cực thấp, phụ tùng thay thế sẵn có',
+    hinhAnh: 'https://images.unsplash.com/photo-1558980664-769d59546b3d?w=800&auto=format&fit=crop&q=80',
     coTheLaiThu: false,
   },
   {
     id: 'XM007',
-    tenXe: 'Honda Wave Alpha 110',
-    hang: 'Honda',
-    phanKhuc: 'Xe số',
-    giaNiemYet: 18790000,
-    mauSac: 'Đỏ đen, Xanh đen',
-    moTa: 'Xe số phổ thông bền bỉ',
-    hinhAnh: 'https://images.unsplash.com/photo-1558980664-769d59546b3d?w=400&h=300&fit=crop&auto=format',
-    coTheLaiThu: false,
+    tenXe: 'Yamaha Exciter 155 VVA ABS',
+    hang: 'Yamaha',
+    phanKhuc: 'Côn tay',
+    giaNiemYet: 55000000,
+    mauSac: 'Xanh GP Monster, Đen nhám, Đỏ bạc',
+    moTa: 'Ông vua đường phố van biến thiên VVA 155cc, 4 bản đồ đánh lửa, phanh đĩa trước 2 piston có ABS',
+    hinhAnh: 'https://images.unsplash.com/photo-1568772585407-9361f9bf3a87?w=800&auto=format&fit=crop&q=80',
+    coTheLaiThu: true,
   },
   {
     id: 'XM008',
-    tenXe: 'Yamaha Janus 125',
+    tenXe: 'Yamaha Grande Hybrid Tiêu Chuẩn',
     hang: 'Yamaha',
     phanKhuc: 'Tay ga',
-    giaNiemYet: 30990000,
-    mauSac: 'Tím, Hồng, Trắng',
-    moTa: 'Tay ga thiết kế nữ tính',
-    hinhAnh: 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=400&h=300&fit=crop&auto=format',
+    giaNiemYet: 46047000,
+    mauSac: 'Hồng pastel, Trắng ngọc trai, Đỏ mận',
+    moTa: 'Tay ga tiết kiệm xăng số 1 Việt Nam (1.66L/100km), công nghệ trợ lực điện Blue Core Hybrid, cốp 27L',
+    hinhAnh: 'https://images.unsplash.com/photo-1511994298241-608e28f14fde?w=800&auto=format&fit=crop&q=80',
+    coTheLaiThu: true,
+  },
+  {
+    id: 'XM009',
+    tenXe: 'Yamaha NVX 155 VVA Maxi-Scooter',
+    hang: 'Yamaha',
+    phanKhuc: 'Tay ga',
+    giaNiemYet: 55500000,
+    mauSac: 'Đen vàng, Xám ánh xanh, Đỏ đen',
+    moTa: 'Tay ga hầm hố lốp sau 140mm, giảm xóc dầu bình phụ thể thao, kết nối Y-Connect, phanh ABS',
+    hinhAnh: 'https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=800&auto=format&fit=crop&q=80',
+    coTheLaiThu: true,
+  },
+  {
+    id: 'XM010',
+    tenXe: 'Yamaha PG-1 115cc Scrambler',
+    hang: 'Yamaha',
+    phanKhuc: 'Xe số',
+    giaNiemYet: 30437000,
+    mauSac: 'Vàng sa mạc, Cam rực rỡ, Xanh rêu bụi',
+    moTa: 'Phong cách Scrambler địa hình phượt bụi, lốp gai to đa dụng, ghi đông trần cá tính',
+    hinhAnh: 'https://images.unsplash.com/photo-1449426468159-d96dbf08f19f?w=800&auto=format&fit=crop&q=80',
+    coTheLaiThu: true,
+  },
+  {
+    id: 'XM011',
+    tenXe: 'Yamaha MT-15 Naked Streetfighter',
+    hang: 'Yamaha',
+    phanKhuc: 'Côn tay',
+    giaNiemYet: 69000000,
+    mauSac: 'Xanh đen thể thao, Xám tem đỏ, Đen nhám',
+    moTa: 'Naked bike 155cc VVA, phuộc Upside Down vàng thể thao, đèn pha LED thấu kính Transformer',
+    hinhAnh: 'https://images.unsplash.com/photo-1558980359-a99ad4205530?w=800&auto=format&fit=crop&q=80',
+    coTheLaiThu: true,
+  },
+  {
+    id: 'XM012',
+    tenXe: 'Suzuki Raider R150 Fi (DOHC)',
+    hang: 'Suzuki',
+    phanKhuc: 'Côn tay',
+    giaNiemYet: 51190000,
+    mauSac: 'Đỏ đen, Xanh mờ MotoGP, Đen cam',
+    moTa: 'Vua tốc độ DOHC 4 van két nước lớn, công suất 18.5 HP mạnh nhất phân khúc 150cc',
+    hinhAnh: 'https://images.unsplash.com/photo-1591637333184-19aa84b3e01f?w=800&auto=format&fit=crop&q=80',
+    coTheLaiThu: true,
+  },
+  {
+    id: 'XM013',
+    tenXe: 'Suzuki Burgman Street 125',
+    hang: 'Suzuki',
+    phanKhuc: 'Tay ga',
+    giaNiemYet: 48600000,
+    mauSac: 'Đen mờ, Xám titan, Vàng đồng',
+    moTa: 'Maxi-scooter sang trọng phong cách Châu Âu, sàn để chân rộng rãi, cổng sạc điện thoại tiện lợi',
+    hinhAnh: 'https://images.unsplash.com/photo-1558981420-87aa9dad1c89?w=800&auto=format&fit=crop&q=80',
     coTheLaiThu: false,
+  },
+  {
+    id: 'XM014',
+    tenXe: 'Vespa Sprint S 150 TFT',
+    hang: 'Piaggio',
+    phanKhuc: 'Tay ga',
+    giaNiemYet: 97800000,
+    mauSac: 'Đen nhám, Đồng nhám, Trắng ánh kim',
+    moTa: 'Khung thép liền khối kinh điển, màn hình TFT màu thông minh kết nối Vespa MIA, động cơ i-Get 150cc',
+    hinhAnh: 'https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?w=800&auto=format&fit=crop&q=80',
+    coTheLaiThu: true,
   },
 ];
 
@@ -110,6 +176,8 @@ const phanKhucOptions = ['Xe số', 'Tay ga', 'Côn tay', 'Xe điện'];
 
 export default function VehiclesPage() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([...initialVehicles]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
   const [search, setSearch] = useState('');
   const [filterHang, setFilterHang] = useState('');
   const [filterSegment, setFilterSegment] = useState('');
@@ -143,6 +211,9 @@ export default function VehiclesPage() {
 
     return matchSearch && matchHang && matchSeg && matchTest && matchPrice;
   });
+
+  const totalPages = Math.ceil(filtered.length / pageSize) || 1;
+  const pagedVehicles = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   const validate = (data: Partial<Vehicle>) => {
     const err: Record<string, string> = {};
@@ -225,7 +296,7 @@ export default function VehiclesPage() {
               type="text"
               placeholder="🔍 Tìm theo tên xe, màu..."
               value={search}
-              onChange={e => setSearch(e.target.value)}
+              onChange={e => { setSearch(e.target.value); setCurrentPage(1); }}
               className="w-full px-3 py-2 border rounded-xl text-xs focus:outline-none focus:border-red-600"
             />
           </div>
@@ -234,7 +305,7 @@ export default function VehiclesPage() {
           <div>
             <select
               value={filterHang}
-              onChange={e => setFilterHang(e.target.value)}
+              onChange={e => { setFilterHang(e.target.value); setCurrentPage(1); }}
               className="w-full px-3 py-2 border rounded-xl text-xs font-semibold bg-white focus:outline-none focus:border-red-600"
             >
               <option value="">Hãng sản xuất: Tất cả</option>
@@ -248,7 +319,7 @@ export default function VehiclesPage() {
           <div>
             <select
               value={filterSegment}
-              onChange={e => setFilterSegment(e.target.value)}
+              onChange={e => { setFilterSegment(e.target.value); setCurrentPage(1); }}
               className="w-full px-3 py-2 border rounded-xl text-xs font-semibold bg-white focus:outline-none focus:border-red-600"
             >
               <option value="">Phân khúc: Tất cả</option>
@@ -262,7 +333,7 @@ export default function VehiclesPage() {
           <div>
             <select
               value={filterTestDrive}
-              onChange={e => setFilterTestDrive(e.target.value as any)}
+              onChange={e => { setFilterTestDrive(e.target.value as any); setCurrentPage(1); }}
               className="w-full px-3 py-2 border rounded-xl text-xs font-semibold bg-white focus:outline-none focus:border-red-600"
             >
               <option value="All">Lái thử: Tất cả</option>
@@ -275,7 +346,7 @@ export default function VehiclesPage() {
           <div>
             <select
               value={filterPrice}
-              onChange={e => setFilterPrice(e.target.value as any)}
+              onChange={e => { setFilterPrice(e.target.value as any); setCurrentPage(1); }}
               className="w-full px-3 py-2 border rounded-xl text-xs font-semibold bg-white focus:outline-none focus:border-red-600"
             >
               <option value="All">Khoảng giá: Tất cả</option>
@@ -331,55 +402,110 @@ export default function VehiclesPage() {
                 </td>
               </tr>
             ) : (
-              filtered.map((v, idx) => (
-                <tr key={v.id} className="hover:bg-zinc-50 transition">
-                  <td className="p-3 text-center font-mono text-xs text-zinc-500">{idx + 1}</td>
-                  <td className="p-3 text-center">
-                    {v.hinhAnh ? (
-                      <img src={v.hinhAnh} alt={v.tenXe} className="h-10 w-12 object-cover rounded-lg mx-auto border border-zinc-200" />
-                    ) : (
-                      <div className="h-10 w-12 bg-zinc-100 rounded-lg flex items-center justify-center text-[10px] text-zinc-400 mx-auto font-mono">N/A</div>
-                    )}
-                  </td>
-                  <td className="p-3 font-semibold text-zinc-900">{v.tenXe}</td>
-                  <td className="p-3 font-mono text-xs text-zinc-600">{v.hang}</td>
-                  <td className="p-3">
-                    <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-zinc-100 text-zinc-700 font-mono">
-                      {v.phanKhuc}
-                    </span>
-                  </td>
-                  <td className="p-3 text-right font-mono text-xs font-bold text-red-700">{formatVND(v.giaNiemYet)}</td>
-                  <td className="p-3 text-xs text-zinc-600">{v.mauSac}</td>
-                  <td className="p-3 text-center">
-                    {v.coTheLaiThu ? (
-                      <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 rounded-full text-xs font-semibold font-mono">
-                        ✓ Có lái thử
+              pagedVehicles.map((v, idx) => {
+                const serialNum = (currentPage - 1) * pageSize + idx + 1;
+                return (
+                  <tr key={v.id} className="hover:bg-zinc-50 transition">
+                    <td className="p-3 text-center font-mono text-xs text-zinc-500">{serialNum}</td>
+                    <td className="p-3 text-center">
+                      {v.hinhAnh ? (
+                        <img src={v.hinhAnh} alt={v.tenXe} className="h-10 w-12 object-cover rounded-lg mx-auto border border-zinc-200" />
+                      ) : (
+                        <div className="h-10 w-12 bg-zinc-100 rounded-lg flex items-center justify-center text-[10px] text-zinc-400 mx-auto font-mono">N/A</div>
+                      )}
+                    </td>
+                    <td className="p-3 font-semibold text-zinc-900">{v.tenXe}</td>
+                    <td className="p-3 font-mono text-xs text-zinc-600">{v.hang}</td>
+                    <td className="p-3">
+                      <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-zinc-100 text-zinc-700 font-mono">
+                        {v.phanKhuc}
                       </span>
-                    ) : (
-                      <span className="px-2.5 py-1 bg-zinc-100 text-zinc-500 rounded-full text-xs font-medium font-mono">
-                        Chưa hỗ trợ
-                      </span>
-                    )}
-                  </td>
-                  <td className="p-3 text-center space-x-1.5">
-                    <button
-                      onClick={() => handleEdit(v)}
-                      className="px-2.5 py-1 bg-zinc-900 text-white text-xs font-semibold rounded-lg hover:bg-zinc-800"
-                    >
-                      Sửa
-                    </button>
-                    <button
-                      onClick={() => handleDelete(v.id)}
-                      className="px-2.5 py-1 bg-red-600 text-white text-xs font-semibold rounded-lg hover:bg-red-700"
-                    >
-                      Xóa
-                    </button>
-                  </td>
-                </tr>
-              ))
+                    </td>
+                    <td className="p-3 text-right font-mono text-xs font-bold text-red-700">{formatVND(v.giaNiemYet)}</td>
+                    <td className="p-3 text-xs text-zinc-600">{v.mauSac}</td>
+                    <td className="p-3 text-center">
+                      {v.coTheLaiThu ? (
+                        <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 rounded-full text-xs font-semibold font-mono">
+                          ✓ Có lái thử
+                        </span>
+                      ) : (
+                        <span className="px-2.5 py-1 bg-zinc-100 text-zinc-500 rounded-full text-xs font-medium font-mono">
+                          Chưa hỗ trợ
+                        </span>
+                      )}
+                    </td>
+                    <td className="p-3 text-center space-x-1.5">
+                      <button
+                        onClick={() => handleEdit(v)}
+                        className="px-2.5 py-1 bg-zinc-900 text-white text-xs font-semibold rounded-lg hover:bg-zinc-800 cursor-pointer"
+                      >
+                        Sửa
+                      </button>
+                      <button
+                        onClick={() => handleDelete(v.id)}
+                        className="px-2.5 py-1 bg-red-600 text-white text-xs font-semibold rounded-lg hover:bg-red-700 cursor-pointer"
+                      >
+                        Xóa
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
+
+        {/* Pagination Bar */}
+        {filtered.length > 0 && (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-6 py-4 bg-white border-t border-zinc-200">
+            <div className="text-xs text-zinc-500 font-mono">
+              Hiển thị <strong>{(currentPage - 1) * pageSize + 1}</strong> - <strong>{Math.min(currentPage * pageSize, filtered.length)}</strong> trên tổng số <strong>{filtered.length}</strong> xe mẫu (Trang {currentPage}/{totalPages})
+            </div>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setCurrentPage(1)}
+                disabled={currentPage === 1}
+                className="px-2.5 py-1 text-xs rounded-lg border border-zinc-200 text-zinc-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-zinc-100 font-mono cursor-pointer"
+              >
+                « Đầu
+              </button>
+              <button
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="px-3 py-1 text-xs rounded-lg border border-zinc-200 text-zinc-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-zinc-100 font-mono cursor-pointer"
+              >
+                ‹ Trước
+              </button>
+              {Array.from({ length: totalPages }).map((_, i) => (
+                <button
+                  key={i}
+                  onClick={() => setCurrentPage(i + 1)}
+                  className={`w-7 h-7 text-xs font-bold rounded-lg transition font-mono cursor-pointer ${
+                    currentPage === i + 1
+                      ? 'bg-red-700 text-white shadow-sm'
+                      : 'border border-zinc-200 text-zinc-700 hover:bg-zinc-100'
+                  }`}
+                >
+                  {i + 1}
+                </button>
+              ))}
+              <button
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="px-3 py-1 text-xs rounded-lg border border-zinc-200 text-zinc-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-zinc-100 font-mono cursor-pointer"
+              >
+                Tiếp ›
+              </button>
+              <button
+                onClick={() => setCurrentPage(totalPages)}
+                disabled={currentPage === totalPages}
+                className="px-2.5 py-1 text-xs rounded-lg border border-zinc-200 text-zinc-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-zinc-100 font-mono cursor-pointer"
+              >
+                Cuối »
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Modal */}

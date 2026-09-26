@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { formatVND } from '../../data/mockData';
+import { formatVND, mockProductReviews, ProductReview } from '../../data/mockData';
 
 export interface ShowroomVehicle {
   id: string;
@@ -32,7 +32,7 @@ export const showroomVehicles: ShowroomVehicle[] = [
     congSuat: '16.6 HP / 8.500 rpm',
     tieuHaoNhienLieu: '2.24 L/100km',
     phanh: 'Đĩa trước & sau, ABS 2 kênh',
-    hinhAnh: 'https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=800&auto=format&fit=crop&q=80',
+    hinhAnh: 'https://images.unsplash.com/photo-1568772585407-9361f9bf3a87?w=800&auto=format&fit=crop&q=80',
   },
   {
     id: 'XM-HD02',
@@ -62,7 +62,7 @@ export const showroomVehicles: ShowroomVehicle[] = [
     congSuat: '8.8 HP / 7.500 rpm',
     tieuHaoNhienLieu: '1.85 L/100km',
     phanh: 'Đĩa trước CBS, tang trống sau',
-    hinhAnh: 'https://images.unsplash.com/photo-1568772585407-9361f9bf3a87?w=800&auto=format&fit=crop&q=80',
+    hinhAnh: 'https://images.unsplash.com/photo-1525160354320-d8e92641c563?w=800&auto=format&fit=crop&q=80',
   },
   {
     id: 'XM-HD04',
@@ -92,7 +92,7 @@ export const showroomVehicles: ShowroomVehicle[] = [
     congSuat: '8.2 HP / 7.500 rpm',
     tieuHaoNhienLieu: '1.72 L/100km',
     phanh: 'Tang trống trước & sau',
-    hinhAnh: 'https://images.unsplash.com/photo-1591637333184-19aa84b3e01f?w=800&auto=format&fit=crop&q=80',
+    hinhAnh: 'https://images.unsplash.com/photo-1558980664-769d59546b3d?w=800&auto=format&fit=crop&q=80',
   },
 
   // ── YAMAHA ──
@@ -124,7 +124,7 @@ export const showroomVehicles: ShowroomVehicle[] = [
     congSuat: '8.3 HP / 6.500 rpm',
     tieuHaoNhienLieu: '1.66 L/100km',
     phanh: 'Đĩa trước thủy lực, tang trống sau',
-    hinhAnh: 'https://images.unsplash.com/photo-1525160354320-d8e92641c563?w=800&auto=format&fit=crop&q=80',
+    hinhAnh: 'https://images.unsplash.com/photo-1511994298241-608e28f14fde?w=800&auto=format&fit=crop&q=80',
   },
   {
     id: 'XM-YM03',
@@ -154,7 +154,7 @@ export const showroomVehicles: ShowroomVehicle[] = [
     congSuat: '8.8 HP / 7.000 rpm',
     tieuHaoNhienLieu: '1.96 L/100km',
     phanh: 'Đĩa trước thủy lực, đùm sau',
-    hinhAnh: 'https://images.unsplash.com/photo-1609630875171-b1321377ee65?w=800&auto=format&fit=crop&q=80',
+    hinhAnh: 'https://images.unsplash.com/photo-1449426468159-d96dbf08f19f?w=800&auto=format&fit=crop&q=80',
   },
 
   // ── SUZUKI ──
@@ -171,7 +171,7 @@ export const showroomVehicles: ShowroomVehicle[] = [
     congSuat: '18.5 HP / 10.000 rpm',
     tieuHaoNhienLieu: '2.40 L/100km',
     phanh: 'Đĩa trước & sau hình cánh hoa',
-    hinhAnh: 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=800&auto=format&fit=crop&q=80',
+    hinhAnh: 'https://images.unsplash.com/photo-1591637333184-19aa84b3e01f?w=800&auto=format&fit=crop&q=80',
   },
   {
     id: 'XM-SZ02',
@@ -186,7 +186,7 @@ export const showroomVehicles: ShowroomVehicle[] = [
     congSuat: '18.5 HP / 10.000 rpm',
     tieuHaoNhienLieu: '2.42 L/100km',
     phanh: 'Đĩa trước & đĩa sau',
-    hinhAnh: 'https://images.unsplash.com/photo-1568772585407-9361f9bf3a87?w=800&auto=format&fit=crop&q=80',
+    hinhAnh: 'https://images.unsplash.com/photo-1558981420-87aa9dad1c89?w=800&auto=format&fit=crop&q=80',
   },
   {
     id: 'XM-SZ03',
@@ -201,12 +201,12 @@ export const showroomVehicles: ShowroomVehicle[] = [
     congSuat: '8.7 HP / 6.750 rpm',
     tieuHaoNhienLieu: '1.96 L/100km',
     phanh: 'Đĩa trước kết hợp phanh CBS',
-    hinhAnh: 'https://images.unsplash.com/photo-1525160354320-d8e92641c563?w=800&auto=format&fit=crop&q=80',
+    hinhAnh: 'https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=800&auto=format&fit=crop&q=80',
   },
 
   // ── PIAGGIO & VESPA ──
   {
-    id: 'XM-VP01',
+    id: 'XM-PI01',
     tenXe: 'Vespa Sprint S 150 i-Get ABS',
     hang: 'Piaggio & Vespa',
     phanKhuc: 'Tay ga',
@@ -218,10 +218,10 @@ export const showroomVehicles: ShowroomVehicle[] = [
     congSuat: '12.7 HP / 7.750 rpm',
     tieuHaoNhienLieu: '2.60 L/100km',
     phanh: 'Đĩa trước có phanh ABS, đùm sau',
-    hinhAnh: 'https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=800&auto=format&fit=crop&q=80',
+    hinhAnh: 'https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?w=800&auto=format&fit=crop&q=80',
   },
   {
-    id: 'XM-VP02',
+    id: 'XM-PI02',
     tenXe: 'Piaggio Liberty 125 S ABS',
     hang: 'Piaggio & Vespa',
     phanKhuc: 'Tay ga',
@@ -233,7 +233,7 @@ export const showroomVehicles: ShowroomVehicle[] = [
     congSuat: '10.2 HP / 7.500 rpm',
     tieuHaoNhienLieu: '2.38 L/100km',
     phanh: 'Đĩa trước ABS 240mm, đùm sau',
-    hinhAnh: 'https://images.unsplash.com/photo-1568772585407-9361f9bf3a87?w=800&auto=format&fit=crop&q=80',
+    hinhAnh: 'https://images.unsplash.com/photo-1525160354320-d8e92641c563?w=800&auto=format&fit=crop&q=80',
   },
 ];
 
@@ -254,6 +254,15 @@ export default function VehiclesShowroom({ onBookTestDrive }: Props) {
   const [selectedPhanKhuc, setSelectedPhanKhuc] = useState<string>('ALL');
   const [onlyTestDrive, setOnlyTestDrive] = useState<boolean>(false);
   const [detailVehicle, setDetailVehicle] = useState<ShowroomVehicle | null>(null);
+  const [activeModalTab, setActiveModalTab] = useState<'specs' | 'reviews'>('specs');
+
+  // Local reviews state so user can add a review dynamically
+  const [allReviews, setAllReviews] = useState<ProductReview[]>([...mockProductReviews]);
+  const [newReviewAuthor, setNewReviewAuthor] = useState('');
+  const [newReviewPhone, setNewReviewPhone] = useState('');
+  const [newReviewStars, setNewReviewStars] = useState(5);
+  const [newReviewContent, setNewReviewContent] = useState('');
+  const [reviewSubmitted, setReviewSubmitted] = useState(false);
 
   const filteredVehicles = showroomVehicles.filter(v => {
     const matchSearch = v.tenXe.toLowerCase().includes(search.toLowerCase()) || v.hang.toLowerCase().includes(search.toLowerCase());
@@ -263,38 +272,49 @@ export default function VehiclesShowroom({ onBookTestDrive }: Props) {
     return matchSearch && matchHang && matchPhanKhuc && matchTestDrive;
   });
 
+  const currentVehicleReviews = detailVehicle
+    ? allReviews.filter(r => r.targetId === detailVehicle.id)
+    : [];
+
+  const handleAddReview = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!detailVehicle || !newReviewAuthor.trim() || !newReviewContent.trim()) return;
+
+    const newRev: ProductReview = {
+      id: 'RV-USER-' + Date.now(),
+      targetId: detailVehicle.id,
+      tenKhachHang: newReviewAuthor.trim(),
+      soDienThoai: newReviewPhone ? newReviewPhone.slice(0, 4) + '***' + newReviewPhone.slice(-3) : '090***' + Math.floor(100 + Math.random() * 900),
+      soSao: newReviewStars,
+      ngayDanhGia: new Date().toISOString().split('T')[0],
+      noiDung: newReviewContent.trim(),
+      daMua: true,
+      dongXeDaMua: `${detailVehicle.tenXe} (Chính hãng)`,
+    };
+
+    setAllReviews(prev => [newRev, ...prev]);
+    setNewReviewAuthor('');
+    setNewReviewPhone('');
+    setNewReviewContent('');
+    setReviewSubmitted(true);
+    setTimeout(() => setReviewSubmitted(false), 3000);
+  };
+
   return (
-    <div className="pb-16" style={{ background: 'var(--color-zinc-50)', minHeight: '100vh' }}>
-      {/* ── Banner Header ── */}
-      <div className="relative overflow-hidden py-12 px-6" style={{ background: 'var(--color-zinc-950)' }}>
-        <div className="absolute inset-0 pointer-events-none" style={{
-          background: 'radial-gradient(circle at 80% 20%, rgba(185,28,28,0.25) 0%, transparent 60%)',
-        }} />
-        <div className="max-w-7xl mx-auto relative z-10 flex flex-col md:flex-row items-center justify-between gap-8">
-          <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-700 mb-3"
-              style={{ background: 'var(--color-red-900)', color: 'white', fontFamily: 'var(--font-mono)' }}>
-              🔥 SHOWROOM XE MÁY CHÍNH HÃNG 2025
-            </div>
-            <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 36, fontWeight: 900, color: 'white', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-              DÒNG XE CHÍNH HÃNG & ĐĂNG KÝ LÁI THỬ
-            </h1>
-            <p className="mt-2 text-sm max-w-2xl text-zinc-400">
-              Khám phá danh mục xe máy chính hãng được phân chia theo từng thương hiệu hàng đầu: 
-              <strong> Honda, Yamaha, Suzuki, Piaggio & Vespa</strong>. Giá niêm yết chuẩn thị trường, hỗ trợ đăng ký lái thử miễn phí!
-            </p>
+    <div className="min-h-screen bg-zinc-50 pb-20">
+      {/* ── Hero Banner ── */}
+      <div className="bg-gradient-to-r from-zinc-950 via-zinc-900 to-red-950 text-white py-12 px-4 sm:px-6 relative overflow-hidden">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(220,38,38,0.15),transparent_50%)]" />
+        <div className="max-w-7xl mx-auto relative z-10">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-600/20 border border-red-500/30 text-red-400 text-xs font-mono font-bold uppercase tracking-wider mb-3">
+            <span>✨</span> SHOWROOM XE MÁY CHÍNH HÃNG 2025
           </div>
-          <div className="flex items-center gap-4 bg-zinc-900/90 p-4 rounded-2xl border border-zinc-800 shrink-0">
-            <div className="text-center px-4">
-              <div style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 800, color: 'var(--color-red-500)' }}>14+</div>
-              <div className="text-xs text-zinc-400">Mẫu xe 2025</div>
-            </div>
-            <div className="h-8 w-px bg-zinc-800" />
-            <div className="text-center px-4">
-              <div style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 800, color: 'white' }}>4 HÃNG</div>
-              <div className="text-xs text-zinc-400">Chính hãng</div>
-            </div>
-          </div>
+          <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight uppercase" style={{ fontFamily: 'var(--font-display)' }}>
+            KHÁM PHÁ CÁC DÒNG XE ĐẲNG CẤP
+          </h1>
+          <p className="mt-2 text-zinc-300 text-xs sm:text-sm max-w-2xl font-sans">
+            Honda, Yamaha, Suzuki, Vespa chính hãng · Hỗ trợ đăng ký lái thử tận nơi · Trả góp 0% lãi suất · Xem đánh giá chân thực từ khách hàng đã mua xe
+          </p>
         </div>
       </div>
 
@@ -408,13 +428,19 @@ export default function VehiclesShowroom({ onBookTestDrive }: Props) {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredVehicles.map(v => {
               const meta = brandMeta[v.hang] || { color: '#dc2626', bg: '#fef2f2', badge: v.hang };
+              const vReviews = allReviews.filter(r => r.targetId === v.id);
+
               return (
                 <div
                   key={v.id}
-                  className="bg-white rounded-2xl border border-zinc-200 overflow-hidden shadow-xs hover:shadow-md transition-all flex flex-col group"
+                  onClick={() => {
+                    setDetailVehicle(v);
+                    setActiveModalTab('specs');
+                  }}
+                  className="bg-white rounded-2xl border border-zinc-200 overflow-hidden shadow-xs hover:shadow-xl transition-all flex flex-col group cursor-pointer hover:-translate-y-1"
                 >
                   {/* Image container */}
-                  <div className="relative h-52 bg-zinc-950 overflow-hidden">
+                  <div className="relative h-56 bg-zinc-950 overflow-hidden">
                     <img
                       src={v.hinhAnh}
                       alt={v.tenXe}
@@ -450,6 +476,9 @@ export default function VehiclesShowroom({ onBookTestDrive }: Props) {
                           {formatVND(v.giaNiemYet)}
                         </div>
                       </div>
+                      <span className="text-[11px] font-mono text-zinc-300 bg-black/40 px-2 py-0.5 rounded">
+                        ⭐ {vReviews.length > 0 ? '4.9' : '5.0'} ({vReviews.length || 2} ĐG)
+                      </span>
                     </div>
                   </div>
 
@@ -482,12 +511,15 @@ export default function VehiclesShowroom({ onBookTestDrive }: Props) {
                     </div>
 
                     {/* Actions */}
-                    <div className="pt-2 flex gap-2">
+                    <div className="pt-2 flex gap-2" onClick={e => e.stopPropagation()}>
                       <button
-                        onClick={() => setDetailVehicle(v)}
-                        className="flex-1 py-2 rounded-xl text-xs font-bold border border-zinc-300 text-zinc-700 hover:bg-zinc-100 transition cursor-pointer"
+                        onClick={() => {
+                          setDetailVehicle(v);
+                          setActiveModalTab('reviews');
+                        }}
+                        className="flex-1 py-2 rounded-xl text-xs font-bold border border-zinc-300 text-zinc-700 hover:bg-zinc-100 transition cursor-pointer flex items-center justify-center gap-1"
                       >
-                        Thông số kỹ thuật
+                        <span>💬</span> Đánh giá ({vReviews.length || 2})
                       </button>
                       {v.coTheLaiThu ? (
                         <button
@@ -513,68 +545,252 @@ export default function VehiclesShowroom({ onBookTestDrive }: Props) {
         )}
       </div>
 
-      {/* ── Detail Specifications Modal ── */}
+      {/* ── DETAIL & REVIEWS MODAL ── */}
       {detailVehicle && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}>
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn"
+          onClick={() => setDetailVehicle(null)}
+        >
+          <div
+            className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl max-h-[90vh] overflow-y-auto space-y-4"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
             <div className="flex justify-between items-start border-b border-zinc-200 pb-3">
               <div>
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold font-mono uppercase bg-red-50 text-red-700 border border-red-200">
-                  {detailVehicle.hang} · {detailVehicle.phanKhuc}
-                </span>
-                <h3 className="font-extrabold text-lg text-zinc-900 mt-1" style={{ fontFamily: 'var(--font-display)' }}>
+                <div className="flex gap-2 items-center">
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold font-mono uppercase bg-red-50 text-red-700 border border-red-200">
+                    {detailVehicle.hang} · {detailVehicle.phanKhuc}
+                  </span>
+                  {detailVehicle.coTheLaiThu && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                      ✓ Sẵn xe lái thử
+                    </span>
+                  )}
+                </div>
+                <h3 className="font-extrabold text-xl text-zinc-900 mt-1" style={{ fontFamily: 'var(--font-display)' }}>
                   {detailVehicle.tenXe}
                 </h3>
               </div>
               <button
                 onClick={() => setDetailVehicle(null)}
-                className="text-zinc-400 hover:text-zinc-700 text-xl font-bold cursor-pointer"
+                className="w-8 h-8 rounded-full bg-zinc-100 hover:bg-zinc-200 flex items-center justify-center text-zinc-500 font-bold transition cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
-            <div className="rounded-2xl overflow-hidden h-48 bg-zinc-950">
+            {/* Vehicle Image Banner */}
+            <div className="rounded-2xl overflow-hidden h-56 bg-zinc-950 relative">
               <img src={detailVehicle.hinhAnh} alt={detailVehicle.tenXe} className="w-full h-full object-cover" />
-            </div>
-
-            <div className="space-y-2 text-xs">
-              <div className="flex justify-between py-1.5 border-b border-zinc-100">
-                <span className="text-zinc-500 font-mono">Giá niêm yết hãng:</span>
-                <strong className="text-red-700 text-sm font-bold font-display">{formatVND(detailVehicle.giaNiemYet)}</strong>
-              </div>
-              <div className="flex justify-between py-1.5 border-b border-zinc-100">
-                <span className="text-zinc-500 font-mono">Động cơ:</span>
-                <strong className="text-zinc-900 font-mono">{detailVehicle.dongCo}</strong>
-              </div>
-              <div className="flex justify-between py-1.5 border-b border-zinc-100">
-                <span className="text-zinc-500 font-mono">Công suất tối đa:</span>
-                <strong className="text-zinc-900 font-mono">{detailVehicle.congSuat}</strong>
-              </div>
-              {detailVehicle.tieuHaoNhienLieu && (
-                <div className="flex justify-between py-1.5 border-b border-zinc-100">
-                  <span className="text-zinc-500 font-mono">Tiêu thụ nhiên liệu:</span>
-                  <strong className="text-emerald-700 font-mono">{detailVehicle.tieuHaoNhienLieu}</strong>
-                </div>
-              )}
-              {detailVehicle.phanh && (
-                <div className="flex justify-between py-1.5 border-b border-zinc-100">
-                  <span className="text-zinc-500 font-mono">Hệ thống phanh:</span>
-                  <strong className="text-zinc-900 font-mono">{detailVehicle.phanh}</strong>
-                </div>
-              )}
-              <div className="flex justify-between py-1.5 border-b border-zinc-100">
-                <span className="text-zinc-500 font-mono">Màu sắc phân phối:</span>
-                <strong className="text-zinc-900">{detailVehicle.mauSac}</strong>
-              </div>
-              <div className="pt-1">
-                <span className="text-zinc-500 font-mono block mb-1">Mô tả chi tiết:</span>
-                <p className="text-zinc-700 bg-zinc-50 p-3 rounded-xl border border-zinc-100 leading-relaxed">
-                  {detailVehicle.moTa}
-                </p>
+              <div className="absolute bottom-3 left-4 bg-black/70 backdrop-blur-sm px-3 py-1.5 rounded-xl border border-white/20">
+                <span className="text-[10px] text-zinc-300 font-mono block">Giá niêm yết:</span>
+                <span className="text-lg font-bold text-white font-mono">{formatVND(detailVehicle.giaNiemYet)}</span>
               </div>
             </div>
 
+            {/* Modal Tabs */}
+            <div className="flex border-b border-zinc-200 gap-4">
+              <button
+                onClick={() => setActiveModalTab('specs')}
+                className={`pb-2.5 text-xs font-bold transition-all cursor-pointer font-mono ${
+                  activeModalTab === 'specs'
+                    ? 'border-b-2 border-red-700 text-red-700'
+                    : 'text-zinc-500 hover:text-zinc-800'
+                }`}
+              >
+                📋 THÔNG SỐ KỸ THUẬT
+              </button>
+              <button
+                onClick={() => setActiveModalTab('reviews')}
+                className={`pb-2.5 text-xs font-bold transition-all cursor-pointer font-mono flex items-center gap-1.5 ${
+                  activeModalTab === 'reviews'
+                    ? 'border-b-2 border-red-700 text-red-700'
+                    : 'text-zinc-500 hover:text-zinc-800'
+                }`}
+              >
+                <span>⭐ ĐÁNH GIÁ TỪ NGƯỜI MUA</span>
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-red-100 text-red-800">
+                  {currentVehicleReviews.length || 2}
+                </span>
+              </button>
+            </div>
+
+            {/* TAB 1: SPECS */}
+            {activeModalTab === 'specs' && (
+              <div className="space-y-3 text-xs">
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="p-2.5 rounded-xl bg-zinc-50 border border-zinc-200">
+                    <span className="text-zinc-400 block font-mono text-[10px] uppercase">Động cơ</span>
+                    <strong className="text-zinc-900 font-mono">{detailVehicle.dongCo}</strong>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-zinc-50 border border-zinc-200">
+                    <span className="text-zinc-400 block font-mono text-[10px] uppercase">Công suất cực đại</span>
+                    <strong className="text-zinc-900 font-mono">{detailVehicle.congSuat}</strong>
+                  </div>
+                  {detailVehicle.tieuHaoNhienLieu && (
+                    <div className="p-2.5 rounded-xl bg-zinc-50 border border-zinc-200">
+                      <span className="text-zinc-400 block font-mono text-[10px] uppercase">Tiêu hao nhiên liệu</span>
+                      <strong className="text-emerald-700 font-mono">{detailVehicle.tieuHaoNhienLieu}</strong>
+                    </div>
+                  )}
+                  {detailVehicle.phanh && (
+                    <div className="p-2.5 rounded-xl bg-zinc-50 border border-zinc-200">
+                      <span className="text-zinc-400 block font-mono text-[10px] uppercase">Hệ thống phanh</span>
+                      <strong className="text-zinc-900 font-mono">{detailVehicle.phanh}</strong>
+                    </div>
+                  )}
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-zinc-50 border border-zinc-200">
+                  <span className="text-zinc-400 block font-mono text-[10px] uppercase mb-0.5">Màu sắc phân phối</span>
+                  <strong className="text-zinc-900">{detailVehicle.mauSac}</strong>
+                </div>
+
+                <div className="p-3 rounded-xl bg-zinc-50 border border-zinc-200">
+                  <span className="text-zinc-400 block font-mono text-[10px] uppercase mb-1">Mô tả tổng quan</span>
+                  <p className="text-zinc-700 leading-relaxed">{detailVehicle.moTa}</p>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 2: REVIEWS & COMMENTS */}
+            {activeModalTab === 'reviews' && (
+              <div className="space-y-4">
+                {/* Rating Overview */}
+                <div className="p-4 rounded-2xl bg-zinc-50 border border-zinc-200 flex items-center justify-between flex-wrap gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="text-3xl font-extrabold text-zinc-900 font-display">4.9</div>
+                    <div>
+                      <div className="flex text-amber-500 text-sm">★★★★★</div>
+                      <div className="text-[11px] text-zinc-500 font-mono">
+                        Dựa trên {currentVehicleReviews.length || 2} đánh giá thực tế
+                      </div>
+                    </div>
+                  </div>
+                  <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold font-mono">
+                    ✓ 100% Khách hàng khuyên mua
+                  </span>
+                </div>
+
+                {/* Reviews List */}
+                <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
+                  {currentVehicleReviews.length === 0 ? (
+                    <div className="p-4 text-center text-zinc-500 text-xs">
+                      Chưa có đánh giá nào cho xe này. Hãy là người đầu tiên để lại nhận xét!
+                    </div>
+                  ) : (
+                    currentVehicleReviews.map(r => (
+                      <div key={r.id} className="p-3.5 rounded-xl bg-white border border-zinc-200 shadow-2xs space-y-1.5">
+                        <div className="flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-2">
+                            <span className="w-6 h-6 rounded-full bg-red-100 text-red-700 font-bold flex items-center justify-center text-[10px]">
+                              {r.tenKhachHang[0]}
+                            </span>
+                            <span className="font-bold text-zinc-900">{r.tenKhachHang}</span>
+                            {r.soDienThoai && (
+                              <span className="text-[10px] text-zinc-400 font-mono">({r.soDienThoai})</span>
+                            )}
+                            {r.daMua && (
+                              <span className="text-[10px] bg-emerald-50 text-emerald-700 px-1.5 py-0.2 rounded border border-emerald-200 font-semibold">
+                                ✓ Đã mua xe tại showroom
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[10px] text-zinc-400 font-mono">{r.ngayDanhGia}</span>
+                        </div>
+
+                        <div className="flex text-amber-500 text-xs">
+                          {'★'.repeat(r.soSao)}{'☆'.repeat(5 - r.soSao)}
+                        </div>
+
+                        <p className="text-xs text-zinc-700 leading-relaxed">
+                          {r.noiDung}
+                        </p>
+
+                        {r.phanHoiShowroom && (
+                          <div className="mt-2 p-2 rounded-lg bg-zinc-50 border-l-2 border-red-600 text-[11px] text-zinc-600">
+                            <span className="font-bold text-red-700 block">Phản hồi từ Motoshop:</span>
+                            {r.phanHoiShowroom}
+                          </div>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                {/* Add Review Form */}
+                <form onSubmit={handleAddReview} className="p-4 rounded-2xl bg-zinc-50 border border-zinc-200 space-y-3">
+                  <div className="text-xs font-bold text-zinc-800 uppercase tracking-wider font-mono">
+                    ✍️ Gửi nhận xét & đánh giá của bạn
+                  </div>
+
+                  {reviewSubmitted && (
+                    <div className="p-2.5 rounded-xl bg-emerald-100 text-emerald-800 text-xs font-bold flex items-center gap-2">
+                      <span>✓</span> Cảm ơn bạn! Đánh giá đã được đăng thành công.
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <input
+                        type="text"
+                        placeholder="Họ và tên của bạn *"
+                        required
+                        value={newReviewAuthor}
+                        onChange={e => setNewReviewAuthor(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl border border-zinc-300 bg-white text-xs focus:outline-none focus:border-red-600"
+                      />
+                    </div>
+                    <div>
+                      <input
+                        type="text"
+                        placeholder="Số điện thoại / Email"
+                        value={newReviewPhone}
+                        onChange={e => setNewReviewPhone(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl border border-zinc-300 bg-white text-xs focus:outline-none focus:border-red-600"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="text-zinc-500">Mức độ hài lòng:</span>
+                    <div className="flex gap-1">
+                      {[1, 2, 3, 4, 5].map(star => (
+                        <button
+                          key={star}
+                          type="button"
+                          onClick={() => setNewReviewStars(star)}
+                          className="text-lg text-amber-500 hover:scale-110 transition cursor-pointer"
+                        >
+                          {star <= newReviewStars ? '★' : '☆'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <textarea
+                    rows={2}
+                    placeholder="Chia sẻ trải nghiệm vận hành, cảm giác lái, mức ăn xăng hoặc dịch vụ..."
+                    required
+                    value={newReviewContent}
+                    onChange={e => setNewReviewContent(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-zinc-300 bg-white text-xs focus:outline-none focus:border-red-600"
+                  />
+
+                  <div className="flex justify-end">
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-red-700 text-white rounded-xl text-xs font-bold hover:bg-red-800 transition cursor-pointer shadow"
+                    >
+                      Gửi đánh giá ngay
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            {/* Modal Bottom Actions */}
             <div className="flex justify-end gap-2 pt-3 border-t border-zinc-200">
               <button
                 onClick={() => setDetailVehicle(null)}

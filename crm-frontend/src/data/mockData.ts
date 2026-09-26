@@ -57,6 +57,24 @@ export interface Feedback {
   id: string; customerId: string; hoTen: string; noiDung: string;
   diemDanhGia: number; ngayGui: string; loaiDanhGia: 'DichVu' | 'SanPham' | 'BaoHanh';
   trangThai: 'ChoXuLy' | 'DaXuLy'; loaiNhan: 'DanhGia' | 'KhieuNai';
+  soDienThoai?: string;
+  email?: string;
+  diaChi?: string;
+  xeDangDung?: string;
+  ghiChuXuLy?: string;
+}
+
+export interface ProductReview {
+  id: string;
+  targetId: string; // vehicleId or partId
+  tenKhachHang: string;
+  soDienThoai?: string;
+  soSao: number;
+  ngayDanhGia: string;
+  noiDung: string;
+  daMua: boolean;
+  dongXeDaMua?: string;
+  phanHoiShowroom?: string;
 }
 
 export interface SurveyQuestion {
@@ -96,7 +114,7 @@ export const mockParts: Part[] = [
     soLuongTon: 85,
     danhMuc: 'Nhớt',
     moTa: 'Dầu nhớt tổng hợp 100% công nghệ Ester cao cấp từ Pháp, tối ưu công suất và bảo vệ ly hợp ướt xe côn tay và xe phân khối lớn.',
-    hinhAnh: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=500&auto=format',
+    hinhAnh: 'https://images.unsplash.com/photo-1635773054018-22c6630f9a2e?w=500&auto=format',
     rating: 4.9,
     luotDanh: 342,
     dongXePhuHop: 'Winner X, Exciter 150/155, Raider, CBR150R, CB300R',
@@ -112,7 +130,7 @@ export const mockParts: Part[] = [
     soLuongTon: 120,
     danhMuc: 'Nhớt',
     moTa: 'Dầu nhớt động cơ công nghệ 5 trong 1 tối ưu tăng tốc, tản nhiệt cực nhanh, chống cặn bẩn vượt trội cho xe tay ga.',
-    hinhAnh: 'https://images.unsplash.com/photo-1635773054018-22c6630f9a2e?w=500&auto=format',
+    hinhAnh: 'https://images.unsplash.com/photo-1619642751034-765dfdf7c58e?w=500&auto=format',
     rating: 4.8,
     luotDanh: 215,
     dongXePhuHop: 'Honda SH 125i/160i, Air Blade, Lead, Vision, Vario',
@@ -128,7 +146,7 @@ export const mockParts: Part[] = [
     soLuongTon: 160,
     danhMuc: 'Nhớt',
     moTa: 'Nhớt động cơ tiêu chuẩn chính hãng Honda cho xe số 4 thì, bôi trơn hoàn hảo và tiết kiệm nhiên liệu tối đa.',
-    hinhAnh: 'https://images.unsplash.com/photo-1619642751034-765dfdf7c58e?w=500&auto=format',
+    hinhAnh: 'https://images.unsplash.com/photo-1486006920555-c77dce18193b?w=500&auto=format',
     rating: 4.7,
     luotDanh: 418,
     dongXePhuHop: 'Wave Alpha, Future 125, Wave RSX, Blade',
@@ -144,7 +162,7 @@ export const mockParts: Part[] = [
     soLuongTon: 65,
     danhMuc: 'Lọc',
     moTa: 'Lọc gió giấy tẩm dầu chuyên dụng giúp lọc 99% bụi mịn buồng đốt, tăng tuổi thọ động cơ và tối ưu tiêu thụ xăng.',
-    hinhAnh: 'https://images.unsplash.com/photo-1486006920555-c77dce18193b?w=500&auto=format',
+    hinhAnh: 'https://images.unsplash.com/photo-1609136689989-d2b51aef6e4e?w=500&auto=format',
     rating: 4.7,
     luotDanh: 94,
     dongXePhuHop: 'Honda Air Blade 125/160, Vario 160, Lead 125',
@@ -336,7 +354,7 @@ export const mockParts: Part[] = [
     soLuongTon: 30,
     danhMuc: 'Phụ kiện',
     moTa: 'Gương gù thời trang hợp kim nhôm CNC cắt nguyên khối. Kính tráng gương màu xanh dương triệt tiêu ánh sáng chói lóa từ đèn pha phía sau.',
-    hinhAnh: 'https://images.unsplash.com/photo-1449824913935-59a10b8d2000?w=500&auto=format',
+    hinhAnh: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=500&auto=format',
     rating: 4.6,
     luotDanh: 89,
     dongXePhuHop: 'Mọi dòng xe máy phổ thông & xe côn tay',
@@ -368,7 +386,7 @@ export const mockParts: Part[] = [
     soLuongTon: 15,
     danhMuc: 'Phụ kiện',
     moTa: 'Thùng sau Givi Monolock làm từ nhựa nguyên sinh PP siêu bền chịu va đập, gioăng cao su chống nước tuyệt đối, chứa thoải mái 1 mũ fullface.',
-    hinhAnh: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=500&auto=format',
+    hinhAnh: 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=500&auto=format',
     rating: 4.9,
     luotDanh: 76,
     dongXePhuHop: 'Gắn baga mọi dòng xe số, tay ga, xe đi phượt',
@@ -429,11 +447,307 @@ export const mockAppointments: Appointment[] = [
 
 /* ───────────────────────── FEEDBACK ───────────────────────── */
 export const mockFeedbacks: Feedback[] = [
-  { id: 'PH001', customerId: 'KH001', hoTen: 'Nguyễn Văn An', noiDung: 'Dịch vụ bảo dưỡng nhanh, nhân viên tận tình. Rất hài lòng!', diemDanhGia: 5, ngayGui: '2024-11-16', loaiDanhGia: 'DichVu', trangThai: 'DaXuLy', loaiNhan: 'DanhGia' },
-  { id: 'PH002', customerId: 'KH002', hoTen: 'Trần Thị Bích', noiDung: 'Giao hàng chậm hơn dự kiến 2 ngày, nhưng sản phẩm đúng chất lượng.', diemDanhGia: 3, ngayGui: '2024-12-04', loaiDanhGia: 'DichVu', trangThai: 'ChoXuLy', loaiNhan: 'KhieuNai' },
-  { id: 'PH003', customerId: 'KH004', hoTen: 'Phạm Thị Dung', noiDung: 'Nhớt Honda chính hãng tốt, xe chạy êm hơn rõ rệt!', diemDanhGia: 5, ngayGui: '2024-12-05', loaiDanhGia: 'SanPham', trangThai: 'DaXuLy', loaiNhan: 'DanhGia' },
-  { id: 'PH004', customerId: 'KH005', hoTen: 'Hoàng Văn Em', noiDung: 'Giá phụ tùng hơi cao so với thị trường bên ngoài. Mong giảm thêm.', diemDanhGia: 3, ngayGui: '2024-12-10', loaiDanhGia: 'SanPham', trangThai: 'ChoXuLy', loaiNhan: 'KhieuNai' },
-  { id: 'PH005', customerId: 'KH006', hoTen: 'Vũ Thị Hoa', noiDung: 'Nhân viên tư vấn nhiệt tình, showroom sạch sẽ. Sẽ giới thiệu bạn bè!', diemDanhGia: 5, ngayGui: '2024-12-11', loaiDanhGia: 'DichVu', trangThai: 'DaXuLy', loaiNhan: 'DanhGia' },
+  {
+    id: 'PH001',
+    customerId: 'KH001',
+    hoTen: 'Nguyễn Văn An',
+    soDienThoai: '0901234567',
+    email: 'nguyenvanan@gmail.com',
+    diaChi: '12 Lý Thường Kiệt, Q.1, TP.HCM',
+    xeDangDung: 'Honda Wave Alpha 110cc (51K-12345)',
+    noiDung: 'Dịch vụ bảo dưỡng định kỳ rất nhanh chóng, nhân viên kỹ thuật thay nhớt và siết xích cẩn thận. Showroom có phòng chờ máy lạnh tiện nghi!',
+    diemDanhGia: 5,
+    ngayGui: '2024-11-16',
+    loaiDanhGia: 'DichVu',
+    trangThai: 'DaXuLy',
+    loaiNhan: 'DanhGia',
+    ghiChuXuLy: 'Đã gọi điện cảm ơn khách hàng và gửi voucher giảm giá 10% lần sau.',
+  },
+  {
+    id: 'PH002',
+    customerId: 'KH002',
+    hoTen: 'Trần Thị Bích',
+    soDienThoai: '0912345678',
+    email: 'tranthibich@gmail.com',
+    diaChi: '45 Nguyễn Huệ, Q.1, TP.HCM',
+    xeDangDung: 'Honda Air Blade 125cc (51B-56789)',
+    noiDung: 'Đơn hàng phụ tùng giao chậm hơn dự kiến 2 ngày do bên vận chuyển, may là đồ bọc gói kỹ và đúng hàng chuẩn Honda.',
+    diemDanhGia: 3,
+    ngayGui: '2024-12-04',
+    loaiDanhGia: 'SanPham',
+    trangThai: 'ChoXuLy',
+    loaiNhan: 'KhieuNai',
+  },
+  {
+    id: 'PH003',
+    customerId: 'KH004',
+    hoTen: 'Phạm Thị Dung',
+    soDienThoai: '0934567890',
+    email: 'phamthidung@gmail.com',
+    diaChi: '23 CMT8, Q.3, TP.HCM',
+    xeDangDung: 'Honda SH 160i ABS (51D-22222)',
+    noiDung: 'Nhớt Motul 7100 và má phanh Brembo mua tại cửa hàng dùng cực thích, bóp phanh êm ru và xe chạy bốc hơn hẳn.',
+    diemDanhGia: 5,
+    ngayGui: '2024-12-05',
+    loaiDanhGia: 'SanPham',
+    trangThai: 'DaXuLy',
+    loaiNhan: 'DanhGia',
+    ghiChuXuLy: 'Đã hỗ trợ kiểm tra định kỳ miễn phí cho khách.',
+  },
+  {
+    id: 'PH004',
+    customerId: 'KH005',
+    hoTen: 'Hoàng Văn Em',
+    soDienThoai: '0945678901',
+    email: 'hoangvanem@gmail.com',
+    diaChi: '56 Điện Biên Phủ, Bình Thạnh, TP.HCM',
+    xeDangDung: 'Yamaha Grande 125cc (51E-33333)',
+    noiDung: 'Giá một số loại lốp xe nhập khẩu hơi cao hơn so với bên ngoài. Showroom nên có nhiều chương trình khuyến mãi hơn.',
+    diemDanhGia: 3,
+    ngayGui: '2024-12-10',
+    loaiDanhGia: 'SanPham',
+    trangThai: 'ChoXuLy',
+    loaiNhan: 'KhieuNai',
+  },
+  {
+    id: 'PH005',
+    customerId: 'KH006',
+    hoTen: 'Vũ Thị Hoa',
+    soDienThoai: '0956789012',
+    email: 'vuthihoa@gmail.com',
+    diaChi: '89 Võ Văn Tần, Q.3, TP.HCM',
+    xeDangDung: 'Yamaha Exciter 155 VVA (51C-11111)',
+    noiDung: 'Tư vấn viên bán xe giải thích thủ tục trả góp 0% rất rõ ràng, hỗ trợ làm hồ sơ lấy xe trong ngày. Rất hài lòng!',
+    diemDanhGia: 5,
+    ngayGui: '2024-12-11',
+    loaiDanhGia: 'DichVu',
+    trangThai: 'DaXuLy',
+    loaiNhan: 'DanhGia',
+  },
+  {
+    id: 'PH006',
+    customerId: 'KH007',
+    hoTen: 'Đặng Quốc Hùng',
+    soDienThoai: '0967890123',
+    email: 'dangquochung@gmail.com',
+    diaChi: '34 Nguyễn Đình Chiểu, Phú Nhuận, TP.HCM',
+    xeDangDung: 'Honda Future 125 Fi (59P-44556)',
+    noiDung: 'Xe bảo dưỡng xong nhưng phanh sau vẫn có tiếng kêu nhẹ khi chở nặng. Cần thợ xem lại giúp tôi.',
+    diemDanhGia: 2,
+    ngayGui: '2024-12-14',
+    loaiDanhGia: 'BaoHanh',
+    trangThai: 'ChoXuLy',
+    loaiNhan: 'KhieuNai',
+  },
+];
+
+/* ───────────────────────── PRODUCT REVIEWS (REVIEWS & COMMENTS) ───────────────────────── */
+export const mockProductReviews: ProductReview[] = [
+  // ── REVIEWS FOR VEHICLES ──
+  {
+    id: 'RV001',
+    targetId: 'XM-HD01', // SH 160i
+    tenKhachHang: 'Nguyễn Tuấn Kiệt',
+    soDienThoai: '0908***221',
+    soSao: 5,
+    ngayDanhGia: '2024-11-20',
+    noiDung: 'Mình mua bản Đen mờ tại Showroom, xe chạy cực kỳ đầm chắc. Phanh ABS 2 kênh bóp rất an tâm khi chạy trời mưa ngập. Nhân viên hỗ trợ bấm biển chỉ 2 ngày là có!',
+    daMua: true,
+    dongXeDaMua: 'Honda SH 160i ABS 2025 (Đen mờ)',
+    phanHoiShowroom: 'Cảm ơn anh Kiệt đã tin tưởng lựa chọn Motoshop. Chúc anh vạn dặm bình an cùng SH 160i!',
+  },
+  {
+    id: 'RV002',
+    targetId: 'XM-HD01',
+    tenKhachHang: 'Trần Mai Phương',
+    soDienThoai: '0912***456',
+    soSao: 5,
+    ngayDanhGia: '2024-12-02',
+    noiDung: 'Xe dáng đẹp sang trọng, cốp để vừa laptop và 2 nón bảo hiểm thoải mái. Hệ thống đèn LED chiếu sáng rất tốt khi đi đêm.',
+    daMua: true,
+    dongXeDaMua: 'Honda SH 160i ABS (Xám xi măng)',
+  },
+  {
+    id: 'RV003',
+    targetId: 'XM-HD02', // Air Blade 160
+    tenKhachHang: 'Lê Hoàng Long',
+    soDienThoai: '0933***889',
+    soSao: 5,
+    ngayDanhGia: '2024-11-28',
+    noiDung: 'Máy 160cc 4 van bốc kinh khủng, vượt xe tải nhẹ nhàng. Tiêu thụ xăng tầm 2.2L/100km trong nội thành là quá ổn.',
+    daMua: true,
+    dongXeDaMua: 'Honda Air Blade 160 ABS (Đỏ đen)',
+  },
+  {
+    id: 'RV004',
+    targetId: 'XM-HD03', // Vision
+    tenKhachHang: 'Nguyễn Thị Bích Ngọc',
+    soDienThoai: '0977***112',
+    soSao: 5,
+    ngayDanhGia: '2024-12-05',
+    noiDung: 'Xe nhỏ gọn, dắt nhẹ tênh, rất hợp cho nữ đi làm văn phòng. Khóa thông minh Smart Key an toàn, không lo mất xe.',
+    daMua: true,
+    dongXeDaMua: 'Honda Vision 110 Thể Thao (Xám xi măng)',
+  },
+  {
+    id: 'RV005',
+    targetId: 'XM-HD04', // Winner X
+    tenKhachHang: 'Đặng Minh Triết',
+    soDienThoai: '0902***776',
+    soSao: 5,
+    ngayDanhGia: '2024-12-10',
+    noiDung: 'Côn tay siêu nhẹ nhờ bộ ly hợp Assist & Slipper. Vào cua đầm xe, phanh ABS chống trượt trước hoạt động rất nhạy bén.',
+    daMua: true,
+    dongXeDaMua: 'Honda Winner X 150 ABS',
+    phanHoiShowroom: 'Motoshop tặng anh thêm 1 voucher bảo dưỡng thay nhớt miễn phí cho lần tới nhé!',
+  },
+  {
+    id: 'RV006',
+    targetId: 'XM-YM01', // Exciter 155
+    tenKhachHang: 'Phan Quốc Bảo',
+    soDienThoai: '0948***555',
+    soSao: 5,
+    ngayDanhGia: '2024-11-15',
+    noiDung: 'Van biến thiên VVA kích hoạt ở 7.400 vòng/phút pô hú cực phấn khích! Xe đâm hậu tốt, bản màu Xanh GP nhìn ngoài đời ngầu hơn trong hình.',
+    daMua: true,
+    dongXeDaMua: 'Yamaha Exciter 155 VVA ABS (Xanh GP)',
+  },
+  {
+    id: 'RV007',
+    targetId: 'XM-YM02', // Grande Hybrid
+    tenKhachHang: 'Vũ Thanh Hằng',
+    soDienThoai: '0981***678',
+    soSao: 5,
+    ngayDanhGia: '2024-12-01',
+    noiDung: 'Cực kỳ tiết kiệm xăng, mình đi 2 tuần mới phải đổ 1 lần. Động cơ hybrid khởi động êm ru không nghe tiếng đề rít tai.',
+    daMua: true,
+    dongXeDaMua: 'Yamaha Grande Hybrid (Trắng ngọc trai)',
+  },
+  {
+    id: 'RV008',
+    targetId: 'XM-SZ01', // Raider 150
+    tenKhachHang: 'Trương Hoàng Nam',
+    soDienThoai: '0919***334',
+    soSao: 5,
+    ngayDanhGia: '2024-11-10',
+    noiDung: 'Động cơ DOHC làm mát két nước to đùng, chạy tua cao máy vẫn mát. Xe kéo hậu 140km/h nhẹ nhàng trên cao tốc.',
+    daMua: true,
+    dongXeDaMua: 'Suzuki Raider R150 Fi (Xanh MotoGP)',
+  },
+  {
+    id: 'RV009',
+    targetId: 'XM-PI01', // Vespa Sprint S 150
+    tenKhachHang: 'Hoàng Kim Yến',
+    soDienThoai: '0938***999',
+    soSao: 5,
+    ngayDanhGia: '2024-12-08',
+    noiDung: 'Đỉnh cao phong cách thời trang! Nước sơn bóng loáng, màn hình điện tử TFT màu kết nối điện thoại xem bản đồ rất xịn.',
+    daMua: true,
+    dongXeDaMua: 'Vespa Sprint S 150 TFT (Đen nhám)',
+  },
+
+  // ── REVIEWS FOR PARTS ──
+  {
+    id: 'RV101',
+    targetId: 'PT001', // Motul 7100
+    tenKhachHang: 'Lê Văn Nam',
+    soDienThoai: '0913***567',
+    soSao: 5,
+    ngayDanhGia: '2024-11-22',
+    noiDung: 'Hàng chuẩn tem chống giả 100%, quét mã QR ra ngay nguồn gốc Motul Pháp. Thay cho con Exciter 155 máy êm mát rõ rệt sau 500km tour Đà Lạt.',
+    daMua: true,
+    phanHoiShowroom: 'Motoshop cam kết chỉ bán dầu nhớt Motul chính hãng phân phối ủy quyền tại Việt Nam!',
+  },
+  {
+    id: 'RV102',
+    targetId: 'PT001',
+    tenKhachHang: 'Nguyễn Hải Đăng',
+    soDienThoai: '0909***882',
+    soSao: 5,
+    ngayDanhGia: '2024-12-03',
+    noiDung: 'Nhớt Ester đỏ thơm đặc trưng, vào số mượt mà không bị sượng khi kẹt xe giờ cao điểm.',
+    daMua: true,
+  },
+  {
+    id: 'RV103',
+    targetId: 'PT002', // Castrol POWER1 Scooter
+    tenKhachHang: 'Phạm Thu Trang',
+    soDienThoai: '0988***443',
+    soSao: 5,
+    ngayDanhGia: '2024-12-01',
+    noiDung: 'Thay cho xe Lead và SH của cả nhà, vặn ga bốc, máy êm ru. Giá tại showroom còn có voucher giảm giá rẻ hơn ở cây xăng.',
+    daMua: true,
+  },
+  {
+    id: 'RV104',
+    targetId: 'PT004', // Lọc gió Honda
+    tenKhachHang: 'Đỗ Hữu Nghĩa',
+    soDienThoai: '0972***331',
+    soSao: 5,
+    ngayDanhGia: '2024-11-19',
+    noiDung: 'Đúng hàng zin Honda bọc trong túi nilon có mã phụ tùng chuẩn. Thay vào lọc sạch bụi, tiếng máy thở nhẹ hơn hẳn.',
+    daMua: true,
+  },
+  {
+    id: 'RV105',
+    targetId: 'PT006', // Brembo Brake
+    tenKhachHang: 'Võ Minh Quân',
+    soDienThoai: '0901***665',
+    soSao: 5,
+    ngayDanhGia: '2024-12-04',
+    noiDung: 'Má phanh Brembo xịn xò, lực hãm chuẩn xác, bóp thắng không bị giật hay cọ xước đĩa. Đi mưa phanh rất tự tin!',
+    daMua: true,
+  },
+  {
+    id: 'RV106',
+    targetId: 'PT008', // Bugi NGK Iridium
+    tenKhachHang: 'Huỳnh Tấn Phát',
+    soDienThoai: '0943***221',
+    soSao: 5,
+    ngayDanhGia: '2024-11-25',
+    noiDung: 'Bugi chân kim đánh lửa cực nhạy. Buổi sáng bấm đề 1 phát nổ ngay không cần kéo e ga. Cảm giác ga đầu lanh lẹ hơn bugi zin.',
+    daMua: true,
+  },
+  {
+    id: 'RV107',
+    targetId: 'PT010', // Michelin Pilot Street 2
+    tenKhachHang: 'Trần Đình Trọng',
+    soDienThoai: '0966***908',
+    soSao: 5,
+    ngayDanhGia: '2024-12-07',
+    noiDung: 'Lốp Michelin gai thoát nước đỉnh chóp. Chạy qua vạch sơn đường khi mưa không hề bị sàn đuôi như lốp hãng theo xe.',
+    daMua: true,
+  },
+  {
+    id: 'RV108',
+    targetId: 'PT012', // Bando V-Belt
+    tenKhachHang: 'Ngô Kiến Huy',
+    soDienThoai: '0937***110',
+    soSao: 5,
+    ngayDanhGia: '2024-12-09',
+    noiDung: 'Dây curoa Bando hai mặt răng chính hãng Nhật Bản. Lắp vào con SH 150i hết tiệt bệnh rung đầu buổi sáng!',
+    daMua: true,
+  },
+  {
+    id: 'RV109',
+    targetId: 'PT013', // DID Chain
+    tenKhachHang: 'Bùi Quốc Anh',
+    soDienThoai: '0918***774',
+    soSao: 5,
+    ngayDanhGia: '2024-11-30',
+    noiDung: 'Sên vàng D.I.D 9 ly đi với nhông Sunstar cực bền, chạy 2.000km mới phải tăng xích một lần. Nước mạ vàng sáng bóng!',
+    daMua: true,
+  },
+  {
+    id: 'RV110',
+    targetId: 'PT017', // ZHI.PAT Windshield
+    tenKhachHang: 'Cao Tiến Đạt',
+    soDienThoai: '0908***452',
+    soSao: 5,
+    ngayDanhGia: '2024-12-12',
+    noiDung: 'Gắn lên SH 160i nhìn xe bệ vệ thể thao hẳn lên. Nhựa Polycarbonate dẻo dai khó xước, cản gió đi tour xa rất đỡ mệt ngực.',
+    daMua: true,
+  },
 ];
 
 /* ───────────────────────── SURVEYS ───────────────────────── */

@@ -288,9 +288,77 @@ export default function FeedbackPage() {
 
                   <p className="mt-3 text-sm leading-relaxed" style={{ color: 'var(--color-zinc-700)' }}>{f.noiDung}</p>
 
+                  {/* Customer Contact Details Bar */}
+                  <div className="mt-3 p-3 rounded-xl bg-zinc-50 border border-zinc-200/80 flex flex-wrap items-center justify-between gap-3 text-xs">
+                    <div className="flex flex-wrap items-center gap-4">
+                      {/* Phone */}
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-zinc-400">📞 SĐT:</span>
+                        <a
+                          href={`tel:${f.soDienThoai || '0901234567'}`}
+                          className="font-bold text-red-700 hover:underline font-mono"
+                        >
+                          {f.soDienThoai || '0901234567'}
+                        </a>
+                      </div>
+
+                      {/* Email */}
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-zinc-400">✉️ Email:</span>
+                        <a
+                          href={`mailto:${f.email || 'khachhang@motoshop.vn'}`}
+                          className="font-semibold text-blue-700 hover:underline"
+                        >
+                          {f.email || 'khachhang@motoshop.vn'}
+                        </a>
+                      </div>
+
+                      {/* Address */}
+                      {f.diaChi && (
+                        <div className="flex items-center gap-1.5 text-zinc-600">
+                          <span className="text-zinc-400">📍 Địa chỉ:</span>
+                          <span className="font-medium">{f.diaChi}</span>
+                        </div>
+                      )}
+
+                      {/* Vehicle */}
+                      {f.xeDangDung && (
+                        <div className="flex items-center gap-1.5 text-zinc-600">
+                          <span className="text-zinc-400">🏍️ Xe sở hữu:</span>
+                          <span className="font-semibold text-zinc-900 bg-white px-2 py-0.5 rounded border border-zinc-200">
+                            {f.xeDangDung}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Quick Call / Email buttons */}
+                    <div className="flex items-center gap-2">
+                      <a
+                        href={`tel:${f.soDienThoai || '0901234567'}`}
+                        className="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-700 font-bold rounded-lg transition border border-red-200 flex items-center gap-1"
+                      >
+                        <span>📞</span> Gọi khách
+                      </a>
+                      <a
+                        href={`mailto:${f.email || 'khachhang@motoshop.vn'}?subject=Phản hồi từ Showroom Motoshop`}
+                        className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded-lg transition border border-blue-200 flex items-center gap-1"
+                      >
+                        <span>✉️</span> Gửi mail
+                      </a>
+                    </div>
+                  </div>
+
+                  {f.ghiChuXuLy && (
+                    <div className="mt-2.5 px-3 py-1.5 bg-emerald-50 text-emerald-800 rounded-lg text-xs border border-emerald-200 flex items-center gap-2">
+                      <span className="font-bold">✓ Ghi chú xử lý:</span>
+                      <span>{f.ghiChuXuLy}</span>
+                    </div>
+                  )}
+
                   <div className="flex items-center justify-between mt-3 pt-3 border-t" style={{ borderColor: 'var(--color-zinc-100)' }}>
                     <div className="text-xs" style={{ color: 'var(--color-zinc-400)', fontFamily: 'var(--font-mono)' }}>
-                      Loại: {f.loaiDanhGia === 'DichVu' ? 'Dịch vụ' : f.loaiDanhGia === 'SanPham' ? 'Sản phẩm' : 'Bảo hành'}
+                      Mã KH: <strong>{f.customerId}</strong> · Danh mục: {f.loaiDanhGia === 'DichVu' ? 'Dịch vụ' : f.loaiDanhGia === 'SanPham' ? 'Sản phẩm' : 'Bảo hành'}
                     </div>
                     {f.trangThai === 'ChoXuLy' && (
                       <button onClick={() => resolveFeedback(f.id)}

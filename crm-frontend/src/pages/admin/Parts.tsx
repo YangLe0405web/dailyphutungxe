@@ -6,6 +6,8 @@ const categoryOptions = ['Nhớt', 'Lọc', 'Phanh', 'Bugi', 'Đèn', 'Lốp xe'
 
 export default function PartsPage() {
   const [parts, setParts] = useState<Part[]>([...mockParts]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
   const [search, setSearch] = useState('');
   const [filterCat, setFilterCat] = useState('');
   const [filterBrand, setFilterBrand] = useState('');
@@ -44,6 +46,9 @@ export default function PartsPage() {
 
     return matchSearch && matchCat && matchBrand && matchStock && matchDiscount;
   });
+
+  const totalPages = Math.ceil(filtered.length / pageSize) || 1;
+  const pagedParts = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   const validate = (data: Partial<Part>) => {
     const err: Record<string, string> = {};
@@ -131,7 +136,7 @@ export default function PartsPage() {
               type="text"
               placeholder="🔍 Tìm tên, thương hiệu..."
               value={search}
-              onChange={e => setSearch(e.target.value)}
+              onChange={e => { setSearch(e.target.value); setCurrentPage(1); }}
               className="w-full px-3 py-2 border rounded-xl text-xs focus:outline-none focus:border-red-600"
             />
           </div>
@@ -140,7 +145,7 @@ export default function PartsPage() {
           <div>
             <select
               value={filterCat}
-              onChange={e => setFilterCat(e.target.value)}
+              onChange={e => { setFilterCat(e.target.value); setCurrentPage(1); }}
               className="w-full px-3 py-2 border rounded-xl text-xs font-semibold bg-white focus:outline-none focus:border-red-600"
             >
               <option value="">Danh mục: Tất cả</option>
@@ -154,7 +159,7 @@ export default function PartsPage() {
           <div>
             <select
               value={filterBrand}
-              onChange={e => setFilterBrand(e.target.value)}
+              onChange={e => { setFilterBrand(e.target.value); setCurrentPage(1); }}
               className="w-full px-3 py-2 border rounded-xl text-xs font-semibold bg-white focus:outline-none focus:border-red-600"
             >
               <option value="">Thương hiệu: Tất cả</option>
@@ -168,7 +173,7 @@ export default function PartsPage() {
           <div>
             <select
               value={filterStock}
-              onChange={e => setFilterStock(e.target.value as any)}
+              onChange={e => { setFilterStock(e.target.value as any); setCurrentPage(1); }}
               className="w-full px-3 py-2 border rounded-xl text-xs font-semibold bg-white focus:outline-none focus:border-red-600"
             >
               <option value="All">Tồn kho: Tất cả</option>
@@ -182,7 +187,7 @@ export default function PartsPage() {
           <div>
             <select
               value={filterDiscount}
-              onChange={e => setFilterDiscount(e.target.value as any)}
+              onChange={e => { setFilterDiscount(e.target.value as any); setCurrentPage(1); }}
               className="w-full px-3 py-2 border rounded-xl text-xs font-semibold bg-white focus:outline-none focus:border-red-600"
             >
               <option value="All">Khuyến mãi: Tất cả</option>
@@ -204,8 +209,9 @@ export default function PartsPage() {
                 setFilterBrand('');
                 setFilterStock('All');
                 setFilterDiscount('All');
+                setCurrentPage(1);
               }}
-              className="text-red-700 font-bold hover:underline"
+              className="text-red-700 font-bold hover:underline cursor-pointer"
             >
               Đặt lại bộ lọc
             </button>
@@ -236,58 +242,113 @@ export default function PartsPage() {
                 </td>
               </tr>
             ) : (
-              filtered.map((p, idx) => (
-                <tr key={p.id} className="hover:bg-zinc-50 transition">
-                  <td className="p-3 text-center font-mono text-xs text-zinc-500">{idx + 1}</td>
-                  <td className="p-3 text-center">
-                    <img src={p.hinhAnh} alt={p.tenSanPham} className="h-10 w-10 object-cover rounded-lg mx-auto border border-zinc-200" />
-                  </td>
-                  <td className="p-3">
-                    <div className="font-semibold text-zinc-900">{p.tenSanPham}</div>
-                    <div className="flex flex-wrap gap-2 items-center text-[11px] text-zinc-400 mt-1">
-                      {p.dongXePhuHop && (
-                        <span className="text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded font-medium">
-                          Xe: {p.dongXePhuHop}
-                        </span>
-                      )}
-                      {p.xuatXu && <span>Xuất xứ: {p.xuatXu}</span>}
-                      {p.baoHanh && <span>· BH: {p.baoHanh}</span>}
-                    </div>
-                  </td>
-                  <td className="p-3 font-mono text-xs text-zinc-600">{p.thuongHieu}</td>
-                  <td className="p-3">
-                    <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-zinc-100 text-zinc-700 font-mono">
-                      {p.danhMuc}
-                    </span>
-                  </td>
-                  <td className="p-3 text-right font-mono text-xs text-zinc-600">{formatVND(p.giaGoc)}</td>
-                  <td className="p-3 text-right font-mono text-xs font-bold text-red-700">
-                    {p.giaKhuyenMai ? formatVND(p.giaKhuyenMai) : '-'}
-                  </td>
-                  <td className="p-3 text-center font-mono text-xs">
-                    <span className={`px-2 py-0.5 rounded-full font-bold ${p.soLuongTon < 20 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
-                      {p.soLuongTon}
-                    </span>
-                  </td>
-                  <td className="p-3 text-center space-x-1.5">
-                    <button
-                      onClick={() => handleEdit(p)}
-                      className="px-2.5 py-1 bg-zinc-900 text-white text-xs font-semibold rounded-lg hover:bg-zinc-800"
-                    >
-                      Sửa
-                    </button>
-                    <button
-                      onClick={() => handleDelete(p.id)}
-                      className="px-2.5 py-1 bg-red-600 text-white text-xs font-semibold rounded-lg hover:bg-red-700"
-                    >
-                      Xóa
-                    </button>
-                  </td>
-                </tr>
-              ))
+              pagedParts.map((p, idx) => {
+                const serialNum = (currentPage - 1) * pageSize + idx + 1;
+                return (
+                  <tr key={p.id} className="hover:bg-zinc-50 transition">
+                    <td className="p-3 text-center font-mono text-xs text-zinc-500">{serialNum}</td>
+                    <td className="p-3 text-center">
+                      <img src={p.hinhAnh} alt={p.tenSanPham} className="h-10 w-10 object-cover rounded-lg mx-auto border border-zinc-200" />
+                    </td>
+                    <td className="p-3">
+                      <div className="font-semibold text-zinc-900">{p.tenSanPham}</div>
+                      <div className="flex flex-wrap gap-2 items-center text-[11px] text-zinc-400 mt-1">
+                        {p.dongXePhuHop && (
+                          <span className="text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded font-medium">
+                            Xe: {p.dongXePhuHop}
+                          </span>
+                        )}
+                        {p.xuatXu && <span>Xuất xứ: {p.xuatXu}</span>}
+                        {p.baoHanh && <span>· BH: {p.baoHanh}</span>}
+                      </div>
+                    </td>
+                    <td className="p-3 font-mono text-xs text-zinc-600">{p.thuongHieu}</td>
+                    <td className="p-3">
+                      <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-zinc-100 text-zinc-700 font-mono">
+                        {p.danhMuc}
+                      </span>
+                    </td>
+                    <td className="p-3 text-right font-mono text-xs text-zinc-600">{formatVND(p.giaGoc)}</td>
+                    <td className="p-3 text-right font-mono text-xs font-bold text-red-700">
+                      {p.giaKhuyenMai ? formatVND(p.giaKhuyenMai) : '-'}
+                    </td>
+                    <td className="p-3 text-center font-mono text-xs">
+                      <span className={`px-2 py-0.5 rounded-full font-bold ${p.soLuongTon < 20 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                        {p.soLuongTon}
+                      </span>
+                    </td>
+                    <td className="p-3 text-center space-x-1.5">
+                      <button
+                        onClick={() => handleEdit(p)}
+                        className="px-2.5 py-1 bg-zinc-900 text-white text-xs font-semibold rounded-lg hover:bg-zinc-800 cursor-pointer"
+                      >
+                        Sửa
+                      </button>
+                      <button
+                        onClick={() => handleDelete(p.id)}
+                        className="px-2.5 py-1 bg-red-600 text-white text-xs font-semibold rounded-lg hover:bg-red-700 cursor-pointer"
+                      >
+                        Xóa
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
+
+        {/* Pagination Bar */}
+        {filtered.length > 0 && (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-6 py-4 bg-white border-t border-zinc-200">
+            <div className="text-xs text-zinc-500 font-mono">
+              Hiển thị <strong>{(currentPage - 1) * pageSize + 1}</strong> - <strong>{Math.min(currentPage * pageSize, filtered.length)}</strong> trên tổng số <strong>{filtered.length}</strong> sản phẩm (Trang {currentPage}/{totalPages})
+            </div>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setCurrentPage(1)}
+                disabled={currentPage === 1}
+                className="px-2.5 py-1 text-xs rounded-lg border border-zinc-200 text-zinc-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-zinc-100 font-mono cursor-pointer"
+              >
+                « Đầu
+              </button>
+              <button
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="px-3 py-1 text-xs rounded-lg border border-zinc-200 text-zinc-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-zinc-100 font-mono cursor-pointer"
+              >
+                ‹ Trước
+              </button>
+              {Array.from({ length: totalPages }).map((_, i) => (
+                <button
+                  key={i}
+                  onClick={() => setCurrentPage(i + 1)}
+                  className={`w-7 h-7 text-xs font-bold rounded-lg transition font-mono cursor-pointer ${
+                    currentPage === i + 1
+                      ? 'bg-red-700 text-white shadow-sm'
+                      : 'border border-zinc-200 text-zinc-700 hover:bg-zinc-100'
+                  }`}
+                >
+                  {i + 1}
+                </button>
+              ))}
+              <button
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="px-3 py-1 text-xs rounded-lg border border-zinc-200 text-zinc-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-zinc-100 font-mono cursor-pointer"
+              >
+                Tiếp ›
+              </button>
+              <button
+                onClick={() => setCurrentPage(totalPages)}
+                disabled={currentPage === totalPages}
+                className="px-2.5 py-1 text-xs rounded-lg border border-zinc-200 text-zinc-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-zinc-100 font-mono cursor-pointer"
+              >
+                Cuối »
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Modal */}
