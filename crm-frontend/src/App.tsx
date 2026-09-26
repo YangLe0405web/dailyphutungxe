@@ -7,6 +7,7 @@ import { type Customer, type StaffAccount, mockStaffAccounts } from './data/mock
 // Admin pages
 import AdminLoginPage from './pages/admin/AdminLogin';
 import DashboardPage from './pages/admin/Dashboard';
+import ReportsPage from './pages/admin/Reports';
 import SalesPage from './pages/admin/Sales';
 import CustomersPage from './pages/admin/Customers';
 import FeedbackPage from './pages/admin/Feedback';
@@ -31,7 +32,7 @@ const adminPages: Record<AdminPage, React.ReactElement> = {
   appointments: <SalesPage />, 
   customers: <CustomersPage />, 
   feedback: <FeedbackPage />, 
-  reports: <DashboardPage />, 
+  reports: <ReportsPage />, 
   parts: <PartsPage />, 
   vehicles: <VehiclesPage />, 
   staff: <StaffRolesPage />,
@@ -183,17 +184,9 @@ export default function App() {
         onNavigate={(p) => setAdminPage(p as AdminPage)}
         currentStaff={currentStaff}
         onLogout={() => setCurrentStaff(null)}
+        onHome={() => setMode(null)}
       >
-        <div className="relative">
-          <button onClick={() => setMode(null)}
-            className="absolute top-6 right-8 flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-600 z-10 transition-colors"
-            style={{ background: 'var(--color-zinc-200)', color: 'var(--color-zinc-700)', border: 'none', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}
-            onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-zinc-300)')}
-            onMouseLeave={e => (e.currentTarget.style.background = 'var(--color-zinc-200)')}>
-            ↩ Trang chủ
-          </button>
-          {adminPages[adminPage]}
-        </div>
+        {adminPages[adminPage]}
       </AdminLayout>
     );
   }

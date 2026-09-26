@@ -45,6 +45,7 @@ interface AdminLayoutProps {
   onNavigate: (page: string) => void;
   currentStaff?: StaffAccount | null;
   onLogout?: () => void;
+  onHome?: () => void;
   currentRole?: AdminRole;
   onRoleChange?: (role: AdminRole) => void;
 }
@@ -55,23 +56,11 @@ export default function AdminLayout({
   onNavigate,
   currentStaff,
   onLogout,
+  onHome,
   currentRole,
-  onRoleChange
 }: AdminLayoutProps) {
   const [collapsed, setCollapsed] = useState(false);
-  const effectiveRole = currentRole || currentStaff?.vaiTro || 'SuperAdmin';
-  const [activeRole, setActiveRole] = useState<AdminRole>(effectiveRole);
-
-  useEffect(() => {
-    if (currentStaff?.vaiTro) {
-      setActiveRole(currentStaff.vaiTro);
-    }
-  }, [currentStaff]);
-
-  const handleRoleSwitch = (r: AdminRole) => {
-    setActiveRole(r);
-    if (onRoleChange) onRoleChange(r);
-  };
+  const activeRole: AdminRole = currentRole || currentStaff?.vaiTro || 'SuperAdmin';
 
   return (
     <div className="flex min-h-screen" style={{ fontFamily: 'var(--font-sans)' }}>
@@ -190,7 +179,7 @@ export default function AdminLayout({
 
       {/* Main Layout Area */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Topbar with Role Switcher */}
+        {/* Topbar */}
         <header className="h-14 bg-white border-b border-zinc-200 px-6 flex items-center justify-between shadow-2xs z-10">
           <div className="flex items-center gap-3 text-xs text-zinc-500 font-mono">
             <span className="font-semibold text-zinc-800">HỆ THỐNG CRM PHÂN QUYỀN RBAC</span>
@@ -199,29 +188,42 @@ export default function AdminLayout({
             {currentStaff && (
               <>
                 <span>·</span>
-                <span className="text-zinc-600 font-semibold">Đăng nhập: {currentStaff.hoTen}</span>
+                <span className="text-zinc-600 font-semibold">{currentStaff.hoTen}</span>
               </>
             )}
           </div>
 
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <label className="text-xs font-bold text-zinc-600 font-mono uppercase">Giả lập Vai trò:</label>
-              <select
-                value={activeRole}
-                onChange={e => handleRoleSwitch(e.target.value as AdminRole)}
-                className="px-3 py-1.5 rounded-xl border border-zinc-300 text-xs font-bold bg-zinc-50 text-zinc-900 focus:outline-none focus:border-red-600 cursor-pointer shadow-2xs"
+          <div className="flex items-center gap-3">
+            {/* Vai trò nhân viên badge (thay cho giả lập vai trò) */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-mono text-zinc-400 uppercase hidden sm:inline">Vai trò:</span>
+              <span className="px-2.5 py-1 rounded-full text-xs font-bold font-mono inline-block shadow-2xs"
+                style={{
+                  background: activeRole === 'SuperAdmin' ? '#fef2f2' : activeRole === 'NhanVienBanHang' ? '#eff6ff' : '#f0fdf4',
+                  color: activeRole === 'SuperAdmin' ? '#dc2626' : activeRole === 'NhanVienBanHang' ? '#2563eb' : '#16a34a',
+                  border: `1px solid ${activeRole === 'SuperAdmin' ? '#fecaca' : activeRole === 'NhanVienBanHang' ? '#bfdbfe' : '#bbf7d0'}`,
+                }}
               >
-                <option value="SuperAdmin">👑 Super Admin (Tất cả quyền)</option>
-                <option value="NhanVienBanHang">💼 Nhân viên Bán hàng & CRM</option>
-                <option value="NhanVienKyThuat">🔧 Nhân viên Kỹ thuật & Kho</option>
-              </select>
+                {activeRole === 'SuperAdmin' ? '👑 Super Admin' : activeRole === 'NhanVienBanHang' ? '💼 NV Bán Hàng' : '🔧 NV Kỹ Thuật'}
+              </span>
             </div>
 
+            {/* Nút về Trang chủ portal gọn gàng trên topbar */}
+            {onHome && (
+              <button
+                onClick={onHome}
+                title="Quay lại trang chọn cổng Portal"
+                className="px-3 py-1.5 rounded-xl bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-bold font-mono transition flex items-center gap-1.5 cursor-pointer"
+              >
+                ↩ Trang chủ
+              </button>
+            )}
+
+            {/* Nút Đăng xuất */}
             {onLogout && (
               <button
                 onClick={onLogout}
-                className="px-3 py-1.5 rounded-xl bg-zinc-100 hover:bg-red-50 text-zinc-700 hover:text-red-700 border border-zinc-200 text-xs font-bold font-mono transition flex items-center gap-1.5 cursor-pointer"
+                className="px-3 py-1.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-xs font-bold font-mono transition flex items-center gap-1.5 cursor-pointer"
               >
                 🚪 Đăng xuất
               </button>

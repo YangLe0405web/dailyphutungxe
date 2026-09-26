@@ -1,130 +1,252 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { formatVND } from '../../data/mockData';
 
 export interface ShowroomVehicle {
   id: string;
   tenXe: string;
-  hang: string;
-  phanKhuc: string;
+  hang: 'Honda' | 'Yamaha' | 'Suzuki' | 'Piaggio & Vespa';
+  phanKhuc: 'Tay ga' | 'Côn tay' | 'Xe số' | 'Scrambler' | 'Hyper-underbone';
   giaNiemYet: number;
   mauSac: string;
   moTa: string;
-  hinhAnh?: string;
+  hinhAnh: string;
   coTheLaiThu: boolean;
-  dongCo?: string;
-  congSuat?: string;
+  dongCo: string;
+  congSuat: string;
+  tieuHaoNhienLieu?: string;
+  phanh?: string;
 }
 
 export const showroomVehicles: ShowroomVehicle[] = [
+  // ── HONDA ──
   {
-    id: 'XM001',
+    id: 'XM-HD01',
     tenXe: 'Honda SH 160i ABS 2025',
     hang: 'Honda',
     phanKhuc: 'Tay ga',
     giaNiemYet: 95900000,
-    mauSac: 'Đen mờ, Trắng bạc, Đỏ đen',
-    moTa: 'Dòng xe tay ga cao cấp hàng đầu với phanh ABS 2 kênh, động cơ eSP+ 4 van thế hệ mới và khóa thông minh Smartkey.',
+    mauSac: 'Đen mờ, Đỏ đen, Xám xi măng, Trắng bạc',
+    moTa: 'Mẫu xe tay ga cao cấp đầu bảng của Honda với phanh ABS 2 kênh, hệ thống kiểm soát lực kéo HSTC, chìa khóa thông minh Smartkey và kết nối Bluetooth My Honda+.',
     coTheLaiThu: true,
     dongCo: '156.9cc eSP+ 4 van',
     congSuat: '16.6 HP / 8.500 rpm',
-    hinhAnh: 'https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=600&auto=format&fit=crop&q=80',
+    tieuHaoNhienLieu: '2.24 L/100km',
+    phanh: 'Đĩa trước & sau, ABS 2 kênh',
+    hinhAnh: 'https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=800&auto=format&fit=crop&q=80',
   },
   {
-    id: 'XM002',
-    tenXe: 'Honda PCX 160 ABS',
-    hang: 'Honda',
-    phanKhuc: 'Tay ga',
-    giaNiemYet: 75900000,
-    mauSac: 'Xanh mờ, Đỏ nhám, Đen tuyền',
-    moTa: 'Tay ga thể thao Cruiser đường trường thoải mái, hộc chứa đồ 30L siêu rộng và cổng sạc USB tích hợp.',
-    coTheLaiThu: true,
-    dongCo: '156.9cc eSP+',
-    congSuat: '15.8 HP / 8.500 rpm',
-    hinhAnh: 'https://images.unsplash.com/photo-1568772585407-9361f9bf3a87?w=600&auto=format&fit=crop&q=80',
-  },
-  {
-    id: 'XM003',
-    tenXe: 'Yamaha Exciter 155 VVA',
-    hang: 'Yamaha',
-    phanKhuc: 'Côn tay',
-    giaNiemYet: 56990000,
-    mauSac: 'Xanh GP, Đỏ trắng, Đen nhám',
-    moTa: 'Ông vua đường phố với công nghệ van biến thiên VVA, bộ ly hợp trượt hỗ trợ A&S và thiết kế khí động học YZF-R1.',
-    coTheLaiThu: true,
-    dongCo: '155cc VVA 4 thì',
-    congSuat: '17.7 HP / 9.500 rpm',
-    hinhAnh: 'https://images.unsplash.com/photo-1609630875171-b1321377ee65?w=600&auto=format&fit=crop&q=80',
-  },
-  {
-    id: 'XM004',
+    id: 'XM-HD02',
     tenXe: 'Honda Air Blade 160 ABS',
     hang: 'Honda',
     phanKhuc: 'Tay ga',
     giaNiemYet: 56690000,
-    mauSac: 'Đỏ đen, Xanh xám, Đen vàng',
-    moTa: 'Thiết kế thể thao thon gọn, phanh ABS an toàn, khung xe eSAF thế hệ mới tăng độ ổn định.',
+    mauSac: 'Đỏ đen, Xanh xám, Đen vàng đồng',
+    moTa: 'Dòng xe tay ga thể thao bán chạy nhất Việt Nam, khung xe eSAF thế hệ mới, cốp xe 23.2L tích hợp cổng sạc USB và phanh ABS bánh trước.',
     coTheLaiThu: true,
-    dongCo: '156.9cc eSP+',
+    dongCo: '156.9cc eSP+ 4 van',
     congSuat: '15.0 HP / 8.000 rpm',
-    hinhAnh: 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=600&auto=format&fit=crop&q=80',
+    tieuHaoNhienLieu: '2.30 L/100km',
+    phanh: 'Đĩa trước có ABS, đùm sau',
+    hinhAnh: 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=800&auto=format&fit=crop&q=80',
   },
   {
-    id: 'XM005',
-    tenXe: 'Yamaha Grande Hybrid',
+    id: 'XM-HD03',
+    tenXe: 'Honda Vision 110 Thể Thao',
+    hang: 'Honda',
+    phanKhuc: 'Tay ga',
+    giaNiemYet: 36612000,
+    mauSac: 'Đen bóng, Xám xi măng, Xanh dương',
+    moTa: '"Xe tay ga quốc dân" kiểu dáng trẻ trung năng động, vành đúc 16 inch cao ráo, khóa thông minh Smartkey và động cơ eSP siêu tiết kiệm xăng.',
+    coTheLaiThu: false,
+    dongCo: '109.5cc eSP 4 thì',
+    congSuat: '8.8 HP / 7.500 rpm',
+    tieuHaoNhienLieu: '1.85 L/100km',
+    phanh: 'Đĩa trước CBS, tang trống sau',
+    hinhAnh: 'https://images.unsplash.com/photo-1568772585407-9361f9bf3a87?w=800&auto=format&fit=crop&q=80',
+  },
+  {
+    id: 'XM-HD04',
+    tenXe: 'Honda Winner X 150 ABS',
+    hang: 'Honda',
+    phanKhuc: 'Côn tay',
+    giaNiemYet: 50560000,
+    mauSac: 'Đỏ đen xanh thể thao, Đen nhám bạc',
+    moTa: 'Côn tay thể thao thế hệ mới trang bị bộ ly hợp chống trượt hai chiều (Assist & Slipper Clutch), xích phốt O-ring và phanh ABS bánh trước an toàn tuyệt đối.',
+    coTheLaiThu: true,
+    dongCo: '149.1cc DOHC 6 số',
+    congSuat: '15.4 HP / 9.000 rpm',
+    tieuHaoNhienLieu: '1.98 L/100km',
+    phanh: 'Đĩa trước có ABS, đĩa sau',
+    hinhAnh: 'https://images.unsplash.com/photo-1609630875171-b1321377ee65?w=800&auto=format&fit=crop&q=80',
+  },
+  {
+    id: 'XM-HD05',
+    tenXe: 'Honda Wave Alpha 110 Cổ Điển',
+    hang: 'Honda',
+    phanKhuc: 'Xe số',
+    giaNiemYet: 19290000,
+    mauSac: 'Xám cổ điển, Vàng trắng, Đỏ đen',
+    moTa: 'Mẫu xe số quốc dân bền bỉ qua năm tháng, chi phí vận hành siêu tiết kiệm và phụ tùng dễ thay thế ở mọi cung đường.',
+    coTheLaiThu: false,
+    dongCo: '109.1cc 4 thì làm mát gió',
+    congSuat: '8.2 HP / 7.500 rpm',
+    tieuHaoNhienLieu: '1.72 L/100km',
+    phanh: 'Tang trống trước & sau',
+    hinhAnh: 'https://images.unsplash.com/photo-1591637333184-19aa84b3e01f?w=800&auto=format&fit=crop&q=80',
+  },
+
+  // ── YAMAHA ──
+  {
+    id: 'XM-YM01',
+    tenXe: 'Yamaha Exciter 155 VVA ABS',
+    hang: 'Yamaha',
+    phanKhuc: 'Côn tay',
+    giaNiemYet: 55000000,
+    mauSac: 'Xanh GP Monster, Đen nhám, Đỏ bạc',
+    moTa: '"Ông vua đường phố" trang bị công nghệ van biến thiên VVA, 4 bản đồ đánh lửa tùy chỉnh theo từng cấp số, phanh đĩa trước 2 piston kèm ABS.',
+    coTheLaiThu: true,
+    dongCo: '155cc VVA SOHC 4 van',
+    congSuat: '17.7 HP / 9.500 rpm',
+    tieuHaoNhienLieu: '2.09 L/100km',
+    phanh: 'Đĩa trước ABS 2 piston, đĩa sau',
+    hinhAnh: 'https://images.unsplash.com/photo-1568772585407-9361f9bf3a87?w=800&auto=format&fit=crop&q=80',
+  },
+  {
+    id: 'XM-YM02',
+    tenXe: 'Yamaha Grande Hybrid Tiêu Chuẩn',
     hang: 'Yamaha',
     phanKhuc: 'Tay ga',
-    giaNiemYet: 58990000,
-    mauSac: 'Hồng pastel, Xanh lam, Trắng ngọc',
-    moTa: 'Động cơ trợ lực điện Hybrid siêu tiết kiệm nhiên liệu (1.66 lít/100km), kiểu dáng châu Âu thanh lịch.',
+    giaNiemYet: 46047000,
+    mauSac: 'Hồng pastel, Trắng ngọc trai, Đỏ mận',
+    moTa: 'Xe tay ga tiết kiệm nhiên liệu số 1 Việt Nam với công nghệ trợ lực điện Blue Core Hybrid, cốp xe 27L siêu lớn có đèn LED chiếu sáng bên trong.',
     coTheLaiThu: true,
     dongCo: '125cc Blue Core Hybrid',
     congSuat: '8.3 HP / 6.500 rpm',
-    hinhAnh: 'https://images.unsplash.com/photo-1525160354320-d8e92641c563?w=600&auto=format&fit=crop&q=80',
+    tieuHaoNhienLieu: '1.66 L/100km',
+    phanh: 'Đĩa trước thủy lực, tang trống sau',
+    hinhAnh: 'https://images.unsplash.com/photo-1525160354320-d8e92641c563?w=800&auto=format&fit=crop&q=80',
   },
   {
-    id: 'XM006',
-    tenXe: 'Honda Vision 110 Smartkey',
-    hang: 'Honda',
-    phanKhuc: 'Tay ga',
-    giaNiemYet: 33490000,
-    mauSac: 'Đen bóng, Trắng ngọc, Xanh dương',
-    moTa: 'Mẫu xe tay ga quốc dân với thiết kế thời trang, khối lượng nhẹ, vận hành linh hoạt trong đô thị.',
-    coTheLaiThu: false,
-    dongCo: '109.5cc eSP',
-    congSuat: '8.8 HP / 7.500 rpm',
-    hinhAnh: 'https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=600&auto=format&fit=crop&q=80',
-  },
-  {
-    id: 'XM007',
-    tenXe: 'Honda Wave Alpha 110',
-    hang: 'Honda',
-    phanKhuc: 'Xe số',
-    giaNiemYet: 18790000,
-    mauSac: 'Đỏ đen, Xanh đen, Trắng đen',
-    moTa: 'Xe số bền bỉ theo thời gian, chi phí vận hành siêu rẻ và phụ tùng dễ thay thế.',
-    coTheLaiThu: false,
-    dongCo: '109.1cc 4 thì',
-    congSuat: '8.2 HP / 7.500 rpm',
-    hinhAnh: 'https://images.unsplash.com/photo-1609630875171-b1321377ee65?w=600&auto=format&fit=crop&q=80',
-  },
-  {
-    id: 'XM008',
-    tenXe: 'Yamaha Janus 125 Smartkey',
+    id: 'XM-YM03',
+    tenXe: 'Yamaha NVX 155 VVA Maxi-Scooter',
     hang: 'Yamaha',
     phanKhuc: 'Tay ga',
-    giaNiemYet: 30990000,
-    mauSac: 'Tím pastel, Đỏ nhám, Trắng',
-    moTa: 'Xe tay ga trẻ trung cho gen Z, trang bị hệ thống ngắt động cơ tạm thời Stop & Start System.',
+    giaNiemYet: 55500000,
+    mauSac: 'Đen vàng, Xám ánh xanh, Đỏ đen',
+    moTa: 'Tay ga thể thao phong cách Maxi-scooter hầm hố, lốp sau bản rộng 140mm bám đường, giảm xóc dầu bình phụ thể thao và kết nối điện thoại Y-Connect.',
+    coTheLaiThu: true,
+    dongCo: '155cc Blue Core VVA',
+    congSuat: '15.4 HP / 8.000 rpm',
+    tieuHaoNhienLieu: '2.17 L/100km',
+    phanh: 'Đĩa trước có ABS, đùm sau',
+    hinhAnh: 'https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=800&auto=format&fit=crop&q=80',
+  },
+  {
+    id: 'XM-YM04',
+    tenXe: 'Yamaha PG-1 115cc Scrambler',
+    hang: 'Yamaha',
+    phanKhuc: 'Scrambler',
+    giaNiemYet: 30437000,
+    mauSac: 'Vàng sa mạc, Cam rực rỡ, Xanh rêu bụi',
+    moTa: 'Mẫu xe số địa hình phong cách Scrambler ghi đông trần cá tính, lốp gai to đa dụng vượt mọi địa hình phượt dã ngoại của giới trẻ.',
+    coTheLaiThu: true,
+    dongCo: '113.7cc 4 thì SOHC',
+    congSuat: '8.8 HP / 7.000 rpm',
+    tieuHaoNhienLieu: '1.96 L/100km',
+    phanh: 'Đĩa trước thủy lực, đùm sau',
+    hinhAnh: 'https://images.unsplash.com/photo-1609630875171-b1321377ee65?w=800&auto=format&fit=crop&q=80',
+  },
+
+  // ── SUZUKI ──
+  {
+    id: 'XM-SZ01',
+    tenXe: 'Suzuki Raider R150 Fi (DOHC)',
+    hang: 'Suzuki',
+    phanKhuc: 'Hyper-underbone',
+    giaNiemYet: 51190000,
+    mauSac: 'Đỏ đen, Xanh mờ MotoGP, Đen cam',
+    moTa: '"Vua tốc độ" phân khúc 150cc với động cơ DOHC 4 van Twin-Cam công suất cực đại 18.5 HP mạnh nhất phân khúc, kiểu dáng Hyper-underbone thuần chất đường đua.',
+    coTheLaiThu: true,
+    dongCo: '147.3cc DOHC 4 van làm mát nước',
+    congSuat: '18.5 HP / 10.000 rpm',
+    tieuHaoNhienLieu: '2.40 L/100km',
+    phanh: 'Đĩa trước & sau hình cánh hoa',
+    hinhAnh: 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=800&auto=format&fit=crop&q=80',
+  },
+  {
+    id: 'XM-SZ02',
+    tenXe: 'Suzuki Satria F150 Fi Nhập Khẩu',
+    hang: 'Suzuki',
+    phanKhuc: 'Hyper-underbone',
+    giaNiemYet: 53490000,
+    mauSac: 'Trắng đỏ thể thao, Xanh đen, Đen mờ',
+    moTa: 'Nhập khẩu nguyên chiếc từ Suzuki Indonesia, trang bị hệ thống khởi động nhanh 1 chạm Suzuki Easy Start System và cụm đồng hồ LCD kỹ thuật số toàn phần.',
+    coTheLaiThu: true,
+    dongCo: '147.3cc DOHC Fi nguyên bản',
+    congSuat: '18.5 HP / 10.000 rpm',
+    tieuHaoNhienLieu: '2.42 L/100km',
+    phanh: 'Đĩa trước & đĩa sau',
+    hinhAnh: 'https://images.unsplash.com/photo-1568772585407-9361f9bf3a87?w=800&auto=format&fit=crop&q=80',
+  },
+  {
+    id: 'XM-SZ03',
+    tenXe: 'Suzuki Burgman Street 125',
+    hang: 'Suzuki',
+    phanKhuc: 'Tay ga',
+    giaNiemYet: 48600000,
+    mauSac: 'Xám mờ thời thượng, Vàng đồng, Đen tuyền',
+    moTa: 'Mẫu xe tay ga đường trường phong cách Maxi sang trọng đẳng cấp châu Âu, sàn để chân kép linh hoạt thay đổi tư thế ngồi lái thoải mái suốt hành trình.',
     coTheLaiThu: false,
-    dongCo: '125cc Blue Core',
-    congSuat: '9.5 HP / 8.000 rpm',
-    hinhAnh: 'https://images.unsplash.com/photo-1568772585407-9361f9bf3a87?w=600&auto=format&fit=crop&q=80',
+    dongCo: '124.3cc SEP tiết kiệm nhiên liệu',
+    congSuat: '8.7 HP / 6.750 rpm',
+    tieuHaoNhienLieu: '1.96 L/100km',
+    phanh: 'Đĩa trước kết hợp phanh CBS',
+    hinhAnh: 'https://images.unsplash.com/photo-1525160354320-d8e92641c563?w=800&auto=format&fit=crop&q=80',
+  },
+
+  // ── PIAGGIO & VESPA ──
+  {
+    id: 'XM-VP01',
+    tenXe: 'Vespa Sprint S 150 i-Get ABS',
+    hang: 'Piaggio & Vespa',
+    phanKhuc: 'Tay ga',
+    giaNiemYet: 97800000,
+    mauSac: 'Xám Titan, Vàng nhám, Trắng tuyết',
+    moTa: 'Biểu tượng phong cách thời trang Ý huyền thoại với đèn pha LED lục giác góc cạnh, thân xe bằng thép liền khối dập nổi tinh xảo và phanh ABS chống trượt.',
+    coTheLaiThu: true,
+    dongCo: '155cc i-Get 3 van phun xăng điện tử',
+    congSuat: '12.7 HP / 7.750 rpm',
+    tieuHaoNhienLieu: '2.60 L/100km',
+    phanh: 'Đĩa trước có phanh ABS, đùm sau',
+    hinhAnh: 'https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=800&auto=format&fit=crop&q=80',
+  },
+  {
+    id: 'XM-VP02',
+    tenXe: 'Piaggio Liberty 125 S ABS',
+    hang: 'Piaggio & Vespa',
+    phanKhuc: 'Tay ga',
+    giaNiemYet: 57700000,
+    mauSac: 'Đỏ bóng thể thao, Trắng bóng, Xám xi măng',
+    moTa: 'Tay ga bánh lớn 16 inch an toàn vượt trội trên đường đô thị, động cơ i-Get êm ái cùng hệ thống khóa từ chống trộm Piaggio Immobilizer bảo mật tuyệt đối.',
+    coTheLaiThu: true,
+    dongCo: '124.5cc i-Get 3 van',
+    congSuat: '10.2 HP / 7.500 rpm',
+    tieuHaoNhienLieu: '2.38 L/100km',
+    phanh: 'Đĩa trước ABS 240mm, đùm sau',
+    hinhAnh: 'https://images.unsplash.com/photo-1568772585407-9361f9bf3a87?w=800&auto=format&fit=crop&q=80',
   },
 ];
 
 interface Props {
   onBookTestDrive: (vehicleId: string) => void;
 }
+
+const brandMeta: Record<string, { label: string; color: string; bg: string; badge: string }> = {
+  Honda: { label: 'Honda', color: '#dc2626', bg: '#fef2f2', badge: '🔴 Honda' },
+  Yamaha: { label: 'Yamaha', color: '#2563eb', bg: '#eff6ff', badge: '🔵 Yamaha' },
+  Suzuki: { label: 'Suzuki', color: '#d97706', bg: '#fffbeb', badge: '🟡 Suzuki' },
+  'Piaggio & Vespa': { label: 'Piaggio & Vespa', color: '#059669', bg: '#ecfdf5', badge: '🟢 Vespa Ý' },
+};
 
 export default function VehiclesShowroom({ onBookTestDrive }: Props) {
   const [search, setSearch] = useState('');
@@ -155,233 +277,323 @@ export default function VehiclesShowroom({ onBookTestDrive }: Props) {
               🔥 SHOWROOM XE MÁY CHÍNH HÃNG 2025
             </div>
             <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 36, fontWeight: 900, color: 'white', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-              DÒNG XE NỔI BẬT & ĐĂNG KÝ LÁI THỬ
+              DÒNG XE CHÍNH HÃNG & ĐĂNG KÝ LÁI THỬ
             </h1>
-            <p className="mt-2 text-sm max-w-xl" style={{ color: 'var(--color-zinc-400)' }}>
-              Trải nghiệm cảm giác lái chân thực các dòng xe mới nhất từ Honda, Yamaha, Suzuki. Đăng ký lái thử miễn phí ngay tại Showroom gần nhất!
+            <p className="mt-2 text-sm max-w-2xl text-zinc-400">
+              Khám phá danh mục xe máy chính hãng được phân chia theo từng thương hiệu hàng đầu: 
+              <strong> Honda, Yamaha, Suzuki, Piaggio & Vespa</strong>. Giá niêm yết chuẩn thị trường, hỗ trợ đăng ký lái thử miễn phí!
             </p>
           </div>
-          <div className="flex items-center gap-4 bg-zinc-900/80 p-4 rounded-2xl border border-zinc-800">
+          <div className="flex items-center gap-4 bg-zinc-900/90 p-4 rounded-2xl border border-zinc-800 shrink-0">
             <div className="text-center px-4">
-              <div style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 800, color: 'var(--color-red-500)' }}>08+</div>
-              <div className="text-xs" style={{ color: 'var(--color-zinc-400)' }}>Mẫu xe HOT</div>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 800, color: 'var(--color-red-500)' }}>14+</div>
+              <div className="text-xs text-zinc-400">Mẫu xe 2025</div>
             </div>
             <div className="h-8 w-px bg-zinc-800" />
             <div className="text-center px-4">
-              <div style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 800, color: 'white' }}>100%</div>
-              <div className="text-xs" style={{ color: 'var(--color-zinc-400)' }}>Lái thử FREE</div>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 800, color: 'white' }}>4 HÃNG</div>
+              <div className="text-xs text-zinc-400">Chính hãng</div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* ── Filters & Content Container ── */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-8">
+      {/* ── Brand Selection Tabs ── */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-6">
+        <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
+          <button
+            onClick={() => setSelectedHang('ALL')}
+            className={`px-4 py-2.5 rounded-xl text-xs font-bold font-mono transition flex items-center gap-2 shrink-0 cursor-pointer ${
+              selectedHang === 'ALL'
+                ? 'bg-zinc-950 text-white shadow-sm'
+                : 'bg-white text-zinc-700 border border-zinc-200 hover:bg-zinc-100'
+            }`}
+          >
+            <span>🏍️</span> Tất cả các hãng ({showroomVehicles.length})
+          </button>
+
+          {(['Honda', 'Yamaha', 'Suzuki', 'Piaggio & Vespa'] as const).map(b => {
+            const count = showroomVehicles.filter(v => v.hang === b).length;
+            const meta = brandMeta[b];
+            const isSelected = selectedHang === b;
+
+            return (
+              <button
+                key={b}
+                onClick={() => setSelectedHang(b)}
+                className={`px-4 py-2.5 rounded-xl text-xs font-bold font-mono transition flex items-center gap-2 shrink-0 cursor-pointer border ${
+                  isSelected
+                    ? 'border-transparent text-white shadow-sm'
+                    : 'bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-100'
+                }`}
+                style={{
+                  background: isSelected ? meta.color : undefined,
+                }}
+              >
+                <span>{meta.badge}</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${isSelected ? 'bg-white/20 text-white' : 'bg-zinc-100 text-zinc-500'}`}>
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── Filters & Search Container ── */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-4">
         <div className="flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between mb-8 p-4 rounded-2xl bg-white border border-zinc-200 shadow-sm">
           {/* Search Bar */}
           <div className="relative flex-1">
             <input
               type="text"
-              placeholder="Tìm kiếm mẫu xe, tên xe…"
+              placeholder="🔍 Tìm theo tên xe, dòng xe, thông số..."
               value={search}
               onChange={e => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-zinc-300 text-sm focus:outline-none focus:border-red-600"
+              className="w-full pl-4 pr-4 py-2.5 rounded-xl border border-zinc-300 text-xs focus:outline-none focus:border-red-600"
             />
-            <svg className="absolute left-3.5 top-3 text-zinc-400" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           </div>
 
           {/* Filters */}
           <div className="flex flex-wrap items-center gap-3">
-            {/* Hãng */}
-            <select
-              value={selectedHang}
-              onChange={e => setSelectedHang(e.target.value)}
-              className="px-3 py-2.5 rounded-xl border border-zinc-300 text-sm bg-white focus:outline-none focus:border-red-600"
-            >
-              <option value="ALL">Tất cả hãng</option>
-              <option value="Honda">Honda</option>
-              <option value="Yamaha">Yamaha</option>
-              <option value="Suzuki">Suzuki</option>
-            </select>
-
             {/* Phân khúc */}
             <select
               value={selectedPhanKhuc}
               onChange={e => setSelectedPhanKhuc(e.target.value)}
-              className="px-3 py-2.5 rounded-xl border border-zinc-300 text-sm bg-white focus:outline-none focus:border-red-600"
+              className="px-3 py-2 rounded-xl border border-zinc-300 text-xs font-medium bg-white focus:outline-none focus:border-red-600"
             >
               <option value="ALL">Tất cả phân khúc</option>
-              <option value="Tay ga">Tay ga</option>
-              <option value="Côn tay">Côn tay</option>
-              <option value="Xe số">Xe số</option>
+              <option value="Tay ga">Xe Tay ga</option>
+              <option value="Côn tay">Xe Côn tay</option>
+              <option value="Xe số">Xe Số phổ thông</option>
+              <option value="Scrambler">Dòng Scrambler phượt</option>
+              <option value="Hyper-underbone">Hyper-underbone tốc độ</option>
             </select>
 
-            {/* Checkbox Chỉ xe có lái thử */}
-            <label className="flex items-center gap-2 text-sm font-600 text-zinc-700 cursor-pointer px-3 py-2 rounded-xl bg-zinc-100 hover:bg-zinc-200 transition">
+            {/* Checkbox Lái thử */}
+            <label className="flex items-center gap-2 cursor-pointer bg-zinc-50 hover:bg-zinc-100 px-3 py-2 rounded-xl border border-zinc-200 text-xs font-semibold text-zinc-700">
               <input
                 type="checkbox"
                 checked={onlyTestDrive}
                 onChange={e => setOnlyTestDrive(e.target.checked)}
-                className="rounded text-red-600 focus:ring-red-500 w-4 h-4 cursor-pointer"
+                className="w-4 h-4 text-red-700 rounded-sm focus:ring-red-600 accent-red-700"
               />
-              <span>Chỉ xe có lái thử</span>
+              <span>Chỉ xem xe có Lái thử</span>
             </label>
+
+            {(search || selectedHang !== 'ALL' || selectedPhanKhuc !== 'ALL' || onlyTestDrive) && (
+              <button
+                onClick={() => {
+                  setSearch('');
+                  setSelectedHang('ALL');
+                  setSelectedPhanKhuc('ALL');
+                  setOnlyTestDrive(false);
+                }}
+                className="text-xs text-red-700 font-bold hover:underline cursor-pointer"
+              >
+                Xóa bộ lọc
+              </button>
+            )}
           </div>
         </div>
 
-        {/* ── Vehicle Grid ── */}
+        {/* ── Vehicle Cards Grid ── */}
         {filteredVehicles.length === 0 ? (
-          <div className="text-center py-16 bg-white rounded-2xl border border-zinc-200">
-            <div className="text-4xl mb-3">🛵</div>
-            <h3 className="text-lg font-bold text-zinc-800">Không tìm thấy mẫu xe phù hợp</h3>
-            <p className="text-sm text-zinc-500 mt-1">Vui lòng thử điều chỉnh bộ lọc hoặc từ khóa tìm kiếm</p>
+          <div className="text-center py-16 bg-white rounded-3xl border border-zinc-200 p-8 shadow-sm">
+            <div className="text-4xl mb-3">🏍️</div>
+            <div className="text-lg font-bold text-zinc-800">Không tìm thấy mẫu xe nào phù hợp</div>
+            <p className="text-xs text-zinc-500 mt-1">Vui lòng thử chọn lại hãng xe hoặc từ khóa tìm kiếm khác</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {filteredVehicles.map(v => (
-              <div key={v.id} className="group bg-white rounded-2xl border border-zinc-200 overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col">
-                {/* Image & Badge */}
-                <div className="relative h-48 bg-zinc-100 overflow-hidden flex items-center justify-center">
-                  <img
-                    src={v.hinhAnh}
-                    alt={v.tenXe}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                  />
-                  <div className="absolute top-3 left-3 flex flex-col gap-1">
-                    <span className="px-2.5 py-1 rounded-md bg-zinc-900/80 backdrop-blur text-white text-xs font-700 uppercase" style={{ fontFamily: 'var(--font-mono)' }}>
-                      {v.hang}
-                    </span>
-                  </div>
-                  <div className="absolute top-3 right-3">
-                    {v.coTheLaiThu ? (
-                      <span className="px-2.5 py-1 rounded-full bg-red-700 text-white text-xs font-700 shadow-sm" style={{ fontFamily: 'var(--font-mono)' }}>
-                        ✓ Có thể lái thử
-                      </span>
-                    ) : (
-                      <span className="px-2.5 py-1 rounded-full bg-zinc-500 text-white text-xs font-700 shadow-sm" style={{ fontFamily: 'var(--font-mono)' }}>
-                        Không lái thử
-                      </span>
-                    )}
-                  </div>
-                </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredVehicles.map(v => {
+              const meta = brandMeta[v.hang] || { color: '#dc2626', bg: '#fef2f2', badge: v.hang };
+              return (
+                <div
+                  key={v.id}
+                  className="bg-white rounded-2xl border border-zinc-200 overflow-hidden shadow-xs hover:shadow-md transition-all flex flex-col group"
+                >
+                  {/* Image container */}
+                  <div className="relative h-52 bg-zinc-950 overflow-hidden">
+                    <img
+                      src={v.hinhAnh}
+                      alt={v.tenXe}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 opacity-90 group-hover:opacity-100"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent pointer-events-none" />
 
-                {/* Content */}
-                <div className="p-5 flex-1 flex flex-col justify-between">
-                  <div>
-                    <div className="text-xs font-600 text-zinc-500 mb-1">{v.phanKhuc}</div>
-                    <h3 className="font-bold text-zinc-900 text-base leading-snug group-hover:text-red-700 transition-colors">
-                      {v.tenXe}
-                    </h3>
-                    <div className="mt-2 text-lg font-800 text-red-700" style={{ fontFamily: 'var(--font-mono)' }}>
-                      {formatVND(v.giaNiemYet)}
-                    </div>
-                    <p className="mt-2 text-xs text-zinc-500 line-clamp-2 leading-relaxed">
-                      {v.moTa}
-                    </p>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="mt-5 pt-4 border-t border-zinc-100 flex items-center gap-2">
-                    <button
-                      onClick={() => setDetailVehicle(v)}
-                      className="flex-1 py-2 rounded-xl text-xs font-700 bg-zinc-100 text-zinc-800 hover:bg-zinc-200 transition text-center"
-                    >
-                      Chi tiết
-                    </button>
-                    {v.coTheLaiThu && (
-                      <button
-                        onClick={() => onBookTestDrive(v.id)}
-                        className="flex-1 py-2 rounded-xl text-xs font-700 bg-red-700 text-white hover:bg-red-800 transition text-center shadow-sm"
+                    {/* Brand Pill */}
+                    <div className="absolute top-3 left-3 flex gap-1.5">
+                      <span
+                        className="px-2.5 py-1 rounded-full text-[11px] font-extrabold font-mono shadow"
+                        style={{ background: meta.bg, color: meta.color, border: `1px solid ${meta.color}40` }}
                       >
-                        Đăng ký lái thử →
-                      </button>
+                        {v.hang}
+                      </span>
+                      <span className="px-2.5 py-1 rounded-full text-[11px] font-bold font-mono bg-zinc-900/90 text-zinc-200 border border-zinc-700 shadow">
+                        {v.phanKhuc}
+                      </span>
+                    </div>
+
+                    {/* Test Drive badge */}
+                    {v.coTheLaiThu && (
+                      <span className="absolute top-3 right-3 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500 text-white shadow">
+                        ✓ Có xe lái thử
+                      </span>
                     )}
+
+                    {/* Price bottom overlay */}
+                    <div className="absolute bottom-3 left-3 right-3 flex items-end justify-between">
+                      <div>
+                        <div className="text-[10px] uppercase font-mono text-zinc-300 font-bold">Giá niêm yết chính hãng</div>
+                        <div style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 900, color: 'white', letterSpacing: '0.02em', lineHeight: 1 }}>
+                          {formatVND(v.giaNiemYet)}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Body */}
+                  <div className="p-5 flex-1 flex flex-col justify-between space-y-4">
+                    <div>
+                      <h3 className="font-extrabold text-base text-zinc-900 group-hover:text-red-700 transition-colors" style={{ fontFamily: 'var(--font-display)' }}>
+                        {v.tenXe}
+                      </h3>
+                      <p className="text-xs text-zinc-600 line-clamp-2 mt-1.5 leading-relaxed">
+                        {v.moTa}
+                      </p>
+
+                      {/* Specs pills */}
+                      <div className="mt-3 pt-3 border-t border-zinc-100 grid grid-cols-2 gap-2 text-[11px] font-mono">
+                        <div className="bg-zinc-50 p-2 rounded-lg border border-zinc-100">
+                          <span className="text-zinc-400 block text-[9px] uppercase font-bold">Động cơ</span>
+                          <span className="font-semibold text-zinc-800">{v.dongCo}</span>
+                        </div>
+                        <div className="bg-zinc-50 p-2 rounded-lg border border-zinc-100">
+                          <span className="text-zinc-400 block text-[9px] uppercase font-bold">Công suất</span>
+                          <span className="font-semibold text-zinc-800">{v.congSuat}</span>
+                        </div>
+                      </div>
+
+                      <div className="mt-2 text-[11px] text-zinc-500 font-mono">
+                        <span className="text-zinc-400">Màu sắc: </span>
+                        <span>{v.mauSac}</span>
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="pt-2 flex gap-2">
+                      <button
+                        onClick={() => setDetailVehicle(v)}
+                        className="flex-1 py-2 rounded-xl text-xs font-bold border border-zinc-300 text-zinc-700 hover:bg-zinc-100 transition cursor-pointer"
+                      >
+                        Thông số kỹ thuật
+                      </button>
+                      {v.coTheLaiThu ? (
+                        <button
+                          onClick={() => onBookTestDrive(v.id)}
+                          className="flex-1 py-2 rounded-xl text-xs font-bold bg-red-700 hover:bg-red-800 text-white transition cursor-pointer shadow-sm flex items-center justify-center gap-1"
+                        >
+                          <span>🏍️</span> Lái thử ngay
+                        </button>
+                      ) : (
+                        <button
+                          disabled
+                          className="flex-1 py-2 rounded-xl text-xs font-medium bg-zinc-100 text-zinc-400 cursor-not-allowed"
+                        >
+                          Chưa có xe mẫu
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
 
-      {/* ── Detail Modal ── */}
+      {/* ── Detail Specifications Modal ── */}
       {detailVehicle && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-3xl max-w-xl w-full overflow-hidden shadow-2xl border border-zinc-200">
-            <div className="relative h-56 bg-zinc-900">
-              <img src={detailVehicle.hinhAnh} alt={detailVehicle.tenXe} className="w-full h-full object-cover opacity-90" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}>
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div className="flex justify-between items-start border-b border-zinc-200 pb-3">
+              <div>
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold font-mono uppercase bg-red-50 text-red-700 border border-red-200">
+                  {detailVehicle.hang} · {detailVehicle.phanKhuc}
+                </span>
+                <h3 className="font-extrabold text-lg text-zinc-900 mt-1" style={{ fontFamily: 'var(--font-display)' }}>
+                  {detailVehicle.tenXe}
+                </h3>
+              </div>
               <button
                 onClick={() => setDetailVehicle(null)}
-                className="absolute top-4 right-4 w-9 h-9 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black transition text-lg"
+                className="text-zinc-400 hover:text-zinc-700 text-xl font-bold cursor-pointer"
               >
                 ✕
               </button>
-              <div className="absolute bottom-4 left-6 right-6 text-white">
-                <div className="text-xs font-700 text-red-400 uppercase tracking-wider mb-1">{detailVehicle.hang} • {detailVehicle.phanKhuc}</div>
-                <h2 className="text-2xl font-bold">{detailVehicle.tenXe}</h2>
+            </div>
+
+            <div className="rounded-2xl overflow-hidden h-48 bg-zinc-950">
+              <img src={detailVehicle.hinhAnh} alt={detailVehicle.tenXe} className="w-full h-full object-cover" />
+            </div>
+
+            <div className="space-y-2 text-xs">
+              <div className="flex justify-between py-1.5 border-b border-zinc-100">
+                <span className="text-zinc-500 font-mono">Giá niêm yết hãng:</span>
+                <strong className="text-red-700 text-sm font-bold font-display">{formatVND(detailVehicle.giaNiemYet)}</strong>
+              </div>
+              <div className="flex justify-between py-1.5 border-b border-zinc-100">
+                <span className="text-zinc-500 font-mono">Động cơ:</span>
+                <strong className="text-zinc-900 font-mono">{detailVehicle.dongCo}</strong>
+              </div>
+              <div className="flex justify-between py-1.5 border-b border-zinc-100">
+                <span className="text-zinc-500 font-mono">Công suất tối đa:</span>
+                <strong className="text-zinc-900 font-mono">{detailVehicle.congSuat}</strong>
+              </div>
+              {detailVehicle.tieuHaoNhienLieu && (
+                <div className="flex justify-between py-1.5 border-b border-zinc-100">
+                  <span className="text-zinc-500 font-mono">Tiêu thụ nhiên liệu:</span>
+                  <strong className="text-emerald-700 font-mono">{detailVehicle.tieuHaoNhienLieu}</strong>
+                </div>
+              )}
+              {detailVehicle.phanh && (
+                <div className="flex justify-between py-1.5 border-b border-zinc-100">
+                  <span className="text-zinc-500 font-mono">Hệ thống phanh:</span>
+                  <strong className="text-zinc-900 font-mono">{detailVehicle.phanh}</strong>
+                </div>
+              )}
+              <div className="flex justify-between py-1.5 border-b border-zinc-100">
+                <span className="text-zinc-500 font-mono">Màu sắc phân phối:</span>
+                <strong className="text-zinc-900">{detailVehicle.mauSac}</strong>
+              </div>
+              <div className="pt-1">
+                <span className="text-zinc-500 font-mono block mb-1">Mô tả chi tiết:</span>
+                <p className="text-zinc-700 bg-zinc-50 p-3 rounded-xl border border-zinc-100 leading-relaxed">
+                  {detailVehicle.moTa}
+                </p>
               </div>
             </div>
 
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-4 pb-4 border-b border-zinc-100">
-                <div>
-                  <div className="text-xs text-zinc-400">Giá niêm yết chính hãng</div>
-                  <div className="text-2xl font-800 text-red-700" style={{ fontFamily: 'var(--font-mono)' }}>
-                    {formatVND(detailVehicle.giaNiemYet)}
-                  </div>
-                </div>
-                <div>
-                  {detailVehicle.coTheLaiThu ? (
-                    <span className="px-3 py-1.5 rounded-full bg-red-100 text-red-700 text-xs font-700">
-                      ✓ Sẵn sàng xe lái thử
-                    </span>
-                  ) : (
-                    <span className="px-3 py-1.5 rounded-full bg-zinc-100 text-zinc-600 text-xs font-700">
-                      Chưa hỗ trợ lái thử
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              <div className="space-y-3 text-sm text-zinc-600 mb-6">
-                <div>
-                  <span className="font-600 text-zinc-900">Màu sắc có sẵn: </span>
-                  {detailVehicle.mauSac}
-                </div>
-                {detailVehicle.dongCo && (
-                  <div>
-                    <span className="font-600 text-zinc-900">Động cơ: </span>
-                    {detailVehicle.dongCo} ({detailVehicle.congSuat})
-                  </div>
-                )}
-                <div>
-                  <span className="font-600 text-zinc-900">Mô tả chi tiết: </span>
-                  <p className="mt-1 text-xs text-zinc-500 leading-relaxed bg-zinc-50 p-3 rounded-xl border border-zinc-200">
-                    {detailVehicle.moTa}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-3">
+            <div className="flex justify-end gap-2 pt-3 border-t border-zinc-200">
+              <button
+                onClick={() => setDetailVehicle(null)}
+                className="px-4 py-2 bg-zinc-100 text-zinc-700 rounded-xl text-xs font-semibold hover:bg-zinc-200 cursor-pointer"
+              >
+                Đóng
+              </button>
+              {detailVehicle.coTheLaiThu && (
                 <button
-                  onClick={() => setDetailVehicle(null)}
-                  className="px-5 py-2.5 rounded-xl text-sm font-600 bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
+                  onClick={() => {
+                    const id = detailVehicle.id;
+                    setDetailVehicle(null);
+                    onBookTestDrive(id);
+                  }}
+                  className="px-5 py-2 bg-red-700 text-white rounded-xl text-xs font-bold hover:bg-red-800 shadow cursor-pointer flex items-center gap-1.5"
                 >
-                  Đóng
+                  <span>🏍️</span> Đăng ký Lái thử xe này
                 </button>
-                {detailVehicle.coTheLaiThu && (
-                  <button
-                    onClick={() => {
-                      const id = detailVehicle.id;
-                      setDetailVehicle(null);
-                      onBookTestDrive(id);
-                    }}
-                    className="px-6 py-2.5 rounded-xl text-sm font-700 bg-red-700 text-white hover:bg-red-800 shadow-md"
-                  >
-                    Đăng ký lái thử ngay →
-                  </button>
-                )}
-              </div>
+              )}
             </div>
           </div>
         </div>
