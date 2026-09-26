@@ -177,6 +177,7 @@ CrmBackend/
 │   ├── TaiKhoan.cs      (✅ có sẵn)
 │   ├── KhachHang.cs     (✅ có sẵn)
 │   ├── XeKhachHang.cs   (✅ có sẵn)
+│   ├── NhanVien.cs      (✅ có sẵn - Bảng Nhân viên & Role)
 │   ├── PhuTung.cs       ← Phương tạo
 │   ├── SanPhamXe.cs     ← Phương tạo
 │   ├── DonHang.cs       ← Minh tạo
@@ -187,6 +188,7 @@ CrmBackend/
 ├── Controllers/     ← Tạo file .cs ở đây
 │   ├── KhachHangController.cs      (✅ có sẵn - KHÔNG SỬA)
 │   ├── XeKhachHangController.cs    (✅ có sẵn - KHÔNG SỬA)
+│   ├── NhanVienController.cs       (✅ có sẵn - Quản lý Staff & RBAC)
 │   ├── DonHangController.cs        ← Minh cải tiến
 │   ├── LichHenController.cs        ← Minh cải tiến
 │   ├── PhuTungController.cs        ← Phương tạo
@@ -433,6 +435,7 @@ Password:  YourStrong@Password123
 | Bảng | Cột chính | Ai dùng |
 |------|-----------|---------|
 | `TAI_KHOAN` | MaTK, TenDangNhap, MatKhau, VaiTro, TrangThai | Giang, Lộc |
+| `NHAN_VIEN` | MaNV, MaTK, HoTen, Email, SoDienThoai, ChucVu, VaiTro, TrangThai, Avatar, NgayThamGia | Lộc ✅ |
 | `KHACH_HANG` | MaKH, MaTK, HoTen, NgaySinh, GioiTinh, SoDienThoai, DiaChi | Giang ✅ |
 | `XE_KHACH_HANG` | MaXeSoHuu, MaKH, MaXe, BienSoXe, SoKhung, NgayMua, HanBaoHanh | Giang ✅ |
 | `SAN_PHAM_XE` | MaXe, TenXe, HangXe, LoaiXe, GiaNiemYet, ThongSoKyThuat | Phương |

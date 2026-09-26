@@ -170,13 +170,16 @@ Hệ thống dev server đang chạy tại:
 | 1 | `CrmBackend/Models/TaiKhoan.cs` | **NEW** | Model TaiKhoan + LoginRequest/LoginResponse DTOs |
 | 2 | `CrmBackend/Models/KhachHang.cs` | **NEW** | Model KhachHang + Create/Update DTOs |
 | 3 | `CrmBackend/Models/XeKhachHang.cs` | **NEW** | Model XeKhachHang + Create/GiaHanBaoHanh DTOs |
-| 4 | `CrmBackend/Controllers/KhachHangController.cs` | **MODIFY** | Full CRUD: GetAll, GetById, Create, Update, Delete, ToggleKhoa, ThongKeTuoi (7 endpoints) |
-| 5 | `CrmBackend/Controllers/XeKhachHangController.cs` | **NEW** | Full CRUD: GetAll, GetById, GetByKhachHang, Create, GiaHanBaoHanh, Delete (6 endpoints) |
-| 6 | `CrmBackend/Program.cs` | **MODIFY** | Đọc config từ appsettings.json, thêm CORS port 5174 |
-| 7 | `CrmBackend/appsettings.json` | **MODIFY** | Sửa port SQL Server 1433 → 14333 (đúng Docker) |
-| 8 | `HUONG_DAN_NHOM.md` | **NEW** | Hướng dẫn làm việc nhóm chi tiết cho Backend |
+| 4 | `CrmBackend/Models/NhanVien.cs` | **NEW** | Model NhanVien (StaffAccount & AdminRole) + DTOs |
+| 5 | `CrmBackend/Controllers/KhachHangController.cs` | **MODIFY** | Full CRUD: GetAll, GetById, Create, Update, Delete, ToggleKhoa, ThongKeTuoi (7 endpoints) |
+| 6 | `CrmBackend/Controllers/XeKhachHangController.cs` | **NEW** | Full CRUD: GetAll, GetById, GetByKhachHang, Create, GiaHanBaoHanh, Delete (6 endpoints) |
+| 7 | `CrmBackend/Controllers/NhanVienController.cs` | **NEW** | Full CRUD: GetAll, GetById, Create, Update, ToggleKhoa, DoiVaiTro, Delete (7 endpoints) |
+| 8 | `CrmBackend/Program.cs` | **MODIFY** | Đọc config từ appsettings.json, thêm CORS port 5174 |
+| 9 | `CrmBackend/appsettings.json` | **MODIFY** | Sửa port SQL Server 1433 → 14333 (đúng Docker) |
+| 10 | `init-db/init.sql` | **MODIFY** | Bổ sung bảng NHAN_VIEN, liên kết TAI_KHOAN, seed 4 nhân viên mẫu |
+| 11 | `docs/HUONG_DAN_NHOM.md` | **NEW** | Hướng dẫn làm việc nhóm chi tiết cho Backend |
 
-### API Endpoints đã hoạt động (13 endpoints)
+### API Endpoints đã hoạt động (20 endpoints)
 
 | # | Method | Route | Chức năng | Test |
 |---|--------|-------|-----------|:----:|
@@ -193,6 +196,13 @@ Hệ thống dev server đang chạy tại:
 | 11 | POST | `/api/XeKhachHang` | Thêm xe cho KH | ✅ |
 | 12 | PUT | `/api/XeKhachHang/gia-han/{id}` | Gia hạn bảo hành | ✅ |
 | 13 | DELETE | `/api/XeKhachHang/{id}` | Xóa xe | ✅ |
+| 14 | GET | `/api/NhanVien` | Danh sách nhân viên Admin & Staff | ✅ |
+| 15 | GET | `/api/NhanVien/{id}` | Chi tiết 1 nhân viên | ✅ |
+| 16 | POST | `/api/NhanVien` | Thêm nhân viên mới + tạo tài khoản | ✅ |
+| 17 | PUT | `/api/NhanVien/{id}` | Cập nhật thông tin nhân viên | ✅ |
+| 18 | PUT | `/api/NhanVien/phan-quyen/{id}` | Phân quyền vai trò RBAC | ✅ |
+| 19 | PUT | `/api/NhanVien/khoa/{id}` | Khóa/Mở khóa nhân viên | ✅ |
+| 20 | DELETE | `/api/NhanVien/{id}` | Xóa nhân viên & tài khoản | ✅ |
 
 ---
 
