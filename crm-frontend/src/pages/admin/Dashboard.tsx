@@ -37,6 +37,21 @@ function PieLabel({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) 
   return <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={12} fontWeight={700}>{(percent * 100).toFixed(0)}%</text>;
 }
 
+// Dữ liệu báo cáo độ tuổi khách hàng
+const ageDistributionData = [
+  { name: 'Dưới 25 tuổi', value: 25, fill: '#dc2626' },
+  { name: '25 – 40 tuổi', value: 55, fill: '#2563eb' },
+  { name: 'Trên 40 tuổi', value: 20, fill: '#16a34a' },
+];
+
+// Dữ liệu báo cáo cơ cấu sở thích / nhu cầu của khách hàng
+const preferenceDistributionData = [
+  { name: 'Tiết kiệm / Đi làm', value: 42, fill: '#2563eb' },
+  { name: 'Thể thao / Đi phượt', value: 33, fill: '#dc2626' },
+  { name: 'Tay ga cao cấp', value: 17, fill: '#d97706' },
+  { name: 'Xe điện thông minh', value: 8, fill: '#10b981' },
+];
+
 export default function DashboardPage() {
   const [period, setPeriod] = useState<PeriodType>('monthly');
 
@@ -61,47 +76,36 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="p-6 lg:p-8">
+    <div className="p-6 lg:p-8 space-y-6">
       {/* Header with period toggle */}
-      <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div style={{ fontFamily: 'var(--font-display)', fontSize: 30, fontWeight: 800, color: 'var(--color-zinc-900)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-            DASHBOARD
+            DASHBOARD & BÁO CÁO THỐNG KÊ
           </div>
-          <p className="text-sm mt-1" style={{ color: 'var(--color-zinc-500)' }}>Tổng quan hệ thống & thống kê doanh thu đa dạng</p>
+          <p className="text-sm mt-1" style={{ color: 'var(--color-zinc-500)' }}>
+            Tổng quan hệ thống, doanh thu đa chu kỳ và báo cáo phân tích khách hàng
+          </p>
         </div>
 
         {/* Period Selector Buttons */}
         <div className="inline-flex rounded-xl p-1 bg-zinc-100 border border-zinc-200">
-          <button
-            onClick={() => setPeriod('daily')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-600 transition-all ${period === 'daily' ? 'bg-red-700 text-white shadow-sm' : 'text-zinc-600 hover:text-zinc-900'}`}
-          >
-            Theo Ngày
-          </button>
-          <button
-            onClick={() => setPeriod('weekly')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-600 transition-all ${period === 'weekly' ? 'bg-red-700 text-white shadow-sm' : 'text-zinc-600 hover:text-zinc-900'}`}
-          >
-            Theo Tuần
-          </button>
-          <button
-            onClick={() => setPeriod('monthly')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-600 transition-all ${period === 'monthly' ? 'bg-red-700 text-white shadow-sm' : 'text-zinc-600 hover:text-zinc-900'}`}
-          >
-            Theo Tháng
-          </button>
-          <button
-            onClick={() => setPeriod('yearly')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-600 transition-all ${period === 'yearly' ? 'bg-red-700 text-white shadow-sm' : 'text-zinc-600 hover:text-zinc-900'}`}
-          >
-            Theo Năm
-          </button>
+          {(['daily', 'weekly', 'monthly', 'yearly'] as PeriodType[]).map(p => (
+            <button
+              key={p}
+              onClick={() => setPeriod(p)}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-600 transition-all cursor-pointer ${
+                period === p ? 'bg-red-700 text-white shadow-sm' : 'text-zinc-600 hover:text-zinc-900'
+              }`}
+            >
+              {p === 'daily' ? 'Theo Ngày' : p === 'weekly' ? 'Theo Tuần' : p === 'monthly' ? 'Theo Tháng' : 'Theo Năm'}
+            </button>
+          ))}
         </div>
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard label="Tổng khách hàng" value={mockCustomers.length} sub="Đã đăng ký" accent="var(--color-red-700)" icon="👥" />
         <KpiCard label="Đơn hàng chờ duyệt" value={pendingOrders} sub="Tổng số đơn" accent="#2563eb" icon="📦" />
         <KpiCard label="Lịch hẹn chờ duyệt" value={pendingAppts} sub="Cần xác nhận" accent="#d97706" icon="📅" />
@@ -109,7 +113,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Breakdown by Revenue Source */}
-      <div className="mb-6 rounded-2xl p-5" style={{ background: 'white', border: '1px solid var(--color-zinc-200)' }}>
+      <div className="rounded-2xl p-5" style={{ background: 'white', border: '1px solid var(--color-zinc-200)' }}>
         <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 16, color: 'var(--color-zinc-900)', letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 12 }}>
           CƠ CẤU DOANH THU THEO NGUỒN NGUỒN
         </div>
@@ -128,8 +132,8 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Charts row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-6">
+      {/* Charts row 1: Revenue Line Chart + Service Pie Chart */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Line chart — 2/3 */}
         <div className="lg:col-span-2 rounded-2xl p-6" style={{ background: 'white', border: '1px solid var(--color-zinc-200)' }}>
           <div className="flex items-center justify-between mb-4">
@@ -154,7 +158,7 @@ export default function DashboardPage() {
           </ResponsiveContainer>
         </div>
 
-        {/* Pie — 1/3 */}
+        {/* Pie — 1/3: Service Distribution */}
         <div className="rounded-2xl p-6" style={{ background: 'white', border: '1px solid var(--color-zinc-200)' }}>
           <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 18, color: 'var(--color-zinc-900)', letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 4 }}>
             TỶ LỆ DỊCH VỤ
@@ -169,6 +173,56 @@ export default function DashboardPage() {
               <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12, fontFamily: 'var(--font-sans)' }} />
             </PieChart>
           </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* Charts row 2: CRM CUSTOMER ANALYTICS (Tỷ lệ độ tuổi & Sở thích) */}
+      <div className="rounded-2xl p-6 bg-white border border-zinc-200 shadow-sm space-y-4">
+        <div>
+          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 18, color: 'var(--color-zinc-900)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+            🎯 BÁO CÁO KHÁCH HÀNG: PHÂN BỐ ĐỘ TUỔI & CƠ CẤU SỞ THÍCH
+          </div>
+          <p className="text-xs text-zinc-500 mt-1">
+            Phân tích nhân khẩu học và phân khúc nhu cầu xe của khách hàng theo tiêu chí đánh giá CRM
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-2">
+          {/* Chart 1: Age Distribution */}
+          <div className="p-4 rounded-xl border border-zinc-200 bg-zinc-50/50">
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="text-xs font-bold font-mono text-zinc-800 uppercase">1. Tỷ lệ phân bố độ tuổi khách hàng</h4>
+              <span className="text-[11px] font-mono text-zinc-500 bg-white px-2 py-0.5 rounded-full border border-zinc-200">Đơn vị: %</span>
+            </div>
+            <p className="text-[11px] text-zinc-500 mb-3">Tính toán tự động theo năm sinh của khách hàng trong hệ thống CRM</p>
+            <ResponsiveContainer width="100%" height={220}>
+              <PieChart>
+                <Pie data={ageDistributionData} cx="50%" cy="50%" outerRadius={75} dataKey="value" labelLine={false} label={PieLabel}>
+                  {ageDistributionData.map((e, i) => <Cell key={i} fill={e.fill} />)}
+                </Pie>
+                <Tooltip formatter={(v) => [`${v}%`, 'Tỷ lệ']} contentStyle={{ fontFamily: 'var(--font-sans)', borderRadius: 10, fontSize: 12 }} />
+                <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, fontFamily: 'var(--font-sans)' }} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Chart 2: Customer Preferences */}
+          <div className="p-4 rounded-xl border border-zinc-200 bg-zinc-50/50">
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="text-xs font-bold font-mono text-zinc-800 uppercase">2. Cơ cấu sở thích & nhu cầu phương tiện</h4>
+              <span className="text-[11px] font-mono text-zinc-500 bg-white px-2 py-0.5 rounded-full border border-zinc-200">Đơn vị: %</span>
+            </div>
+            <p className="text-[11px] text-zinc-500 mb-3">Thống kê theo khảo sát và lịch sử tư vấn chọn mua xe của khách hàng</p>
+            <ResponsiveContainer width="100%" height={220}>
+              <PieChart>
+                <Pie data={preferenceDistributionData} cx="50%" cy="50%" outerRadius={75} dataKey="value" labelLine={false} label={PieLabel}>
+                  {preferenceDistributionData.map((e, i) => <Cell key={i} fill={e.fill} />)}
+                </Pie>
+                <Tooltip formatter={(v) => [`${v}%`, 'Tỷ lệ']} contentStyle={{ fontFamily: 'var(--font-sans)', borderRadius: 10, fontSize: 12 }} />
+                <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, fontFamily: 'var(--font-sans)' }} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
         </div>
       </div>
 

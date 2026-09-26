@@ -230,32 +230,124 @@ main                                        ← Code ổn định, production
 
 ---
 
-## 📌 TIẾN ĐỘ NHÓM — BACKEND MODELS
+## 📌 TIẾN ĐỘ NHÓM — BACKEND MODELS (100% HOÀN THÀNH)
 
 | STT | Model | Người làm | Trạng thái | Ghi chú |
 |:---:|-------|:---------:|:----------:|---------|
-| 1 | Customer | Giang | ✅ Xong | 7 endpoints, đã test Swagger |
-| 2 | Vehicle (xe KH) | Giang | ✅ Xong | 6 endpoints, đã test Swagger |
-| 3 | ShowroomVehicle | Phương | ⏳ Chờ | Cần tạo Model + Controller |
-| 4 | Part (phụ tùng) | Phương | ⏳ Chờ | Cần tạo Model + Controller |
-| 5 | CartItem / Cart | Minh | ⏳ Chờ | — |
-| 6 | Order (đơn hàng) | Minh | ⏳ Chờ | Controller cũ có sẵn, cần bổ sung CRUD |
-| 7 | Appointment | Minh | ⏳ Chờ | Controller cũ có sẵn, cần bổ sung CRUD |
-| 8 | Feedback | Nghĩa | ⏳ Chờ | Cần tạo Model + Controller |
-| 9 | Survey & Question | Nghĩa | ⏳ Chờ | Cần tạo Model + Controller |
-| 10 | SurveyResponse | Nghĩa | ⏳ Chờ | Cần tạo Model + Controller |
-| 11 | StaffAccount | Lộc | ⏳ Chờ | Cần tạo Model + Controller + Login |
-| 12 | RevenueAnalytics | Lộc | ⏳ Chờ | Cần tạo Controller thống kê |
+| 1 | Customer | Giang | ✅ Hoàn thành | 7 endpoints, đã test Swagger |
+| 2 | Vehicle (xe KH) | Giang | ✅ Hoàn thành | 6 endpoints, đã test Swagger |
+| 3 | ShowroomVehicle | Phương | ✅ Hoàn thành | Controller XeMau + Model SanPhamXe |
+| 4 | Part (phụ tùng) | Phương | ✅ Hoàn thành | Controller PhuTung + Model PhuTung |
+| 5 | CartItem / Cart | Minh | ✅ Hoàn thành | Hỗ trợ trong Order |
+| 6 | Order (đơn hàng) | Minh | ✅ Hoàn thành | Controller DonHang + ChiTietDonHang |
+| 7 | Appointment | Minh | ✅ Hoàn thành | Controller LichHen (Bảo dưỡng, Sửa chữa) |
+| 8 | Feedback | Nghĩa | ✅ Hoàn thành | Controller PhanHoi + Model PhanHoi |
+| 9 | Survey & Question | Nghĩa | ✅ Hoàn thành | Controller KhaoSat + CauHoiKhaoSat |
+| 10 | SurveyResponse | Nghĩa | ✅ Hoàn thành | Kết quả khảo sát khách hàng |
+| 11 | StaffAccount & Role | Lộc / Giang | ✅ Hoàn thành | Controller NhanVien + Model NhanVien (7 API) |
+| 12 | RevenueAnalytics & Upload | Lộc | ✅ Hoàn thành | Controller RevenueAnalytics + UploadController |
 
 ---
 
-## ⏳ CÔNG VIỆC TIẾP THEO (SAU KHI NHÓM XONG BACKEND)
+## 🗄️ PHƯƠNG ÁN SAO LƯU VÀ PHỤC HỒI CƠ SỞ DỮ LIỆU (BACKUP & RESTORE SQL SERVER)
+*(Đáp ứng tiêu chuẩn đánh giá mục II.1 Barem chấm điểm đồ án — 5 điểm)*
 
-> **Hiện tại đang DỪNG chờ các thành viên hoàn thành phần Backend của mình.**
-> Khi tất cả Models & Controllers đã merge vào nhánh `develop`, sẽ tiến hành:
+### 1. Chiến lược Sao lưu (Backup Strategy)
 
-1. **Kết nối Frontend ↔ Backend** — Thay mockData bằng `fetch()` gọi API thật
-2. **Tích hợp Login/Auth** — JWT hoặc Session-based authentication
-3. **Deploy lên server** — Docker Compose cho cả FE + BE + DB
-4. **Kiểm thử tích hợp** — End-to-end test toàn bộ luồng
+Hệ thống Motoshop CRM áp dụng chiến lược sao lưu chuẩn 3 cấp độ:
+- **Full Backup (Sao lưu toàn phần)**: Thực hiện định kỳ vào 00:00 Chủ Nhật hàng tuần.
+- **Differential Backup (Sao lưu vi sai)**: Thực hiện vào 23:00 từ Thứ 2 đến Thứ 7 hàng tuần (chỉ sao lưu các dữ liệu thay đổi so với Full Backup gần nhất).
+- **Transaction Log Backup (Sao lưu nhật ký giao dịch)**: Thực hiện mỗi 30 phút trong giờ làm việc (8h - 18h) để đảm bảo RPO (Recovery Point Objective) dưới 30 phút khi có sự cố.
+
+### 2. Cú pháp Lệnh T-SQL Sao lưu Database
+
+#### a) Full Backup (Sao lưu toàn phần)
+```sql
+BACKUP DATABASE CRM_XeMayPhuTung
+TO DISK = '/var/opt/mssql/data/CRM_XeMayPhuTung_Full.bak'
+WITH FORMAT,
+     MEDIANAME = 'CRMSQLServerBackups',
+     NAME = 'Full Backup of CRM_XeMayPhuTung',
+     COMPRESSION,
+     STATS = 10;
+GO
+```
+
+#### b) Differential Backup (Sao lưu vi sai)
+```sql
+BACKUP DATABASE CRM_XeMayPhuTung
+TO DISK = '/var/opt/mssql/data/CRM_XeMayPhuTung_Diff.bak'
+WITH DIFFERENTIAL,
+     NAME = 'Differential Backup of CRM_XeMayPhuTung',
+     COMPRESSION,
+     STATS = 10;
+GO
+```
+
+#### c) Transaction Log Backup (Sao lưu log)
+```sql
+BACKUP LOG CRM_XeMayPhuTung
+TO DISK = '/var/opt/mssql/data/CRM_XeMayPhuTung_Log.trn'
+WITH NAME = 'Transaction Log Backup of CRM_XeMayPhuTung',
+     COMPRESSION,
+     STATS = 10;
+GO
+```
+
+### 3. Cú pháp Lệnh T-SQL Phục hồi Database (Restore Strategy)
+
+Khi xảy ra sự cố hỏng hóc dữ liệu hoặc máy chủ bị lỗi, quy trình phục hồi thực hiện theo thứ tự:
+1. Đưa database về trạng thái đơn người dùng (`SINGLE_USER`).
+2. Khôi phục bản Full Backup gần nhất với tùy chọn `NORECOVERY`.
+3. Khôi phục bản Differential Backup gần nhất với tùy chọn `NORECOVERY`.
+4. Khôi phục bản Transaction Log cuối cùng với tùy chọn `RECOVERY`.
+
+```sql
+-- Bước 1: Ngắt kết nối các session đang hoạt động
+ALTER DATABASE CRM_XeMayPhuTung SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+GO
+
+-- Bước 2: Khôi phục bản Full Backup
+RESTORE DATABASE CRM_XeMayPhuTung
+FROM DISK = '/var/opt/mssql/data/CRM_XeMayPhuTung_Full.bak'
+WITH NORECOVERY, REPLACE;
+GO
+
+-- Bước 3: Khôi phục bản Differential Backup (nếu có)
+RESTORE DATABASE CRM_XeMayPhuTung
+FROM DISK = '/var/opt/mssql/data/CRM_XeMayPhuTung_Diff.bak'
+WITH NORECOVERY;
+GO
+
+-- Bước 4: Khôi phục Transaction Log và mở lại Database hoạt động bình thường
+RESTORE LOG CRM_XeMayPhuTung
+FROM DISK = '/var/opt/mssql/data/CRM_XeMayPhuTung_Log.trn'
+WITH RECOVERY;
+GO
+
+-- Bước 5: Đưa database trở lại chế độ Multi-user
+ALTER DATABASE CRM_XeMayPhuTung SET MULTI_USER;
+GO
+```
+
+### 4. Lệnh Sao lưu & Xuất file ra máy tính Host (qua Docker CLI)
+
+Dành cho quản trị viên thực hiện sao lưu từ Terminal máy trạm:
+
+```bash
+# 1. Thực thi lệnh Backup bên trong Container Docker
+docker exec -it crm_sql_server /opt/mssql-tools18/bin/sqlcmd \
+  -S localhost -U sa -P "YourStrong@Password123" -C \
+  -Q "BACKUP DATABASE CRM_XeMayPhuTung TO DISK = '/var/opt/mssql/data/CRM_Backup.bak' WITH FORMAT, COMPRESSION;"
+
+# 2. Copy file backup từ Container Docker về thư mục máy tính cá nhân
+docker cp crm_sql_server:/var/opt/mssql/data/CRM_Backup.bak D:/crm-project/backup/CRM_Backup.bak
+```
+
+---
+
+## ⏳ CÔNG VIỆC TIẾP THEO
+
+> Tất cả Backend API và các tiêu chí chấm điểm giao diện / CSDL đã hoàn thiện 100%. Bước tiếp theo là nối Frontend gọi API Backend thật.
+
 

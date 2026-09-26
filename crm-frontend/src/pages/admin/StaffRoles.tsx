@@ -25,8 +25,18 @@ export default function StaffRolesPage() {
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<'All' | AdminRole>('All');
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
   const [editingStaff, setEditingStaff] = useState<StaffAccount | null>(null);
   const [selectedRole, setSelectedRole] = useState<AdminRole>('NhanVienBanHang');
+
+  // New staff form state
+  const [newStaff, setNewStaff] = useState({
+    hoTen: '',
+    email: '',
+    soDienThoai: '',
+    chucVu: '',
+    vaiTro: 'NhanVienBanHang' as AdminRole,
+  });
 
   const filteredStaff = staffList.filter(s => {
     const matchSearch = !search.trim() || s.hoTen.toLowerCase().includes(search.toLowerCase()) || s.email.toLowerCase().includes(search.toLowerCase()) || s.soDienThoai.includes(search);
@@ -57,16 +67,53 @@ export default function StaffRolesPage() {
     setEditingStaff(null);
   };
 
+  const handleAddStaffSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newStaff.hoTen.trim() || !newStaff.email.trim() || !newStaff.soDienThoai.trim()) {
+      alert('Vui lòng điền đầy đủ Họ tên, Email và Số điện thoại!');
+      return;
+    }
+
+    const created: StaffAccount = {
+      id: `ST00${staffList.length + 1}`,
+      hoTen: newStaff.hoTen.trim(),
+      email: newStaff.email.trim(),
+      soDienThoai: newStaff.soDienThoai.trim(),
+      chucVu: newStaff.chucVu.trim() || (newStaff.vaiTro === 'SuperAdmin' ? 'Quản lý Hệ thống' : newStaff.vaiTro === 'NhanVienBanHang' ? 'Chuyên viên Bán hàng' : 'Kỹ thuật viên Xưởng'),
+      vaiTro: newStaff.vaiTro,
+      trangThai: 'HoatDong',
+      ngayThamGia: new Date().toISOString().split('T')[0],
+    };
+
+    setStaffList(prev => [...prev, created]);
+    setShowAddModal(false);
+    setNewStaff({ hoTen: '', email: '', soDienThoai: '', chucVu: '', vaiTro: 'NhanVienBanHang' });
+  };
+
+  const handleDeleteStaff = (staff: StaffAccount) => {
+    if (confirm(`Bạn có chắc chắn muốn xóa tài khoản nhân viên "${staff.hoTen}" (${staff.id})?`)) {
+      setStaffList(prev => prev.filter(s => s.id !== staff.id));
+    }
+  };
+
   return (
     <div className="p-6 lg:p-8 space-y-8">
       {/* Header */}
-      <div>
-        <div style={{ fontFamily: 'var(--font-display)', fontSize: 30, fontWeight: 800, color: 'var(--color-zinc-900)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-          PHÂN QUYỀN & QUẢN LÝ NHÂN SỰ
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: 30, fontWeight: 800, color: 'var(--color-zinc-900)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+            PHÂN QUYỀN & QUẢN LÝ NHÂN SỰ
+          </div>
+          <p className="text-sm mt-1 text-zinc-500">
+            Quản lý tài khoản nhân viên, thêm xóa account, phân quyền vai trò (RBAC) và kiểm soát truy cập hệ thống
+          </p>
         </div>
-        <p className="text-sm mt-1 text-zinc-500">
-          Quản lý tài khoản nhân viên, phân quyền vai trò (RBAC) và kiểm soát quyền truy cập hệ thống CRM
-        </p>
+        <button
+          onClick={() => setShowAddModal(true)}
+          className="inline-flex items-center gap-2 px-4 py-2.5 bg-red-700 text-white rounded-xl text-xs font-bold hover:bg-red-800 transition shadow-sm cursor-pointer"
+        >
+          <span>＋</span> Thêm tài khoản nhân viên
+        </button>
       </div>
 
       {/* Staff Accounts Section */}
@@ -143,6 +190,7 @@ export default function StaffRolesPage() {
                       <td className="p-3 text-center">
                         <button
                           onClick={() => toggleStatus(staff.id)}
+                          title="Bấm để Khóa / Mở khóa tài khoản"
                           className={`px-3 py-1 rounded-full text-xs font-bold font-mono transition cursor-pointer ${
                             staff.trangThai === 'HoatDong'
                               ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
@@ -152,12 +200,19 @@ export default function StaffRolesPage() {
                           {staff.trangThai === 'HoatDong' ? '✓ Hoạt động' : '🔒 Đã khóa'}
                         </button>
                       </td>
-                      <td className="p-3 text-center space-x-2">
+                      <td className="p-3 text-center space-x-2 whitespace-nowrap">
                         <button
                           onClick={() => openRoleModal(staff)}
-                          className="px-3 py-1.5 bg-zinc-900 text-white text-xs font-semibold rounded-lg hover:bg-zinc-800 transition"
+                          className="px-3 py-1.5 bg-zinc-900 text-white text-xs font-semibold rounded-lg hover:bg-zinc-800 transition cursor-pointer"
                         >
                           Đổi vai trò
+                        </button>
+                        <button
+                          onClick={() => handleDeleteStaff(staff)}
+                          className="px-2.5 py-1.5 bg-red-50 text-red-700 border border-red-200 text-xs font-semibold rounded-lg hover:bg-red-100 transition cursor-pointer"
+                          title="Xóa tài khoản nhân viên"
+                        >
+                          🗑️ Xóa
                         </button>
                       </td>
                     </tr>
@@ -208,15 +263,104 @@ export default function StaffRolesPage() {
         </div>
       </div>
 
-      {/* Edit Role Modal */}
+      {/* Modal Thêm Nhân Viên Mới */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl space-y-4">
+            <div className="flex justify-between items-center border-b border-zinc-200 pb-3">
+              <h3 className="font-extrabold text-base text-zinc-900 uppercase">Thêm Tài Khoản Nhân Viên Mới</h3>
+              <button onClick={() => setShowAddModal(false)} className="text-zinc-400 hover:text-zinc-700 text-lg cursor-pointer">✕</button>
+            </div>
+
+            <form onSubmit={handleAddStaffSubmit} className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 mb-1">Họ và tên *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="VD: Hoàng Văn Nam"
+                  value={newStaff.hoTen}
+                  onChange={e => setNewStaff({ ...newStaff, hoTen: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-xl text-xs focus:outline-none focus:border-red-600"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 mb-1">Email đăng nhập *</label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="nam.hoang@motoshop.vn"
+                    value={newStaff.email}
+                    onChange={e => setNewStaff({ ...newStaff, email: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-xl text-xs focus:outline-none focus:border-red-600"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 mb-1">Số điện thoại *</label>
+                  <input
+                    type="tel"
+                    required
+                    placeholder="0988777666"
+                    value={newStaff.soDienThoai}
+                    onChange={e => setNewStaff({ ...newStaff, soDienThoai: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-xl text-xs focus:outline-none focus:border-red-600"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 mb-1">Chức danh công việc</label>
+                <input
+                  type="text"
+                  placeholder="VD: Nhân viên Tư vấn Bán hàng"
+                  value={newStaff.chucVu}
+                  onChange={e => setNewStaff({ ...newStaff, chucVu: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-xl text-xs focus:outline-none focus:border-red-600"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 mb-1">Vai trò phân quyền (RBAC) *</label>
+                <select
+                  value={newStaff.vaiTro}
+                  onChange={e => setNewStaff({ ...newStaff, vaiTro: e.target.value as AdminRole })}
+                  className="w-full px-3 py-2 border rounded-xl text-xs bg-white focus:outline-none focus:border-red-600 font-medium"
+                >
+                  <option value="NhanVienBanHang">💼 Nhân viên Bán hàng & CRM</option>
+                  <option value="NhanVienKyThuat">🔧 Nhân viên Kỹ thuật & Kho</option>
+                  <option value="SuperAdmin">👑 Super Admin (Toàn quyền)</option>
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-zinc-200">
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  className="px-4 py-2 bg-zinc-100 text-zinc-700 rounded-xl text-xs font-semibold hover:bg-zinc-200 cursor-pointer"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-red-700 text-white rounded-xl text-xs font-bold hover:bg-red-800 shadow cursor-pointer"
+                >
+                  Thêm Tài Khoản
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Đổi Vai Trò Phân Quyền */}
       {showEditModal && editingStaff && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl border border-zinc-200 space-y-4">
-            <div className="flex justify-between items-center pb-3 border-b border-zinc-200">
-              <h3 className="text-base font-extrabold uppercase text-zinc-900" style={{ fontFamily: 'var(--font-display)' }}>
-                ĐỔI VAI TRÒ NHÂN VIÊN
-              </h3>
-              <button onClick={() => setShowEditModal(false)} className="text-zinc-400 hover:text-zinc-600 font-bold">✕</button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl space-y-4">
+            <div className="flex justify-between items-center border-b border-zinc-200 pb-3">
+              <h3 className="font-extrabold text-base text-zinc-900 uppercase">Phân Quyền Vai Trò Nhân Viên</h3>
+              <button onClick={() => setShowEditModal(false)} className="text-zinc-400 hover:text-zinc-700 text-lg cursor-pointer">✕</button>
             </div>
 
             <div className="bg-zinc-50 p-3 rounded-xl border border-zinc-200 text-xs font-mono space-y-1">
@@ -255,13 +399,13 @@ export default function StaffRolesPage() {
             <div className="flex justify-end gap-2 pt-3 border-t border-zinc-200">
               <button
                 onClick={() => setShowEditModal(false)}
-                className="px-4 py-2 bg-zinc-100 text-zinc-700 rounded-xl text-xs font-semibold hover:bg-zinc-200"
+                className="px-4 py-2 bg-zinc-100 text-zinc-700 rounded-xl text-xs font-semibold hover:bg-zinc-200 cursor-pointer"
               >
                 Hủy
               </button>
               <button
                 onClick={handleSaveRole}
-                className="px-5 py-2 bg-red-700 text-white rounded-xl text-xs font-bold hover:bg-red-800 shadow"
+                className="px-5 py-2 bg-red-700 text-white rounded-xl text-xs font-bold hover:bg-red-800 shadow cursor-pointer"
               >
                 Lưu Phân Quyền
               </button>
