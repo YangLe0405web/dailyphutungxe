@@ -78,6 +78,9 @@ export default function PartsPage() {
         hinhAnh: form.hinhAnh!.trim(),
         rating: 5,
         luotDanh: 0,
+        dongXePhuHop: form.dongXePhuHop?.trim(),
+        xuatXu: form.xuatXu?.trim(),
+        baoHanh: form.baoHanh?.trim(),
       };
       setParts(prev => [newPart, ...prev]);
     }
@@ -239,7 +242,18 @@ export default function PartsPage() {
                   <td className="p-3 text-center">
                     <img src={p.hinhAnh} alt={p.tenSanPham} className="h-10 w-10 object-cover rounded-lg mx-auto border border-zinc-200" />
                   </td>
-                  <td className="p-3 font-semibold text-zinc-900">{p.tenSanPham}</td>
+                  <td className="p-3">
+                    <div className="font-semibold text-zinc-900">{p.tenSanPham}</div>
+                    <div className="flex flex-wrap gap-2 items-center text-[11px] text-zinc-400 mt-1">
+                      {p.dongXePhuHop && (
+                        <span className="text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded font-medium">
+                          Xe: {p.dongXePhuHop}
+                        </span>
+                      )}
+                      {p.xuatXu && <span>Xuất xứ: {p.xuatXu}</span>}
+                      {p.baoHanh && <span>· BH: {p.baoHanh}</span>}
+                    </div>
+                  </td>
                   <td className="p-3 font-mono text-xs text-zinc-600">{p.thuongHieu}</td>
                   <td className="p-3">
                     <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-zinc-100 text-zinc-700 font-mono">
@@ -365,6 +379,38 @@ export default function PartsPage() {
                   onChange={e => setForm({ ...form, moTa: e.target.value })}
                   className="w-full border rounded-xl px-3 py-2 focus:outline-none focus:border-red-600"
                 />
+              </div>
+              <div>
+                <label className="block font-semibold text-zinc-700 mb-1">Dòng xe tương thích</label>
+                <input
+                  type="text"
+                  placeholder="Ví dụ: Honda SH, Winner X, Exciter..."
+                  value={form.dongXePhuHop ?? ''}
+                  onChange={e => setForm({ ...form, dongXePhuHop: e.target.value })}
+                  className="w-full border rounded-xl px-3 py-2 focus:outline-none focus:border-red-600"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-semibold text-zinc-700 mb-1">Xuất xứ</label>
+                  <input
+                    type="text"
+                    placeholder="Ví dụ: Nhật Bản, Pháp, Ý..."
+                    value={form.xuatXu ?? ''}
+                    onChange={e => setForm({ ...form, xuatXu: e.target.value })}
+                    className="w-full border rounded-xl px-3 py-2 focus:outline-none focus:border-red-600"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-zinc-700 mb-1">Bảo hành</label>
+                  <input
+                    type="text"
+                    placeholder="Ví dụ: 12 tháng, 20.000 km..."
+                    value={form.baoHanh ?? ''}
+                    onChange={e => setForm({ ...form, baoHanh: e.target.value })}
+                    className="w-full border rounded-xl px-3 py-2 focus:outline-none focus:border-red-600"
+                  />
+                </div>
               </div>
               <div className="col-span-2">
                 <ImageUploader

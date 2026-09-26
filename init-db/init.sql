@@ -167,8 +167,41 @@ INSERT INTO KHACH_HANG (MaTK, HoTen, NgaySinh, GioiTinh, SoDienThoai, DiaChi, So
 
 -- Dữ liệu Xe mẫu Showroom
 INSERT INTO SAN_PHAM_XE (TenXe, HangXe, LoaiXe, GiaNiemYet, ThongSoKyThuat) VALUES
-(N'Honda Vision 2024', 'Honda', N'Xe ga', 32000000, N'110cc, Phun xăng điện tử'),
-(N'Yamaha Exciter 155', 'Yamaha', N'Xe côn tay', 48000000, N'155cc, VVA');
+(N'Honda SH 160i ABS (2025)', 'Honda', N'Xe ga', 95900000, N'156.9cc eSP+ 4 van, Phanh ABS 2 kênh, HSTC, Khóa thông minh Smart Key'),
+(N'Honda Air Blade 160 ABS', 'Honda', N'Xe ga', 56690000, N'156.9cc eSP+, Phanh ABS trước, Cổng sạc USB, Cốp rộng 23.2L'),
+(N'Honda Lead 125cc (Bản Đặc Biệt)', 'Honda', N'Xe ga', 42790000, N'124.8cc eSP+, Cốp siêu lớn 37L đựng vừa 2 mũ bảo hiểm, Nắp bình xăng trước'),
+(N'Honda Vision 110 Smart Key', 'Honda', N'Xe ga', 33490000, N'109.5cc eSP, Khung dập eSAF thế hệ mới siêu nhẹ, Tiết kiệm xăng 1.85L/100km'),
+(N'Honda Winner X 150 ABS', 'Honda', N'Xe côn tay', 50560000, N'149.1cc DOHC 6 cấp số, Phanh đĩa ABS trước, Bộ ly hợp chống trượt 2 chiều'),
+(N'Honda Wave Alpha 110cc', 'Honda', N'Xe số', 18190000, N'109.1cc làm mát bằng không khí, Động cơ siêu bền bỉ, 1.72L/100km'),
+(N'Yamaha Exciter 155 VVA ABS', 'Yamaha', N'Xe côn tay', 54000000, N'155cc 4 van biến thiên VVA, 17.9 mã lực, Phanh ABS 2 piston, Bộ ly hợp A&S'),
+(N'Yamaha Grande Hybrid', 'Yamaha', N'Xe ga', 49500000, N'124.9cc Blue Core Hybrid trợ lực điện, Tiết kiệm xăng số 1 (1.66L/100km), Phanh ABS'),
+(N'Yamaha MT-15 Naked Bike', 'Yamaha', N'Xe côn tay', 69000000, N'155cc VVA, Phuộc trước Upside Down vàng thể thao, Đèn pha LED thấu kính'),
+(N'Suzuki Raider R150 Fi', 'Suzuki', N'Xe côn tay', 51190000, N'147.3cc DOHC 4 van làm mát két nước lớn, Công suất cực đại 18.5 mã lực'),
+(N'Suzuki Burgman Street 125', 'Suzuki', N'Xe ga', 48600000, N'124.3cc động cơ SEP, Thiết kế Maxi-Scooter phong cách Châu Âu bề thế'),
+(N'Vespa Primavera 125 ABS', 'Piaggio & Vespa', N'Xe ga', 77800000, N'124.5cc động cơ i-Get 3 van, Khung thép liền khối kinh điển, Phanh ABS'),
+(N'Vespa Sprint S 150 TFT', 'Piaggio & Vespa', N'Xe ga', 97800000, N'154.8cc động cơ i-Get thế hệ mới, Màn hình màu TFT hiển thị thông minh, ABS'),
+(N'Piaggio Liberty 125 S ABS', 'Piaggio & Vespa', N'Xe ga', 57700000, N'124.5cc động cơ i-Get hiện đại, Bánh trước 16 inch vượt chướng ngại vật êm ái');
+
+-- Dữ liệu Phụ tùng Showroom (PHU_TUNG)
+INSERT INTO PHU_TUNG (TenPhuTung, LoaiPhuTung, DonGia, BaoHanhThang) VALUES
+(N'Nhớt Motul 7100 4T 10W40 1L (100% Tổng Hợp Ester)', N'Nhớt', 255000, 12),
+(N'Nhớt Castrol POWER1 Ultimate Scooter 10W-30 0.8L', N'Nhớt', 145000, 12),
+(N'Dầu nhớt xe số Honda Genuine 4T SL 10W-30 MA 0.8L', N'Nhớt', 92000, 6),
+(N'Lọc gió zin chính hãng Honda Air Blade 125/160 & Vario', N'Lọc', 120000, 6),
+(N'Lọc gió độ K&N High-Flow YA-1519 USA cho Exciter 150/155', N'Lọc', 1190000, 36),
+(N'Má phanh đĩa trước Brembo Carbon Ceramic 07HO28SA', N'Phanh', 790000, 12),
+(N'Má phanh đĩa trước Nissin OEM Honda SH 125i/150i/160i', N'Phanh', 295000, 6),
+(N'Bugi NGK Iridium Laser CPR8EAIX-9 cao cấp', N'Bugi', 220000, 12),
+(N'Bugi Denso Iridium Power IU24 chân dài', N'Bugi', 195000, 12),
+(N'Lốp Michelin Pilot Street 2 (Cặp 80/90-14 & 90/90-14)', N'Lốp xe', 1650000, 12),
+(N'Lốp Pirelli Diablo Rosso Sport (Cặp 90/80-17 & 120/70-17)', N'Lốp xe', 2150000, 12),
+(N'Dây curoa Bando V-Belt hai mặt răng cho Honda SH 150i/160i', N'Truyền động', 510000, 12),
+(N'Bộ nhông sên dĩa D.I.D 428D Vàng 122L - Nhông Sunstar', N'Truyền động', 450000, 12),
+(N'Bóng đèn pha LED Philips Ultinon Essential Moto HS1/H4 6500K', N'Đèn', 315000, 12),
+(N'Bình ắc quy khô GS GTZ5S (12V - 3.5Ah) xe máy chính hãng', N'Thân máy', 285000, 6),
+(N'Gương chiếu hậu Rizoma Class Retro nhôm CNC chống chói', N'Phụ kiện', 350000, 12),
+(N'Kính chắn gió khí động học ZHI.PAT Sport cho SH 160i / SH 125i', N'Phụ kiện', 390000, 12),
+(N'Thùng đựng đồ gắn sau xe Givi B270N Monolock 27 Lít chống nước', N'Phụ kiện', 1080000, 24);
 
 -- Dữ liệu Đơn hàng
 INSERT INTO DON_HANG (MaKH, TongTien, TrangThai) 
