@@ -60,16 +60,18 @@
   <div class="tabs">
     <button class="tab-btn active" onclick="switchTab(0)">🌲 BFD Mức 0 (Tổng quan)</button>
     <button class="tab-btn" onclick="switchTab(1)">🌲 BFD Mức 1 (Phân hệ chức năng)</button>
-    <button class="tab-btn" onclick="switchTab(2)">🌲 BFD Mức 2 (Chi tiết nghiệp vụ)</button>
+    <button class="tab-btn" onclick="switchTab(2)">🌲 BFD 2.1 (Nhập kho & NCC)</button>
+    <button class="tab-btn" onclick="switchTab(3)">🌲 BFD 2.2 (Bán hàng & Đơn hàng)</button>
+    <button class="tab-btn" onclick="switchTab(4)">🌲 BFD 2.3 (Lịch hẹn dịch vụ)</button>
   </div>
 
   <div class="tabs-group-title">SƠ ĐỒ LUỒNG DỮ LIỆU (DFD)</div>
   <div class="tabs">
-    <button class="tab-btn" onclick="switchTab(3)">🔀 DFD Mức 0 (Ngữ cảnh)</button>
-    <button class="tab-btn" onclick="switchTab(4)">🔀 DFD Mức 1 (Mức đỉnh)</button>
-    <button class="tab-btn" onclick="switchTab(5)">🔀 DFD Mức 2 (Chuỗi cung ứng)</button>
-    <button class="tab-btn" onclick="switchTab(6)">🔀 DFD Mức 2 (Đơn hàng & Bán hàng)</button>
-    <button class="tab-btn" onclick="switchTab(7)">🔀 DFD Mức 2 (Lịch hẹn dịch vụ)</button>
+    <button class="tab-btn" onclick="switchTab(5)">🔀 DFD Mức 0 (Ngữ cảnh)</button>
+    <button class="tab-btn" onclick="switchTab(6)">🔀 DFD Mức 1 (Mức đỉnh)</button>
+    <button class="tab-btn" onclick="switchTab(7)">🔀 DFD Mức 2 (Chuỗi cung ứng)</button>
+    <button class="tab-btn" onclick="switchTab(8)">🔀 DFD Mức 2 (Đơn hàng & Bán hàng)</button>
+    <button class="tab-btn" onclick="switchTab(9)">🔀 DFD Mức 2 (Lịch hẹn dịch vụ)</button>
   </div>
 
   <!-- Viewer -->
@@ -164,36 +166,84 @@ F7 --> F7_3["7.3 Thống kê chi phí nhập hàng từ NCC"]
 F7 --> F7_4["7.4 Phân tích cơ cấu khách hàng & dịch vụ"]`
       },
       {
-        title: "Sơ đồ BFD Mức 2 — Mức Chức năng chi tiết từng nghiệp vụ",
-        desc: "<b>BFD Mức 2:</b> Đi sâu vào các bước tác vụ con của 3 phân hệ cốt lõi: 3.0 Chuỗi cung ứng, 4.0 Bán hàng, và 5.0 Lịch hẹn dịch vụ kỹ thuật.",
+        title: "Sơ đồ BFD Mức 2.1 — Phân hệ 3.0: Chuỗi cung ứng & Nhập kho",
+        desc: "<b>BFD Mức 2.1:</b> Phân rã chi tiết toàn bộ các thao tác nghiệp vụ nhập kho từ Nhà cung cấp, tạo phiếu, kiểm tra nghiệm thu đến in biên bản giao nhận.",
         code: `flowchart TD
-subgraph S1 ["3.0 CHUỖI CUNG ỨNG & NHẬP KHO"]
-  F3_1["3.1 Quản lý NCC"] --> F3_1_1["3.1.1 Thêm NCC & MST"]
-  F3_1 --> F3_1_2["3.1.2 Chiết khấu đại lý"]
-  F3_2["3.2 Phiếu nhập kho"] --> F3_2_1["3.2.1 Chọn NCC & người lập"]
-  F3_2 --> F3_2_2["3.2.2 Thêm dòng hàng nhập"]
-  F3_2 --> F3_2_3["3.2.3 Tự tính thành tiền"]
-  F3_3["3.3 Nghiệm thu"] --> F3_3_1["3.3.1 Kiểm tra ngoại quan"]
-  F3_3 --> F3_3_2["3.3.2 Tự động tăng tồn kho"]
-  F3_4["3.4 In ấn chứng từ"] --> F3_4_1["3.4.1 In biên bản 4 chữ ký (A4/PDF)"]
-end
+F3["3.0 PHÂN HỆ ĐỐI TÁC & CHUỖI CUNG ỨNG"]
+F3 --> F3_1["3.1 Quản lý Nhà cung cấp"]
+F3 --> F3_2["3.2 Lập Phiếu nhập kho"]
+F3 --> F3_3["3.3 Nghiệm thu & Duyệt kho"]
+F3 --> F3_4["3.4 In ấn & Lưu trữ chứng từ"]
 
-subgraph S2 ["4.0 BÁN HÀNG & ĐƠN HÀNG"]
-  F4_1["4.1 Mua hàng online"] --> F4_1_1["4.1.1 Thêm giỏ hàng"]
-  F4_1 --> F4_1_2["4.1.2 Nhập địa chỉ nhận"]
-  F4_2["4.2 Duyệt đơn"] --> F4_2_1["4.2.1 Kiểm tra tồn kho"]
-  F4_2 --> F4_2_2["4.2.2 Tự động trừ tồn kho"]
-  F4_3["4.3 Giao vận"] --> F4_3_1["4.3.1 Đóng gói & điều phối shipper"]
-  F4_4["4.4 Thanh toán"] --> F4_4_1["4.4.1 Thu COD / Chuyển khoản"]
-end
+F3_1 --> F3_1_1["3.1.1 Thêm thông tin đối tác & MST"]
+F3_1 --> F3_1_2["3.1.2 Cập nhật chiết khấu & địa chỉ kho"]
+F3_1 --> F3_1_3["3.1.3 Quản lý liên hệ hotline & email"]
 
-subgraph S3 ["5.0 LỊCH HẸN DỊCH VỤ & LÁI THỬ"]
-  F5_1["5.1 Đặt lịch online"] --> F5_1_1["5.1.1 Chọn loại dịch vụ"]
-  F5_1 --> F5_1_2["5.1.2 Chọn ngày & khung giờ"]
-  F5_2["5.2 Điều phối"] --> F5_2_1["5.2.1 Phân công kỹ thuật viên"]
-  F5_3["5.3 Thực hiện"] --> F5_3_1["5.3.1 Bảo dưỡng & thay phụ tùng"]
-  F5_4["5.4 Lưu bệnh án"] --> F5_4_1["5.4.1 Lưu lịch sử vào xe khách"]
-end`
+F3_2 --> F3_2_1["3.2.1 Chọn NCC & người lập phiếu"]
+F3_2 --> F3_2_2["3.2.2 Thêm danh mục mặt hàng nhập"]
+F3_2 --> F3_2_3["3.2.3 Tự động tính đơn giá vốn & thành tiền"]
+F3_2 --> F3_2_4["3.2.4 Lưu phiếu ở trạng thái Chờ duyệt"]
+
+F3_3 --> F3_3_1["3.3.1 Kiểm tra quy cách ngoại quan hàng"]
+F3_3 --> F3_3_2["3.3.2 Xác nhận duyệt nhập kho"]
+F3_3 --> F3_3_3["3.3.3 Tự động cộng tồn kho phụ tùng & xe"]
+
+F3_4 --> F3_4_1["3.4.1 Xem biên bản có 4 chữ ký xác nhận"]
+F3_4 --> F3_4_2["3.4.2 In biên bản giao nhận ra A4 / PDF"]`
+      },
+      {
+        title: "Sơ đồ BFD Mức 2.2 — Phân hệ 4.0: Bán hàng & Quản lý Đơn hàng",
+        desc: "<b>BFD Mức 2.2:</b> Phân rã chi tiết quy trình mua hàng online của khách, duyệt đơn hàng của nhân viên, trừ kho tự động, điều phối shipper và thanh toán.",
+        code: `flowchart TD
+F4["4.0 PHÂN HỆ BÁN HÀNG & QUẢN LÝ ĐƠN HÀNG"]
+F4 --> F4_1["4.1 Mua hàng & Giỏ hàng online"]
+F4 --> F4_2["4.2 Tiếp nhận & Xét duyệt đơn"]
+F4 --> F4_3["4.3 Điều phối giao vận"]
+F4 --> F4_4["4.4 Hoàn tất & Thanh toán"]
+
+F4_1 --> F4_1_1["4.1.1 Tra cứu & chọn mua phụ tùng"]
+F4_1 --> F4_1_2["4.1.2 Thêm vào giỏ & tăng giảm số lượng"]
+F4_1 --> F4_1_3["4.1.3 Nhập địa chỉ & thông tin nhận hàng"]
+F4_1 --> F4_1_4["4.1.4 Xác nhận đặt đơn hàng online"]
+
+F4_2 --> F4_2_1["4.2.1 Kiểm tra số lượng tồn kho thực tế"]
+F4_2 --> F4_2_2["4.2.2 Xác nhận duyệt đơn hàng"]
+F4_2 --> F4_2_3["4.2.3 Tự động trừ tồn kho phụ tùng"]
+
+F4_3 --> F4_3_1["4.3.1 Đóng gói kiện hàng"]
+F4_3 --> F4_3_2["4.3.2 Chuyển trạng thái Đang giao"]
+F4_3 --> F4_3_3["4.3.3 Cung cấp thông tin shipper cho khách"]
+
+F4_4 --> F4_4_1["4.4.1 Thu tiền COD hoặc chuyển khoản"]
+F4_4 --> F4_4_2["4.4.2 Chuyển trạng thái Hoàn thành đơn"]
+F4_4 --> F4_4_3["4.4.3 Xuất hóa đơn điện tử cho khách"]`
+      },
+      {
+        title: "Sơ đồ BFD Mức 2.3 — Phân hệ 5.0: Lịch hẹn Dịch vụ & Lái thử",
+        desc: "<b>BFD Mức 2.3:</b> Phân rã chi tiết từ lúc khách đặt lịch trực tuyến, nhân viên điều phối khoang sửa chữa, quy trình thực hiện tại xưởng đến lưu bệnh án xe.",
+        code: `flowchart TD
+F5["5.0 PHÂN HỆ QUẢN LÝ LỊCH HẸN & DỊCH VỤ"]
+F5 --> F5_1["5.1 Đăng ký lịch hẹn online"]
+F5 --> F5_2["5.2 Tiếp nhận & Phân công"]
+F5 --> F5_3["5.3 Thực hiện dịch vụ tại xưởng"]
+F5 --> F5_4["5.4 Nghiệm thu & Lưu bệnh án"]
+
+F5_1 --> F5_1_1["5.1.1 Chọn loại dịch vụ: Bảo dưỡng / Sửa chữa / Lái thử"]
+F5_1 --> F5_1_2["5.1.2 Chọn xe mẫu trưng bày hoặc nhập xe của khách"]
+F5_1 --> F5_1_3["5.1.3 Chọn ngày & khung giờ đón tiếp"]
+F5_1 --> F5_1_4["5.1.4 Gửi yêu cầu đặt lịch hẹn"]
+
+F5_2 --> F5_2_1["5.2.1 Kiểm tra khoang bảo dưỡng còn trống"]
+F5_2 --> F5_2_2["5.2.2 Phân công kỹ thuật viên phụ trách"]
+F5_2 --> F5_2_3["5.2.3 Xác nhận lịch & gửi thông báo cho khách"]
+
+F5_3 --> F5_3_1["5.3.1 Đón tiếp khách & nhận bàn giao xe"]
+F5_3 --> F5_3_2["5.3.2 Chuyển trạng thái Đang thực hiện"]
+F5_3 --> F5_3_3["5.3.3 Thay thế phụ tùng & bảo dưỡng theo quy trình"]
+
+F5_4 --> F5_4_1["5.4.1 Kiểm tra vận hành nghiệm thu xe"]
+F5_4 --> F5_4_2["5.4.2 Ghi nhật ký bảo dưỡng & phụ tùng đã thay vào hồ sơ xe"]
+F5_4 --> F5_4_3["5.4.3 Chuyển trạng thái Hoàn thành & in phiếu thanh toán"]`
       },
       {
         title: "Sơ đồ DFD Mức 0 (Mức ngữ cảnh — Context Diagram)",
