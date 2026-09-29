@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trình xem Sơ đồ BFD & DFD - CRM MotoShop</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    :root {
+      --primary: #b91c1c;
+      --bg: #09090b;
+      --card-bg: #18181b;
+      --border: #27272a;
+      --text: #f4f4f5;
+      --text-muted: #a1a1aa;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+    body { background: #0f172a; color: var(--text); padding: 24px; }
+    .header { text-align: center; margin-bottom: 24px; }
+    .header h1 { font-size: 26px; color: #fff; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
+    .header p { color: #94a3b8; font-size: 14px; }
+    .tabs { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-bottom: 20px; }
+    .tab-btn {
+      background: #1e293b; color: #cbd5e1; border: 1px solid #334155;
+      padding: 10px 18px; border-radius: 12px; font-size: 13px; font-weight: 600;
+      cursor: pointer; transition: all 0.2s;
+    }
+    .tab-btn:hover { background: #334155; color: #fff; }
+    .tab-btn.active { background: #b91c1c; color: #fff; border-color: #ef4444; box-shadow: 0 4px 12px rgba(185,28,28,0.3); }
+    .diagram-container {
+      background: #ffffff; color: #000; border-radius: 16px; padding: 24px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.3); max-width: 1300px; margin: 0 auto;
+      min-height: 500px; display: flex; flex-direction: column; align-items: center; overflow-x: auto;
+    }
+    .controls { display: flex; gap: 12px; margin-bottom: 16px; width: 100%; justify-content: flex-end; }
+    .ctrl-btn {
+      background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1;
+      padding: 6px 14px; border-radius: 8px; font-size: 12px; font-weight: bold;
+      cursor: pointer; transition: all 0.2s;
+    }
+    .ctrl-btn:hover { background: #e2e8f0; }
+    .mermaid { width: 100%; display: flex; justify-content: center; }
+    .desc-box {
+      margin-top: 20px; padding: 16px; background: #1e293b; border-radius: 12px;
+      max-width: 1300px; margin: 20px auto 0; font-size: 13px; line-height: 1.6; color: #cbd5e1;
+      border-left: 4px solid #b91c1c;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>HỆ THỐNG SƠ ĐỒ BFD & DFD — CRM MOTOSHOP</h1>
+    <p>Nhấp vào các tab bên dưới để xem sơ đồ trực quan. Có thể in hoặc phóng to thu nhỏ dễ dàng.</p>
+  </div>
+
+  <!-- Tabs Navigation -->
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab(0)">1. Sơ đồ BFD (Phân rã chức năng)</button>
+    <button class="tab-btn" onclick="switchTab(1)">2. Sơ đồ DFD Mức 0 (Ngữ cảnh)</button>
+    <button class="tab-btn" onclick="switchTab(2)">3. Sơ đồ DFD Mức 1 (Mức đỉnh)</button>
+    <button class="tab-btn" onclick="switchTab(3)">4. DFD Mức 2 (Đối tác & Nhập kho)</button>
+    <button class="tab-btn" onclick="switchTab(4)">5. DFD Mức 2 (Đơn hàng & Bán hàng)</button>
+    <button class="tab-btn" onclick="switchTab(5)">6. DFD Mức 2 (Lịch hẹn & Dịch vụ)</button>
+  </div>
+
+  <!-- Viewer -->
+  <div class="diagram-container">
+    <div class="controls">
+      <button class="ctrl-btn" onclick="window.print()">🖨️ In ra A4 / Lưu PDF</button>
+      <button class="ctrl-btn" onclick="copyCurrentCode()">📋 Sao chép mã Mermaid</button>
+    </div>
+    <div id="diagram-target" class="mermaid"></div>
+  </div>
+
+  <div id="desc-target" class="desc-box"></div>
+
+  <script>
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: 'default',
+      securityLevel: 'loose',
+      flowchart: { useMaxWidth: true, htmlLabels: true, curve: 'basis' }
+    });
+
+    const diagrams = [
+      {
+        title: "Sơ đồ BFD (Phân rã chức năng toàn hệ thống)",
+        desc: "<b>Sơ đồ BFD:</b> Phân cấp cấu trúc toàn diện 7 phân hệ lớn từ Mức 0 đến Mức 1 & 2: Quản trị, Kho hàng, Chuỗi cung ứng, Bán hàng, Dịch vụ kỹ thuật, CRM Khách hàng và Báo cáo tài chính.",
+        code: `flowchart TD
+ROOT["HỆ THỐNG CRM & ĐẠI LÝ XE MÁY PHỤ TÙNG MOTOSHOP"]
+ROOT --> F1["1.0 Quản trị Hệ thống & Phân quyền"]
+ROOT --> F2["2.0 Quản lý Kho & Danh mục Hàng hóa"]
+ROOT --> F3["3.0 Đối tác & Chuỗi cung ứng"]
+ROOT --> F4["4.0 Bán hàng & Quản lý Đơn hàng"]
+ROOT --> F5["5.0 Quản lý Lịch hẹn & Dịch vụ"]
+ROOT --> F6["6.0 Khách hàng & Chăm sóc CRM"]
+ROOT --> F7["7.0 Báo cáo & Thống kê"]
+
+F1 --> F1_1["1.1 Đăng nhập & Xác thực"]
+F1 --> F1_2["1.2 Quản lý tài khoản nhân viên"]
+F1 --> F1_3["1.3 Phân quyền: SuperAdmin / Sale / Kỹ thuật"]
+F1 --> F1_4["1.4 Khóa / Đổi mật khẩu"]
+
+F2 --> F2_1["2.1 Quản lý danh mục phụ tùng"]
+F2 --> F2_2["2.2 Quản lý danh mục xe mẫu"]
+F2 --> F2_3["2.3 Tra cứu, tìm kiếm & lọc hàng"]
+F2 --> F2_4["2.4 Theo dõi cảnh báo tồn kho"]
+
+F3 --> F3_1["3.1 Quản lý hồ sơ Nhà cung cấp"]
+F3 --> F3_2["3.2 Lập phiếu nhập kho mới"]
+F3 --> F3_3["3.3 Quản lý chi tiết mặt hàng nhập"]
+F3 --> F3_4["3.4 Kiểm duyệt & Tăng tồn kho"]
+F3 --> F3_5["3.5 In biên bản giao nhận hàng hóa"]
+
+F4 --> F4_1["4.1 Giỏ hàng & Đặt hàng online"]
+F4 --> F4_2["4.2 Tiếp nhận & Duyệt đơn hàng"]
+F4 --> F4_3["4.3 Điều phối giao hàng & Thanh toán"]
+F4 --> F4_4["4.4 Hủy đơn & Trừ tồn kho tự động"]
+
+F5 --> F5_1["5.1 Đặt lịch: Bảo dưỡng / Sửa chữa / Lái thử"]
+F5 --> F5_2["5.2 Tiếp nhận & Xác nhận lịch hẹn"]
+F5 --> F5_3["5.3 Theo dõi tiến độ kỹ thuật xưởng"]
+F5 --> F5_4["5.4 Lưu bệnh án & Lịch sử xe"]
+
+F6 --> F6_1["6.1 Quản lý hồ sơ khách hàng"]
+F6 --> F6_2["6.2 Quản lý xe khách hàng sở hữu"]
+F6 --> F6_3["6.3 Tiếp nhận phản hồi & Khiếu nại"]
+F6 --> F6_4["6.4 Khảo sát độ hài lòng khách hàng"]
+F6 --> F6_5["6.5 Đánh giá & Bình luận sản phẩm"]
+
+F7 --> F7_1["7.1 Thống kê doanh thu theo thời gian"]
+F7 --> F7_2["7.2 Thống kê bán xe vs phụ tùng"]
+F7 --> F7_3["7.3 Thống kê chi phí nhập hàng từ NCC"]
+F7 --> F7_4["7.4 Phân tích cơ cấu khách hàng & dịch vụ"]`
+      },
+      {
+        title: "Sơ đồ DFD Mức 0 (Mức ngữ cảnh — Context Diagram)",
+        desc: "<b>DFD Mức 0:</b> Mô tả các luồng dữ liệu vào/ra tổng thể giữa Hệ thống CRM MotoShop với 3 tác nhân bên ngoài: Khách hàng, Nhân viên/Admin, và Nhà cung cấp/Phân phối.",
+        code: `flowchart LR
+KH["👤 KHÁCH HÀNG"]
+HT(("⚙️ 0.0 HỆ THỐNG CRM & ĐẠI LÝ XE MÁY MOTOSHOP"))
+NV["👔 NHÂN VIÊN / ADMIN"]
+NCC["🏢 NHÀ CUNG CẤP / PHÂN PHỐI"]
+
+KH -- "Đăng ký/Đăng nhập, Thông tin cá nhân<br/>Đặt mua phụ tùng, Yêu cầu hẹn dịch vụ<br/>Gửi đánh giá, khiếu nại, khảo sát" --> HT
+HT -- "Xác nhận tài khoản, Hồ sơ cá nhân<br/>Hóa đơn đơn hàng, Xác nhận lịch hẹn<br/>Danh mục xe, phụ tùng, kết quả xử lý" --> KH
+
+NV -- "Đăng nhập, Phân quyền vai trò<br/>Cập nhật đơn hàng, duyệt lịch hẹn<br/>Cập nhật giá xe/phụ tùng, tạo phiếu nhập" --> HT
+HT -- "Quyền quản trị, Thông báo việc mới<br/>Danh sách khách hàng, đơn hàng, lịch hẹn<br/>Báo cáo doanh thu, chi phí & tồn kho" --> NV
+
+NCC -- "Báo giá, Thông tin hàng hóa/xe mới<br/>Hóa đơn giao hàng, Biên bản bàn giao" --> HT
+HT -- "Đơn đặt hàng từ đại lý<br/>Biên bản nghiệm thu, Thanh toán" --> NCC`
+      },
+      {
+        title: "Sơ đồ DFD Mức 1 (Mức đỉnh — Top-Level Diagram)",
+        desc: "<b>DFD Mức 1:</b> Phân rã hệ thống thành 7 tiến trình chính và 6 kho dữ liệu (D1: Tài khoản, D2: Kho hàng, D3: Đối tác & Phiếu nhập, D4: Đơn hàng, D5: Lịch hẹn, D6: Khách hàng CRM).",
+        code: `flowchart TD
+KH["👤 Khách hàng"]
+NV["👔 Nhân viên / Admin"]
+NCC["🏢 Nhà cung cấp"]
+
+P1(("1.0 Xác thực & Phân quyền"))
+P2(("2.0 Quản lý Danh mục Kho"))
+P3(("3.0 Quản lý Đối tác & Nhập kho"))
+P4(("4.0 Quản lý Đơn hàng & Bán hàng"))
+P5(("5.0 Quản lý Lịch hẹn & Dịch vụ"))
+P6(("6.0 Quản lý Khách hàng & CRM"))
+P7(("7.0 Báo cáo & Thống kê"))
+
+D1[("D1: TÀI KHOẢN & NHÂN VIÊN")]
+D2[("D2: KHO HÀNG (XE & PHỤ TÙNG)")]
+D3[("D3: ĐỐI TÁC & PHIẾU NHẬP")]
+D4[("D4: ĐƠN HÀNG & CHI TIẾT")]
+D5[("D5: LỊCH HẸN DỊCH VỤ")]
+D6[("D6: KHÁCH HÀNG & PHẢN HỒI")]
+
+KH -- "Thông tin tài khoản" --> P1
+NV -- "Tài khoản nhân viên" --> P1
+P1 <--> D1
+P1 -- "Quyền truy cập & Phiên làm việc" --> KH
+P1 -- "Quyền quản trị theo vai trò" --> NV
+
+NV -- "Cập nhật giá, mô tả, ảnh SP" --> P2
+P2 <--> D2
+P2 -- "Thông tin xe & phụ tùng" --> KH
+
+NCC -- "Hóa đơn & Hàng hóa" --> P3
+NV -- "Lập phiếu nhập kho" --> P3
+P3 <--> D3
+P3 -- "Tăng số lượng tồn kho" --> D2
+P3 -- "Biên bản giao nhận hàng" --> NCC
+P3 -- "Phiếu nhập đã duyệt" --> NV
+
+KH -- "Yêu cầu đặt mua phụ tùng" --> P4
+P4 <--> D4
+P4 -- "Kiểm tra & Trừ tồn kho" --> D2
+NV -- "Duyệt đơn & Cập nhật giao hàng" --> P4
+P4 -- "Hóa đơn & Trạng thái đơn" --> KH
+
+KH -- "Đăng ký bảo dưỡng / sửa chữa / lái thử" --> P5
+NV -- "Xác nhận & Cập nhật tiến độ xưởng" --> P5
+P5 <--> D5
+P5 -- "Lưu lịch sử dịch vụ vào xe khách" --> D6
+P5 -- "Lịch hẹn đã xác nhận" --> KH
+
+KH -- "Gửi đánh giá, khiếu nại, khảo sát" --> P6
+NV -- "Xử lý phản hồi, quản lý hồ sơ KH" --> P6
+P6 <--> D6
+P6 -- "Kết quả hỗ trợ, giải đáp" --> KH
+
+D2 -. "Số liệu tồn kho" .-> P7
+D3 -. "Chi phí nhập hàng" .-> P7
+D4 -. "Doanh thu bán hàng" .-> P7
+D5 -. "Doanh số dịch vụ" .-> P7
+D6 -. "Chỉ số hài lòng" .-> P7
+P7 -- "Báo cáo doanh thu & biểu đồ phân tích" --> NV`
+      },
+      {
+        title: "DFD Mức 2 — Tiến trình 3.0: Quản lý Đối tác & Nhập kho",
+        desc: "<b>DFD Mức 2 (Nhập kho):</b> Chi tiết 4 bước: 3.1 Quản lý Nhà cung cấp -> 3.2 Lập phiếu & chi tiết mặt hàng -> 3.3 Nghiệm thu giao nhận -> 3.4 In biên bản & tự động tăng tồn kho.",
+        code: `flowchart TD
+NV["👔 Nhân viên Thủ kho / Admin"]
+NCC["🏢 Nhà cung cấp / Đối tác"]
+
+P3_1(("3.1 Tiếp nhận & Quản lý Nhà cung cấp"))
+P3_2(("3.2 Lập Phiếu nhập kho & Chi tiết"))
+P3_3(("3.3 Nghiệm thu giao nhận & Duyệt kho"))
+P3_4(("3.4 In biên bản & Tăng tồn kho"))
+
+D2[("D2: KHO HÀNG (XE & PHỤ TÙNG)")]
+D3_1[("D3.1: NHÀ CUNG CẤP")]
+D3_2[("D3.2: PHIẾU NHẬP KHO")]
+D3_3[("D3.3: CHI TIẾT PHIẾU NHẬP")]
+
+NCC -- "Thông tin pháp nhân, MST, Báo giá" --> P3_1
+NV -- "Thêm / Sửa đối tác cung ứng" --> P3_1
+P3_1 <--> D3_1
+P3_1 -- "Hồ sơ đối tác đã lưu" --> NV
+
+NV -- "Chọn NCC, Nhập danh mục mặt hàng" --> P3_2
+D3_1 -. "Thông tin NCC & Chiết khấu" .-> P3_2
+D2 -. "Mã SKU có sẵn trong kho" .-> P3_2
+P3_2 --> D3_2
+P3_2 --> D3_3
+P3_2 -- "Phiếu nhập ở trạng thái Chờ duyệt" --> NV
+
+NCC -- "Hàng hóa & Tài xế giao hàng" --> P3_3
+NV -- "Kiểm tra ngoại quan & Duyệt nhập kho" --> P3_3
+P3_3 <--> D3_2
+P3_3 <--> D3_3
+
+P3_3 -- "Xác nhận duyệt thành công" --> P3_4
+P3_4 -- "Tự động cộng thêm số lượng tồn" --> D2
+P3_4 -- "Biên bản giao nhận có 4 chữ ký (PDF/A4)" --> NV
+P3_4 -- "Biên bản hoàn tất nhập kho" --> NCC`
+      },
+      {
+        title: "DFD Mức 2 — Tiến trình 4.0: Quản lý Đơn hàng & Bán hàng",
+        desc: "<b>DFD Mức 2 (Bán hàng):</b> Chi tiết 4 bước: 4.1 Đặt hàng online -> 4.2 Kiểm tra tồn kho & duyệt đơn -> 4.3 Đóng gói & điều phối shipper -> 4.4 Hoàn tất & cập nhật thanh toán.",
+        code: `flowchart TD
+KH["👤 Khách hàng"]
+NV["💼 Nhân viên Bán hàng / Admin"]
+
+P4_1(("4.1 Chọn hàng & Lập đơn online"))
+P4_2(("4.2 Kiểm tra tồn kho & Xác nhận đơn"))
+P4_3(("4.3 Đóng gói & Điều phối giao vận"))
+P4_4(("4.4 Hoàn tất & Cập nhật thanh toán"))
+
+D2[("D2: KHO HÀNG (PHỤ TÙNG)")]
+D4_1[("D4.1: ĐƠN HÀNG")]
+D4_2[("D4.2: CHI TIẾT ĐƠN HÀNG")]
+
+D2 -. "Tra cứu danh mục, giá bán lẻ, tồn kho" .-> P4_1
+KH -- "Thêm giỏ hàng & Nhập địa chỉ nhận" --> P4_1
+P4_1 --> D4_1
+P4_1 --> D4_2
+P4_1 -- "Mã đơn hàng #DHxxx (Chờ duyệt)" --> KH
+
+NV -- "Xem đơn mới & Xác nhận đơn" --> P4_2
+P4_2 <--> D4_1
+P4_2 <--> D4_2
+P4_2 -- "Trừ tồn kho theo số lượng đặt" --> D2
+P4_2 -- "Thông báo đơn hàng đã xác nhận" --> KH
+
+NV -- "Chuyển trạng thái Đang giao" --> P4_3
+P4_3 <--> D4_1
+P4_3 -- "Thông tin kiện hàng & Shipper" --> KH
+
+KH -- "Nhận hàng & Thanh toán (COD/CK)" --> P4_4
+NV -- "Cập nhật Hoàn thành đơn" --> P4_4
+P4_4 <--> D4_1
+P4_4 -- "Hóa đơn điện tử hoàn tất" --> KH`
+      },
+      {
+        title: "DFD Mức 2 — Tiến trình 5.0: Quản lý Lịch hẹn Dịch vụ & Lái thử",
+        desc: "<b>DFD Mức 2 (Dịch vụ):</b> Chi tiết 4 bước: 5.1 Đăng ký lịch hẹn trực tuyến -> 5.2 Điều phối khung giờ -> 5.3 Tiếp nhận xe & thực hiện dịch vụ -> 5.4 Nghiệm thu & lưu bệnh án xe.",
+        code: `flowchart TD
+KH["👤 Khách hàng"]
+KT["🔧 Nhân viên Kỹ thuật / Cố vấn dịch vụ"]
+
+P5_1(("5.1 Đăng ký lịch hẹn trực tuyến"))
+P5_2(("5.2 Tiếp nhận & Điều phối khung giờ"))
+P5_3(("5.3 Tiếp nhận xe & Thực hiện dịch vụ"))
+P5_4(("5.4 Nghiệm thu & Lưu bệnh án xe"))
+
+D2[("D2: XE MẪU TRƯNG BÀY")]
+D5[("D5: LỊCH HẸN DỊCH VỤ")]
+D6_1[("D6.1: XE KHÁCH HÀNG")]
+
+D2 -. "Danh sách xe mẫu lái thử" .-> P5_1
+KH -- "Chọn dịch vụ, ngày giờ, thông tin xe" --> P5_1
+P5_1 --> D5
+P5_1 -- "Phiếu hẹn Chờ duyệt" --> KH
+
+KT -- "Kiểm tra khoang bảo dưỡng & Duyệt hẹn" --> P5_2
+P5_2 <--> D5
+P5_2 -- "Thông báo xác nhận lịch kèm giờ đón tiếp" --> KH
+
+KH -- "Mang xe đến Showroom / Đi lái thử" --> P5_3
+KT -- "Chuyển trạng thái Đang thực hiện" --> P5_3
+P5_3 <--> D5
+D6_1 -. "Tra cứu lịch sử bảo dưỡng trước đây" .-> P5_3
+
+KT -- "Hoàn thành bảo dưỡng / sửa chữa" --> P5_4
+P5_4 <--> D5
+P5_4 -- "Ghi nhật ký bảo dưỡng & phụ tùng đã thay" --> D6_1
+P5_4 -- "Biên bản nghiệm thu & Phiếu thanh toán" --> KH`
+      }
+    ];
+
+    let currentIdx = 0;
+
+    async function switchTab(idx) {
+      currentIdx = idx;
+      document.querySelectorAll('.tab-btn').forEach((btn, i) => {
+        btn.classList.toggle('active', i === idx);
+      });
+
+      const d = diagrams[idx];
+      document.getElementById('desc-target').innerHTML = `<strong>${d.title}</strong><br/>${d.desc}`;
+      
+      const target = document.getElementById('diagram-target');
+      target.removeAttribute('data-processed');
+      target.innerHTML = '';
+      
+      const { svg } = await mermaid.render('mermaid-svg-' + idx, d.code);
+      target.innerHTML = svg;
+    }
+
+    function copyCurrentCode() {
+      const code = diagrams[currentIdx].code;
+      navigator.clipboard.writeText(code).then(() => {
+        alert("Đã sao chép mã Mermaid của sơ đồ này vào Clipboard! Bạn có thể dán vào https://mermaid.live hoặc Notion/Word.");
+      });
+    }
+
+    // Load initial
+    switchTab(0);
+  </script>
+</body>
+</html>
