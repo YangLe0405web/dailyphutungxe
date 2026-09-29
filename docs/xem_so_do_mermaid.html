@@ -19,18 +19,19 @@
     .header { text-align: center; margin-bottom: 24px; }
     .header h1 { font-size: 26px; color: #fff; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
     .header p { color: #94a3b8; font-size: 14px; }
-    .tabs { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-bottom: 20px; }
+    .tabs-group-title { text-align: center; font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; color: #ef4444; font-weight: bold; margin: 12px 0 6px; }
+    .tabs { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-bottom: 16px; }
     .tab-btn {
       background: #1e293b; color: #cbd5e1; border: 1px solid #334155;
-      padding: 10px 18px; border-radius: 12px; font-size: 13px; font-weight: 600;
+      padding: 9px 16px; border-radius: 12px; font-size: 13px; font-weight: 600;
       cursor: pointer; transition: all 0.2s;
     }
     .tab-btn:hover { background: #334155; color: #fff; }
     .tab-btn.active { background: #b91c1c; color: #fff; border-color: #ef4444; box-shadow: 0 4px 12px rgba(185,28,28,0.3); }
     .diagram-container {
       background: #ffffff; color: #000; border-radius: 16px; padding: 24px;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.3); max-width: 1300px; margin: 0 auto;
-      min-height: 500px; display: flex; flex-direction: column; align-items: center; overflow-x: auto;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.3); max-width: 1350px; margin: 0 auto;
+      min-height: 520px; display: flex; flex-direction: column; align-items: center; overflow-x: auto;
     }
     .controls { display: flex; gap: 12px; margin-bottom: 16px; width: 100%; justify-content: flex-end; }
     .ctrl-btn {
@@ -42,7 +43,7 @@
     .mermaid { width: 100%; display: flex; justify-content: center; }
     .desc-box {
       margin-top: 20px; padding: 16px; background: #1e293b; border-radius: 12px;
-      max-width: 1300px; margin: 20px auto 0; font-size: 13px; line-height: 1.6; color: #cbd5e1;
+      max-width: 1350px; margin: 20px auto 0; font-size: 13px; line-height: 1.6; color: #cbd5e1;
       border-left: 4px solid #b91c1c;
     }
   </style>
@@ -55,13 +56,20 @@
   </div>
 
   <!-- Tabs Navigation -->
+  <div class="tabs-group-title">SƠ ĐỒ PHÂN RÃ CHỨC NĂNG (BFD)</div>
   <div class="tabs">
-    <button class="tab-btn active" onclick="switchTab(0)">1. Sơ đồ BFD (Phân rã chức năng)</button>
-    <button class="tab-btn" onclick="switchTab(1)">2. Sơ đồ DFD Mức 0 (Ngữ cảnh)</button>
-    <button class="tab-btn" onclick="switchTab(2)">3. Sơ đồ DFD Mức 1 (Mức đỉnh)</button>
-    <button class="tab-btn" onclick="switchTab(3)">4. DFD Mức 2 (Đối tác & Nhập kho)</button>
-    <button class="tab-btn" onclick="switchTab(4)">5. DFD Mức 2 (Đơn hàng & Bán hàng)</button>
-    <button class="tab-btn" onclick="switchTab(5)">6. DFD Mức 2 (Lịch hẹn & Dịch vụ)</button>
+    <button class="tab-btn active" onclick="switchTab(0)">🌲 BFD Mức 0 (Tổng quan)</button>
+    <button class="tab-btn" onclick="switchTab(1)">🌲 BFD Mức 1 (Phân hệ chức năng)</button>
+    <button class="tab-btn" onclick="switchTab(2)">🌲 BFD Mức 2 (Chi tiết nghiệp vụ)</button>
+  </div>
+
+  <div class="tabs-group-title">SƠ ĐỒ LUỒNG DỮ LIỆU (DFD)</div>
+  <div class="tabs">
+    <button class="tab-btn" onclick="switchTab(3)">🔀 DFD Mức 0 (Ngữ cảnh)</button>
+    <button class="tab-btn" onclick="switchTab(4)">🔀 DFD Mức 1 (Mức đỉnh)</button>
+    <button class="tab-btn" onclick="switchTab(5)">🔀 DFD Mức 2 (Chuỗi cung ứng)</button>
+    <button class="tab-btn" onclick="switchTab(6)">🔀 DFD Mức 2 (Đơn hàng & Bán hàng)</button>
+    <button class="tab-btn" onclick="switchTab(7)">🔀 DFD Mức 2 (Lịch hẹn dịch vụ)</button>
   </div>
 
   <!-- Viewer -->
@@ -85,37 +93,58 @@
 
     const diagrams = [
       {
-        title: "Sơ đồ BFD (Phân rã chức năng toàn hệ thống)",
-        desc: "<b>Sơ đồ BFD:</b> Phân cấp cấu trúc toàn diện 7 phân hệ lớn từ Mức 0 đến Mức 1 & 2: Quản trị, Kho hàng, Chuỗi cung ứng, Bán hàng, Dịch vụ kỹ thuật, CRM Khách hàng và Báo cáo tài chính.",
+        title: "Sơ đồ BFD Mức 0 — Mức Ngữ cảnh chức năng / Tổng quan",
+        desc: "<b>BFD Mức 0:</b> Hệ thống tổng thể MOTOSHOP phân rã thành 7 phân hệ lớn: Quản trị hệ thống, Quản lý kho, Chuỗi cung ứng, Bán hàng, Lịch hẹn dịch vụ, Khách hàng & CRM, Báo cáo & Thống kê.",
         code: `flowchart TD
 ROOT["HỆ THỐNG CRM & ĐẠI LÝ XE MÁY PHỤ TÙNG MOTOSHOP"]
-ROOT --> F1["1.0 Quản trị Hệ thống & Phân quyền"]
-ROOT --> F2["2.0 Quản lý Kho & Danh mục Hàng hóa"]
-ROOT --> F3["3.0 Đối tác & Chuỗi cung ứng"]
-ROOT --> F4["4.0 Bán hàng & Quản lý Đơn hàng"]
-ROOT --> F5["5.0 Quản lý Lịch hẹn & Dịch vụ"]
-ROOT --> F6["6.0 Khách hàng & Chăm sóc CRM"]
-ROOT --> F7["7.0 Báo cáo & Thống kê"]
+ROOT --> F1["1.0 Phân hệ Quản trị Hệ thống & Phân quyền"]
+ROOT --> F2["2.0 Phân hệ Quản lý Kho & Danh mục Hàng hóa"]
+ROOT --> F3["3.0 Phân hệ Đối tác & Chuỗi cung ứng"]
+ROOT --> F4["4.0 Phân hệ Bán hàng & Quản lý Đơn hàng"]
+ROOT --> F5["5.0 Phân hệ Lịch hẹn & Dịch vụ Kỹ thuật"]
+ROOT --> F6["6.0 Phân hệ Khách hàng & Chăm sóc CRM"]
+ROOT --> F7["7.0 Phân hệ Báo cáo & Thống kê"]`
+      },
+      {
+        title: "Sơ đồ BFD Mức 1 — Mức Phân hệ chức năng",
+        desc: "<b>BFD Mức 1:</b> 7 phân hệ cấp 1 được phân rã cụ thể thành các chức năng từ 1.1 đến 7.4 đáp ứng đầy đủ yêu cầu quản lý đại lý.",
+        code: `flowchart TD
+ROOT["HỆ THỐNG CRM & ĐẠI LÝ MOTOSHOP"]
+F1["1.0 Quản trị Hệ thống"]
+F2["2.0 Quản lý Kho Hàng"]
+F3["3.0 Chuỗi Cung Ứng"]
+F4["4.0 Bán Hàng & Đơn Hàng"]
+F5["5.0 Lịch Hẹn & Dịch Vụ"]
+F6["6.0 Khách Hàng & CRM"]
+F7["7.0 Báo Cáo Thống Kê"]
+
+ROOT --> F1
+ROOT --> F2
+ROOT --> F3
+ROOT --> F4
+ROOT --> F5
+ROOT --> F6
+ROOT --> F7
 
 F1 --> F1_1["1.1 Đăng nhập & Xác thực"]
 F1 --> F1_2["1.2 Quản lý tài khoản nhân viên"]
 F1 --> F1_3["1.3 Phân quyền: SuperAdmin / Sale / Kỹ thuật"]
-F1 --> F1_4["1.4 Khóa / Đổi mật khẩu"]
+F1 --> F1_4["1.4 Khóa / Mở khóa tài khoản"]
 
-F2 --> F2_1["2.1 Quản lý danh mục phụ tùng"]
-F2 --> F2_2["2.2 Quản lý danh mục xe mẫu"]
+F2 --> F2_1["2.1 Quản lý phụ tùng & phụ kiện"]
+F2 --> F2_2["2.2 Quản lý xe mẫu trưng bày"]
 F2 --> F2_3["2.3 Tra cứu, tìm kiếm & lọc hàng"]
-F2 --> F2_4["2.4 Theo dõi cảnh báo tồn kho"]
+F2 --> F2_4["2.4 Cảnh báo định mức tồn kho"]
 
 F3 --> F3_1["3.1 Quản lý hồ sơ Nhà cung cấp"]
-F3 --> F3_2["3.2 Lập phiếu nhập kho mới"]
-F3 --> F3_3["3.3 Quản lý chi tiết mặt hàng nhập"]
+F3 --> F3_2["3.2 Quản lý Phiếu nhập kho"]
+F3 --> F3_3["3.3 Quản lý Chi tiết mặt hàng nhập"]
 F3 --> F3_4["3.4 Kiểm duyệt & Tăng tồn kho"]
 F3 --> F3_5["3.5 In biên bản giao nhận hàng hóa"]
 
 F4 --> F4_1["4.1 Giỏ hàng & Đặt hàng online"]
-F4 --> F4_2["4.2 Tiếp nhận & Duyệt đơn hàng"]
-F4 --> F4_3["4.3 Điều phối giao hàng & Thanh toán"]
+F4 --> F4_2["4.2 Tiếp nhận & Xét duyệt đơn hàng"]
+F4 --> F4_3["4.3 Điều phối giao vận & Thanh toán"]
 F4 --> F4_4["4.4 Hủy đơn & Trừ tồn kho tự động"]
 
 F5 --> F5_1["5.1 Đặt lịch: Bảo dưỡng / Sửa chữa / Lái thử"]
@@ -129,10 +158,42 @@ F6 --> F6_3["6.3 Tiếp nhận phản hồi & Khiếu nại"]
 F6 --> F6_4["6.4 Khảo sát độ hài lòng khách hàng"]
 F6 --> F6_5["6.5 Đánh giá & Bình luận sản phẩm"]
 
-F7 --> F7_1["7.1 Thống kê doanh thu theo thời gian"]
-F7 --> F7_2["7.2 Thống kê bán xe vs phụ tùng"]
+F7 --> F7_1["7.1 Thống kê doanh thu bán hàng & dịch vụ"]
+F7 --> F7_2["7.2 Thống kê doanh số xe vs phụ tùng"]
 F7 --> F7_3["7.3 Thống kê chi phí nhập hàng từ NCC"]
 F7 --> F7_4["7.4 Phân tích cơ cấu khách hàng & dịch vụ"]`
+      },
+      {
+        title: "Sơ đồ BFD Mức 2 — Mức Chức năng chi tiết từng nghiệp vụ",
+        desc: "<b>BFD Mức 2:</b> Đi sâu vào các bước tác vụ con của 3 phân hệ cốt lõi: 3.0 Chuỗi cung ứng, 4.0 Bán hàng, và 5.0 Lịch hẹn dịch vụ kỹ thuật.",
+        code: `flowchart TD
+subgraph S1 ["3.0 CHUỖI CUNG ỨNG & NHẬP KHO"]
+  F3_1["3.1 Quản lý NCC"] --> F3_1_1["3.1.1 Thêm NCC & MST"]
+  F3_1 --> F3_1_2["3.1.2 Chiết khấu đại lý"]
+  F3_2["3.2 Phiếu nhập kho"] --> F3_2_1["3.2.1 Chọn NCC & người lập"]
+  F3_2 --> F3_2_2["3.2.2 Thêm dòng hàng nhập"]
+  F3_2 --> F3_2_3["3.2.3 Tự tính thành tiền"]
+  F3_3["3.3 Nghiệm thu"] --> F3_3_1["3.3.1 Kiểm tra ngoại quan"]
+  F3_3 --> F3_3_2["3.3.2 Tự động tăng tồn kho"]
+  F3_4["3.4 In ấn chứng từ"] --> F3_4_1["3.4.1 In biên bản 4 chữ ký (A4/PDF)"]
+end
+
+subgraph S2 ["4.0 BÁN HÀNG & ĐƠN HÀNG"]
+  F4_1["4.1 Mua hàng online"] --> F4_1_1["4.1.1 Thêm giỏ hàng"]
+  F4_1 --> F4_1_2["4.1.2 Nhập địa chỉ nhận"]
+  F4_2["4.2 Duyệt đơn"] --> F4_2_1["4.2.1 Kiểm tra tồn kho"]
+  F4_2 --> F4_2_2["4.2.2 Tự động trừ tồn kho"]
+  F4_3["4.3 Giao vận"] --> F4_3_1["4.3.1 Đóng gói & điều phối shipper"]
+  F4_4["4.4 Thanh toán"] --> F4_4_1["4.4.1 Thu COD / Chuyển khoản"]
+end
+
+subgraph S3 ["5.0 LỊCH HẸN DỊCH VỤ & LÁI THỬ"]
+  F5_1["5.1 Đặt lịch online"] --> F5_1_1["5.1.1 Chọn loại dịch vụ"]
+  F5_1 --> F5_1_2["5.1.2 Chọn ngày & khung giờ"]
+  F5_2["5.2 Điều phối"] --> F5_2_1["5.2.1 Phân công kỹ thuật viên"]
+  F5_3["5.3 Thực hiện"] --> F5_3_1["5.3.1 Bảo dưỡng & thay phụ tùng"]
+  F5_4["5.4 Lưu bệnh án"] --> F5_4_1["5.4.1 Lưu lịch sử vào xe khách"]
+end`
       },
       {
         title: "Sơ đồ DFD Mức 0 (Mức ngữ cảnh — Context Diagram)",

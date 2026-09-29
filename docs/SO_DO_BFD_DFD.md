@@ -3,22 +3,45 @@
 
 ---
 
-## I. SƠ ĐỒ PHÂN RÃ CHỨC NĂNG BFD (BUSINESS FUNCTION DIAGRAM)
+## I. SƠ ĐỒ PHÂN RÃ CHỨC NĂNG BFD (BUSINESS FUNCTION DIAGRAM) — ĐẦY ĐỦ 3 MỨC (0, 1, 2)
 
-Sơ đồ BFD phân rã cấu trúc toàn bộ các chức năng nghiệp vụ của hệ thống từ mức cao nhất (Hệ thống tổng thể) xuống các phân hệ và chức năng chi tiết.
+Sơ đồ BFD thể hiện cấu trúc phân cấp chức năng nghiệp vụ từ mức cao nhất (Mức 0) xuống các phân hệ (Mức 1) và các thao tác nghiệp vụ chi tiết (Mức 2).
+
+---
+
+### 1. Sơ đồ BFD Mức 0 (Mức Tổng quan / Ngữ cảnh chức năng)
+Mô tả hệ thống tổng thể MOTOSHOP phân rã thành **7 phân hệ chức năng lớn**:
 
 ```mermaid
 flowchart TD
     ROOT["HỆ THỐNG CRM & ĐẠI LÝ XE MÁY PHỤ TÙNG MOTOSHOP"]
 
+    ROOT --> F1["1.0 Phân hệ Quản trị Hệ thống & Phân quyền"]
+    ROOT --> F2["2.0 Phân hệ Quản lý Kho & Danh mục Hàng hóa"]
+    ROOT --> F3["3.0 Phân hệ Đối tác & Chuỗi cung ứng"]
+    ROOT --> F4["4.0 Phân hệ Bán hàng & Quản lý Đơn hàng"]
+    ROOT --> F5["5.0 Phân hệ Lịch hẹn & Dịch vụ Kỹ thuật"]
+    ROOT --> F6["6.0 Phân hệ Khách hàng & Chăm sóc CRM"]
+    ROOT --> F7["7.0 Phân hệ Báo cáo & Thống kê"]
+```
+
+---
+
+### 2. Sơ đồ BFD Mức 1 (Mức Phân hệ chức năng)
+Phân rã 7 phân hệ lớn thành **các chức năng nghiệp vụ cụ thể**:
+
+```mermaid
+flowchart TD
+    ROOT["HỆ THỐNG CRM & ĐẠI LÝ MOTOSHOP"]
+
     %% Cấp 1
-    F1["1.0 Quản trị Hệ thống & Phân quyền"]
-    F2["2.0 Quản lý Kho & Danh mục Hàng hóa"]
-    F3["3.0 Đối tác & Chuỗi cung ứng"]
-    F4["4.0 Bán hàng & Quản lý Đơn hàng"]
-    F5["5.0 Quản lý Lịch hẹn & Dịch vụ"]
-    F6["6.0 Khách hàng & Chăm sóc CRM"]
-    F7["7.0 Báo cáo & Thống kê"]
+    F1["1.0 Quản trị Hệ thống"]
+    F2["2.0 Quản lý Kho Hàng"]
+    F3["3.0 Chuỗi Cung Ứng"]
+    F4["4.0 Bán Hàng & Đơn Hàng"]
+    F5["5.0 Lịch Hẹn & Dịch Vụ"]
+    F6["6.0 Khách Hàng & CRM"]
+    F7["7.0 Báo Cáo Thống Kê"]
 
     ROOT --> F1
     ROOT --> F2
@@ -29,78 +52,148 @@ flowchart TD
     ROOT --> F7
 
     %% Phân rã 1.0
-    F1_1["1.1 Đăng nhập & Xác thực tài khoản"]
-    F1_2["1.2 Quản lý tài khoản nhân sự"]
-    F1_3["1.3 Phân quyền vai trò: Admin / Sale / Kỹ thuật"]
-    F1_4["1.4 Đổi mật khẩu & Khóa tài khoản"]
-    F1 --> F1_1
-    F1 --> F1_2
-    F1 --> F1_3
-    F1 --> F1_4
+    F1 --> F1_1["1.1 Đăng nhập & Xác thực"]
+    F1 --> F1_2["1.2 Quản lý tài khoản nhân viên"]
+    F1 --> F1_3["1.3 Phân quyền: SuperAdmin / Sale / Kỹ thuật"]
+    F1 --> F1_4["1.4 Khóa / Mở khóa tài khoản"]
 
     %% Phân rã 2.0
-    F2_1["2.1 Quản lý danh mục phụ tùng"]
-    F2_2["2.2 Quản lý danh mục xe mẫu"]
-    F2_3["2.3 Tra cứu, tìm kiếm & lọc hàng hóa"]
-    F2_4["2.4 Theo dõi cảnh báo tồn kho"]
-    F2 --> F2_1
-    F2 --> F2_2
-    F2 --> F2_3
-    F2 --> F2_4
+    F2 --> F2_1["2.1 Quản lý phụ tùng & phụ kiện"]
+    F2 --> F2_2["2.2 Quản lý xe mẫu trưng bày"]
+    F2 --> F2_3["2.3 Tra cứu, tìm kiếm & lọc hàng"]
+    F2 --> F2_4["2.4 Cảnh báo định mức tồn kho"]
 
     %% Phân rã 3.0
-    F3_1["3.1 Quản lý thông tin Nhà cung cấp"]
-    F3_2["3.2 Lập phiếu nhập kho mới"]
-    F3_3["3.3 Quản lý chi tiết mặt hàng nhập"]
-    F3_4["3.4 Kiểm duyệt & Tăng tồn kho tự động"]
-    F3_5["3.5 In biên bản giao nhận hàng hóa"]
-    F3 --> F3_1
-    F3 --> F3_2
-    F3 --> F3_3
-    F3 --> F3_4
-    F3 --> F3_5
+    F3 --> F3_1["3.1 Quản lý hồ sơ Nhà cung cấp"]
+    F3 --> F3_2["3.2 Quản lý Phiếu nhập kho"]
+    F3 --> F3_3["3.3 Quản lý Chi tiết mặt hàng nhập"]
+    F3 --> F3_4["3.4 Kiểm duyệt & Tăng tồn kho"]
+    F3 --> F3_5["3.5 In biên bản giao nhận hàng hóa"]
 
     %% Phân rã 4.0
-    F4_1["4.1 Giỏ hàng & Đặt hàng online"]
-    F4_2["4.2 Tiếp nhận & Xét duyệt đơn hàng"]
-    F4_3["4.3 Điều phối giao hàng & Thanh toán"]
-    F4_4["4.4 Hủy đơn & Trừ tồn kho tự động"]
-    F4 --> F4_1
-    F4 --> F4_2
-    F4 --> F4_3
-    F4 --> F4_4
+    F4 --> F4_1["4.1 Giỏ hàng & Đặt hàng online"]
+    F4 --> F4_2["4.2 Tiếp nhận & Xét duyệt đơn hàng"]
+    F4 --> F4_3["4.3 Điều phối giao vận & Thanh toán"]
+    F4 --> F4_4["4.4 Hủy đơn & Trừ tồn kho tự động"]
 
     %% Phân rã 5.0
-    F5_1["5.1 Đặt lịch hẹn: Bảo dưỡng / Sửa chữa / Lái thử"]
-    F5_2["5.2 Tiếp nhận & Xác nhận lịch hẹn"]
-    F5_3["5.3 Theo dõi tiến độ thực hiện dịch vụ"]
-    F5_4["5.4 Lưu lịch sử bảo dưỡng xe khách hàng"]
-    F5 --> F5_1
-    F5 --> F5_2
-    F5 --> F5_3
-    F5 --> F5_4
+    F5 --> F5_1["5.1 Đặt lịch: Bảo dưỡng / Sửa chữa / Lái thử"]
+    F5 --> F5_2["5.2 Tiếp nhận & Xác nhận lịch hẹn"]
+    F5 --> F5_3["5.3 Theo dõi tiến độ kỹ thuật xưởng"]
+    F5 --> F5_4["5.4 Lưu bệnh án & Lịch sử xe"]
 
     %% Phân rã 6.0
-    F6_1["6.1 Quản lý hồ sơ khách hàng"]
-    F6_2["6.2 Quản lý thông tin xe của khách"]
-    F6_3["6.3 Tiếp nhận phản hồi & Khiếu nại"]
-    F6_4["6.4 Khảo sát độ hài lòng khách hàng"]
-    F6_5["6.5 Đánh giá & Bình luận sản phẩm"]
-    F6 --> F6_1
-    F6 --> F6_2
-    F6 --> F6_3
-    F6 --> F6_4
-    F6 --> F6_5
+    F6 --> F6_1["6.1 Quản lý hồ sơ khách hàng"]
+    F6 --> F6_2["6.2 Quản lý xe khách hàng sở hữu"]
+    F6 --> F6_3["6.3 Tiếp nhận phản hồi & Khiếu nại"]
+    F6 --> F6_4["6.4 Khảo sát độ hài lòng khách hàng"]
+    F6 --> F6_5["6.5 Đánh giá & Bình luận sản phẩm"]
 
     %% Phân rã 7.0
-    F7_1["7.1 Thống kê doanh thu theo ngày / tuần / tháng / năm"]
-    F7_2["7.2 Thống kê doanh số bán xe vs phụ tùng"]
-    F7_3["7.3 Thống kê chi phí nhập hàng từ NCC"]
-    F7_4["7.4 Phân tích cơ cấu khách hàng & dịch vụ"]
-    F7 --> F7_1
-    F7 --> F7_2
-    F7 --> F7_3
-    F7 --> F7_4
+    F7 --> F7_1["7.1 Thống kê doanh thu bán hàng & dịch vụ"]
+    F7 --> F7_2["7.2 Thống kê doanh số xe vs phụ tùng"]
+    F7 --> F7_3["7.3 Thống kê chi phí nhập hàng từ NCC"]
+    F7 --> F7_4["7.4 Phân tích cơ cấu khách hàng & dịch vụ"]
+```
+
+---
+
+### 3. Sơ đồ BFD Mức 2 (Mức Chức năng chi tiết từng nghiệp vụ)
+Đi sâu vào các tác vụ con của **3 phân hệ nghiệp vụ cốt lõi nhất**:
+
+#### 3.1. Phân rã chi tiết Phân hệ 3.0: Chuỗi cung ứng & Nhập kho
+```mermaid
+flowchart TD
+    F3["3.0 PHÂN HỆ ĐỐI TÁC & CHUỖI CUNG ỨNG"]
+
+    F3 --> F3_1["3.1 Quản lý Nhà cung cấp"]
+    F3 --> F3_2["3.2 Lập Phiếu nhập kho"]
+    F3 --> F3_3["3.3 Nghiệm thu & Duyệt kho"]
+    F3 --> F3_4["3.4 In ấn & Lưu trữ chứng từ"]
+
+    %% Chi tiết 3.1
+    F3_1 --> F3_1_1["3.1.1 Thêm thông tin đối tác & MST"]
+    F3_1 --> F3_1_2["3.1.2 Cập nhật chiết khấu & địa chỉ kho"]
+    F3_1 --> F3_1_3["3.1.3 Quản lý liên hệ hotline & email"]
+
+    %% Chi tiết 3.2
+    F3_2 --> F3_2_1["3.2.1 Chọn NCC & người lập phiếu"]
+    F3_2 --> F3_2_2["3.2.2 Thêm danh mục mặt hàng nhập"]
+    F3_2 --> F3_2_3["3.2.3 Tự động tính đơn giá vốn & thành tiền"]
+    F3_2 --> F3_2_4["3.2.4 Lưu phiếu ở trạng thái Chờ duyệt"]
+
+    %% Chi tiết 3.3
+    F3_3 --> F3_3_1["3.3.1 Kiểm tra quy cách ngoại quan hàng"]
+    F3_3 --> F3_3_2["3.3.2 Xác nhận duyệt nhập kho"]
+    F3_3 --> F3_3_3["3.3.3 Tự động cộng tồn kho phụ tùng & xe"]
+
+    %% Chi tiết 3.4
+    F3_4 --> F3_4_1["3.4.1 Xem biên bản có 4 chữ ký xác nhận"]
+    F3_4 --> F3_4_2["3.4.2 In biên bản giao nhận ra A4 / PDF"]
+```
+
+#### 3.2. Phân rã chi tiết Phân hệ 4.0: Bán hàng & Đơn hàng
+```mermaid
+flowchart TD
+    F4["4.0 PHÂN HỆ BÁN HÀNG & QUẢN LÝ ĐƠN HÀNG"]
+
+    F4 --> F4_1["4.1 Mua hàng & Giỏ hàng online"]
+    F4 --> F4_2["4.2 Tiếp nhận & Xét duyệt đơn"]
+    F4 --> F4_3["4.3 Điều phối giao vận"]
+    F4 --> F4_4["4.4 Hoàn tất & Thanh toán"]
+
+    %% Chi tiết 4.1
+    F4_1 --> F4_1_1["4.1.1 Tra cứu & chọn mua phụ tùng"]
+    F4_1 --> F4_1_2["4.1.2 Thêm vào giỏ & tăng giảm số lượng"]
+    F4_1 --> F4_1_3["4.1.3 Nhập địa chỉ & thông tin nhận hàng"]
+    F4_1 --> F4_1_4["4.1.4 Xác nhận đặt đơn hàng online"]
+
+    %% Chi tiết 4.2
+    F4_2 --> F4_2_1["4.2.1 Kiểm tra số lượng tồn kho thực tế"]
+    F4_2 --> F4_2_2["4.2.2 Xác nhận duyệt đơn hàng"]
+    F4_2 --> F4_2_3["4.2.3 Tự động trừ tồn kho phụ tùng"]
+
+    %% Chi tiết 4.3
+    F4_3 --> F4_3_1["4.3.1 Đóng gói kiện hàng"]
+    F4_3 --> F4_3_2["4.3.2 Chuyển trạng thái Đang giao"]
+    F4_3 --> F4_3_3["4.3.3 Cung cấp thông tin shipper cho khách"]
+
+    %% Chi tiết 4.4
+    F4_4 --> F4_4_1["4.4.1 Thu tiền COD hoặc chuyển khoản"]
+    F4_4 --> F4_4_2["4.4.2 Chuyển trạng thái Hoàn thành đơn"]
+    F4_4 --> F4_4_3["4.4.3 Xuất hóa đơn điện tử cho khách"]
+```
+
+#### 3.3. Phân rã chi tiết Phân hệ 5.0: Lịch hẹn Dịch vụ Kỹ thuật & Lái thử
+```mermaid
+flowchart TD
+    F5["5.0 PHÂN HỆ QUẢN LÝ LỊCH HẸN & DỊCH VỤ"]
+
+    F5 --> F5_1["5.1 Đăng ký lịch hẹn online"]
+    F5 --> F5_2["5.2 Tiếp nhận & Phân công"]
+    F5 --> F5_3["5.3 Thực hiện dịch vụ tại xưởng"]
+    F5 --> F5_4["5.4 Nghiệm thu & Lưu bệnh án"]
+
+    %% Chi tiết 5.1
+    F5_1 --> F5_1_1["5.1.1 Chọn loại dịch vụ: Bảo dưỡng / Sửa chữa / Lái thử"]
+    F5_1 --> F5_1_2["5.1.2 Chọn xe mẫu trưng bày hoặc nhập xe của khách"]
+    F5_1 --> F5_1_3["5.1.3 Chọn ngày & khung giờ đón tiếp"]
+    F5_1 --> F5_1_4["5.1.4 Gửi yêu cầu đặt lịch hẹn"]
+
+    %% Chi tiết 5.2
+    F5_2 --> F5_2_1["5.2.1 Kiểm tra khoang bảo dưỡng còn trống"]
+    F5_2 --> F5_2_2["5.2.2 Phân công kỹ thuật viên phụ trách"]
+    F5_2 --> F5_2_3["5.2.3 Xác nhận lịch & gửi thông báo cho khách"]
+
+    %% Chi tiết 5.3
+    F5_3 --> F5_3_1["5.3.1 Đón tiếp khách & nhận bàn giao xe"]
+    F5_3 --> F5_3_2["5.3.2 Chuyển trạng thái Đang thực hiện"]
+    F5_3 --> F5_3_3["5.3.3 Thay thế phụ tùng & bảo dưỡng theo quy trình"]
+
+    %% Chi tiết 5.4
+    F5_4 --> F5_4_1["5.4.1 Kiểm tra vận hành nghiệm thu xe"]
+    F5_4 --> F5_4_2["5.4.2 Ghi nhật ký bảo dưỡng & phụ tùng đã thay vào hồ sơ xe"]
+    F5_4 --> F5_4_3["5.4.3 Chuyển trạng thái Hoàn thành & in phiếu thanh toán"]
 ```
 
 ---
