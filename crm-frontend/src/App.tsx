@@ -124,22 +124,75 @@ function getInitialMode(): Mode {
   const hash = window.location.hash.toLowerCase();
   if (hash === '#admin') return 'admin';
   if (hash === '#customer') return 'customer';
+  const saved = localStorage.getItem('crm_mode');
+  if (saved === 'admin' || saved === 'customer') return saved;
   return null;
 }
 
 /* ── Root ── */
 export default function App() {
   const [mode, setModeState] = useState<Mode>(getInitialMode);
-  const [adminPage, setAdminPage] = useState<AdminPage>('dashboard');
-  const [customerPage, setCustomerPage] = useState<CustomerPage>('vehicles');
+  const [adminPage, setAdminPageState] = useState<AdminPage>(() => {
+    const saved = localStorage.getItem('crm_admin_page');
+    return (saved as AdminPage) || 'dashboard';
+  });
+  const [customerPage, setCustomerPageState] = useState<CustomerPage>(() => {
+    const saved = localStorage.getItem('crm_customer_page');
+    return (saved as CustomerPage) || 'vehicles';
+  });
   const [selectedVehicleForBooking, setSelectedVehicleForBooking] = useState<string | undefined>(undefined);
-  const [currentCustomer, setCurrentCustomer] = useState<Customer | null>(null);
+  
+  const [currentCustomer, setCurrentCustomerState] = useState<Customer | null>(() => {
+    try {
+      const saved = localStorage.getItem('crm_current_customer');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
 
-  // Admin authentication state (Default to SuperAdmin ST001 for convenience, or null to require login)
-  const [currentStaff, setCurrentStaff] = useState<StaffAccount | null>(mockStaffAccounts[0]);
+  // Admin authentication state (Default to SuperAdmin ST001, or restored from localStorage)
+  const [currentStaff, setCurrentStaffState] = useState<StaffAccount | null>(() => {
+    try {
+      const saved = localStorage.getItem('crm_current_staff');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return mockStaffAccounts[0];
+  });
+
+  const setCurrentCustomer = (c: Customer | null) => {
+    setCurrentCustomerState(c);
+    if (c) {
+      localStorage.setItem('crm_current_customer', JSON.stringify(c));
+    } else {
+      localStorage.removeItem('crm_current_customer');
+    }
+  };
+
+  const setCurrentStaff = (s: StaffAccount | null) => {
+    setCurrentStaffState(s);
+    if (s) {
+      localStorage.setItem('crm_current_staff', JSON.stringify(s));
+    } else {
+      localStorage.removeItem('crm_current_staff');
+    }
+  };
+
+  const setAdminPage = (p: AdminPage) => {
+    setAdminPageState(p);
+    localStorage.setItem('crm_admin_page', p);
+  };
+
+  const setCustomerPage = (p: CustomerPage) => {
+    setCustomerPageState(p);
+    localStorage.setItem('crm_customer_page', p);
+  };
 
   const setMode = (m: Mode) => {
     setModeState(m);
+    if (m) localStorage.setItem('crm_mode', m);
+    else localStorage.removeItem('crm_mode');
+
     if (m === 'admin') window.location.hash = 'admin';
     else if (m === 'customer') window.location.hash = 'customer';
     else window.location.hash = '';
@@ -148,9 +201,16 @@ export default function App() {
   React.useEffect(() => {
     const handleHashChange = () => {
       const h = window.location.hash.toLowerCase();
-      if (h === '#admin') setModeState('admin');
-      else if (h === '#customer') setModeState('customer');
-      else setModeState(null);
+      if (h === '#admin') {
+        setModeState('admin');
+        localStorage.setItem('crm_mode', 'admin');
+      } else if (h === '#customer') {
+        setModeState('customer');
+        localStorage.setItem('crm_mode', 'customer');
+      } else if (!h) {
+        setModeState(null);
+        localStorage.removeItem('crm_mode');
+      }
     };
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);

@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import {
-  mockCustomers,
+  type Customer,
+  type Order,
   serviceDistribution,
   dailyRevenueData,
   weeklyRevenueData,
@@ -10,6 +11,7 @@ import {
   revenueBySource,
   formatVND
 } from '../../data/mockData';
+import { customerApi, orderApi } from '../../services/api';
 
 type PeriodType = 'daily' | 'weekly' | 'monthly' | 'yearly';
 
@@ -22,23 +24,94 @@ function PieLabel({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) 
   return <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={12} fontWeight={700}>{(percent * 100).toFixed(0)}%</text>;
 }
 
-// Dữ liệu phân bố độ tuổi khách hàng
-const ageDistributionData = [
-  { name: 'Dưới 25 tuổi', value: 25, fill: '#dc2626' },
-  { name: '25 – 40 tuổi', value: 55, fill: '#2563eb' },
-  { name: 'Trên 40 tuổi', value: 20, fill: '#16a34a' },
-];
-
-// Dữ liệu cơ cấu sở thích & nhu cầu phương tiện
-const preferenceDistributionData = [
-  { name: 'Tiết kiệm / Đi làm', value: 42, fill: '#2563eb' },
-  { name: 'Thể thao / Đi phượt', value: 33, fill: '#dc2626' },
-  { name: 'Tay ga cao cấp', value: 17, fill: '#d97706' },
-  { name: 'Xe điện thông minh', value: 8, fill: '#10b981' },
-];
-
 export default function ReportsPage() {
   const [period, setPeriod] = useState<PeriodType>('monthly');
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const [cList, oList] = await Promise.all([customerApi.getAll(), orderApi.getAll()]);
+        setCustomers(cList);
+        setOrders(oList);
+      } catch (err) {
+        console.warn('Reports load error:', err);
+      }
+    };
+    load();
+    window.addEventListener('crm-data-refresh', load);
+    return () => window.removeEventListener('crm-data-refresh', load);
+  }, []);
+
+  // Tính toán tỷ lệ độ tuổi thực tế từ danh sách khách hàng CRM
+  const ageDistributionData = useMemo(() => {
+    if (customers.length === 0) return [
+      { name: 'Dưới 25 tuổi', value: 25, fill: '#dc2626' },
+      { name: '25 – 40 tuổi', value: 55, fill: '#2563eb' },
+      { name: 'Trên 40 tuổi', value: 20, fill: '#16a34a' },
+    ];
+
+    const currentYear = new Date().getFullYear();
+    let under25 = 0;
+    let from25to40 = 0;
+    let over40 = 0;
+
+    customers.forEach(c => {
+      const bYear = c.ngaySinh ? new Date(c.ngaySinh).getFullYear() : 1995;
+      const age = currentYear - (isNaN(bYear) ? 1995 : bYear);
+      if (age < 25) under25++;
+      else if (age <= 40) from25to40++;
+      else over40++;
+    });
+
+    const total = customers.length;
+    const u25Pct = Math.round((under25 / total) * 100);
+    const midPct = Math.round((from25to40 / total) * 100);
+    const o40Pct = Math.max(0, 100 - u25Pct - midPct);
+
+    return [
+      { name: `Dưới 25 tuổi (${under25} KH)`, value: u25Pct, fill: '#dc2626' },
+      { name: `25 – 40 tuổi (${from25to40} KH)`, value: midPct, fill: '#2563eb' },
+      { name: `Trên 40 tuổi (${over40} KH)`, value: o40Pct, fill: '#16a34a' },
+    ];
+  }, [customers]);
+
+  // Tính toán tỷ lệ sở thích & nhu cầu từ thông tin sở thích khách hàng
+  const preferenceDistributionData = useMemo(() => {
+    if (customers.length === 0) return [
+      { name: 'Tiết kiệm / Đi làm', value: 42, fill: '#2563eb' },
+      { name: 'Thể thao / Đi phượt', value: 33, fill: '#dc2626' },
+      { name: 'Tay ga cao cấp', value: 17, fill: '#d97706' },
+      { name: 'Xe điện thông minh', value: 8, fill: '#10b981' },
+    ];
+
+    let commuteCount = 0;
+    let sportCount = 0;
+    let scooterCount = 0;
+    let electricCount = 0;
+
+    customers.forEach(c => {
+      const st = (c.soThich || '').toLowerCase();
+      if (st.includes('điện') || st.includes('công nghệ') || st.includes('xanh')) electricCount++;
+      else if (st.includes('phượt') || st.includes('thể thao') || st.includes('côn tay') || st.includes('độ')) sportCount++;
+      else if (st.includes('tay ga') || st.includes('cao cấp') || st.includes('thời trang') || st.includes('ý')) scooterCount++;
+      else commuteCount++;
+    });
+
+    const total = customers.length;
+    const commutePct = Math.max(5, Math.round((commuteCount / total) * 100));
+    const sportPct = Math.max(5, Math.round((sportCount / total) * 100));
+    const scooterPct = Math.max(5, Math.round((scooterCount / total) * 100));
+    const electricPct = Math.max(0, 100 - commutePct - sportPct - scooterPct);
+
+    return [
+      { name: `Tiết kiệm / Đi làm (${commuteCount} KH)`, value: commutePct, fill: '#2563eb' },
+      { name: `Thể thao / Đi phượt (${sportCount} KH)`, value: sportPct, fill: '#dc2626' },
+      { name: `Tay ga cao cấp (${scooterCount} KH)`, value: scooterPct, fill: '#d97706' },
+      { name: `Xe điện thông minh (${electricCount} KH)`, value: electricPct, fill: '#10b981' },
+    ];
+  }, [customers]);
 
   const chartData = period === 'daily'
     ? dailyRevenueData
@@ -163,7 +236,7 @@ export default function ReportsPage() {
             🎯 BÁO CÁO PHÂN KHÚC KHÁCH HÀNG: ĐỘ TUỔI & SỞ THÍCH PHƯƠNG TIỆN
           </div>
           <p className="text-xs text-zinc-500 mt-1">
-            Dữ liệu tổng hợp từ {mockCustomers.length} khách hàng đăng ký trong hệ thống CRM
+            Dữ liệu tổng hợp từ {customers.length} khách hàng đăng ký trong hệ thống CRM
           </p>
         </div>
 

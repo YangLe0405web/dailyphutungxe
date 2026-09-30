@@ -81,7 +81,7 @@ export interface Customer {
   id: string; hoTen: string; email: string; soDienThoai: string;
   diaChi: string; ngaySinh: string; gioiTinh: 'Nam' | 'Nu';
   trangThai: CustomerStatus; ngayDangKy: string; soXe: string;
-  tongChiTieu: number; avatar?: string;
+  tongChiTieu: number; avatar?: string; soThich?: string;
 }
 
 export interface Vehicle {

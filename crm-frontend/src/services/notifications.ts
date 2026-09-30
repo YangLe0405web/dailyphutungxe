@@ -1,12 +1,12 @@
 export interface AdminNotification {
   id: string;
-  type: 'customer_registered' | 'appointment_booked' | 'order_created';
+  type: 'customer_registered' | 'appointment_booked' | 'order_created' | 'warranty_extended' | 'feedback_received' | 'survey_submitted';
   title: string;
   message: string;
   time: string;
   timestamp: number;
   read: boolean;
-  linkPage: 'customers' | 'sales' | 'appointments';
+  linkPage: 'customers' | 'sales' | 'appointments' | 'feedback';
   meta?: any;
 }
 

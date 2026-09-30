@@ -1,5 +1,7 @@
-import { useState } from 'react';
-import { mockOrders, mockAppointments, formatVND } from '../../data/mockData';
+import { useState, useEffect, useMemo } from 'react';
+import { type Order, type Appointment, type Customer, formatVND } from '../../data/mockData';
+import { orderApi, appointmentApi, customerApi } from '../../services/api';
+import { getAdminNotifications, type AdminNotification } from '../../services/notifications';
 
 export type ActivityType = 'customer' | 'admin' | 'urgent';
 
@@ -141,9 +143,140 @@ const initialActivities: ActivityEvent[] = [
 
 export default function DashboardPage() {
   const [filter, setFilter] = useState<'all' | 'customer' | 'admin' | 'urgent'>('all');
-  const [activities, setActivities] = useState<ActivityEvent[]>(initialActivities);
-  const [pendingOrders, setPendingOrders] = useState(mockOrders.filter(o => o.trangThai === 'ChoDuyet'));
-  const [pendingAppts, setPendingAppts] = useState(mockAppointments.filter(a => a.trangThai === 'ChoDuyet'));
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [appts, setAppts] = useState<Appointment[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [notifications, setNotifications] = useState<AdminNotification[]>([]);
+  const [localAdminActivities, setLocalAdminActivities] = useState<ActivityEvent[]>([]);
+
+  const loadData = async () => {
+    try {
+      const [ordList, apptList, custList] = await Promise.all([
+        orderApi.getAll(),
+        appointmentApi.getAll(),
+        customerApi.getAll(),
+      ]);
+      setOrders(ordList);
+      setAppts(apptList);
+      setCustomers(custList);
+      setNotifications(getAdminNotifications());
+    } catch (err) {
+      console.warn('Dashboard load error:', err);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+    window.addEventListener('crm-data-refresh', loadData);
+    return () => window.removeEventListener('crm-data-refresh', loadData);
+  }, []);
+
+  const pendingOrders = orders.filter(o => o.trangThai === 'ChoDuyet');
+  const pendingAppts = appts.filter(a => a.trangThai === 'ChoDuyet');
+  const totalRevenue = orders.filter(o => o.trangThai !== 'DaHuy').reduce((sum, o) => sum + (o.tongTien || 0), 0);
+
+  const activities: ActivityEvent[] = useMemo(() => {
+    const list: ActivityEvent[] = [...localAdminActivities];
+
+    // Map notifications to activities
+    notifications.forEach(n => {
+      let icon = '⚡';
+      let type: ActivityType = 'customer';
+      let actor = 'Khách hàng';
+      let tag = n.title;
+      let status: 'pending' | 'success' | 'warning' = 'success';
+
+      if (n.type === 'customer_registered') {
+        icon = '👤';
+        type = 'customer';
+        actor = n.meta?.hoTen || 'Khách hàng';
+        tag = '👤 Đăng ký';
+      } else if (n.type === 'order_created') {
+        icon = '📦';
+        type = 'customer';
+        actor = n.meta?.hoTenKH || 'Khách hàng';
+        tag = '🛒 Mua hàng';
+        status = 'pending';
+      } else if (n.type === 'appointment_booked') {
+        icon = n.meta?.loaiDichVu === 'LaiThu' ? '🏍️' : '📅';
+        type = 'customer';
+        actor = n.meta?.hoTenKH || 'Khách hàng';
+        tag = n.meta?.loaiDichVu === 'LaiThu' ? '🏍️ Lái thử' : '🔧 Lịch hẹn';
+        status = 'pending';
+      } else if (n.type === 'feedback_received') {
+        icon = n.meta?.loaiNhan === 'KhieuNai' ? '⚠️' : '⭐';
+        type = n.meta?.loaiNhan === 'KhieuNai' ? 'urgent' : 'customer';
+        actor = n.meta?.hoTen || 'Khách hàng';
+        tag = n.meta?.loaiNhan === 'KhieuNai' ? '⚠️ Khiếu nại' : '⭐ Đánh giá';
+        status = n.meta?.loaiNhan === 'KhieuNai' ? 'warning' : 'success';
+      } else if (n.type === 'survey_submitted') {
+        icon = '📊';
+        type = 'customer';
+        actor = n.meta?.customerName || 'Khách hàng';
+        tag = '📋 Khảo sát';
+      } else if (n.type === 'warranty_extended') {
+        icon = '🛡️';
+        type = 'customer';
+        actor = 'Khách hàng';
+        tag = '🛡️ Bảo hành';
+      }
+
+      list.push({
+        id: n.id,
+        type,
+        actor,
+        actorRole: 'KhachHang',
+        action: n.title,
+        detail: n.message,
+        time: n.time,
+        tag,
+        status,
+        icon,
+      });
+    });
+
+    // Supplement with orders & appointments
+    orders.slice(0, 4).forEach(o => {
+      if (!list.some(x => x.detail?.includes(o.id))) {
+        list.push({
+          id: `ACT-${o.id}`,
+          type: 'customer',
+          actor: o.hoTenKH,
+          actorRole: 'KhachHang',
+          action: 'vừa đặt mua phụ tùng trực tuyến',
+          detail: `Đơn hàng #${o.id} (${formatVND(o.tongTien)}) · ${o.items.map(i => `${i.tenSanPham} x${i.soLuong}`).join(', ')}`,
+          time: o.ngayDat,
+          tag: '🛒 Mua hàng',
+          status: o.trangThai === 'ChoDuyet' ? 'pending' : 'success',
+          icon: '📦',
+        });
+      }
+    });
+
+    appts.slice(0, 4).forEach(a => {
+      if (!list.some(x => x.detail?.includes(a.id))) {
+        list.push({
+          id: `ACT-${a.id}`,
+          type: 'customer',
+          actor: a.hoTenKH,
+          actorRole: 'KhachHang',
+          action: a.loaiDichVu === 'LaiThu' ? 'đăng ký lịch lái thử xe mẫu' : 'đặt lịch hẹn bảo dưỡng sửa chữa',
+          detail: `${a.loaiDichVu === 'LaiThu' ? 'Lái thử xe' : 'Bảo dưỡng'} lúc ${a.gioHen} ngày ${a.ngayHen} · Xe: ${a.tenXe || ''} (${a.bienSo || ''})`,
+          time: a.ngayHen,
+          tag: a.loaiDichVu === 'LaiThu' ? '🏍️ Lái thử' : '📅 Lịch hẹn',
+          status: a.trangThai === 'ChoDuyet' ? 'pending' : 'success',
+          icon: a.loaiDichVu === 'LaiThu' ? '🛵' : '🛠️',
+        });
+      }
+    });
+
+    // Fill with initial seed activities if sparse
+    initialActivities.forEach(ia => {
+      if (!list.some(x => x.id === ia.id)) list.push(ia);
+    });
+
+    return list;
+  }, [notifications, orders, appts, localAdminActivities]);
 
   const filteredEvents = activities.filter(act => {
     if (filter === 'all') return true;
@@ -153,8 +286,12 @@ export default function DashboardPage() {
     return true;
   });
 
-  const handleApproveOrder = (id: string, name: string) => {
-    setPendingOrders(prev => prev.filter(o => o.id !== id));
+  const handleApproveOrder = async (id: string, name: string) => {
+    const maDonInt = parseInt(id.replace(/\D/g, ''), 10);
+    if (!isNaN(maDonInt) && maDonInt > 0) {
+      await orderApi.updateStatus(maDonInt, 'DangGiao');
+    }
+    setOrders(prev => prev.map(o => o.id === id ? { ...o, trangThai: 'DangGiao' } : o));
     const newAct: ActivityEvent = {
       id: `ACT-${Date.now().toString().slice(-4)}`,
       type: 'admin',
@@ -167,11 +304,16 @@ export default function DashboardPage() {
       status: 'success',
       icon: '🚚',
     };
-    setActivities(prev => [newAct, ...prev]);
+    setLocalAdminActivities(prev => [newAct, ...prev]);
+    window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'order' } }));
   };
 
-  const handleConfirmAppointment = (id: string, name: string) => {
-    setPendingAppts(prev => prev.filter(a => a.id !== id));
+  const handleConfirmAppointment = async (id: string, name: string) => {
+    const maLichInt = parseInt(id.replace(/\D/g, ''), 10);
+    if (!isNaN(maLichInt) && maLichInt > 0) {
+      await appointmentApi.updateStatus(maLichInt, 'DaXacNhan');
+    }
+    setAppts(prev => prev.map(a => a.id === id ? { ...a, trangThai: 'DaXacNhan' } : a));
     const newAct: ActivityEvent = {
       id: `ACT-${Date.now().toString().slice(-4)}`,
       type: 'admin',
@@ -184,7 +326,8 @@ export default function DashboardPage() {
       status: 'success',
       icon: '🛠️',
     };
-    setActivities(prev => [newAct, ...prev]);
+    setLocalAdminActivities(prev => [newAct, ...prev]);
+    window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'appointment' } }));
   };
 
   return (
@@ -247,46 +390,46 @@ export default function DashboardPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="rounded-2xl p-5 bg-white border border-zinc-200 shadow-xs">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-2xl">⚡</span>
-            <span className="text-[11px] font-mono font-bold bg-zinc-100 text-zinc-700 px-2 py-0.5 rounded-full">24H QUA</span>
+            <span className="text-2xl">💰</span>
+            <span className="text-[11px] font-mono font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">DOANH THU</span>
           </div>
-          <div style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 800, color: 'var(--color-zinc-900)' }}>
-            {activities.length}
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 800, color: 'var(--color-red-700)' }}>
+            {formatVND(totalRevenue)}
           </div>
-          <div className="text-xs text-zinc-500 font-medium mt-1">Tổng sự kiện ghi nhận</div>
+          <div className="text-xs text-zinc-500 font-medium mt-1">Tổng doanh thu đơn hàng</div>
         </div>
 
         <div className="rounded-2xl p-5 bg-white border border-zinc-200 shadow-xs">
           <div className="flex items-center justify-between mb-2">
             <span className="text-2xl">👥</span>
-            <span className="text-[11px] font-mono font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">CUSTOMER</span>
+            <span className="text-[11px] font-mono font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">KHÁCH HÀNG</span>
           </div>
           <div style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 800, color: '#2563eb' }}>
-            {activities.filter(a => a.type === 'customer').length}
+            {customers.length}
           </div>
-          <div className="text-xs text-zinc-500 font-medium mt-1">Tương tác từ Khách hàng</div>
+          <div className="text-xs text-zinc-500 font-medium mt-1">Khách hàng trong hệ thống CRM</div>
         </div>
 
         <div className="rounded-2xl p-5 bg-white border border-zinc-200 shadow-xs">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-2xl">🛡️</span>
-            <span className="text-[11px] font-mono font-bold bg-red-100 text-red-700 px-2 py-0.5 rounded-full">STAFF</span>
+            <span className="text-2xl">📦</span>
+            <span className="text-[11px] font-mono font-bold bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">ĐƠN HÀNG</span>
           </div>
-          <div style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 800, color: '#dc2626' }}>
-            {activities.filter(a => a.type === 'admin').length}
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 800, color: '#7c3aed' }}>
+            {orders.length}
           </div>
-          <div className="text-xs text-zinc-500 font-medium mt-1">Thao tác của Quản trị viên</div>
+          <div className="text-xs text-zinc-500 font-medium mt-1">Tổng đơn mua phụ tùng & phụ kiện</div>
         </div>
 
         <div className="rounded-2xl p-5 bg-white border border-zinc-200 shadow-xs">
           <div className="flex items-center justify-between mb-2">
             <span className="text-2xl">⚠️</span>
-            <span className="text-[11px] font-mono font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">ACTION</span>
+            <span className="text-[11px] font-mono font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">CẦN XỬ LÝ</span>
           </div>
           <div style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 800, color: '#d97706' }}>
             {pendingOrders.length + pendingAppts.length}
           </div>
-          <div className="text-xs text-zinc-500 font-medium mt-1">Đơn & lịch hẹn cần duyệt</div>
+          <div className="text-xs text-zinc-500 font-medium mt-1">Đơn ({pendingOrders.length}) & lịch hẹn ({pendingAppts.length}) chờ duyệt</div>
         </div>
       </div>
 

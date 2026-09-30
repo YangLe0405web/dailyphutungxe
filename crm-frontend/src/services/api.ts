@@ -5,12 +5,18 @@ import {
   type Order,
   type Appointment,
   type StaffAccount,
+  type Feedback,
+  type Survey,
+  type SurveyResponse,
   mockCustomers,
   mockVehicles,
   mockParts,
   mockOrders,
   mockAppointments,
   mockStaffAccounts,
+  mockFeedbacks,
+  mockSurveys,
+  mockSurveyResponses,
 } from '../data/mockData';
 import { addAdminNotification } from './notifications';
 
@@ -59,11 +65,33 @@ export const customerApi = {
           soXe: mockMatch?.soXe || `XE00${item.maKH || 1}`,
           tongChiTieu: mockMatch?.tongChiTieu || 0,
           avatar: mockMatch?.avatar || `/images/KH/kh${item.maKH || 1}.jpg`,
+          soThich: item.soThich || mockMatch?.soThich || 'Xe tay ga cao cấp',
         };
       });
     } catch (err) {
       console.warn('[customerApi.getAll] Failed to fetch from backend, using mockData fallback:', err);
       return mockCustomers;
+    }
+  },
+
+  async update(maKhInt: number, data: Partial<Customer>): Promise<boolean> {
+    try {
+      const res = await fetchWithTimeout(`${API_BASE_URL}/KhachHang/${maKhInt}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          hoTen: data.hoTen,
+          ngaySinh: data.ngaySinh ? `${data.ngaySinh}T00:00:00` : undefined,
+          gioiTinh: data.gioiTinh === 'Nu' ? 'Nu' : 'Nam',
+          soDienThoai: data.soDienThoai,
+          diaChi: data.diaChi,
+          soThich: data.soThich,
+        }),
+      });
+      return res.ok;
+    } catch (err) {
+      console.warn('[customerApi.update] Backend call failed, applied locally:', err);
+      return false;
     }
   },
 
@@ -202,18 +230,37 @@ export const vehicleApi = {
     }
   },
 
-  async renewWarranty(maXeSoHuuInt: number, newDateStr: string) {
+  async renewWarranty(
+    maXeSoHuuInt: number,
+    newDateStr: string,
+    details?: { tenXe?: string; bienSo?: string; customerName?: string; packageMonths?: string }
+  ) {
     try {
-      const res = await fetchWithTimeout(`${API_BASE_URL}/XeKhachHang/gia-han/${maXeSoHuuInt}`, {
+      await fetchWithTimeout(`${API_BASE_URL}/XeKhachHang/gia-han/${maXeSoHuuInt}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ hanBaoHanhMoi: newDateStr }),
       });
-      return res.ok;
     } catch (err) {
       console.warn('[vehicleApi.renewWarranty] Backend call failed, applied locally:', err);
-      return false;
     }
+
+    const vId = maXeSoHuuInt < 10 ? `XE00${maXeSoHuuInt}` : `XE0${maXeSoHuuInt}`;
+    const vMatch = mockVehicles.find(v => v.id === vId || (details?.bienSo && v.bienSo === details.bienSo));
+    if (vMatch) {
+      vMatch.hanBaoHanh = newDateStr;
+      vMatch.trangThaiBaoHanh = 'ConHan';
+    }
+
+    addAdminNotification({
+      type: 'warranty_extended',
+      title: '🛡️ Yêu cầu gia hạn bảo hành điện tử',
+      message: `${details?.customerName || 'Khách hàng'} đã gia hạn gói ${details?.packageMonths || '12'} tháng cho xe ${details?.tenXe || vMatch?.tenXe || 'xe máy'} (${details?.bienSo || vMatch?.bienSo || ''}) đến ngày ${newDateStr}.`,
+      linkPage: 'customers',
+    });
+
+    window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'warranty' } }));
+    return true;
   },
 };
 
@@ -730,4 +777,228 @@ export const catalogVehicleApi = {
     return { success: true };
   },
 };
+
+// ────────────────────────────────────────────────────────────
+// 8. ĐÁNH GIÁ & PHẢN HỒI API (FEEDBACK & REVIEWS)
+// ────────────────────────────────────────────────────────────
+const FEEDBACK_STORAGE_KEY = 'crm_feedbacks';
+
+export const feedbackApi = {
+  async getAll(): Promise<Feedback[]> {
+    try {
+      const res = await fetchWithTimeout(`${API_BASE_URL}/PhanHoi`);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          const mapped: Feedback[] = data.map((item: any, idx: number) => {
+            const id = item.maPH ? (item.maPH < 10 ? `PH00${item.maPH}` : `PH0${item.maPH}`) : `PH${idx + 1}`;
+            const cId = item.maKH ? (item.maKH < 10 ? `KH00${item.maKH}` : `KH0${item.maKH}`) : 'KH001';
+            const mockMatch = mockFeedbacks.find(f => f.id === id || f.customerId === cId);
+            return {
+              id,
+              customerId: cId,
+              hoTen: item.hoTenKH || mockMatch?.hoTen || 'Khách hàng',
+              soDienThoai: mockMatch?.soDienThoai || '0901234567',
+              email: mockMatch?.email || 'khachhang@motoshop.vn',
+              diaChi: mockMatch?.diaChi || 'TP.HCM',
+              xeDangDung: mockMatch?.xeDangDung,
+              noiDung: item.noiDung || '',
+              diemDanhGia: item.diemDanhGia || 5,
+              ngayGui: item.ngayGui ? item.ngayGui.split('T')[0] : '2024-12-01',
+              loaiDanhGia: mockMatch?.loaiDanhGia || 'DichVu',
+              trangThai: (item.trangThaiXuLy === 'Đã phản hồi' || item.trangThaiXuLy === 'DaXuLy') ? 'DaXuLy' : 'ChoXuLy',
+              loaiNhan: (item.diemDanhGia <= 3 || item.noiDung?.toLowerCase().includes('chậm') || item.noiDung?.toLowerCase().includes('lỗi')) ? 'KhieuNai' : 'DanhGia',
+              ghiChuXuLy: mockMatch?.ghiChuXuLy,
+            };
+          });
+
+          // Merge any locally added items from storage
+          const cached = localStorage.getItem(FEEDBACK_STORAGE_KEY);
+          if (cached) {
+            try {
+              const localList: Feedback[] = JSON.parse(cached);
+              localList.forEach(lf => {
+                if (!mapped.some(m => m.id === lf.id)) mapped.unshift(lf);
+              });
+            } catch {}
+          }
+          return mapped;
+        }
+      }
+    } catch (err) {
+      console.warn('[feedbackApi.getAll] Fallback to mock/storage:', err);
+    }
+
+    const cached = localStorage.getItem(FEEDBACK_STORAGE_KEY);
+    if (cached) {
+      try { return JSON.parse(cached); } catch {}
+    }
+    return mockFeedbacks;
+  },
+
+  async create(data: {
+    customerId: string;
+    hoTen: string;
+    soDienThoai?: string;
+    email?: string;
+    diaChi?: string;
+    xeDangDung?: string;
+    noiDung: string;
+    diemDanhGia: number;
+    loaiDanhGia?: 'DichVu' | 'SanPham' | 'BaoHanh';
+    loaiNhan?: 'DanhGia' | 'KhieuNai';
+  }): Promise<{ success: boolean; feedback: Feedback }> {
+    const maKhInt = parseInt(data.customerId.replace(/\D/g, ''), 10) || 1;
+    let newMaPH: number | undefined;
+
+    try {
+      const res = await fetchWithTimeout(`${API_BASE_URL}/PhanHoi`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          maKH: maKhInt,
+          diemDanhGia: data.diemDanhGia,
+          noiDung: data.noiDung,
+        }),
+      });
+      if (res.ok) {
+        const resData = await res.json();
+        newMaPH = resData.id;
+      }
+    } catch (err) {
+      console.warn('[feedbackApi.create] Backend call failed, saving locally:', err);
+    }
+
+    const id = newMaPH ? (newMaPH < 10 ? `PH00${newMaPH}` : `PH0${newMaPH}`) : `PH${Date.now().toString().slice(-4)}`;
+    const newFb: Feedback = {
+      id,
+      customerId: data.customerId,
+      hoTen: data.hoTen,
+      soDienThoai: data.soDienThoai || '0901234567',
+      email: data.email || 'khachhang@motoshop.vn',
+      diaChi: data.diaChi || 'TP.HCM',
+      xeDangDung: data.xeDangDung,
+      noiDung: data.noiDung,
+      diemDanhGia: data.diemDanhGia,
+      ngayGui: new Date().toISOString().split('T')[0],
+      loaiDanhGia: data.loaiDanhGia || 'DichVu',
+      trangThai: 'ChoXuLy',
+      loaiNhan: data.loaiNhan || (data.diemDanhGia <= 3 ? 'KhieuNai' : 'DanhGia'),
+    };
+
+    mockFeedbacks.unshift(newFb);
+
+    try {
+      const cached = localStorage.getItem(FEEDBACK_STORAGE_KEY);
+      const list: Feedback[] = cached ? JSON.parse(cached) : [...mockFeedbacks];
+      if (!list.some(f => f.id === newFb.id)) list.unshift(newFb);
+      localStorage.setItem(FEEDBACK_STORAGE_KEY, JSON.stringify(list));
+    } catch {}
+
+    const isComplaint = newFb.loaiNhan === 'KhieuNai';
+    addAdminNotification({
+      type: 'feedback_received',
+      title: isComplaint ? '⚠️ Khiếu nại từ khách hàng' : '⭐ Đánh giá mới từ khách hàng',
+      message: `${newFb.hoTen} (${newFb.diemDanhGia}⭐): "${newFb.noiDung.slice(0, 60)}${newFb.noiDung.length > 60 ? '...' : ''}"`,
+      linkPage: 'feedback',
+      meta: newFb,
+    });
+
+    window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'feedback' } }));
+    return { success: true, feedback: newFb };
+  },
+
+  async resolve(id: string): Promise<boolean> {
+    const f = mockFeedbacks.find(x => x.id === id);
+    if (f) f.trangThai = 'DaXuLy';
+
+    try {
+      const cached = localStorage.getItem(FEEDBACK_STORAGE_KEY);
+      if (cached) {
+        const list: Feedback[] = JSON.parse(cached);
+        const match = list.find(x => x.id === id);
+        if (match) match.trangThai = 'DaXuLy';
+        localStorage.setItem(FEEDBACK_STORAGE_KEY, JSON.stringify(list));
+      }
+    } catch {}
+
+    window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'feedback' } }));
+    return true;
+  },
+};
+
+// ────────────────────────────────────────────────────────────
+// 9. KHẢO SÁT API (SURVEYS & RESPONSES)
+// ────────────────────────────────────────────────────────────
+const SURVEY_STORAGE_KEY = 'crm_surveys';
+const SURVEY_RESPONSE_KEY = 'crm_survey_responses';
+
+export const surveyApi = {
+  getAll(): Survey[] {
+    try {
+      const cached = localStorage.getItem(SURVEY_STORAGE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    localStorage.setItem(SURVEY_STORAGE_KEY, JSON.stringify(mockSurveys));
+    return mockSurveys;
+  },
+
+  create(survey: Omit<Survey, 'id' | 'createdDate' | 'status'> & { id?: string }): Survey {
+    const newSurvey: Survey = {
+      ...survey,
+      id: survey.id || `KS${Date.now().toString().slice(-4)}`,
+      createdDate: new Date().toISOString().split('T')[0],
+      status: 'Active',
+    };
+
+    const current = surveyApi.getAll();
+    const updated = [newSurvey, ...current.filter(s => s.id !== newSurvey.id)];
+    localStorage.setItem(SURVEY_STORAGE_KEY, JSON.stringify(updated));
+
+    mockSurveys.unshift(newSurvey);
+
+    window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'surveys' } }));
+    return newSurvey;
+  },
+
+  getResponses(surveyId?: string): SurveyResponse[] {
+    try {
+      const cached = localStorage.getItem(SURVEY_RESPONSE_KEY);
+      const list: SurveyResponse[] = cached ? JSON.parse(cached) : mockSurveyResponses;
+      if (surveyId) return list.filter(r => r.surveyId === surveyId);
+      return list;
+    } catch {
+      return mockSurveyResponses;
+    }
+  },
+
+  submitResponse(response: Omit<SurveyResponse, 'id' | 'submittedDate'>): SurveyResponse {
+    const newResp: SurveyResponse = {
+      ...response,
+      id: `RSP${Date.now().toString().slice(-4)}`,
+      submittedDate: new Date().toISOString().split('T')[0],
+    };
+
+    const all = surveyApi.getResponses();
+    all.push(newResp);
+    localStorage.setItem(SURVEY_RESPONSE_KEY, JSON.stringify(all));
+
+    const sMatch = surveyApi.getAll().find(s => s.id === response.surveyId);
+
+    addAdminNotification({
+      type: 'survey_submitted',
+      title: '📊 Khách hàng vừa gửi câu trả lời khảo sát',
+      message: `${response.customerName} đã hoàn thành khảo sát "${sMatch?.title || response.surveyId}".`,
+      linkPage: 'feedback',
+      meta: newResp,
+    });
+
+    window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'survey_responses' } }));
+    return newResp;
+  },
+};
+
 

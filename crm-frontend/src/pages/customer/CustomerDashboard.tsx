@@ -1,5 +1,18 @@
 import { useState, useEffect } from 'react';
-import { mockCustomers, mockVehicles, mockOrders, mockAppointments, mockSurveys, mockSurveyResponses, formatVND, getCustomerTier, type OrderStatus, type AppointmentStatus, type Vehicle, type Customer, type Survey, type SurveyResponse } from '../../data/mockData';
+import {
+  mockCustomers,
+  mockVehicles,
+  mockOrders,
+  mockAppointments,
+  formatVND,
+  getCustomerTier,
+  type OrderStatus,
+  type AppointmentStatus,
+  type Vehicle,
+  type Customer,
+  type Survey,
+} from '../../data/mockData';
+import { customerApi, vehicleApi, feedbackApi, surveyApi } from '../../services/api';
 import ImageUploader from '../../components/shared/ImageUploader';
 
 interface CustomerDashboardProps {
@@ -44,19 +57,26 @@ function DynamicSurveyTab({ customer }: { customer: Customer }) {
   const [hovered, setHovered] = useState(0);
   const [review, setReview] = useState('');
   const [feedbackToast, setFeedbackToast] = useState(false);
+  const [submittingFeedback, setSubmittingFeedback] = useState(false);
 
-  useEffect(() => {
-    // Filter surveys targeting ALL or this specific customer
-    const validSurveys = mockSurveys.filter(
+  const loadSurveys = () => {
+    const all = surveyApi.getAll();
+    const valid = all.filter(
       s => s.status === 'Active' && (s.targetCustomerId === 'ALL' || s.targetCustomerId === customer.id)
     );
-    setActiveSurveys(validSurveys);
+    setActiveSurveys(valid);
 
-    // Find already completed survey IDs
-    const done = mockSurveyResponses
+    const responses = surveyApi.getResponses();
+    const done = responses
       .filter(r => r.customerId === customer.id)
       .map(r => r.surveyId);
     setCompletedIds(done);
+  };
+
+  useEffect(() => {
+    loadSurveys();
+    window.addEventListener('crm-data-refresh', loadSurveys);
+    return () => window.removeEventListener('crm-data-refresh', loadSurveys);
   }, [customer.id]);
 
   const handleSelectAnswer = (surveyId: string, questionId: string, option: string) => {
@@ -71,16 +91,38 @@ function DynamicSurveyTab({ customer }: { customer: Customer }) {
 
   const handleSubmitSurvey = (survey: Survey) => {
     const sAnswers = answersMap[survey.id] || {};
-    const newResponse: SurveyResponse = {
-      id: `RSP${Date.now().toString().slice(-4)}`,
+    surveyApi.submitResponse({
       surveyId: survey.id,
       customerId: customer.id,
       customerName: customer.hoTen,
       answers: sAnswers,
-      submittedDate: new Date().toISOString().split('T')[0]
-    };
-    mockSurveyResponses.push(newResponse);
+    });
     setCompletedIds(prev => [...prev, survey.id]);
+  };
+
+  const handleSendFeedback = async () => {
+    if (rating === 0) return;
+    setSubmittingFeedback(true);
+    try {
+      await feedbackApi.create({
+        customerId: customer.id,
+        hoTen: customer.hoTen,
+        soDienThoai: customer.soDienThoai,
+        email: customer.email,
+        diaChi: customer.diaChi,
+        noiDung: review.trim() || `Khách hàng gửi đánh giá ${rating} sao cho dịch vụ showroom.`,
+        diemDanhGia: rating,
+        loaiDanhGia: 'DichVu',
+        xeDangDung: customer.soXe,
+      });
+      setFeedbackToast(true);
+      setReview('');
+      setRating(0);
+    } catch (err) {
+      console.warn('Send feedback error:', err);
+    } finally {
+      setSubmittingFeedback(false);
+    }
   };
 
   const active = hovered || rating;
@@ -215,15 +257,15 @@ function DynamicSurveyTab({ customer }: { customer: Customer }) {
               style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1.5px solid var(--color-zinc-200)', fontSize: 14, fontFamily: 'var(--font-sans)', resize: 'none', outline: 'none', color: 'var(--color-zinc-900)' }} />
 
             <button
-              onClick={() => rating > 0 && setFeedbackToast(true)}
-              disabled={rating === 0}
+              onClick={handleSendFeedback}
+              disabled={rating === 0 || submittingFeedback}
               className="w-full mt-4 py-3 rounded-xl font-700 text-white transition-all"
               style={{
                 background: rating > 0 ? 'var(--color-red-700)' : 'var(--color-zinc-300)',
                 border: 'none', cursor: rating > 0 ? 'pointer' : 'not-allowed',
                 fontFamily: 'var(--font-display)', fontSize: 16, letterSpacing: '0.06em', textTransform: 'uppercase',
               }}>
-              {rating === 0 ? 'Chọn số sao trước' : 'GỬI PHẢN HỒI'}
+              {submittingFeedback ? 'Đang gửi phản hồi...' : rating === 0 ? 'Chọn số sao trước' : 'GỬI PHẢN HỒI'}
             </button>
           </div>
         )}
@@ -242,6 +284,7 @@ function EditProfileModal({ customer, onClose, onSave }: { customer: Customer; o
     ngaySinh: customer.ngaySinh,
     gioiTinh: customer.gioiTinh,
     avatar: customer.avatar || '',
+    soThich: customer.soThich || 'Xe tay ga cao cấp',
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -327,6 +370,17 @@ function EditProfileModal({ customer, onClose, onSave }: { customer: Customer; o
                 <option value="Nu">Nữ</option>
               </select>
             </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-zinc-700 mb-1">Sở thích phương tiện & nhu cầu *</label>
+            <input
+              type="text"
+              placeholder="VD: Xe tay ga cao cấp, phượt thể thao, tiết kiệm xăng..."
+              value={form.soThich}
+              onChange={e => setForm({ ...form, soThich: e.target.value })}
+              className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600"
+            />
           </div>
 
           <ImageUploader
@@ -415,10 +469,10 @@ export default function CustomerDashboard({ currentCustomer, onNavigateToShowroo
   }
 
   // Count pending surveys for badge notification
-  const pendingSurveysCount = mockSurveys.filter(
+  const pendingSurveysCount = surveyApi.getAll().filter(
     s => s.status === 'Active' &&
          (s.targetCustomerId === 'ALL' || s.targetCustomerId === currentCustomer.id) &&
-         !mockSurveyResponses.some(r => r.surveyId === s.id && r.customerId === currentCustomer.id)
+         !surveyApi.getResponses().some(r => r.surveyId === s.id && r.customerId === currentCustomer.id)
   ).length;
 
   const myOrders = mockOrders.filter(o => o.customerId === currentCustomer.id);
@@ -455,12 +509,40 @@ export default function CustomerDashboard({ currentCustomer, onNavigateToShowroo
     setRegForm({ tenXe: '', bienSo: '', soKhung: '', mauSac: '', namSanXuat: '2025' });
   };
 
-  const handleSaveProfile = (updated: Customer) => {
+  const handleSaveProfile = async (updated: Customer) => {
+    const maKhInt = parseInt(updated.id.replace(/\D/g, ''), 10);
+    if (!isNaN(maKhInt) && maKhInt > 0) {
+      await customerApi.update(maKhInt, updated);
+    }
     const idx = mockCustomers.findIndex(c => c.id === updated.id);
     if (idx !== -1) {
       mockCustomers[idx] = updated;
     }
+    localStorage.setItem('crm_current_customer', JSON.stringify(updated));
     onCustomerChange?.(updated);
+    window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'customer_updated' } }));
+  };
+
+  const handleConfirmWarrantyRenewal = async () => {
+    if (!currentVehicle) return;
+    const months = parseInt(packageChoice, 10) || 12;
+    const curEnd = new Date(currentVehicle.hanBaoHanh);
+    const base = curEnd > new Date() ? curEnd : new Date();
+    base.setMonth(base.getMonth() + months);
+    const newDateStr = base.toISOString().split('T')[0];
+
+    const maXeSoHuu = parseInt(currentVehicle.id.replace(/\D/g, ''), 10) || 1;
+    await vehicleApi.renewWarranty(maXeSoHuu, newDateStr, {
+      tenXe: currentVehicle.tenXe,
+      bienSo: currentVehicle.bienSo,
+      customerName: currentCustomer.hoTen,
+      packageMonths: packageChoice,
+    });
+
+    currentVehicle.hanBaoHanh = newDateStr;
+    currentVehicle.trangThaiBaoHanh = 'ConHan';
+    setMyVehicles([...myVehicles]);
+    setRequestSent(true);
   };
 
   return (
@@ -819,8 +901,8 @@ export default function CustomerDashboard({ currentCustomer, onNavigateToShowroo
                     Hủy
                   </button>
                   <button
-                    onClick={() => setRequestSent(true)}
-                    className="px-5 py-2.5 rounded-xl text-xs font-bold bg-red-700 text-white hover:bg-red-800 shadow-md"
+                    onClick={handleConfirmWarrantyRenewal}
+                    className="px-5 py-2.5 rounded-xl text-xs font-bold bg-red-700 text-white hover:bg-red-800 shadow-md cursor-pointer"
                   >
                     Xác nhận gửi yêu cầu
                   </button>
