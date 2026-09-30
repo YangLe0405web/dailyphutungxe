@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { mockOrders, mockAppointments, formatVND, type OrderStatus, type AppointmentStatus, type Order, type Appointment } from '../../data/mockData';
+import { orderApi, appointmentApi } from '../../services/api';
 
 const orderStatuses: { key: OrderStatus; label: string; color: string; bg: string }[] = [
   { key: 'ChoDuyet', label: 'Chờ duyệt', color: '#d97706', bg: '#fef3c7' },
@@ -47,11 +48,33 @@ export default function SalesPage({ activeTab: controlledTab, onTabChange }: Sal
   const [orders, setOrders] = useState<Order[]>(mockOrders);
   const [appointments, setAppointments] = useState<Appointment[]>(mockAppointments);
 
+  // Load live orders and appointments from Backend API
+  useEffect(() => {
+    let isMounted = true;
+    orderApi.getAll().then(data => {
+      if (isMounted && data && data.length > 0) setOrders(data);
+    });
+    appointmentApi.getAll().then(data => {
+      if (isMounted && data && data.length > 0) setAppointments(data);
+    });
+    return () => { isMounted = false; };
+  }, []);
+
   function updateOrderStatus(id: string, status: OrderStatus) {
+    const numId = parseInt(id.replace(/\D/g, ''), 10);
+    if (!isNaN(numId)) {
+      const label = orderStatuses.find(s => s.key === status)?.label || status;
+      orderApi.updateStatus(numId, label);
+    }
     setOrders(os => os.map(o => o.id === id ? { ...o, trangThai: status } : o));
   }
 
   function updateApptStatus(id: string, status: AppointmentStatus) {
+    const numId = parseInt(id.replace(/\D/g, ''), 10);
+    if (!isNaN(numId)) {
+      const label = apptStatuses.find(s => s.key === status)?.label || status;
+      appointmentApi.updateStatus(numId, label);
+    }
     setAppointments(as => as.map(a => a.id === id ? { ...a, trangThai: status } : a));
   }
 

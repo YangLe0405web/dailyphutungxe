@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   mockCustomers,
   mockVehicles,
@@ -10,6 +10,7 @@ import {
   type Vehicle,
   formatVND,
 } from '../../data/mockData';
+import { customerApi, vehicleApi } from '../../services/api';
 import ImageUploader from '../../components/shared/ImageUploader';
 
 const PAGE_SIZE = 8;
@@ -275,7 +276,7 @@ function EditModal({ customer, onClose, onSave }: { customer: Customer; onClose:
 }
 
 export default function CustomersPage() {
-  const [customers, setCustomers] = useState(mockCustomers);
+  const [customers, setCustomers] = useState<Customer[]>(mockCustomers);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState<CustomerStatus | 'All'>('All');
   const [filterTier, setFilterTier] = useState<CustomerTierType | 'All'>('All');
@@ -284,6 +285,17 @@ export default function CustomersPage() {
   const [editingCust, setEditingCust] = useState<Customer | null>(null);
   const [deletingCustId, setDeletingCustId] = useState<string | null>(null);
   const [selectedCustForVehicle, setSelectedCustForVehicle] = useState<Customer | null>(null);
+
+  // Load live data from Backend API on mount
+  useEffect(() => {
+    let isMounted = true;
+    customerApi.getAll().then(data => {
+      if (isMounted && data && data.length > 0) {
+        setCustomers(data);
+      }
+    });
+    return () => { isMounted = false; };
+  }, []);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -300,12 +312,18 @@ export default function CustomersPage() {
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   function toggleStatus(id: string) {
+    const target = customers.find(x => x.id === id);
+    if (target) {
+      const numId = parseInt(id.replace(/\D/g, ''), 10);
+      if (!isNaN(numId)) {
+        customerApi.toggleStatus(numId, target.trangThai);
+      }
+    }
     setCustomers(cs => {
       const updated = cs.map(c => c.id === id ? { ...c, trangThai: c.trangThai === 'HoatDong' ? ('BiKhoa' as CustomerStatus) : ('HoatDong' as CustomerStatus) } : c);
-      const target = updated.find(x => x.id === id);
       const originalMock = mockCustomers.find(x => x.id === id);
       if (originalMock && target) {
-        originalMock.trangThai = target.trangThai;
+        originalMock.trangThai = target.trangThai === 'HoatDong' ? 'BiKhoa' : 'HoatDong';
       }
       return updated;
     });
@@ -320,6 +338,10 @@ export default function CustomersPage() {
   }
 
   function handleDeleteCustomer(id: string) {
+    const numId = parseInt(id.replace(/\D/g, ''), 10);
+    if (!isNaN(numId)) {
+      customerApi.deleteCustomer(numId);
+    }
     setCustomers(cs => cs.filter(c => c.id !== id));
     const idx = mockCustomers.findIndex(c => c.id === id);
     if (idx !== -1) {
@@ -540,9 +562,26 @@ function VehicleModal({ customer, onClose }: { customer: Customer; onClose: () =
   const [vehicles, setVehicles] = useState<Vehicle[]>(() => mockVehicles.filter(v => v.customerId === customer.id));
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
+  useEffect(() => {
+    let isMounted = true;
+    vehicleApi.getAll().then(allVehicles => {
+      if (isMounted && allVehicles && allVehicles.length > 0) {
+        const matching = allVehicles.filter(v => v.customerId === customer.id);
+        if (matching.length > 0) {
+          setVehicles(matching);
+        }
+      }
+    });
+    return () => { isMounted = false; };
+  }, [customer.id]);
+
   const handleRenew = (vId: string, years: number) => {
     const updated = renewVehicleWarranty(vId, years);
     if (updated) {
+      const numVId = parseInt(vId.replace(/\D/g, ''), 10);
+      if (!isNaN(numVId)) {
+        vehicleApi.renewWarranty(numVId, updated.hanBaoHanh);
+      }
       setVehicles(prev => prev.map(x => x.id === vId ? { ...updated } : x));
       setToastMsg(`Gia hạn thành công ${years * 12} tháng cho xe ${updated.tenXe} (${updated.bienSo})!`);
       setTimeout(() => setToastMsg(null), 3500);

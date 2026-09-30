@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { mockStaffAccounts, type StaffAccount, type AdminRole } from '../../data/mockData';
+import { staffApi } from '../../services/api';
 
 const roleLabels: Record<AdminRole, { label: string; bg: string; color: string }> = {
   SuperAdmin: { label: '👑 Super Admin (Quản trị viên)', bg: '#fef2f2', color: '#dc2626' },
@@ -22,6 +23,15 @@ const permissionMatrix = [
 
 export default function StaffRolesPage() {
   const [staffList, setStaffList] = useState<StaffAccount[]>(mockStaffAccounts);
+
+  // Load live staff accounts from Backend API
+  useEffect(() => {
+    let isMounted = true;
+    staffApi.getAll().then(data => {
+      if (isMounted && data && data.length > 0) setStaffList(data);
+    });
+    return () => { isMounted = false; };
+  }, []);
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<'All' | AdminRole>('All');
   const [showEditModal, setShowEditModal] = useState(false);

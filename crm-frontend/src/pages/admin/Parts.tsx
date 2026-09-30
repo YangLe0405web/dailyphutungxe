@@ -1,11 +1,21 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { mockParts, formatVND, Part } from '../../data/mockData';
+import { partApi } from '../../services/api';
 import ImageUploader from '../../components/shared/ImageUploader';
 
 const categoryOptions = ['Nhớt', 'Lọc', 'Phanh', 'Bugi', 'Đèn', 'Lốp xe', 'Phụ kiện', 'Trang trí', 'Truyền động', 'Thân máy'];
 
 export default function PartsPage() {
   const [parts, setParts] = useState<Part[]>([...mockParts]);
+
+  // Load live parts catalog from Backend API
+  useEffect(() => {
+    let isMounted = true;
+    partApi.getAll().then(data => {
+      if (isMounted && data && data.length > 0) setParts(data);
+    });
+    return () => { isMounted = false; };
+  }, []);
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
   const [search, setSearch] = useState('');
