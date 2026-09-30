@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { mockCustomers, mockVehicles, mockOrders, mockAppointments, mockSurveys, mockSurveyResponses, formatVND, type OrderStatus, type AppointmentStatus, type Vehicle, type Customer, type Survey, type SurveyResponse } from '../../data/mockData';
+import { mockCustomers, mockVehicles, mockOrders, mockAppointments, mockSurveys, mockSurveyResponses, formatVND, getCustomerTier, type OrderStatus, type AppointmentStatus, type Vehicle, type Customer, type Survey, type SurveyResponse } from '../../data/mockData';
 import ImageUploader from '../../components/shared/ImageUploader';
 
 interface CustomerDashboardProps {
@@ -606,6 +606,48 @@ export default function CustomerDashboard({ currentCustomer, onNavigateToShowroo
                 </div>
               ))}
             </div>
+
+            {/* Customer Tier / CLV Membership Card */}
+            {(() => {
+              const tier = getCustomerTier(currentCustomer.tongChiTieu);
+              const percentToNext = tier.nextTierSpending
+                ? Math.min(100, Math.round((currentCustomer.tongChiTieu / (currentCustomer.tongChiTieu + tier.nextTierSpending)) * 100))
+                : 100;
+              return (
+                <div className="p-4 border-t border-zinc-100 bg-zinc-50/80 flex flex-col md:flex-row items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl shrink-0"
+                      style={{ background: tier.badgeBg, border: `1.5px solid ${tier.badgeBorder}` }}>
+                      {tier.tier === 'VIP' ? '👑' : tier.tier === 'ThanThiet' ? '⭐' : '🌱'}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-sm text-zinc-900">{tier.label}</span>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider"
+                          style={{ background: tier.badgeBg, color: tier.badgeColor, border: `1px solid ${tier.badgeBorder}` }}>
+                          Ưu đãi {tier.discountPercent > 0 ? `Giảm ${tier.discountPercent}%` : 'Tích điểm'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-zinc-500 mt-0.5">{tier.description}</p>
+                    </div>
+                  </div>
+                  {tier.nextTierSpending ? (
+                    <div className="w-full md:w-56 text-right">
+                      <div className="text-[11px] text-zinc-500 font-mono mb-1">
+                        Chi tiêu thêm <strong>{formatVND(tier.nextTierSpending)}</strong> để lên <strong>{tier.nextTierLabel}</strong>
+                      </div>
+                      <div className="w-full bg-zinc-200 h-2 rounded-full overflow-hidden">
+                        <div className="bg-red-700 h-full rounded-full transition-all duration-500" style={{ width: `${percentToNext}%` }} />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="px-3 py-1.5 rounded-lg bg-purple-100 text-purple-700 border border-purple-200 text-xs font-bold font-mono">
+                      ✨ ĐẠT HẠNG CAO NHẤT
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         ) : (
           <div className="rounded-2xl p-6 mb-6 bg-white border border-zinc-200 flex flex-col items-center justify-center text-center py-10">

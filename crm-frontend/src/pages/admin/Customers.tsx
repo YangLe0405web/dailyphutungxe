@@ -1,5 +1,15 @@
 import { useState, useMemo } from 'react';
-import { mockCustomers, mockVehicles, renewVehicleWarranty, type Customer, type CustomerStatus, type Vehicle, formatVND } from '../../data/mockData';
+import {
+  mockCustomers,
+  mockVehicles,
+  renewVehicleWarranty,
+  getCustomerTier,
+  type Customer,
+  type CustomerStatus,
+  type CustomerTierType,
+  type Vehicle,
+  formatVND,
+} from '../../data/mockData';
 import ImageUploader from '../../components/shared/ImageUploader';
 
 const PAGE_SIZE = 8;
@@ -268,6 +278,7 @@ export default function CustomersPage() {
   const [customers, setCustomers] = useState(mockCustomers);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState<CustomerStatus | 'All'>('All');
+  const [filterTier, setFilterTier] = useState<CustomerTierType | 'All'>('All');
   const [page, setPage] = useState(1);
   const [showAdd, setShowAdd] = useState(false);
   const [editingCust, setEditingCust] = useState<Customer | null>(null);
@@ -276,11 +287,14 @@ export default function CustomersPage() {
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    return customers.filter(c =>
-      (filterStatus === 'All' || c.trangThai === filterStatus) &&
-      (!q || c.hoTen.toLowerCase().includes(q) || c.email.toLowerCase().includes(q) || c.soDienThoai.includes(q))
-    );
-  }, [customers, search, filterStatus]);
+    return customers.filter(c => {
+      const matchStatus = filterStatus === 'All' || c.trangThai === filterStatus;
+      const tierInfo = getCustomerTier(c.tongChiTieu);
+      const matchTier = filterTier === 'All' || tierInfo.tier === filterTier;
+      const matchSearch = !q || c.hoTen.toLowerCase().includes(q) || c.email.toLowerCase().includes(q) || c.soDienThoai.includes(q);
+      return matchStatus && matchTier && matchSearch;
+    });
+  }, [customers, search, filterStatus, filterTier]);
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -321,19 +335,26 @@ export default function CustomersPage() {
     <div className="p-6 lg:p-8">
       <div className="mb-6">
         <div style={{ fontFamily: 'var(--font-display)', fontSize: 30, fontWeight: 800, color: 'var(--color-zinc-900)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>QUẢN LÝ CRM KHÁCH HÀNG</div>
-        <p className="text-sm mt-1" style={{ color: 'var(--color-zinc-500)' }}>Danh sách tài khoản khách hàng, sửa xóa & quản lý bảo hành điện tử</p>
+        <p className="text-sm mt-1" style={{ color: 'var(--color-zinc-500)' }}>Hồ sơ khách hàng 360°, phân loại giá trị vòng đời (CLV), quản lý phương tiện & bảo hành điện tử</p>
       </div>
 
-      {/* KPI strip */}
-      <div className="grid grid-cols-3 gap-4 mb-5">
+      {/* KPI strip - Customer CLV Tiers */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
         {[
-          { label: 'Tổng khách hàng', value: customers.length, color: 'var(--color-zinc-900)' },
-          { label: 'Đang hoạt động', value: customers.filter(c => c.trangThai === 'HoatDong').length, color: '#16a34a' },
-          { label: 'Bị khóa', value: customers.filter(c => c.trangThai === 'BiKhoa').length, color: 'var(--color-red-700)' },
+          { label: 'Tổng khách hàng', count: customers.length, sub: 'Toàn hệ thống CRM', color: 'var(--color-zinc-900)', border: 'border-zinc-200' },
+          { label: '👑 Khách VIP (≥ 10tr)', count: customers.filter(c => c.tongChiTieu >= 10000000).length, sub: 'Ưu tiên VIP & giảm 10%', color: '#7c3aed', border: 'border-purple-200' },
+          { label: '⭐ Thân thiết (4 - 10tr)', count: customers.filter(c => c.tongChiTieu >= 4000000 && c.tongChiTieu < 10000000).length, sub: 'Tích điểm & giảm 5%', color: '#2563eb', border: 'border-blue-200' },
+          { label: '🌱 Khách mới (< 4tr)', count: customers.filter(c => c.tongChiTieu < 4000000).length, sub: 'Cần chăm sóc & khảo sát', color: '#16a34a', border: 'border-green-200' },
         ].map(s => (
-          <div key={s.label} className="rounded-xl px-5 py-4 bg-white border border-zinc-200 shadow-sm">
-            <div style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 800, color: s.color, letterSpacing: '0.02em' }}>{s.value}</div>
-            <div className="text-xs mt-1" style={{ color: 'var(--color-zinc-500)', fontFamily: 'var(--font-mono)' }}>{s.label}</div>
+          <div key={s.label} className={`rounded-xl px-5 py-3.5 bg-white border ${s.border} shadow-xs`}>
+            <div className="flex items-center justify-between">
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: 26, fontWeight: 800, color: s.color, letterSpacing: '0.02em' }}>{s.count}</div>
+              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full" style={{ background: 'var(--color-zinc-100)', color: 'var(--color-zinc-600)' }}>
+                {customers.length > 0 ? Math.round((s.count / customers.length) * 100) : 0}%
+              </span>
+            </div>
+            <div className="text-xs font-bold mt-1 text-zinc-800">{s.label}</div>
+            <div className="text-[11px] text-zinc-500 font-mono mt-0.5">{s.sub}</div>
           </div>
         ))}
       </div>
@@ -346,6 +367,13 @@ export default function CustomersPage() {
             onChange={e => { setSearch(e.target.value); setPage(1); }}
             style={{ width: '100%', padding: '9px 12px 9px 34px', borderRadius: 8, border: '1.5px solid var(--color-zinc-200)', background: 'white', fontSize: 13, fontFamily: 'var(--font-sans)', color: 'var(--color-zinc-900)', outline: 'none' }} />
         </div>
+        <select value={filterTier} onChange={e => { setFilterTier(e.target.value as CustomerTierType | 'All'); setPage(1); }}
+          style={{ padding: '9px 12px', borderRadius: 8, border: '1.5px solid var(--color-zinc-200)', background: 'white', fontSize: 13, fontFamily: 'var(--font-mono)', color: 'var(--color-zinc-700)', outline: 'none', cursor: 'pointer' }}>
+          <option value="All">Tất cả phân hạng CLV</option>
+          <option value="VIP">👑 Khách VIP (≥ 10 triệu)</option>
+          <option value="ThanThiet">⭐ Thân thiết (4 - 10 triệu)</option>
+          <option value="Moi">🌱 Khách mới (&lt; 4 triệu)</option>
+        </select>
         <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value as CustomerStatus | 'All'); setPage(1); }}
           style={{ padding: '9px 12px', borderRadius: 8, border: '1.5px solid var(--color-zinc-200)', background: 'white', fontSize: 13, fontFamily: 'var(--font-mono)', color: 'var(--color-zinc-700)', outline: 'none', cursor: 'pointer' }}>
           <option value="All">Tất cả trạng thái</option>
@@ -368,7 +396,7 @@ export default function CustomersPage() {
                 <th style={thSt}>Mã KH</th>
                 <th style={thSt}>Khách hàng</th>
                 <th style={thSt}>Liên hệ</th>
-                <th style={thSt}>Chi tiêu</th>
+                <th style={thSt}>Chi tiêu & Hạng CLV</th>
                 <th style={thSt}>Ngày đăng ký</th>
                 <th style={thSt}>Trạng thái</th>
                 <th style={{ ...thSt, textAlign: 'center' }}>Thao tác</th>
@@ -377,7 +405,9 @@ export default function CustomersPage() {
             <tbody>
               {paginated.length === 0 ? (
                 <tr><td colSpan={7} style={{ ...tdSt, textAlign: 'center', color: 'var(--color-zinc-400)', padding: 40 }}>Không tìm thấy khách hàng</td></tr>
-              ) : paginated.map(c => (
+              ) : paginated.map(c => {
+                const tier = getCustomerTier(c.tongChiTieu);
+                return (
                 <tr key={c.id}
                   onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-zinc-50)')}
                   onMouseLeave={e => (e.currentTarget.style.background = 'white')}
@@ -404,7 +434,14 @@ export default function CustomersPage() {
                     <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--color-zinc-500)' }}>{c.soDienThoai}</div>
                   </td>
                   <td style={tdSt}>
-                    <span style={{ fontFamily: 'var(--font-display)', fontSize: 14, fontWeight: 700, color: 'var(--color-red-700)', letterSpacing: '0.02em' }}>{formatVND(c.tongChiTieu)}</span>
+                    <div className="flex flex-col gap-1">
+                      <span style={{ fontFamily: 'var(--font-display)', fontSize: 14, fontWeight: 700, color: 'var(--color-red-700)', letterSpacing: '0.02em' }}>{formatVND(c.tongChiTieu)}</span>
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold w-fit shadow-xs"
+                        style={{ background: tier.badgeBg, color: tier.badgeColor, border: `1px solid ${tier.badgeBorder}`, fontFamily: 'var(--font-mono)' }}
+                        title={`${tier.label}: ${tier.description}`}>
+                        {tier.shortLabel}
+                      </span>
+                    </div>
                   </td>
                   <td style={{ ...tdSt, fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--color-zinc-500)' }}>{c.ngayDangKy}</td>
                   <td style={tdSt}>
@@ -444,7 +481,8 @@ export default function CustomersPage() {
                     </div>
                   </td>
                 </tr>
-              ))}
+              );
+            })}
             </tbody>
           </table>
         </div>

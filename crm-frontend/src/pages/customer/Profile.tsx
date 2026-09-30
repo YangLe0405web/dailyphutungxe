@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { mockCustomers, mockVehicles } from '../../data/mockData';
+import { mockCustomers, mockVehicles, getCustomerTier, formatVND } from '../../data/mockData';
 import { WarrantyTag } from '../../components/shared/StatusTag';
 
 const customer = mockCustomers[0];
@@ -42,10 +42,22 @@ export default function CustomerProfile({ onNavigate }: { onNavigate: (p: string
 
       <div className="max-w-3xl mx-auto px-6 py-8">
         {/* Welcome */}
-        <div className="mb-6">
-          <h1 className="text-2xl font-700" style={{ color: 'var(--color-navy-900)' }}>Xin chào, {customer.hoTen.split(' ').pop()} 👋</h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--color-navy-400)' }}>Đây là trang cá nhân của bạn tại Đại lý Xe máy & Phụ tùng</p>
-        </div>
+        {(() => {
+          const tier = getCustomerTier(customer.tongChiTieu);
+          return (
+            <div className="mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div>
+                <h1 className="text-2xl font-700" style={{ color: 'var(--color-navy-900)' }}>Xin chào, {customer.hoTen.split(' ').pop()} 👋</h1>
+                <p className="text-sm mt-1" style={{ color: 'var(--color-navy-400)' }}>Đây là trang cá nhân của bạn tại Đại lý Xe máy & Phụ tùng</p>
+              </div>
+              <div className="px-3.5 py-1.5 rounded-xl border flex items-center gap-2"
+                style={{ background: tier.badgeBg, borderColor: tier.badgeBorder }}>
+                <span className="font-bold text-xs" style={{ color: tier.badgeColor }}>{tier.label}</span>
+                <span className="text-[11px] font-mono text-zinc-500 font-bold">({formatVND(customer.tongChiTieu)})</span>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Vehicle card */}
         <div className="rounded-2xl overflow-hidden mb-5" style={{ background: 'white', border: '1px solid var(--color-navy-100)', boxShadow: '0 4px 24px rgba(15,23,42,0.06)' }}>

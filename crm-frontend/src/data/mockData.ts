@@ -17,6 +17,66 @@ export interface StaffAccount {
   ngayThamGia: string;
 }
 
+export type CustomerTierType = 'VIP' | 'ThanThiet' | 'Moi';
+
+export interface CustomerTierInfo {
+  tier: CustomerTierType;
+  label: string;
+  shortLabel: string;
+  badgeColor: string;
+  badgeBg: string;
+  badgeBorder: string;
+  discountPercent: number;
+  minSpending: number;
+  nextTierSpending?: number;
+  nextTierLabel?: string;
+  description: string;
+}
+
+export function getCustomerTier(tongChiTieu: number): CustomerTierInfo {
+  if (tongChiTieu >= 10000000) {
+    return {
+      tier: 'VIP',
+      label: '👑 Khách Hàng VIP',
+      shortLabel: '👑 VIP',
+      badgeColor: '#7c3aed',
+      badgeBg: '#f5f3ff',
+      badgeBorder: '#ddd6fe',
+      discountPercent: 10,
+      minSpending: 10000000,
+      description: 'Ưu tiên xếp lịch hẹn trước, giảm 10% công thợ bảo dưỡng & phụ tùng.',
+    };
+  }
+  if (tongChiTieu >= 4000000) {
+    return {
+      tier: 'ThanThiet',
+      label: '⭐ Khách Thân Thiết',
+      shortLabel: '⭐ Thân thiết',
+      badgeColor: '#2563eb',
+      badgeBg: '#eff6ff',
+      badgeBorder: '#bfdbfe',
+      discountPercent: 5,
+      minSpending: 4000000,
+      nextTierSpending: 10000000 - tongChiTieu,
+      nextTierLabel: 'VIP',
+      description: 'Giảm 5% khi mua phụ tùng, tặng voucher kiểm tra định kỳ miễn phí.',
+    };
+  }
+  return {
+    tier: 'Moi',
+    label: '🌱 Khách Hàng Mới',
+    shortLabel: '🌱 Khách mới',
+    badgeColor: '#16a34a',
+    badgeBg: '#f0fdf4',
+    badgeBorder: '#bbf7d0',
+    discountPercent: 0,
+    minSpending: 0,
+    nextTierSpending: 4000000 - tongChiTieu,
+    nextTierLabel: 'Thân thiết',
+    description: 'Tích lũy chi tiêu thêm để thăng hạng Thân thiết và nhận ưu đãi giảm giá.',
+  };
+}
+
 export interface Customer {
   id: string; hoTen: string; email: string; soDienThoai: string;
   diaChi: string; ngaySinh: string; gioiTinh: 'Nam' | 'Nu';
