@@ -51,13 +51,32 @@ export default function SalesPage({ activeTab: controlledTab, onTabChange }: Sal
   // Load live orders and appointments from Backend API
   useEffect(() => {
     let isMounted = true;
-    orderApi.getAll().then(data => {
-      if (isMounted && data && data.length > 0) setOrders(data);
-    });
-    appointmentApi.getAll().then(data => {
-      if (isMounted && data && data.length > 0) setAppointments(data);
-    });
-    return () => { isMounted = false; };
+    const fetchSalesData = () => {
+      orderApi.getAll().then(data => {
+        if (isMounted && data && data.length > 0) setOrders(data);
+      });
+      appointmentApi.getAll().then(data => {
+        if (isMounted && data && data.length > 0) setAppointments(data);
+      });
+    };
+
+    fetchSalesData();
+
+    const handleRefresh = (e: any) => {
+      const type = e.detail?.type;
+      if (!type || type === 'order_created' || type === 'appointment_booked') {
+        fetchSalesData();
+      }
+    };
+
+    window.addEventListener('crm-data-refresh', handleRefresh);
+    window.addEventListener('crm-admin-notification', handleRefresh);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener('crm-data-refresh', handleRefresh);
+      window.removeEventListener('crm-admin-notification', handleRefresh);
+    };
   }, []);
 
   function updateOrderStatus(id: string, status: OrderStatus) {

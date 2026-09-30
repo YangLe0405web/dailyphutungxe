@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useCart } from '../contexts/CartContext';
 import { mockCustomers, type Customer } from '../data/mockData';
+import { customerApi } from '../services/api';
 
 type CustomerPage = 'store' | 'vehicles' | 'booking' | 'dashboard' | 'checkout';
 
@@ -260,28 +261,31 @@ function CustomerAuthModal({
     }
   };
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.hoTen.trim() || !form.email.trim() || !form.soDienThoai.trim()) return;
-    const newCustomer: Customer = {
-      id: `KH${Date.now().toString().slice(-4)}`,
-      hoTen: form.hoTen.trim(),
-      email: form.email.trim(),
-      soDienThoai: form.soDienThoai.trim(),
-      diaChi: form.diaChi.trim() || 'TP. Hồ Chí Minh',
-      ngaySinh: '2000-01-01',
-      gioiTinh: 'Nam',
-      trangThai: 'HoatDong',
-      ngayDangKy: new Date().toISOString().split('T')[0],
-      soXe: '',
-      tongChiTieu: 0,
-    };
-    mockCustomers.unshift(newCustomer);
-    setToast(`🎉 Tạo tài khoản thành công cho ${newCustomer.hoTen}! Đã tự động đăng nhập.`);
-    setTimeout(() => {
-      onSuccess(newCustomer);
-      onClose();
-    }, 1500);
+    try {
+      const res = await customerApi.create({
+        hoTen: form.hoTen.trim(),
+        email: form.email.trim(),
+        soDienThoai: form.soDienThoai.trim(),
+        diaChi: form.diaChi.trim() || 'TP. Hồ Chí Minh',
+        ngaySinh: '2000-01-01T00:00:00',
+        gioiTinh: 'Nam',
+        tenDangNhap: form.email.split('@')[0],
+        matKhau: '123456',
+      });
+      setToast(`🎉 Tạo tài khoản thành công cho ${res.customer.hoTen}! Đã tự động đăng nhập.`);
+      setTimeout(() => {
+        onSuccess(res.customer);
+        onClose();
+      }, 1200);
+    } catch {
+      setToast(`Đã lưu tài khoản ${form.hoTen}!`);
+      setTimeout(() => {
+        onClose();
+      }, 1200);
+    }
   };
 
   return (

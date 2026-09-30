@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { formatVND } from '../../data/mockData';
+import { formatVND, type Customer } from '../../data/mockData';
+import { appointmentApi } from '../../services/api';
 
 type ServiceType = 'BaoDuong' | 'SuaChua' | 'LaiThu';
 
@@ -21,9 +22,10 @@ const timeSlots = ['08:00', '09:00', '09:30', '10:00', '10:30', '11:00', '14:00'
 
 interface ServiceBookingProps {
   initialVehicleId?: string;
+  currentCustomer?: Customer | null;
 }
 
-export default function ServiceBooking({ initialVehicleId }: ServiceBookingProps) {
+export default function ServiceBooking({ initialVehicleId, currentCustomer }: ServiceBookingProps) {
   const [svc, setSvc] = useState<ServiceType>(initialVehicleId ? 'LaiThu' : 'BaoDuong');
   const [selectedCar, setSelectedCar] = useState<string>(initialVehicleId || 'XM001');
 
@@ -33,17 +35,60 @@ export default function ServiceBooking({ initialVehicleId }: ServiceBookingProps
       setSelectedCar(initialVehicleId);
     }
   }, [initialVehicleId]);
+
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
-  const [form, setForm] = useState({ hoTen: 'Nguyễn Văn An', soDienThoai: '0901234567', tenXe: 'Honda Wave Alpha 110cc', bienSo: '51K-12345', ghiChu: '' });
+  const [form, setForm] = useState({
+    hoTen: currentCustomer?.hoTen || 'Nguyễn Văn An',
+    soDienThoai: currentCustomer?.soDienThoai || '0901234567',
+    tenXe: 'Honda Wave Alpha 110cc',
+    bienSo: '51K-12345',
+    ghiChu: '',
+  });
+
+  useEffect(() => {
+    if (currentCustomer) {
+      setForm(prev => ({
+        ...prev,
+        hoTen: currentCustomer.hoTen,
+        soDienThoai: currentCustomer.soDienThoai,
+      }));
+    }
+  }, [currentCustomer]);
+
   const [submitted, setSubmitted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const today = new Date().toISOString().split('T')[0];
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!date || !time) return;
-    setSubmitted(true);
+    if (!date || !time || isSubmitting) return;
+
+    setIsSubmitting(true);
+    const selectedVehicleObj = demoVehicles.find(v => v.id === selectedCar);
+    const vehicleName = svc === 'LaiThu'
+      ? (selectedVehicleObj ? selectedVehicleObj.tenXe : 'Xe lái thử mẫu')
+      : form.tenXe;
+
+    try {
+      await appointmentApi.create({
+        customerId: currentCustomer?.id,
+        hoTenKH: form.hoTen.trim() || currentCustomer?.hoTen || 'Khách hàng',
+        soDienThoai: form.soDienThoai.trim() || currentCustomer?.soDienThoai || '0901234567',
+        loaiDichVu: svc,
+        ngayHen: date,
+        gioHen: time,
+        tenXe: vehicleName,
+        bienSo: svc === 'LaiThu' ? 'XE-TEST-DRIVE' : form.bienSo,
+        ghiChu: form.ghiChu,
+      });
+    } catch (err) {
+      console.error('Lỗi khi đặt lịch hẹn:', err);
+    } finally {
+      setIsSubmitting(false);
+      setSubmitted(true);
+    }
   }
 
   if (submitted) {

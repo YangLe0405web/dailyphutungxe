@@ -12,6 +12,7 @@ import {
   mockAppointments,
   mockStaffAccounts,
 } from '../data/mockData';
+import { addAdminNotification } from './notifications';
 
 export const API_BASE_URL = 'http://localhost:5208/api';
 
@@ -77,6 +78,82 @@ export const customerApi = {
     } catch (err) {
       console.warn('[customerApi.toggleStatus] Backend call failed, applied locally:', err);
     }
+  },
+
+  async create(data: {
+    hoTen: string;
+    email: string;
+    soDienThoai: string;
+    diaChi?: string;
+    ngaySinh?: string;
+    gioiTinh?: string;
+    soThich?: string;
+    tenDangNhap?: string;
+    matKhau?: string;
+  }): Promise<{ success: boolean; customer: Customer; maKH?: number }> {
+    const defaultUsername = (data.tenDangNhap || data.email.split('@')[0] || data.soDienThoai).replace(/[^a-zA-Z0-9]/g, '');
+    let createdMaKH: number | undefined;
+    let customerId = `KH${Date.now().toString().slice(-4)}`;
+
+    try {
+      const res = await fetchWithTimeout(`${API_BASE_URL}/KhachHang`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          hoTen: data.hoTen,
+          ngaySinh: data.ngaySinh || '2000-01-01T00:00:00',
+          gioiTinh: data.gioiTinh || 'Nam',
+          soDienThoai: data.soDienThoai,
+          diaChi: data.diaChi || 'TP.HCM',
+          email: data.email,
+          soThich: data.soThich || 'Xe máy, phụ tùng chính hãng',
+          tenDangNhap: defaultUsername,
+          matKhau: data.matKhau || '123456',
+        }),
+      });
+
+      if (res.ok) {
+        const resData = await res.json();
+        createdMaKH = resData.maKH || resData.MaKH;
+        if (createdMaKH) {
+          customerId = createdMaKH < 10 ? `KH00${createdMaKH}` : `KH0${createdMaKH}`;
+        }
+      }
+    } catch (err) {
+      console.warn('[customerApi.create] Backend failed or offline, fallback to local:', err);
+    }
+
+    const newCustomer: Customer = {
+      id: customerId,
+      hoTen: data.hoTen,
+      email: data.email,
+      soDienThoai: data.soDienThoai,
+      diaChi: data.diaChi || 'TP.HCM',
+      ngaySinh: data.ngaySinh ? data.ngaySinh.split('T')[0] : '2000-01-01',
+      gioiTinh: data.gioiTinh === 'Nữ' || data.gioiTinh === 'Nu' ? 'Nu' : 'Nam',
+      trangThai: 'HoatDong',
+      ngayDangKy: new Date().toISOString().split('T')[0],
+      soXe: '',
+      tongChiTieu: 0,
+      avatar: `/images/KH/kh${(createdMaKH ? (createdMaKH % 10) + 1 : 1)}.jpg`,
+    };
+
+    const existIdx = mockCustomers.findIndex(c => c.id === newCustomer.id || c.email === newCustomer.email);
+    if (existIdx === -1) {
+      mockCustomers.unshift(newCustomer);
+    } else {
+      mockCustomers[existIdx] = newCustomer;
+    }
+
+    addAdminNotification({
+      type: 'customer_registered',
+      title: '🎉 Khách hàng mới đăng ký',
+      message: `${newCustomer.hoTen} (${newCustomer.soDienThoai}) vừa tạo tài khoản thành công qua cổng Khách hàng.`,
+      linkPage: 'customers',
+      meta: newCustomer,
+    });
+
+    return { success: true, customer: newCustomer, maKH: createdMaKH };
   },
 
   async deleteCustomer(maKhInt: number) {
@@ -228,6 +305,83 @@ export const orderApi = {
       console.warn('[orderApi.updateStatus] Backend call failed, applied locally:', err);
     }
   },
+
+  async create(data: {
+    customerId: string;
+    hoTenKH: string;
+    soDienThoai: string;
+    diaChiGiao: string;
+    items: {
+      maPhuTung?: number;
+      tenSanPham: string;
+      soLuong: number;
+      donGia: number;
+    }[];
+    tongTien: number;
+    ghiChu?: string;
+  }): Promise<{ success: boolean; order: Order; maDon?: number }> {
+    let maKH = parseInt(data.customerId.replace(/\D/g, ''), 10);
+    if (isNaN(maKH) || maKH <= 0) maKH = 1;
+
+    let createdMaDon: number | undefined;
+    let orderId = `DH${Date.now().toString().slice(-4)}`;
+
+    try {
+      const payloadItems = data.items.map(it => ({
+        maPhuTung: it.maPhuTung && it.maPhuTung > 0 ? it.maPhuTung : 1,
+        soLuong: it.soLuong,
+        donGia: it.donGia,
+      }));
+
+      const res = await fetchWithTimeout(`${API_BASE_URL}/DonHang`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          maKH,
+          tongTien: data.tongTien,
+          trangThai: 'Chờ duyệt',
+          items: payloadItems,
+        }),
+      });
+
+      if (res.ok) {
+        const resData = await res.json();
+        createdMaDon = resData.maDon || resData.MaDon;
+        if (createdMaDon) {
+          orderId = createdMaDon < 10 ? `DH00${createdMaDon}` : `DH0${createdMaDon}`;
+        }
+      }
+    } catch (err) {
+      console.warn('[orderApi.create] Backend failed or offline, fallback to local:', err);
+    }
+
+    const newOrder: Order = {
+      id: orderId,
+      customerId: data.customerId,
+      hoTenKH: data.hoTenKH,
+      ngayDat: new Date().toISOString().split('T')[0],
+      trangThai: 'ChoDuyet',
+      tongTien: data.tongTien,
+      diaChiGiao: data.diaChiGiao,
+      items: data.items.map(i => ({
+        tenSanPham: i.tenSanPham,
+        soLuong: i.soLuong,
+        donGia: i.donGia,
+      })),
+    };
+
+    mockOrders.unshift(newOrder);
+
+    addAdminNotification({
+      type: 'order_created',
+      title: '📦 Đơn hàng mới phát sinh',
+      message: `${newOrder.hoTenKH} vừa đặt đơn #${newOrder.id} - ${newOrder.tongTien.toLocaleString('vi-VN')} đ (${newOrder.items.length} món).`,
+      linkPage: 'sales',
+      meta: newOrder,
+    });
+
+    return { success: true, order: newOrder, maDon: createdMaDon };
+  },
 };
 
 // ────────────────────────────────────────────────────────────
@@ -286,6 +440,79 @@ export const appointmentApi = {
     } catch (err) {
       console.warn('[appointmentApi.updateStatus] Backend call failed, applied locally:', err);
     }
+  },
+
+  async create(data: {
+    customerId?: string;
+    hoTenKH: string;
+    soDienThoai: string;
+    loaiDichVu: 'BaoDuong' | 'SuaChua' | 'LaiThu';
+    ngayHen: string; // YYYY-MM-DD
+    gioHen: string;  // HH:mm
+    tenXe?: string;
+    bienSo?: string;
+    ghiChu?: string;
+  }): Promise<{ success: boolean; appointment: Appointment; maLich?: number }> {
+    let maKH = data.customerId ? parseInt(data.customerId.replace(/\D/g, ''), 10) : 1;
+    if (isNaN(maKH) || maKH <= 0) maKH = 1;
+
+    let createdMaLich: number | undefined;
+    let apptId = `LH${Date.now().toString().slice(-4)}`;
+
+    const fullDateStr = `${data.ngayHen}T${data.gioHen}:00`;
+    let svcLabel = 'Bảo dưỡng định kỳ';
+    if (data.loaiDichVu === 'SuaChua') svcLabel = 'Sửa chữa';
+    else if (data.loaiDichVu === 'LaiThu') svcLabel = `Lái thử: ${data.tenXe || 'Xe mẫu'}`;
+
+    try {
+      const res = await fetchWithTimeout(`${API_BASE_URL}/LichHen`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          maKH,
+          loaiDichVu: svcLabel,
+          ngayHen: fullDateStr,
+          ghiChu: `${data.ghiChu || ''} [Phương tiện: ${data.tenXe || ''} - BS: ${data.bienSo || ''}]`.trim(),
+        }),
+      });
+
+      if (res.ok) {
+        const resData = await res.json();
+        createdMaLich = resData.maLich || resData.MaLich;
+        if (createdMaLich) {
+          apptId = createdMaLich < 10 ? `LH00${createdMaLich}` : `LH0${createdMaLich}`;
+        }
+      }
+    } catch (err) {
+      console.warn('[appointmentApi.create] Backend failed or offline, fallback to local:', err);
+    }
+
+    const newAppt: Appointment = {
+      id: apptId,
+      customerId: data.customerId || `KH00${maKH}`,
+      hoTenKH: data.hoTenKH,
+      soDienThoai: data.soDienThoai,
+      loaiDichVu: data.loaiDichVu,
+      ngayHen: data.ngayHen,
+      gioHen: data.gioHen,
+      trangThai: 'ChoDuyet',
+      ghiChu: data.ghiChu || '',
+      tenXe: data.tenXe || 'Honda Wave Alpha 110cc',
+      bienSo: data.bienSo || '51K-123.45',
+    };
+
+    mockAppointments.unshift(newAppt);
+
+    const titleIcon = data.loaiDichVu === 'LaiThu' ? '🏍️ Lịch hẹn lái thử mới' : '📅 Lịch dịch vụ sửa chữa / bảo dưỡng mới';
+    addAdminNotification({
+      type: 'appointment_booked',
+      title: titleIcon,
+      message: `${newAppt.hoTenKH} (${newAppt.soDienThoai}) đặt hẹn ${svcLabel} lúc ${newAppt.gioHen} ngày ${newAppt.ngayHen}.`,
+      linkPage: 'appointments',
+      meta: newAppt,
+    });
+
+    return { success: true, appointment: newAppt, maLich: createdMaLich };
   },
 };
 

@@ -34,10 +34,28 @@ function AddModal({ onClose, onAdd }: { onClose: () => void; onAdd: (c: Customer
     return !Object.keys(e).length;
   }
 
-  function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!validate()) return;
-    const newCustId = `KH${Date.now().toString().slice(-4)}`;
+    let newCustId = `KH${Date.now().toString().slice(-4)}`;
+
+    try {
+      const res = await customerApi.create({
+        hoTen: form.hoTen.trim(),
+        email: form.email.trim(),
+        soDienThoai: form.soDienThoai.trim(),
+        diaChi: form.diaChi.trim(),
+        ngaySinh: form.ngaySinh ? `${form.ngaySinh}T00:00:00` : '2000-01-01T00:00:00',
+        gioiTinh: form.gioiTinh === 'Nu' ? 'Nu' : 'Nam',
+        tenDangNhap: form.email.split('@')[0],
+        matKhau: '123456',
+      });
+      if (res.customer) {
+        newCustId = res.customer.id;
+      }
+    } catch (err) {
+      console.warn('Backend call failed, creating locally:', err);
+    }
 
     if (form.tenXe.trim() || form.bienSo.trim()) {
       const newV: Vehicle = {
@@ -286,15 +304,33 @@ export default function CustomersPage() {
   const [deletingCustId, setDeletingCustId] = useState<string | null>(null);
   const [selectedCustForVehicle, setSelectedCustForVehicle] = useState<Customer | null>(null);
 
-  // Load live data from Backend API on mount
+  // Load live data from Backend API on mount & on customer creation events
   useEffect(() => {
     let isMounted = true;
-    customerApi.getAll().then(data => {
-      if (isMounted && data && data.length > 0) {
-        setCustomers(data);
+    const fetchCustomers = () => {
+      customerApi.getAll().then(data => {
+        if (isMounted && data && data.length > 0) {
+          setCustomers(data);
+        }
+      });
+    };
+
+    fetchCustomers();
+
+    const handleRefresh = (e: any) => {
+      if (!e.detail || e.detail.type === 'customer_registered') {
+        fetchCustomers();
       }
-    });
-    return () => { isMounted = false; };
+    };
+
+    window.addEventListener('crm-data-refresh', handleRefresh);
+    window.addEventListener('crm-admin-notification', handleRefresh);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener('crm-data-refresh', handleRefresh);
+      window.removeEventListener('crm-admin-notification', handleRefresh);
+    };
   }, []);
 
   const filtered = useMemo(() => {

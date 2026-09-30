@@ -213,7 +213,10 @@ export default function App() {
         )}
         {customerPage === 'store' && <PartsStore />}
         {customerPage === 'booking' && (
-          <ServiceBooking initialVehicleId={selectedVehicleForBooking} />
+          <ServiceBooking
+            initialVehicleId={selectedVehicleForBooking}
+            currentCustomer={currentCustomer}
+          />
         )}
         {customerPage === 'dashboard' && (
           <CustomerDashboard
@@ -226,6 +229,7 @@ export default function App() {
           <Checkout
             onBack={() => setCustomerPage('store')}
             onSuccess={() => setCustomerPage('dashboard')}
+            currentCustomer={currentCustomer}
           />
         )}
       </CustomerLayout>

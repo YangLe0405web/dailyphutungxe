@@ -1,6 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import type { AdminRole, StaffAccount } from '../data/mockData';
+import {
+  getAdminNotifications,
+  markAllAsRead,
+  markNotificationAsRead,
+  clearAllNotifications,
+  type AdminNotification,
+} from '../services/notifications';
 
 type NavGroup = { group: string; items: { key: string; label: string; icon: ReactNode; allowedRoles?: AdminRole[] }[] };
 
@@ -67,6 +74,43 @@ export default function AdminLayout({
 }: AdminLayoutProps) {
   const [collapsed, setCollapsed] = useState(false);
   const activeRole: AdminRole = currentRole || currentStaff?.vaiTro || 'SuperAdmin';
+
+  const [notifications, setNotifications] = useState<AdminNotification[]>(getAdminNotifications);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [liveToast, setLiveToast] = useState<AdminNotification | null>(null);
+
+  useEffect(() => {
+    const handleNewNotif = (e: any) => {
+      const newN = e.detail as AdminNotification;
+      setNotifications(prev => [newN, ...prev]);
+      setLiveToast(newN);
+      setTimeout(() => {
+        setLiveToast(curr => curr?.id === newN.id ? null : curr);
+      }, 7000);
+    };
+
+    const handleUpdate = () => {
+      setNotifications(getAdminNotifications());
+    };
+
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === 'crm_admin_notifications') {
+        setNotifications(getAdminNotifications());
+      }
+    };
+
+    window.addEventListener('crm-admin-notification', handleNewNotif);
+    window.addEventListener('crm-notifications-updated', handleUpdate);
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      window.removeEventListener('crm-admin-notification', handleNewNotif);
+      window.removeEventListener('crm-notifications-updated', handleUpdate);
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, []);
+
+  const unreadCount = notifications.filter(n => !n.read).length;
 
   return (
     <div className="flex min-h-screen" style={{ fontFamily: 'var(--font-sans)' }}>
@@ -200,6 +244,118 @@ export default function AdminLayout({
           </div>
 
           <div className="flex items-center gap-3">
+            {/* Notification Bell */}
+            <div className="relative">
+              <button
+                onClick={() => setNotifOpen(!notifOpen)}
+                className="relative p-2 rounded-xl bg-zinc-100 hover:bg-zinc-200 text-zinc-700 transition cursor-pointer flex items-center justify-center"
+                title="Thông báo hệ thống CRM"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                  <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                </svg>
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 flex items-center justify-center rounded-full text-[10px] font-bold text-white bg-red-600 px-1 min-w-[18px] h-[18px] shadow animate-pulse">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </button>
+
+              {/* Dropdown Popover */}
+              {notifOpen && (
+                <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-2xl shadow-2xl border border-zinc-200 py-3 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                  <div className="flex items-center justify-between px-4 pb-2.5 border-b border-zinc-100">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-sm text-zinc-900" style={{ fontFamily: 'var(--font-display)', letterSpacing: '0.04em' }}>
+                        THÔNG BÁO CRM
+                      </span>
+                      {unreadCount > 0 && (
+                        <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+                          {unreadCount} mới
+                        </span>
+                      )}
+                    </div>
+                    {unreadCount > 0 && (
+                      <button
+                        onClick={() => {
+                          markAllAsRead();
+                          setNotifications(getAdminNotifications());
+                        }}
+                        className="text-[11px] text-zinc-500 hover:text-red-700 font-medium transition cursor-pointer"
+                      >
+                        Đã đọc tất cả
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="max-h-[360px] overflow-y-auto divide-y divide-zinc-100">
+                    {notifications.length === 0 ? (
+                      <div className="py-8 text-center text-xs text-zinc-400">
+                        Chưa có thông báo nào
+                      </div>
+                    ) : (
+                      notifications.map(n => (
+                        <div
+                          key={n.id}
+                          onClick={() => {
+                            markNotificationAsRead(n.id);
+                            setNotifications(getAdminNotifications());
+                            onNavigate(n.linkPage);
+                            setNotifOpen(false);
+                          }}
+                          className={`p-3 hover:bg-zinc-50 transition cursor-pointer flex gap-3 ${!n.read ? 'bg-red-50/40' : ''}`}
+                        >
+                          <div className="text-xl shrink-0 pt-0.5">
+                            {n.type === 'customer_registered' ? '👤' : n.type === 'appointment_booked' ? '📅' : '📦'}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-1">
+                              <span className={`text-xs truncate ${!n.read ? 'font-bold text-zinc-900' : 'font-semibold text-zinc-700'}`}>
+                                {n.title}
+                              </span>
+                              <span className="text-[10px] text-zinc-400 shrink-0 font-mono">
+                                {n.time}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-zinc-600 line-clamp-2 mt-0.5 leading-snug">
+                              {n.message}
+                            </p>
+                            <div className="flex items-center justify-between mt-1.5">
+                              <span className="text-[10px] font-mono text-red-600 font-bold hover:underline">
+                                Xem ngay →
+                              </span>
+                              {!n.read && (
+                                <span className="w-2 h-2 rounded-full bg-red-600 shrink-0"></span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <div className="px-4 pt-2.5 border-t border-zinc-100 flex items-center justify-between text-[11px]">
+                    <button
+                      onClick={() => {
+                        clearAllNotifications();
+                        setNotifications([]);
+                      }}
+                      className="text-zinc-400 hover:text-zinc-600 cursor-pointer"
+                    >
+                      Xóa tất cả
+                    </button>
+                    <button
+                      onClick={() => setNotifOpen(false)}
+                      className="font-semibold text-zinc-700 hover:text-zinc-900 cursor-pointer"
+                    >
+                      Đóng
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Vai trò nhân viên badge (thay cho giả lập vai trò) */}
             <div className="flex items-center gap-1.5">
               <span className="text-[11px] font-mono text-zinc-400 uppercase hidden sm:inline">Vai trò:</span>
@@ -242,6 +398,50 @@ export default function AdminLayout({
           {children}
         </main>
       </div>
+
+      {/* Floating live toast */}
+      {liveToast && (
+        <div className="fixed bottom-6 right-6 z-50 max-w-sm bg-white rounded-2xl shadow-2xl border-2 border-red-500 p-4 animate-in slide-in-from-bottom-5 duration-300">
+          <div className="flex items-start gap-3">
+            <div className="text-2xl shrink-0">
+              {liveToast.type === 'customer_registered' ? '🎉' : liveToast.type === 'appointment_booked' ? '🏍️' : '📦'}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold text-zinc-900 uppercase font-mono tracking-wider">
+                  {liveToast.title}
+                </h4>
+                <button
+                  onClick={() => setLiveToast(null)}
+                  className="text-zinc-400 hover:text-zinc-600 text-sm ml-2 cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+              <p className="text-xs text-zinc-600 mt-1 leading-relaxed">
+                {liveToast.message}
+              </p>
+              <div className="mt-2.5 flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    onNavigate(liveToast.linkPage);
+                    setLiveToast(null);
+                  }}
+                  className="px-3 py-1 bg-red-700 hover:bg-red-800 text-white text-[11px] font-bold rounded-lg transition cursor-pointer shadow-xs"
+                >
+                  Xem ngay →
+                </button>
+                <button
+                  onClick={() => setLiveToast(null)}
+                  className="px-2 py-1 text-zinc-500 hover:text-zinc-700 text-[11px] cursor-pointer"
+                >
+                  Bỏ qua
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

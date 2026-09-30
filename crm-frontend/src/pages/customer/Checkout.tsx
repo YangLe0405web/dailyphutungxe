@@ -1,21 +1,73 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useCart } from '../../contexts/CartContext';
-import { formatVND } from '../../data/mockData';
+import { formatVND, type Customer } from '../../data/mockData';
+import { orderApi } from '../../services/api';
 
-export default function Checkout({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => void }) {
+interface CheckoutProps {
+  onBack: () => void;
+  onSuccess: () => void;
+  currentCustomer?: Customer | null;
+}
+
+export default function Checkout({ onBack, onSuccess, currentCustomer }: CheckoutProps) {
   const { items, total, clear } = useCart();
-  const [form, setForm] = useState({ hoTen: 'Nguyễn Văn An', soDienThoai: '0901234567', diaChi: '12 Lý Thường Kiệt, Q.1, TP.HCM', ghiChu: '' });
+  const [form, setForm] = useState({
+    hoTen: currentCustomer?.hoTen || 'Nguyễn Văn An',
+    soDienThoai: currentCustomer?.soDienThoai || '0901234567',
+    diaChi: currentCustomer?.diaChi || '12 Lý Thường Kiệt, Q.1, TP.HCM',
+    ghiChu: '',
+  });
+
+  useEffect(() => {
+    if (currentCustomer) {
+      setForm(prev => ({
+        ...prev,
+        hoTen: currentCustomer.hoTen,
+        soDienThoai: currentCustomer.soDienThoai,
+        diaChi: currentCustomer.diaChi || prev.diaChi,
+      }));
+    }
+  }, [currentCustomer]);
+
   const [pay, setPay] = useState<'cod' | 'transfer'>('cod');
   const [done, setDone] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   const ship = 30000;
   const grand = total + ship;
 
-  function handleOrder(e: React.FormEvent) {
+  async function handleOrder(e: React.FormEvent) {
     e.preventDefault();
-    setDone(true);
-    clear();
-    setTimeout(onSuccess, 3000);
+    if (submitting) return;
+    setSubmitting(true);
+
+    try {
+      await orderApi.create({
+        customerId: currentCustomer?.id || 'KH001',
+        hoTenKH: form.hoTen.trim() || currentCustomer?.hoTen || 'Khách hàng',
+        soDienThoai: form.soDienThoai.trim() || currentCustomer?.soDienThoai || '0901234567',
+        diaChiGiao: form.diaChi.trim() || currentCustomer?.diaChi || 'TP.HCM',
+        items: items.map(it => {
+          const numId = parseInt(it.part.id.replace(/\D/g, ''), 10) || 1;
+          const unitPrice = it.part.giaKhuyenMai ?? it.part.giaGoc;
+          return {
+            maPhuTung: numId,
+            tenSanPham: it.part.tenSanPham,
+            soLuong: it.soLuong,
+            donGia: unitPrice,
+          };
+        }),
+        tongTien: grand,
+        ghiChu: form.ghiChu,
+      });
+    } catch (err) {
+      console.error('Lỗi khi tạo đơn hàng:', err);
+    } finally {
+      setSubmitting(false);
+      setDone(true);
+      clear();
+      setTimeout(onSuccess, 3000);
+    }
   }
 
   if (done) {
