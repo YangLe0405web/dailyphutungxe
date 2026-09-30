@@ -1,18 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { formatVND } from '../../data/mockData';
 import ImageUploader from '../../components/shared/ImageUploader';
+import { catalogVehicleApi, type CatalogVehicle } from '../../services/api';
 
-interface Vehicle {
-  id: string;
-  tenXe: string;
-  hang: string;
-  phanKhuc: string;
-  giaNiemYet: number;
-  mauSac: string;
-  moTa?: string;
-  hinhAnh?: string;
-  coTheLaiThu: boolean;
-}
+type Vehicle = CatalogVehicle;
 
 const initialVehicles: Vehicle[] = [
   {
@@ -175,7 +166,7 @@ const hangOptions = ['Honda', 'Yamaha', 'Suzuki', 'SYM', 'Piaggio'];
 const phanKhucOptions = ['Xe số', 'Tay ga', 'Côn tay', 'Xe điện'];
 
 export default function VehiclesPage() {
-  const [vehicles, setVehicles] = useState<Vehicle[]>([...initialVehicles]);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
   const [search, setSearch] = useState('');
@@ -188,6 +179,27 @@ export default function VehiclesPage() {
   const [editVehicle, setEditVehicle] = useState<Vehicle | null>(null);
   const [form, setForm] = useState<Partial<Vehicle>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const loadVehicles = () => {
+    catalogVehicleApi.getAll().then(data => {
+      if (data && data.length > 0) {
+        setVehicles(data);
+      } else {
+        setVehicles(initialVehicles);
+      }
+    });
+  };
+
+  useEffect(() => {
+    loadVehicles();
+    const handleRefresh = (e: any) => {
+      if (!e.detail || e.detail.type === 'vehicle_catalog') {
+        loadVehicles();
+      }
+    };
+    window.addEventListener('crm-data-refresh', handleRefresh);
+    return () => window.removeEventListener('crm-data-refresh', handleRefresh);
+  }, []);
 
   const filtered = vehicles.filter(v => {
     // Search
@@ -225,19 +237,14 @@ export default function VehiclesPage() {
     return err;
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const err = validate(form);
     if (Object.keys(err).length) {
       setErrors(err);
       return;
     }
     if (editVehicle) {
-      setVehicles(prev =>
-        prev.map(v => (v.id === editVehicle.id ? { ...editVehicle, ...form } as Vehicle : v))
-      );
-    } else {
-      const newVehicle: Vehicle = {
-        id: 'XM' + Date.now(),
+      await catalogVehicleApi.update(editVehicle.id, {
         tenXe: form.tenXe!.trim(),
         hang: form.hang!.trim(),
         phanKhuc: form.phanKhuc!.trim(),
@@ -246,8 +253,22 @@ export default function VehiclesPage() {
         moTa: form.moTa?.trim() ?? '',
         hinhAnh: form.hinhAnh?.trim() ?? '',
         coTheLaiThu: !!form.coTheLaiThu,
-      };
-      setVehicles(prev => [newVehicle, ...prev]);
+      });
+      setVehicles(prev =>
+        prev.map(v => (v.id === editVehicle.id ? { ...v, ...form } as Vehicle : v))
+      );
+    } else {
+      const res = await catalogVehicleApi.create({
+        tenXe: form.tenXe!.trim(),
+        hang: form.hang!.trim(),
+        phanKhuc: form.phanKhuc!.trim(),
+        giaNiemYet: Number(form.giaNiemYet),
+        mauSac: form.mauSac!.trim(),
+        moTa: form.moTa?.trim() ?? '',
+        hinhAnh: form.hinhAnh?.trim() ?? '',
+        coTheLaiThu: !!form.coTheLaiThu,
+      });
+      setVehicles(prev => [res.vehicle, ...prev]);
     }
     setShowModal(false);
     setEditVehicle(null);
@@ -261,8 +282,9 @@ export default function VehiclesPage() {
     setShowModal(true);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (window.confirm('Bạn có chắc chắn muốn xóa mẫu xe này?')) {
+      await catalogVehicleApi.delete(id);
       setVehicles(prev => prev.filter(v => v.id !== id));
     }
   };

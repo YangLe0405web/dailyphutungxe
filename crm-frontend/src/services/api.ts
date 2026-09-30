@@ -410,18 +410,27 @@ export const appointmentApi = {
         if (item.loaiDichVu?.includes('Sửa') || item.loaiDichVu?.includes('Sua')) ldv = 'SuaChua';
         else if (item.loaiDichVu?.includes('Lái') || item.loaiDichVu?.includes('Lai')) ldv = 'LaiThu';
 
+        let extractedXe = mockMatch?.tenXe || 'Honda SH 160i ABS';
+        let extractedBs = mockMatch?.bienSo || '51K-123.45';
+        if (item.ghiChu) {
+          const xeMatch = item.ghiChu.match(/(?:Phương tiện|Xe):\s*([^-\]]+)/i);
+          if (xeMatch && xeMatch[1]) extractedXe = xeMatch[1].trim();
+          const bsMatch = item.ghiChu.match(/BS:\s*([^-\]]+)/i);
+          if (bsMatch && bsMatch[1]) extractedBs = bsMatch[1].trim();
+        }
+
         return {
           id,
           customerId: cId,
-          hoTenKH: item.hoTenKH || mockMatch?.hoTenKH || 'Khách hàng',
+          hoTenKH: item.tenKhachHang || item.TenKhachHang || item.hoTenKH || item.HoTenKH || mockMatch?.hoTenKH || 'Khách hàng',
           soDienThoai: item.soDienThoai || mockMatch?.soDienThoai || '0901234567',
           loaiDichVu: ldv,
           ngayHen: item.ngayHen ? item.ngayHen.split('T')[0] : '2024-12-20',
           gioHen: item.ngayHen && item.ngayHen.includes('T') ? item.ngayHen.split('T')[1].slice(0, 5) : '09:00',
           trangThai: tt,
           ghiChu: item.ghiChu || '',
-          tenXe: mockMatch?.tenXe || 'Honda SH 160i ABS',
-          bienSo: mockMatch?.bienSo || '51K-123.45',
+          tenXe: extractedXe,
+          bienSo: extractedBs,
         };
       });
     } catch (err) {
@@ -549,3 +558,176 @@ export const staffApi = {
     }
   },
 };
+
+// ────────────────────────────────────────────────────────────
+// 7. XE MẪU SHOWROOM CATALOG API (SHOWROOM VEHICLES)
+// ────────────────────────────────────────────────────────────
+export interface CatalogVehicle {
+  id: string;
+  maXe?: number;
+  tenXe: string;
+  hang: string;
+  phanKhuc: string;
+  giaNiemYet: number;
+  mauSac: string;
+  moTa: string;
+  hinhAnh: string;
+  coTheLaiThu: boolean;
+  dongCo?: string;
+  congSuat?: string;
+  tieuHaoNhienLieu?: string;
+  phanh?: string;
+  thongSoKyThuat?: string;
+}
+
+const VEHICLE_STORAGE_KEY = 'crm_catalog_vehicles';
+
+export const catalogVehicleApi = {
+  async getAll(): Promise<CatalogVehicle[]> {
+    try {
+      const res = await fetchWithTimeout(`${API_BASE_URL}/XeMau`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (!Array.isArray(data) || data.length === 0) throw new Error('Empty from server');
+
+      const mapped = data.map((item: any) => {
+        const id = item.maXe ? (item.maXe < 10 ? `XM00${item.maXe}` : `XM0${item.maXe}`) : `XM${Date.now()}`;
+        return {
+          id,
+          maXe: item.maXe,
+          tenXe: item.tenXe,
+          hang: item.hangXe || 'Honda',
+          phanKhuc: item.loaiXe || 'Tay ga',
+          giaNiemYet: Number(item.giaNiemYet) || 0,
+          mauSac: item.mauSac || 'Đen bóng, Đỏ đen, Trắng bạc',
+          moTa: item.thongSoKyThuat || 'Mẫu xe chính hãng phân phối tại Motoshop',
+          hinhAnh: item.hinhAnh || 'https://images.unsplash.com/photo-1568772585407-9361f9bf3a87?w=800&auto=format&fit=crop&q=80',
+          coTheLaiThu: item.coTheLaiThu !== false,
+          dongCo: item.thongSoKyThuat?.split(',')[0] || '150cc eSP+',
+          congSuat: '15 HP / 8.000 rpm',
+          tieuHaoNhienLieu: '2.1 L/100km',
+          phanh: 'Phanh đĩa ABS trước',
+          thongSoKyThuat: item.thongSoKyThuat || '',
+        };
+      });
+
+      localStorage.setItem(VEHICLE_STORAGE_KEY, JSON.stringify(mapped));
+      return mapped;
+    } catch (err) {
+      console.warn('[catalogVehicleApi.getAll] Fallback to cached or local:', err);
+      const cached = localStorage.getItem(VEHICLE_STORAGE_KEY);
+      if (cached) {
+        try { return JSON.parse(cached); } catch {}
+      }
+      return [];
+    }
+  },
+
+  async create(data: Omit<CatalogVehicle, 'id'>): Promise<{ success: boolean; vehicle: CatalogVehicle }> {
+    let newMaXe: number | undefined;
+    try {
+      const res = await fetchWithTimeout(`${API_BASE_URL}/XeMau`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenXe: data.tenXe,
+          hangXe: data.hang,
+          loaiXe: data.phanKhuc,
+          giaNiemYet: data.giaNiemYet,
+          thongSoKyThuat: data.thongSoKyThuat || data.moTa || '',
+          mauSac: data.mauSac,
+          hinhAnh: data.hinhAnh,
+          coTheLaiThu: data.coTheLaiThu,
+        }),
+      });
+      if (res.ok) {
+        const resData = await res.json();
+        newMaXe = resData.id;
+      }
+    } catch (err) {
+      console.warn('[catalogVehicleApi.create] Backend call failed, saving locally:', err);
+    }
+
+    const newId = newMaXe ? (newMaXe < 10 ? `XM00${newMaXe}` : `XM0${newMaXe}`) : `XM${Date.now()}`;
+    const newVehicle: CatalogVehicle = {
+      ...data,
+      id: newId,
+      maXe: newMaXe,
+    };
+
+    try {
+      const cached = localStorage.getItem(VEHICLE_STORAGE_KEY);
+      const list: CatalogVehicle[] = cached ? JSON.parse(cached) : [];
+      list.unshift(newVehicle);
+      localStorage.setItem(VEHICLE_STORAGE_KEY, JSON.stringify(list));
+    } catch {}
+
+    window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'vehicle_catalog' } }));
+    return { success: true, vehicle: newVehicle };
+  },
+
+  async update(id: string, data: Partial<CatalogVehicle>): Promise<{ success: boolean }> {
+    const maXe = data.maXe || parseInt(id.replace(/\D/g, ''), 10);
+    if (!isNaN(maXe) && maXe > 0) {
+      try {
+        await fetchWithTimeout(`${API_BASE_URL}/XeMau/${maXe}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tenXe: data.tenXe,
+            hangXe: data.hang,
+            loaiXe: data.phanKhuc,
+            giaNiemYet: data.giaNiemYet,
+            thongSoKyThuat: data.thongSoKyThuat || data.moTa || '',
+            mauSac: data.mauSac,
+            hinhAnh: data.hinhAnh,
+            coTheLaiThu: data.coTheLaiThu,
+          }),
+        });
+      } catch (err) {
+        console.warn('[catalogVehicleApi.update] Backend call failed, saving locally:', err);
+      }
+    }
+
+    try {
+      const cached = localStorage.getItem(VEHICLE_STORAGE_KEY);
+      if (cached) {
+        const list: CatalogVehicle[] = JSON.parse(cached);
+        const idx = list.findIndex(v => v.id === id);
+        if (idx !== -1) {
+          list[idx] = { ...list[idx], ...data };
+          localStorage.setItem(VEHICLE_STORAGE_KEY, JSON.stringify(list));
+        }
+      }
+    } catch {}
+
+    window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'vehicle_catalog' } }));
+    return { success: true };
+  },
+
+  async delete(id: string): Promise<{ success: boolean }> {
+    const maXe = parseInt(id.replace(/\D/g, ''), 10);
+    if (!isNaN(maXe) && maXe > 0) {
+      try {
+        await fetchWithTimeout(`${API_BASE_URL}/XeMau/${maXe}`, {
+          method: 'DELETE',
+        });
+      } catch (err) {
+        console.warn('[catalogVehicleApi.delete] Backend call failed, deleting locally:', err);
+      }
+    }
+
+    try {
+      const cached = localStorage.getItem(VEHICLE_STORAGE_KEY);
+      if (cached) {
+        const list: CatalogVehicle[] = JSON.parse(cached);
+        const filtered = list.filter(v => v.id !== id);
+        localStorage.setItem(VEHICLE_STORAGE_KEY, JSON.stringify(filtered));
+      }
+    } catch {}
+
+    window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'vehicle_catalog' } }));
+    return { success: true };
+  },
+};
+

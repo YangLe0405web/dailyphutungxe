@@ -53,7 +53,10 @@ namespace CrmBackend.Controllers
                     HangXe,
                     LoaiXe,
                     GiaNiemYet,
-                    ThongSoKyThuat
+                    ThongSoKyThuat,
+                    MauSac,
+                    HinhAnh,
+                    CoTheLaiThu
                 )
                 VALUES
                 (
@@ -61,7 +64,10 @@ namespace CrmBackend.Controllers
                     @HangXe,
                     @LoaiXe,
                     @GiaNiemYet,
-                    @ThongSoKyThuat
+                    @ThongSoKyThuat,
+                    @MauSac,
+                    @HinhAnh,
+                    @CoTheLaiThu
                 );
                 SELECT CAST(SCOPE_IDENTITY() AS INT);";
             
@@ -79,7 +85,10 @@ namespace CrmBackend.Controllers
                     HangXe = @HangXe,
                     LoaiXe = @LoaiXe,
                     GiaNiemYet = @GiaNiemYet,
-                    ThongSoKyThuat = @ThongSoKyThuat
+                    ThongSoKyThuat = @ThongSoKyThuat,
+                    MauSac = @MauSac,
+                    HinhAnh = @HinhAnh,
+                    CoTheLaiThu = @CoTheLaiThu
                 WHERE MaXe = @Id";
             
             var parameters = new 
@@ -89,6 +98,9 @@ namespace CrmBackend.Controllers
                 LoaiXe = dto.LoaiXe,
                 GiaNiemYet = dto.GiaNiemYet,
                 ThongSoKyThuat = dto.ThongSoKyThuat,
+                MauSac = dto.MauSac,
+                HinhAnh = dto.HinhAnh,
+                CoTheLaiThu = dto.CoTheLaiThu,
                 Id = id
             };
 

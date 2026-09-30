@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { formatVND, mockProductReviews, ProductReview } from '../../data/mockData';
+import { catalogVehicleApi } from '../../services/api';
 
 export interface ShowroomVehicle {
   id: string;
@@ -249,12 +250,47 @@ const brandMeta: Record<string, { label: string; color: string; bg: string; badg
 };
 
 export default function VehiclesShowroom({ onBookTestDrive }: Props) {
+  const [vehicles, setVehicles] = useState<ShowroomVehicle[]>(showroomVehicles);
   const [search, setSearch] = useState('');
   const [selectedHang, setSelectedHang] = useState<string>('ALL');
   const [selectedPhanKhuc, setSelectedPhanKhuc] = useState<string>('ALL');
   const [onlyTestDrive, setOnlyTestDrive] = useState<boolean>(false);
   const [detailVehicle, setDetailVehicle] = useState<ShowroomVehicle | null>(null);
   const [activeModalTab, setActiveModalTab] = useState<'specs' | 'reviews'>('specs');
+
+  useEffect(() => {
+    const loadVehicles = () => {
+      catalogVehicleApi.getAll().then(data => {
+        if (data && data.length > 0) {
+          const merged: ShowroomVehicle[] = data.map(d => {
+            const found = showroomVehicles.find(
+              sv => sv.id === d.id || sv.tenXe.toLowerCase().trim() === d.tenXe.toLowerCase().trim()
+            );
+            return {
+              id: d.id,
+              tenXe: d.tenXe,
+              hang: (d.hang as any) || 'Honda',
+              phanKhuc: (d.phanKhuc as any) || 'Tay ga',
+              giaNiemYet: d.giaNiemYet,
+              mauSac: d.mauSac,
+              moTa: d.moTa,
+              hinhAnh: d.hinhAnh,
+              coTheLaiThu: d.coTheLaiThu,
+              dongCo: d.dongCo || found?.dongCo || '150cc eSP+',
+              congSuat: d.congSuat || found?.congSuat || '15.0 HP / 8.000 rpm',
+              tieuHaoNhienLieu: d.tieuHaoNhienLieu || found?.tieuHaoNhienLieu || '2.2 L/100km',
+              phanh: d.phanh || found?.phanh || 'Phanh đĩa ABS trước',
+            };
+          });
+          setVehicles(merged);
+        }
+      });
+    };
+
+    loadVehicles();
+    window.addEventListener('crm-data-refresh', loadVehicles);
+    return () => window.removeEventListener('crm-data-refresh', loadVehicles);
+  }, []);
 
   // Local reviews state so user can add a review dynamically
   const [allReviews, setAllReviews] = useState<ProductReview[]>([...mockProductReviews]);
@@ -264,7 +300,7 @@ export default function VehiclesShowroom({ onBookTestDrive }: Props) {
   const [newReviewContent, setNewReviewContent] = useState('');
   const [reviewSubmitted, setReviewSubmitted] = useState(false);
 
-  const filteredVehicles = showroomVehicles.filter(v => {
+  const filteredVehicles = vehicles.filter(v => {
     const matchSearch = v.tenXe.toLowerCase().includes(search.toLowerCase()) || v.hang.toLowerCase().includes(search.toLowerCase());
     const matchHang = selectedHang === 'ALL' || v.hang === selectedHang;
     const matchPhanKhuc = selectedPhanKhuc === 'ALL' || v.phanKhuc === selectedPhanKhuc;

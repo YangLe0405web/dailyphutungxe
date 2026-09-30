@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { formatVND, type Customer } from '../../data/mockData';
-import { appointmentApi } from '../../services/api';
+import { appointmentApi, customerApi } from '../../services/api';
 
 type ServiceType = 'BaoDuong' | 'SuaChua' | 'LaiThu';
 
@@ -23,9 +23,10 @@ const timeSlots = ['08:00', '09:00', '09:30', '10:00', '10:30', '11:00', '14:00'
 interface ServiceBookingProps {
   initialVehicleId?: string;
   currentCustomer?: Customer | null;
+  onCustomerChange?: (c: Customer | null) => void;
 }
 
-export default function ServiceBooking({ initialVehicleId, currentCustomer }: ServiceBookingProps) {
+export default function ServiceBooking({ initialVehicleId, currentCustomer, onCustomerChange }: ServiceBookingProps) {
   const [svc, setSvc] = useState<ServiceType>(initialVehicleId ? 'LaiThu' : 'BaoDuong');
   const [selectedCar, setSelectedCar] = useState<string>(initialVehicleId || 'XM001');
 
@@ -39,8 +40,8 @@ export default function ServiceBooking({ initialVehicleId, currentCustomer }: Se
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
   const [form, setForm] = useState({
-    hoTen: currentCustomer?.hoTen || 'Nguyễn Văn An',
-    soDienThoai: currentCustomer?.soDienThoai || '0901234567',
+    hoTen: currentCustomer?.hoTen || '',
+    soDienThoai: currentCustomer?.soDienThoai || '',
     tenXe: 'Honda Wave Alpha 110cc',
     bienSo: '51K-12345',
     ghiChu: '',
@@ -71,11 +72,35 @@ export default function ServiceBooking({ initialVehicleId, currentCustomer }: Se
       ? (selectedVehicleObj ? selectedVehicleObj.tenXe : 'Xe lái thử mẫu')
       : form.tenXe;
 
+    let finalCustomerId = currentCustomer?.id;
+    let finalHoTen = form.hoTen.trim() || currentCustomer?.hoTen || 'Khách hàng';
+    let finalSdt = form.soDienThoai.trim() || currentCustomer?.soDienThoai || '0901234567';
+
     try {
+      // Nếu khách chưa đăng nhập, tự động tạo khách hàng mới trong CSDL
+      if (!currentCustomer && finalHoTen && finalSdt) {
+        try {
+          const custRes = await customerApi.create({
+            hoTen: finalHoTen,
+            soDienThoai: finalSdt,
+            email: `${finalSdt.replace(/\D/g, '')}@motoshop.vn`,
+            diaChi: 'TP. Hồ Chí Minh',
+            tenDangNhap: finalSdt.replace(/\D/g, ''),
+            matKhau: '123456',
+          });
+          if (custRes.customer) {
+            finalCustomerId = custRes.customer.id;
+            onCustomerChange?.(custRes.customer);
+          }
+        } catch (err) {
+          console.warn('Không thể tự tạo tài khoản khách:', err);
+        }
+      }
+
       await appointmentApi.create({
-        customerId: currentCustomer?.id,
-        hoTenKH: form.hoTen.trim() || currentCustomer?.hoTen || 'Khách hàng',
-        soDienThoai: form.soDienThoai.trim() || currentCustomer?.soDienThoai || '0901234567',
+        customerId: finalCustomerId,
+        hoTenKH: finalHoTen,
+        soDienThoai: finalSdt,
         loaiDichVu: svc,
         ngayHen: date,
         gioHen: time,

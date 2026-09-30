@@ -10,6 +10,9 @@ namespace CrmBackend.Models
         public string LoaiXe { get; set; } = "";
         public decimal GiaNiemYet { get; set; }
         public string ThongSoKyThuat { get; set; } = "";
+        public string? MauSac { get; set; }
+        public string? HinhAnh { get; set; }
+        public bool CoTheLaiThu { get; set; } = true;
     }
 
     public class SanPhamXeCreateDto
@@ -27,5 +30,8 @@ namespace CrmBackend.Models
         public decimal GiaNiemYet { get; set; }
         
         public string ThongSoKyThuat { get; set; } = "";
+        public string? MauSac { get; set; }
+        public string? HinhAnh { get; set; }
+        public bool CoTheLaiThu { get; set; } = true;
     }
 }

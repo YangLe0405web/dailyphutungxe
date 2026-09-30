@@ -216,6 +216,7 @@ export default function App() {
           <ServiceBooking
             initialVehicleId={selectedVehicleForBooking}
             currentCustomer={currentCustomer}
+            onCustomerChange={setCurrentCustomer}
           />
         )}
         {customerPage === 'dashboard' && (
@@ -230,6 +231,7 @@ export default function App() {
             onBack={() => setCustomerPage('store')}
             onSuccess={() => setCustomerPage('dashboard')}
             currentCustomer={currentCustomer}
+            onCustomerChange={setCurrentCustomer}
           />
         )}
       </CustomerLayout>

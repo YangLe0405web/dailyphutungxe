@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { mockFeedbacks, mockSurveys, mockSurveyResponses, mockCustomers, type Feedback, type Survey } from '../../data/mockData';
+import { useState, useEffect } from 'react';
+import { mockFeedbacks, mockSurveys, mockSurveyResponses, mockCustomers, type Feedback, type Survey, type Customer } from '../../data/mockData';
+import { customerApi } from '../../services/api';
 
 function Stars({ r }: { r: number }) {
   return (
@@ -18,6 +19,7 @@ export default function FeedbackPage() {
   
   // Feedback state & multi-criteria filters
   const [feedbacks, setFeedbacks] = useState<Feedback[]>(mockFeedbacks);
+  const [customers, setCustomers] = useState<Customer[]>(mockCustomers);
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<'All' | 'DanhGia' | 'KhieuNai'>('All');
   const [ratingFilter, setRatingFilter] = useState<number | 'All'>('All');
@@ -34,6 +36,17 @@ export default function FeedbackPage() {
     { id: 'q1', text: 'Bạn đánh giá thế nào về chất lượng dịch vụ?', opts: ['Rất tốt', 'Tốt', 'Bình thường', 'Cần cải thiện'] },
   ]);
   const [toast, setToast] = useState<string | null>(null);
+
+  useEffect(() => {
+    const loadCusts = () => {
+      customerApi.getAll().then(data => {
+        if (data && data.length > 0) setCustomers(data);
+      });
+    };
+    loadCusts();
+    window.addEventListener('crm-data-refresh', loadCusts);
+    return () => window.removeEventListener('crm-data-refresh', loadCusts);
+  }, []);
 
   // Multi-criteria filter logic
   const filteredFeedbacks = feedbacks.filter(f => {
@@ -478,7 +491,7 @@ export default function FeedbackPage() {
                       className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600 font-semibold"
                     >
                       <option value="ALL">🌐 TẤT CẢ KHÁCH HÀNG (Gửi toàn hệ thống)</option>
-                      {mockCustomers.map(c => (
+                      {customers.map(c => (
                         <option key={c.id} value={c.id}>
                           👤 {c.hoTen} ({c.soDienThoai} - {c.email})
                         </option>
