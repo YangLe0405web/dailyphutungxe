@@ -180,24 +180,24 @@ export default function AdminLoginPage({ onLoginSuccess, onBackHome }: AdminLogi
 
             <button
               type="button"
-              onClick={() => handleQuickDemo('sale@motoshop.vn')}
+              onClick={() => handleQuickDemo('anhnguyen@motoshop.vn')}
               className="w-full p-2.5 bg-zinc-950 hover:bg-zinc-800 border border-zinc-800 rounded-xl text-left flex items-center justify-between text-xs transition cursor-pointer"
             >
               <div>
-                <div className="font-bold text-blue-400">💼 NV Bán Hàng & CRM</div>
-                <div className="text-[10px] text-zinc-500 font-mono">sale@motoshop.vn</div>
+                <div className="font-bold text-blue-400">💼 NV Bán Hàng & CRM (Nguyễn Thị Ánh)</div>
+                <div className="text-[10px] text-zinc-500 font-mono">anhnguyen@motoshop.vn</div>
               </div>
               <span className="text-[10px] font-mono bg-zinc-800 text-zinc-300 px-2 py-1 rounded">Vào ngay →</span>
             </button>
 
             <button
               type="button"
-              onClick={() => handleQuickDemo('kythuat@motoshop.vn')}
+              onClick={() => handleQuickDemo('nguyen.thanh67@gmail.com')}
               className="w-full p-2.5 bg-zinc-950 hover:bg-zinc-800 border border-zinc-800 rounded-xl text-left flex items-center justify-between text-xs transition cursor-pointer"
             >
               <div>
-                <div className="font-bold text-emerald-400">🔧 NV Kỹ Thuật & Kho</div>
-                <div className="text-[10px] text-zinc-500 font-mono">kythuat@motoshop.vn</div>
+                <div className="font-bold text-emerald-400">🔧 NV Kỹ Thuật (Nguyễn Văn Thành)</div>
+                <div className="text-[10px] text-zinc-500 font-mono">nguyen.thanh67@gmail.com</div>
               </div>
               <span className="text-[10px] font-mono bg-zinc-800 text-zinc-300 px-2 py-1 rounded">Vào ngay →</span>
             </button>

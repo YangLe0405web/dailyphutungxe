@@ -145,27 +145,58 @@ CREATE TABLE LICH_HEN (
 -- ────────────────────────────────────────────────────────────
 -- DỮ LIỆU MẪU (SEED DATA)
 -- ────────────────────────────────────────────────────────────
+-- 1. Tài khoản (SuperAdmin, 5 Bán hàng, 5 Kỹ thuật, 10 Khách hàng)
 INSERT INTO TAI_KHOAN (TenDangNhap, MatKhau, VaiTro, TrangThai) VALUES
 ('admin', '123456', N'SuperAdmin', N'HoatDong'),
-('sale', '123456', N'NhanVienBanHang', N'HoatDong'),
-('kythuat', '123456', N'NhanVienKyThuat', N'HoatDong'),
-('hotro', '123456', N'NhanVienBanHang', N'BiKhoa'),
-('nguyenvana', '123456', N'KhachHang', N'HoatDong'),
-('tranthib', '123456', N'KhachHang', N'HoatDong');
+('anhnguyen', '123456', N'NhanVienBanHang', N'HoatDong'),
+('hoangtran', '123456', N'NhanVienBanHang', N'HoatDong'),
+('hale', '123456', N'NhanVienBanHang', N'HoatDong'),
+('baopham', '123456', N'NhanVienBanHang', N'HoatDong'),
+('anhvo', '123456', N'NhanVienBanHang', N'HoatDong'),
+('thanhnguyen', '123456', N'NhanVienKyThuat', N'HoatDong'),
+('ductran', '123456', N'NhanVienKyThuat', N'HoatDong'),
+('namle', '123456', N'NhanVienKyThuat', N'HoatDong'),
+('huypham', '123456', N'NhanVienKyThuat', N'HoatDong'),
+('datvo', '123456', N'NhanVienKyThuat', N'HoatDong'),
+('nguyenvanan', '123456', N'KhachHang', N'HoatDong'),
+('tranthibich', '123456', N'KhachHang', N'HoatDong'),
+('lehoangcuong', '123456', N'KhachHang', N'HoatDong'),
+('phamthiduyen', '123456', N'KhachHang', N'HoatDong'),
+('hoangvangiang', '123456', N'KhachHang', N'HoatDong'),
+('dangphuongthao', '123456', N'KhachHang', N'HoatDong'),
+('vuminhhai', '123456', N'KhachHang', N'HoatDong'),
+('buithihuong', '123456', N'KhachHang', N'HoatDong'),
+('dokhoanam', '123456', N'KhachHang', N'HoatDong'),
+('truonghoangloc', '123456', N'KhachHang', N'HoatDong');
 
--- Dữ liệu Nhân viên (StaffAccounts)
-INSERT INTO NHAN_VIEN (MaTK, HoTen, Email, SoDienThoai, ChucVu, VaiTro, TrangThai, NgayThamGia) VALUES
-(1, N'Trần Văn Quản Lý', 'admin@motoshop.vn', '0909999888', N'Giám đốc Showroom', N'SuperAdmin', N'HoatDong', '2022-01-01'),
-(2, N'Nguyễn Thị Sale', 'sale@motoshop.vn', '0918888777', N'Chuyên viên Bán hàng & CRM', N'NhanVienBanHang', N'HoatDong', '2023-03-15'),
-(3, N'Lê Văn Kỹ Thuật', 'kythuat@motoshop.vn', '0927777666', N'Trưởng xưởng Bảo dưỡng & Kho', N'NhanVienKyThuat', N'HoatDong', '2023-06-20'),
-(4, N'Phạm Văn Hỗ Trợ', 'hotro@motoshop.vn', '0936666555', N'Nhân viên Tư vấn Bán hàng', N'NhanVienBanHang', N'BiKhoa', '2024-02-10');
+-- 2. Dữ liệu Nhân viên (1 SuperAdmin, 5 Bán hàng, 5 Kỹ thuật)
+INSERT INTO NHAN_VIEN (MaTK, HoTen, Email, SoDienThoai, ChucVu, VaiTro, TrangThai, Avatar, NgayThamGia) VALUES
+(1, N'Trần Văn Quản Lý', 'admin@motoshop.vn', '0909999888', N'Giám đốc Showroom', N'SuperAdmin', N'HoatDong', '/images/NV/nv1.jpg', '2022-01-01'),
+(2, N'Nguyễn Thị Ánh', 'anhnguyen@motoshop.vn', '0988777661', N'Chuyên viên Tư vấn Bán hàng', N'NhanVienBanHang', N'HoatDong', '/images/NV/nv1.jpg', '2023-01-15'),
+(3, N'Trần Minh Hoàng', 'hoangtran@motoshop.vn', '0988777662', N'Chuyên viên Tư vấn Bán hàng', N'NhanVienBanHang', N'HoatDong', '/images/NV/nv2.jpg', '2023-02-20'),
+(4, N'Lê Thị Thu Hà', 'hale@motoshop.vn', '0988777663', N'Chuyên viên Bán hàng & CSKH', N'NhanVienBanHang', N'HoatDong', '/images/NV/nv3.jpg', '2023-03-10'),
+(5, N'Phạm Quốc Bảo', 'baopham@motoshop.vn', '0988777664', N'Chuyên viên Bán xe & Trả góp', N'NhanVienBanHang', N'HoatDong', '/images/NV/nv4.jpg', '2023-04-05'),
+(6, N'Võ Ngọc Anh', 'anhvo@motoshop.vn', '0988777665', N'Chuyên viên Bán hàng & CRM', N'NhanVienBanHang', N'HoatDong', '/images/NV/nv5.jpg', '2023-05-18'),
+(7, N'Nguyễn Văn Thành', 'nguyen.thanh67@gmail.com', '0901234567', N'Kỹ thuật viên Trưởng xưởng', N'NhanVienKyThuat', N'HoatDong', '/images/KT/nvkt1.png', '2023-01-10'),
+(8, N'Trần Minh Đức', 'tran.duc78@gmail.com', '0912345678', N'Kỹ thuật viên Bảo dưỡng', N'NhanVienKyThuat', N'HoatDong', '/images/KT/nvkt2.png', '2023-02-15'),
+(9, N'Lê Hoàng Nam', 'le.nam89@gmail.com', '0923456789', N'Kỹ thuật viên Sửa chữa máy', N'NhanVienKyThuat', N'HoatDong', '/images/KT/nvkt3.png', '2023-03-20'),
+(10, N'Phạm Quốc Huy', 'pham.huy90@gmail.com', '0934567890', N'Kỹ thuật viên Điện & Phụ tùng', N'NhanVienKyThuat', N'HoatDong', '/images/KT/nvkt4.png', '2023-04-12'),
+(11, N'Võ Thành Đạt', 'vo.dat36@gmail.com', '0945678901', N'Kỹ thuật viên Bảo hành', N'NhanVienKyThuat', N'HoatDong', '/images/KT/nvkt5.png', '2023-05-25');
 
--- Dữ liệu Khách hàng
+-- 3. Dữ liệu Khách hàng (10 khách hàng thực tế)
 INSERT INTO KHACH_HANG (MaTK, HoTen, NgaySinh, GioiTinh, SoDienThoai, DiaChi, SoThich) VALUES
-(5, N'Nguyễn Văn A', '2001-05-15', N'Nam', '0901234567', N'Hà Nội', N'Xe thể thao, đi phượt'),
-(6, N'Trần Thị B', '1995-11-20', N'Nữ', '0912345678', N'TP.HCM', N'Xe tiết kiệm xăng, đi làm');
+(12, N'Nguyễn Văn An', '1990-05-15', N'Nam', '0901234567', N'12 Lý Thường Kiệt, Q.1, TP.HCM', N'Xe ga cao cấp, phượt'),
+(13, N'Trần Thị Bích', '1995-08-22', N'Nữ', '0912345678', N'45 Nguyễn Huệ, Q.1, TP.HCM', N'Thời trang, phong cách Ý'),
+(14, N'Lê Hoàng Cường', '1988-11-30', N'Nam', '0923456789', N'78 Trần Phú, Q.5, TP.HCM', N'Xe côn tay thể thao'),
+(15, N'Phạm Thị Duyên', '1998-03-18', N'Nữ', '0934567890', N'23 CMT8, Q.3, TP.HCM', N'Cốp to, đi làm công sở'),
+(16, N'Hoàng Văn Giang', '1992-07-12', N'Nam', '0945678901', N'56 Điện Biên Phủ, Bình Thạnh, TP.HCM', N'Phượt xa, độ máy nhẹ'),
+(17, N'Đặng Thị Phương Thảo', '1996-12-01', N'Nữ', '0956789012', N'89 Võ Văn Tần, Q.3, TP.HCM', N'Xe gọn nhẹ thanh lịch'),
+(18, N'Vũ Minh Hải', '1985-04-25', N'Nam', '0967890123', N'34 Nguyễn Đình Chiểu, Phú Nhuận, TP.HCM', N'Động cơ mạnh mẽ bền bỉ'),
+(19, N'Bùi Thị Hương', '1994-09-14', N'Nữ', '0978901234', N'67 Phan Xích Long, Phú Nhuận, TP.HCM', N'Tiết kiệm xăng, trẻ trung'),
+(20, N'Đỗ Khoa Nam', '1991-02-10', N'Nam', '0989012345', N'102 Hoàng Văn Thụ, Tân Bình, TP.HCM', N'Xe điện công nghệ mới'),
+(21, N'Trương Vũ Hoàng Lộc', '1989-10-05', N'Nam', '0990123456', N'215 Lê Văn Sỹ, Q.3, TP.HCM', N'Xe ga thể thao nhập khẩu');
 
--- Dữ liệu Xe mẫu Showroom
+-- 4. Dữ liệu Xe mẫu Showroom (SAN_PHAM_XE - Giữ nguyên)
 INSERT INTO SAN_PHAM_XE (TenXe, HangXe, LoaiXe, GiaNiemYet, ThongSoKyThuat) VALUES
 (N'Honda SH 160i ABS (2025)', 'Honda', N'Xe ga', 95900000, N'156.9cc eSP+ 4 van, Phanh ABS 2 kênh, HSTC, Khóa thông minh Smart Key'),
 (N'Honda Air Blade 160 ABS', 'Honda', N'Xe ga', 56690000, N'156.9cc eSP+, Phanh ABS trước, Cổng sạc USB, Cốp rộng 23.2L'),
@@ -182,7 +213,7 @@ INSERT INTO SAN_PHAM_XE (TenXe, HangXe, LoaiXe, GiaNiemYet, ThongSoKyThuat) VALU
 (N'Vespa Sprint S 150 TFT', 'Piaggio & Vespa', N'Xe ga', 97800000, N'154.8cc động cơ i-Get thế hệ mới, Màn hình màu TFT hiển thị thông minh, ABS'),
 (N'Piaggio Liberty 125 S ABS', 'Piaggio & Vespa', N'Xe ga', 57700000, N'124.5cc động cơ i-Get hiện đại, Bánh trước 16 inch vượt chướng ngại vật êm ái');
 
--- Dữ liệu Phụ tùng Showroom (PHU_TUNG)
+-- 5. Dữ liệu Phụ tùng Showroom (PHU_TUNG - Giữ nguyên)
 INSERT INTO PHU_TUNG (TenPhuTung, LoaiPhuTung, DonGia, BaoHanhThang) VALUES
 (N'Nhớt Motul 7100 4T 10W40 1L (100% Tổng Hợp Ester)', N'Nhớt', 255000, 12),
 (N'Nhớt Castrol POWER1 Ultimate Scooter 10W-30 0.8L', N'Nhớt', 145000, 12),
@@ -203,12 +234,52 @@ INSERT INTO PHU_TUNG (TenPhuTung, LoaiPhuTung, DonGia, BaoHanhThang) VALUES
 (N'Kính chắn gió khí động học ZHI.PAT Sport cho SH 160i / SH 125i', N'Phụ kiện', 390000, 12),
 (N'Thùng đựng đồ gắn sau xe Givi B270N Monolock 27 Lít chống nước', N'Phụ kiện', 1080000, 24);
 
--- Dữ liệu Đơn hàng
-INSERT INTO DON_HANG (MaKH, TongTien, TrangThai) 
-VALUES (1, 1500000, N'Chờ xác nhận');
+-- 6. Dữ liệu Xe sở hữu của Khách hàng (XE_KHACH_HANG)
+INSERT INTO XE_KHACH_HANG (MaKH, MaXe, BienSoXe, SoKhung, SoMay, NgayMua, HanBaoHanh) VALUES
+(1, 1, '51K-123.45', 'RLHKD160CB1234567', 'KF12E-1234567', '2023-01-10', '2026-01-10'),
+(2, 12, '51H-678.90', 'VESP125CB2345678', 'VP12E-2345678', '2022-02-14', '2025-02-14'),
+(3, 5, '59G1-234.56', 'RLHKW150CB3456789', 'KW15E-3456789', '2021-03-05', '2024-03-05'),
+(4, 3, '59F1-888.88', 'RLHKL125CB4567890', 'KL12E-4567890', '2022-04-20', '2025-04-20'),
+(5, 7, '59S2-345.67', 'MHYEX155CB5678901', 'YE15E-5678901', '2022-05-11', '2025-05-11'),
+(6, 4, '59V1-999.99', 'RLHKV110CB6789012', 'KV11E-6789012', '2023-06-08', '2026-06-08'),
+(7, 2, '51X1-456.78', 'RLHKA160CB7890123', 'KA16E-7890123', '2022-07-15', '2025-07-15'),
+(8, 6, '59T2-123.89', 'MHYJA125CB8901234', 'WA11E-8901234', '2021-08-22', '2024-08-22'),
+(9, 1, '51L1-567.89', 'VFEL125CB9012345', 'VF12E-9012345', '2022-09-19', '2025-09-19'),
+(10, 2, '59U1-678.12', 'RLHKO160CB0123456', 'KO16E-0123456', '2023-10-05', '2026-10-05');
 
--- Dữ liệu Lịch hẹn
-INSERT INTO LICH_HEN (MaKH, LoaiDichVu, NgayHen, GhiChu, TrangThai)
-VALUES (2, N'Bảo dưỡng định kỳ', '2026-09-25 09:00:00', N'Thay nhớt và kiểm tra phanh', N'Đã xác nhận');
+-- 7. Giao dịch CRM 1-5: Đơn hàng & Chi tiết (DON_HANG & CHI_TIET_DON_HANG)
+INSERT INTO DON_HANG (MaKH, NgayDat, TongTien, TrangThai) VALUES
+(1, '2024-11-15 08:30:00', 312000, N'Hoàn thành'),
+(2, '2024-12-03 14:15:00', 1650000, N'Đang giao'),
+(4, '2024-12-10 10:00:00', 1105000, N'Chờ duyệt'),
+(5, '2024-12-12 16:45:00', 510000, N'Hoàn thành'),
+(7, '2024-12-14 09:20:00', 450000, N'Đã hủy');
+
+INSERT INTO CHI_TIET_DON_HANG (MaDon, MaPhuTung, SoLuong, DonGia) VALUES
+(1, 1, 1, 255000),
+(1, 8, 1, 57000),
+(2, 10, 1, 1650000),
+(3, 14, 1, 315000),
+(3, 6, 1, 790000),
+(4, 13, 1, 510000),
+(5, 12, 1, 450000);
+
+-- 8. Giao dịch CRM 6-10: Lịch hẹn dịch vụ (LICH_HEN)
+INSERT INTO LICH_HEN (MaKH, LoaiDichVu, NgayHen, GhiChu, TrangThai) VALUES
+(1, N'Bảo dưỡng', '2024-12-20 09:00:00', N'Xe chạy hơi ồn, cần kiểm tra phuộc và thay nhớt tổng hợp', N'Đã xác nhận'),
+(2, N'Sửa chữa', '2024-12-21 10:30:00', N'Phanh trước kêu nhẹ, kiểm tra vệ sinh nồi xe Vespa', N'Chờ duyệt'),
+(3, N'Lái thử', '2024-12-22 14:00:00', N'Muốn đăng ký lái thử xe Yamaha Exciter 155 VVA thế hệ mới', N'Đã xác nhận'),
+(6, N'Bảo dưỡng', '2024-12-18 08:30:00', N'Bảo dưỡng định kỳ 5.000km và rửa xe', N'Hoàn thành'),
+(9, N'Sửa chữa', '2024-12-23 15:00:00', N'Kiểm tra lỗi còi và hệ thống phanh tái sinh xe điện', N'Đang thực hiện');
+
+-- 9. Đánh giá & Phản hồi Khách hàng (PHAN_HOI)
+INSERT INTO PHAN_HOI (MaKH, MaXe, MaPhuTung, DiemDanhGia, NoiDung, NgayGui, TrangThaiXuLy) VALUES
+(1, 1, NULL, 5, N'Dịch vụ bảo dưỡng định kỳ rất nhanh chóng, nhân viên kỹ thuật thay nhớt và siết phuộc cẩn thận. Showroom có phòng chờ tiện nghi!', '2024-11-16 10:00:00', N'Đã phản hồi'),
+(2, NULL, 10, 4, N'Đơn hàng lốp Michelin giao chậm hơn dự kiến 1 ngày do bên vận chuyển, may là đồ bọc gói kỹ và đúng kích thước chuẩn xe Vespa.', '2024-12-04 11:30:00', N'Chờ xử lý'),
+(4, NULL, 6, 5, N'Đèn LED Philips và má phanh Brembo mua tại cửa hàng dùng cực thích, bóp phanh êm ru và đi đêm rất an toàn.', '2024-12-05 14:00:00', N'Đã phản hồi'),
+(5, NULL, 13, 5, N'Bộ nhông sên dĩa DID vàng lắp vào chạy rất êm, nhân viên kỹ thuật căn xích chuẩn xác. Sẽ tiếp tục ủng hộ showroom!', '2024-12-10 16:00:00', N'Đã phản hồi'),
+(6, 4, NULL, 5, N'Tư vấn viên bán hàng giải thích các chương trình ưu đãi rất nhiệt tình, rửa xe sạch sẽ sau khi bảo dưỡng xong. Rất hài lòng!', '2024-12-11 09:15:00', N'Đã phản hồi'),
+(7, NULL, 12, 5, N'Tôi đặt đơn dây curoa nhưng bấm nhầm số lượng nên đã hủy. Cửa hàng hỗ trợ hoàn tiền và tư vấn lại rất nhanh chóng chu đáo.', '2024-12-14 10:45:00', N'Đã phản hồi'),
+(10, 2, NULL, 5, N'Showroom rất khang trang, nhiều phụ tùng chính hãng đẹp mắt. Nhân viên lễ tân tiếp đón tận tình, nước uống chu đáo.', '2024-12-16 15:20:00', N'Đã phản hồi');
 
 GO
