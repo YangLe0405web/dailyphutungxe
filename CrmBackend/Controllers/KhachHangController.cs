@@ -213,5 +213,120 @@ namespace CrmBackend.Controllers
             var data = await _db.QueryAsync(sql);
             return Ok(data);
         }
+
+        // ── POST: api/KhachHang/login ── Đăng nhập khách hàng (ĐN01)
+        [HttpPost("login")]
+        public async Task<IActionResult> Login([FromBody] KhachHangLoginDto dto)
+        {
+            if (string.IsNullOrWhiteSpace(dto.EmailHoacSdt) || string.IsNullOrWhiteSpace(dto.MatKhau))
+            {
+                return BadRequest(new { message = "Vui lòng nhập đầy đủ Email/SĐT và Mật khẩu!" });
+            }
+
+            var input = dto.EmailHoacSdt.Trim();
+            var sql = @"
+                SELECT k.MaKH, k.MaTK, k.HoTen, k.NgaySinh, k.GioiTinh, 
+                       k.SoDienThoai, k.Email, k.DiaChi, k.SoThich, k.NgayTao,
+                       t.TenDangNhap, t.MatKhau, t.TrangThai, t.VaiTro
+                FROM KHACH_HANG k
+                JOIN TAI_KHOAN t ON k.MaTK = t.MaTK
+                WHERE LOWER(k.Email) = LOWER(@Input) 
+                   OR k.SoDienThoai = @Input 
+                   OR LOWER(t.TenDangNhap) = LOWER(@Input)";
+
+            var user = await _db.QueryFirstOrDefaultAsync<dynamic>(sql, new { Input = input });
+            if (user == null)
+            {
+                return NotFound(new { message = "Tài khoản không tồn tại trên hệ thống!" });
+            }
+
+            if ((string)user.TrangThai == "BiKhoa")
+            {
+                return BadRequest(new { message = "Tài khoản này hiện đang bị khóa. Vui lòng liên hệ quản trị viên!" });
+            }
+
+            if ((string)user.MatKhau != dto.MatKhau)
+            {
+                return BadRequest(new { message = "Mật khẩu không chính xác!" });
+            }
+
+            return Ok(new
+            {
+                success = true,
+                message = "Đăng nhập thành công!",
+                customer = new
+                {
+                    maKH = user.MaKH,
+                    maTK = user.MaTK,
+                    hoTen = user.HoTen,
+                    ngaySinh = user.NgaySinh,
+                    gioiTinh = user.GioiTinh,
+                    soDienThoai = user.SoDienThoai,
+                    email = user.Email,
+                    diaChi = user.DiaChi,
+                    soThich = user.SoThich,
+                    trangThai = user.TrangThai,
+                    tenDangNhap = user.TenDangNhap
+                }
+            });
+        }
+
+        // ── POST: api/KhachHang/kiem-tra-tai-khoan ── Kiểm tra tài khoản để quên mật khẩu (ĐN02)
+        [HttpPost("kiem-tra-tai-khoan")]
+        public async Task<IActionResult> CheckAccount([FromBody] KhachHangCheckDto dto)
+        {
+            if (string.IsNullOrWhiteSpace(dto.EmailHoacSdt))
+                return BadRequest(new { message = "Vui lòng nhập Email hoặc Số điện thoại!" });
+
+            var input = dto.EmailHoacSdt.Trim();
+            var sql = @"
+                SELECT k.MaKH, k.HoTen, k.SoDienThoai, k.Email
+                FROM KHACH_HANG k
+                JOIN TAI_KHOAN t ON k.MaTK = t.MaTK
+                WHERE LOWER(k.Email) = LOWER(@Input) 
+                   OR k.SoDienThoai = @Input 
+                   OR LOWER(t.TenDangNhap) = LOWER(@Input)";
+
+            var user = await _db.QueryFirstOrDefaultAsync<dynamic>(sql, new { Input = input });
+            if (user == null)
+                return NotFound(new { message = "Không tìm thấy tài khoản với Email hoặc Số điện thoại này!" });
+
+            return Ok(new { success = true, hoTen = (string)user.HoTen, soDienThoai = (string)user.SoDienThoai, email = (string)user.Email });
+        }
+
+        // ── POST: api/KhachHang/dat-lai-mat-khau ── Đặt lại mật khẩu mới (ĐN02)
+        [HttpPost("dat-lai-mat-khau")]
+        public async Task<IActionResult> ResetPassword([FromBody] KhachHangResetPasswordDto dto)
+        {
+            if (string.IsNullOrWhiteSpace(dto.EmailHoacSdt) || string.IsNullOrWhiteSpace(dto.MatKhauMoi))
+            {
+                return BadRequest(new { message = "Vui lòng nhập đầy đủ thông tin!" });
+            }
+
+            var password = dto.MatKhauMoi;
+            if (password.Length < 8 ||
+                !password.Any(char.IsUpper) ||
+                !password.Any(char.IsLower) ||
+                !password.Any(char.IsDigit) ||
+                !password.Any(ch => !char.IsLetterOrDigit(ch)))
+            {
+                return BadRequest(new { message = "Mật khẩu mới phải từ 8 ký tự trở lên, bao gồm chữ hoa, chữ thường, số và ký tự đặc biệt!" });
+            }
+
+            var input = dto.EmailHoacSdt.Trim();
+            var sql = @"
+                UPDATE TAI_KHOAN 
+                SET MatKhau = @MatKhauMoi 
+                WHERE MaTK IN (
+                    SELECT MaTK FROM KHACH_HANG 
+                    WHERE LOWER(Email) = LOWER(@Input) OR SoDienThoai = @Input
+                ) OR LOWER(TenDangNhap) = LOWER(@Input)";
+
+            var rows = await _db.ExecuteAsync(sql, new { MatKhauMoi = password, Input = input });
+            if (rows == 0)
+                return NotFound(new { message = "Không tìm thấy tài khoản để đặt lại mật khẩu!" });
+
+            return Ok(new { success = true, message = "Đặt lại mật khẩu thành công!" });
+        }
     }
 }

@@ -242,10 +242,23 @@ function CustomerAuthModal({
   onClose: () => void;
   onSuccess: (customer: Customer) => void;
 }) {
-  const [activeTab, setActiveTab] = useState<'login' | 'register'>(initialMode);
+  const [activeTab, setActiveTab] = useState<'login' | 'register' | 'forgot'>(initialMode);
   const [loginInput, setLoginInput] = useState('nguyenvanan@gmail.com');
   const [loginPass, setLoginPass] = useState('123456');
+  const [showLoginPass, setShowLoginPass] = useState(false);
   const [loginErr, setLoginErr] = useState<string | null>(null);
+
+  // State cho chức năng Quên mật khẩu (ĐN02)
+  const [forgotStep, setForgotStep] = useState<'check' | 'otp' | 'new_password'>('check');
+  const [forgotInput, setForgotInput] = useState('');
+  const [forgotOtp, setForgotOtp] = useState('');
+  const [forgotUserOtp, setForgotUserOtp] = useState('');
+  const [forgotTimer, setForgotTimer] = useState(120);
+  const [forgotErr, setForgotErr] = useState<string | null>(null);
+  const [newPass, setNewPass] = useState('');
+  const [confirmNewPass, setConfirmNewPass] = useState('');
+  const [showNewPass, setShowNewPass] = useState(false);
+  const [showConfirmNewPass, setShowConfirmNewPass] = useState(false);
 
   // Form đăng ký
   const [form, setForm] = useState({
@@ -275,7 +288,7 @@ function CustomerAuthModal({
   const [otpErr, setOtpErr] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
-  // Timer cho OTP
+  // Timer cho OTP đăng ký
   useEffect(() => {
     let interval: any = null;
     if (regStep === 'otp' && otpTimer > 0) {
@@ -285,6 +298,17 @@ function CustomerAuthModal({
     }
     return () => clearInterval(interval);
   }, [regStep, otpTimer]);
+
+  // Timer cho OTP Quên mật khẩu (ĐN02)
+  useEffect(() => {
+    let interval: any = null;
+    if (activeTab === 'forgot' && forgotStep === 'otp' && forgotTimer > 0) {
+      interval = setInterval(() => {
+        setForgotTimer(prev => prev - 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [activeTab, forgotStep, forgotTimer]);
 
   // Danh sách Quận/Huyện theo Tỉnh/TP đã chọn (ĐK03)
   const currentProvinceObj = VIETNAM_LOCATIONS.find(p => p.name === form.province) || VIETNAM_LOCATIONS[0];
@@ -322,21 +346,105 @@ function CustomerAuthModal({
   const passMatch = pass.length > 0 && pass === form.xacNhanMatKhau;
   const isPasswordValid = passLengthValid && passUpperValid && passLowerValid && passNumberValid && passSpecialValid && passMatch;
 
+  // Tiêu chí mật khẩu mới cho Quên mật khẩu (ĐN02)
+  const newPassLengthValid = newPass.length >= 8;
+  const newPassUpperValid = /[A-Z]/.test(newPass);
+  const newPassLowerValid = /[a-z]/.test(newPass);
+  const newPassNumberValid = /[0-9]/.test(newPass);
+  const newPassSpecialValid = /[^A-Za-z0-9]/.test(newPass);
+  const newPassMatch = newPass.length > 0 && newPass === confirmNewPass;
+  const isNewPasswordValid = newPassLengthValid && newPassUpperValid && newPassLowerValid && newPassNumberValid && newPassSpecialValid && newPassMatch;
+
   // Kiểm tra định dạng số điện thoại (ĐK01)
   const isPhoneValid = /^0\d{9}$/.test(form.soDienThoai.trim());
 
   // Kiểm tra định dạng email
   const isEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim());
 
-  const handleLogin = (e: React.FormEvent) => {
+  // Xử lý đăng nhập kết nối trực tiếp Backend (ĐN01)
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginErr(null);
-    const found = mockCustomers.find(c => c.email.toLowerCase() === loginInput.trim().toLowerCase() || c.soDienThoai === loginInput.trim());
-    if (found) {
-      onSuccess(found);
-      onClose();
-    } else {
-      setLoginErr('Không tìm thấy tài khoản với Email/SĐT này. Vui lòng thử đăng ký mới.');
+    setIsSubmitting(true);
+
+    try {
+      const customer = await customerApi.login(loginInput.trim(), loginPass);
+      setToast(`🎉 Đăng nhập thành công! Chào mừng trở lại, ${customer.hoTen}`);
+      setTimeout(() => {
+        onSuccess(customer);
+        onClose();
+      }, 1000);
+    } catch (err: any) {
+      setLoginErr(err?.message || 'Đăng nhập không thành công. Vui lòng kiểm tra lại thông tin!');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // ── XỬ LÝ QUÊN MẬT KHẨU (ĐN02) ──
+  // Bước 1: Kiểm tra tài khoản & gửi OTP
+  const handleForgotCheckAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotErr(null);
+    if (!forgotInput.trim()) {
+      setForgotErr('Vui lòng nhập Email hoặc Số điện thoại!');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await customerApi.checkAccount(forgotInput.trim());
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      setForgotOtp(otp);
+      setForgotUserOtp('');
+      setForgotTimer(120);
+      setForgotStep('otp');
+    } catch (err: any) {
+      setForgotErr(err?.message || 'Không tìm thấy tài khoản với thông tin này!');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Bước 2: Xác nhận OTP quên mật khẩu
+  const handleForgotVerifyOtp = (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotErr(null);
+    if (forgotUserOtp.trim() !== forgotOtp) {
+      setForgotErr('Mã OTP không chính xác. Vui lòng kiểm tra lại!');
+      return;
+    }
+    if (forgotTimer <= 0) {
+      setForgotErr('Mã OTP đã hết hiệu lực. Vui lòng gửi lại mã!');
+      return;
+    }
+    setForgotStep('new_password');
+  };
+
+  // Bước 3: Đặt lại mật khẩu mới & Đăng nhập
+  const handleForgotResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotErr(null);
+
+    if (!isNewPasswordValid) {
+      setForgotErr('Mật khẩu mới chưa đáp ứng đầy đủ tiêu chuẩn bảo mật hoặc chưa trùng khớp!');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await customerApi.resetPassword(forgotInput.trim(), newPass);
+      // Tự động đăng nhập luôn sau khi đổi mật khẩu
+      const customer = await customerApi.login(forgotInput.trim(), newPass);
+      setToast(`🎉 Đặt lại mật khẩu thành công! Chào mừng ${customer.hoTen} đã đăng nhập.`);
+      setTimeout(() => {
+        onSuccess(customer);
+        onClose();
+      }, 1200);
+    } catch (err: any) {
+      setForgotErr(err?.message || 'Đặt lại mật khẩu thất bại!');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -440,7 +548,7 @@ function CustomerAuthModal({
       <div className="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] flex flex-col p-6 shadow-2xl border border-zinc-200 overflow-hidden">
         <div className="flex justify-between items-center mb-3 pb-2 border-b border-zinc-100 shrink-0">
           <h3 className="font-extrabold text-base text-zinc-900" style={{ fontFamily: 'var(--font-display)', letterSpacing: '0.04em' }}>
-            {activeTab === 'login' ? 'ĐĂNG NHẬP KHÁCH HÀNG' : (regStep === 'otp' ? 'XÁC THỰC MÃ OTP' : 'ĐĂNG KÝ TÀI KHOẢN MỚI')}
+            {activeTab === 'login' ? 'ĐĂNG NHẬP KHÁCH HÀNG' : (activeTab === 'forgot' ? 'KHÔI PHỤC MẬT KHẨU' : (regStep === 'otp' ? 'XÁC THỰC MÃ OTP' : 'ĐĂNG KÝ TÀI KHOẢN MỚI'))}
           </h3>
           <button onClick={onClose} className="text-zinc-400 hover:text-zinc-600 font-bold text-lg p-1">✕</button>
         </div>
@@ -454,24 +562,27 @@ function CustomerAuthModal({
         ) : (
           <div className="flex-1 overflow-y-auto pr-1">
             {/* Tabs */}
-            <div className="flex gap-2 mb-4 p-1 bg-zinc-100 rounded-xl shrink-0">
-              <button
-                type="button"
-                onClick={() => { setActiveTab('login'); setRegStep('form'); }}
-                className={`flex-1 py-2 rounded-lg text-xs font-bold transition ${activeTab === 'login' ? 'bg-white shadow text-zinc-900' : 'text-zinc-500'}`}
-              >
-                🔑 Đăng nhập
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab('register')}
-                className={`flex-1 py-2 rounded-lg text-xs font-bold transition ${activeTab === 'register' ? 'bg-white shadow text-zinc-900' : 'text-zinc-500'}`}
-              >
-                📝 Đăng ký mới
-              </button>
-            </div>
+            {activeTab !== 'forgot' && (
+              <div className="flex gap-2 mb-4 p-1 bg-zinc-100 rounded-xl shrink-0">
+                <button
+                  type="button"
+                  onClick={() => { setActiveTab('login'); setRegStep('form'); }}
+                  className={`flex-1 py-2 rounded-lg text-xs font-bold transition ${activeTab === 'login' ? 'bg-white shadow text-zinc-900' : 'text-zinc-500'}`}
+                >
+                  🔑 Đăng nhập
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('register')}
+                  className={`flex-1 py-2 rounded-lg text-xs font-bold transition ${activeTab === 'register' ? 'bg-white shadow text-zinc-900' : 'text-zinc-500'}`}
+                >
+                  📝 Đăng ký mới
+                </button>
+              </div>
+            )}
 
-            {activeTab === 'login' ? (
+            {/* TAB LOGIN (ĐN01) */}
+            {activeTab === 'login' && (
               <form onSubmit={handleLogin} className="space-y-3.5">
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 mb-1">Email hoặc Số điện thoại *</label>
@@ -485,15 +596,33 @@ function CustomerAuthModal({
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-700 mb-1">Mật khẩu *</label>
-                  <input
-                    type="password"
-                    required
-                    placeholder="Mật khẩu của bạn"
-                    value={loginPass}
-                    onChange={e => setLoginPass(e.target.value)}
-                    className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600"
-                  />
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="block text-xs font-semibold text-zinc-700">Mật khẩu *</label>
+                    <button
+                      type="button"
+                      onClick={() => { setActiveTab('forgot'); setForgotStep('check'); setForgotErr(null); setForgotInput(loginInput); }}
+                      className="text-[11px] text-red-700 hover:underline font-semibold"
+                    >
+                      Quên mật khẩu?
+                    </button>
+                  </div>
+                  <div className="relative">
+                    <input
+                      type={showLoginPass ? 'text' : 'password'}
+                      required
+                      placeholder="Mật khẩu của bạn"
+                      value={loginPass}
+                      onChange={e => setLoginPass(e.target.value)}
+                      className="w-full p-2.5 pr-8 rounded-xl border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowLoginPass(!showLoginPass)}
+                      className="absolute right-2.5 top-2.5 text-zinc-400 hover:text-zinc-600 text-xs"
+                    >
+                      {showLoginPass ? '🙈' : '👁️'}
+                    </button>
+                  </div>
                 </div>
 
                 {loginErr && (
@@ -503,9 +632,10 @@ function CustomerAuthModal({
                 <div className="pt-2">
                   <button
                     type="submit"
-                    className="w-full py-2.5 rounded-xl text-xs font-bold bg-red-700 text-white hover:bg-red-800 shadow-md transition"
+                    disabled={isSubmitting}
+                    className={`w-full py-2.5 rounded-xl text-xs font-bold text-white shadow-md transition ${isSubmitting ? 'bg-zinc-400 cursor-not-allowed' : 'bg-red-700 hover:bg-red-800'}`}
                   >
-                    ĐĂNG NHẬP NGAY →
+                    {isSubmitting ? 'Đang xác thực...' : 'ĐĂNG NHẬP NGAY →'}
                   </button>
                 </div>
 
@@ -514,18 +644,246 @@ function CustomerAuthModal({
                   <button
                     type="button"
                     onClick={() => {
-                      const demo = mockCustomers[0]; // Nguyễn Văn An
-                      onSuccess(demo);
-                      onClose();
+                      setLoginInput('0901234567');
+                      setLoginPass('123456');
                     }}
                     className="text-red-700 font-bold hover:underline"
                   >
-                    Login Demo (Nguyễn Văn An)
+                    Điền nhanh Nguyễn Văn An
                   </button>
                 </div>
               </form>
-            ) : (
-              /* FORM ĐĂNG KÝ MỚI (ĐK01 -> ĐK06) */
+            )}
+
+            {/* TAB QUÊN MẬT KHẨU (ĐN02) */}
+            {activeTab === 'forgot' && (
+              <div className="space-y-4 py-1">
+                {forgotStep === 'check' && (
+                  <form onSubmit={handleForgotCheckAccount} className="space-y-3.5">
+                    <p className="text-xs text-zinc-600">
+                      Nhập Email hoặc Số điện thoại tài khoản của bạn để nhận mã xác minh OTP đặt lại mật khẩu:
+                    </p>
+
+                    {forgotErr && (
+                      <p className="text-xs text-red-600 bg-red-50 p-2.5 rounded-lg border border-red-200">{forgotErr}</p>
+                    )}
+
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-700 mb-1">Email hoặc Số điện thoại *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="VD: 0988665544 hoặc baongoc@gmail.com"
+                        value={forgotInput}
+                        onChange={e => setForgotInput(e.target.value)}
+                        className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600"
+                      />
+                    </div>
+
+                    <div className="flex justify-between items-center gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => { setActiveTab('login'); setForgotErr(null); }}
+                        className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
+                      >
+                        ← Quay lại Đăng nhập
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isSubmitting || !forgotInput.trim()}
+                        className={`px-5 py-2.5 rounded-xl text-xs font-bold text-white shadow-md transition ${isSubmitting || !forgotInput.trim() ? 'bg-zinc-400 cursor-not-allowed' : 'bg-red-700 hover:bg-red-800'}`}
+                      >
+                        {isSubmitting ? 'Đang kiểm tra...' : 'Tiếp tục nhận OTP →'}
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                {forgotStep === 'otp' && (
+                  <form onSubmit={handleForgotVerifyOtp} className="space-y-4">
+                    <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900">
+                      <div className="flex items-center gap-1.5 font-bold mb-1">
+                        <span>📲</span>
+                        <span>Mã xác thực OTP đã được gửi</span>
+                      </div>
+                      <p className="text-zinc-600 text-[11px] leading-relaxed">
+                        Mã OTP 6 số đã được gửi tới <strong>{forgotInput}</strong> để xác minh yêu cầu đặt lại mật khẩu.
+                      </p>
+                      <div className="mt-2 p-2 bg-white rounded-lg border border-blue-200 flex items-center justify-between">
+                        <span className="font-mono font-bold text-sm tracking-widest text-red-600">{forgotOtp}</span>
+                        <button
+                          type="button"
+                          onClick={() => setForgotUserOtp(forgotOtp)}
+                          className="text-[11px] bg-blue-100 hover:bg-blue-200 text-blue-800 font-bold px-2 py-1 rounded"
+                        >
+                          ⚡ Tự động điền OTP
+                        </button>
+                      </div>
+                    </div>
+
+                    {forgotErr && (
+                      <p className="text-xs text-red-600 bg-red-50 p-2.5 rounded-lg border border-red-200">{forgotErr}</p>
+                    )}
+
+                    <div>
+                      <label className="block text-xs font-bold text-zinc-800 mb-1.5 text-center">
+                        Nhập mã OTP 6 chữ số:
+                      </label>
+                      <input
+                        type="text"
+                        maxLength={6}
+                        required
+                        placeholder="• • • • • •"
+                        value={forgotUserOtp}
+                        onChange={e => setForgotUserOtp(e.target.value.replace(/\D/g, ''))}
+                        className="w-full text-center tracking-widest font-mono font-bold text-xl py-2.5 rounded-xl border-2 border-zinc-300 focus:border-red-600 focus:outline-none bg-white"
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs text-zinc-500 px-1">
+                      <span>
+                        {forgotTimer > 0 ? (
+                          <>Mã còn hiệu lực: <strong className="text-red-600 font-mono">{Math.floor(forgotTimer / 60)}:{String(forgotTimer % 60).padStart(2, '0')}</strong></>
+                        ) : (
+                          <span className="text-red-600 font-semibold">Mã OTP đã hết hạn!</span>
+                        )}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const otp = Math.floor(100000 + Math.random() * 900000).toString();
+                          setForgotOtp(otp);
+                          setForgotUserOtp('');
+                          setForgotTimer(120);
+                          setForgotErr(null);
+                        }}
+                        className="text-red-700 hover:underline font-bold"
+                      >
+                        Gửi lại mã OTP
+                      </button>
+                    </div>
+
+                    <div className="flex justify-between items-center gap-2 pt-2 border-t border-zinc-100">
+                      <button
+                        type="button"
+                        onClick={() => setForgotStep('check')}
+                        className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
+                      >
+                        ← Quay lại
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={forgotUserOtp.length !== 6}
+                        className={`px-5 py-2.5 rounded-xl text-xs font-bold text-white shadow-md transition ${forgotUserOtp.length !== 6 ? 'bg-zinc-400 cursor-not-allowed' : 'bg-red-700 hover:bg-red-800'}`}
+                      >
+                        Xác nhận OTP →
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                {forgotStep === 'new_password' && (
+                  <form onSubmit={handleForgotResetPassword} className="space-y-3.5">
+                    <p className="text-xs text-zinc-600">
+                      Thiết lập mật khẩu mới cho tài khoản <strong>{forgotInput}</strong>:
+                    </p>
+
+                    {forgotErr && (
+                      <p className="text-xs text-red-600 bg-red-50 p-2.5 rounded-lg border border-red-200">{forgotErr}</p>
+                    )}
+
+                    <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-200 space-y-2.5">
+                      <div>
+                        <span className="text-[10px] font-semibold text-zinc-500">Mật khẩu mới *</span>
+                        <div className="relative mt-1">
+                          <input
+                            type={showNewPass ? 'text' : 'password'}
+                            required
+                            placeholder="Mật khẩu mới của bạn"
+                            value={newPass}
+                            onChange={e => setNewPass(e.target.value)}
+                            className="w-full p-2 pr-8 rounded-lg border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowNewPass(!showNewPass)}
+                            className="absolute right-2 top-2 text-zinc-400 hover:text-zinc-600 text-xs"
+                          >
+                            {showNewPass ? '🙈' : '👁️'}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <span className="text-[10px] font-semibold text-zinc-500">Xác nhận mật khẩu mới *</span>
+                        <div className="relative mt-1">
+                          <input
+                            type={showConfirmNewPass ? 'text' : 'password'}
+                            required
+                            placeholder="Nhập lại mật khẩu mới"
+                            value={confirmNewPass}
+                            onChange={e => setConfirmNewPass(e.target.value)}
+                            className="w-full p-2 pr-8 rounded-lg border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowConfirmNewPass(!showConfirmNewPass)}
+                            className="absolute right-2 top-2 text-zinc-400 hover:text-zinc-600 text-xs"
+                          >
+                            {showConfirmNewPass ? '🙈' : '👁️'}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Tiêu chí mật khẩu mạnh */}
+                      <div className="text-[10px] space-y-1 bg-white p-2.5 rounded-lg border border-zinc-200">
+                        <div className="font-semibold text-zinc-700 mb-1">Tiêu chuẩn mật khẩu:</div>
+                        <div className="grid grid-cols-2 gap-x-2 gap-y-0.5">
+                          <div className={newPassLengthValid ? 'text-green-600 font-medium' : 'text-zinc-400'}>
+                            {newPassLengthValid ? '✓' : '○'} Tối thiểu 8 ký tự
+                          </div>
+                          <div className={newPassUpperValid ? 'text-green-600 font-medium' : 'text-zinc-400'}>
+                            {newPassUpperValid ? '✓' : '○'} Có chữ hoa (A-Z)
+                          </div>
+                          <div className={newPassLowerValid ? 'text-green-600 font-medium' : 'text-zinc-400'}>
+                            {newPassLowerValid ? '✓' : '○'} Có chữ thường (a-z)
+                          </div>
+                          <div className={newPassNumberValid ? 'text-green-600 font-medium' : 'text-zinc-400'}>
+                            {newPassNumberValid ? '✓' : '○'} Có chữ số (0-9)
+                          </div>
+                          <div className={newPassSpecialValid ? 'text-green-600 font-medium' : 'text-zinc-400'}>
+                            {newPassSpecialValid ? '✓' : '○'} Có ký tự đặc biệt (!@#$)
+                          </div>
+                          <div className={newPassMatch ? 'text-green-600 font-medium' : 'text-zinc-400'}>
+                            {newPassMatch ? '✓' : '○'} Mật khẩu trùng khớp
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-between items-center gap-2 pt-2 border-t border-zinc-100">
+                      <button
+                        type="button"
+                        onClick={() => { setActiveTab('login'); setForgotErr(null); }}
+                        className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
+                      >
+                        ← Hủy & Về Đăng nhập
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={!isNewPasswordValid || isSubmitting}
+                        className={`px-5 py-2.5 rounded-xl text-xs font-bold text-white shadow-md transition ${(!isNewPasswordValid || isSubmitting) ? 'bg-zinc-400 cursor-not-allowed' : 'bg-red-700 hover:bg-red-800'}`}
+                      >
+                        {isSubmitting ? 'Đang lưu...' : 'Lưu mật khẩu mới & Đăng nhập 🎉'}
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
+            )}
+
+            {/* TAB ĐĂNG KÝ MỚI (ĐK01 -> ĐK06) */}
+            {activeTab === 'register' && (
               regStep === 'form' ? (
                 <form onSubmit={handleProceedToOtp} className="space-y-3.5">
                   {registerErr && (

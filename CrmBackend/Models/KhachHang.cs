@@ -44,4 +44,24 @@ namespace CrmBackend.Models
         public string? Email { get; set; }
         public string? SoThich { get; set; }
     }
+
+    // ── DTO đăng nhập khách hàng ──
+    public class KhachHangLoginDto
+    {
+        public string EmailHoacSdt { get; set; } = "";
+        public string MatKhau { get; set; } = "";
+    }
+
+    // ── DTO kiểm tra tài khoản ──
+    public class KhachHangCheckDto
+    {
+        public string EmailHoacSdt { get; set; } = "";
+    }
+
+    // ── DTO đặt lại mật khẩu ──
+    public class KhachHangResetPasswordDto
+    {
+        public string EmailHoacSdt { get; set; } = "";
+        public string MatKhauMoi { get; set; } = "";
+    }
 }

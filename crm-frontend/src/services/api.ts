@@ -196,6 +196,90 @@ export const customerApi = {
       console.warn('[customerApi.deleteCustomer] Backend call failed, applied locally:', err);
     }
   },
+
+  async login(emailHoacSdt: string, matKhau: string): Promise<Customer> {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/KhachHang/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ emailHoacSdt, matKhau }),
+    });
+
+    if (!res.ok) {
+      let msg = 'Đăng nhập không thành công!';
+      try {
+        const data = await res.json();
+        if (data.message) msg = data.message;
+      } catch {}
+      throw new Error(msg);
+    }
+
+    const data = await res.json();
+    const raw = data.customer;
+    const cId = raw.maKH ? (raw.maKH < 10 ? `KH00${raw.maKH}` : `KH0${raw.maKH}`) : 'KH001';
+
+    const customer: Customer = {
+      id: cId,
+      hoTen: raw.hoTen,
+      email: raw.email || `${raw.tenDangNhap || 'khach'}@gmail.com`,
+      soDienThoai: raw.soDienThoai,
+      diaChi: raw.diaChi || 'TP.HCM',
+      ngaySinh: raw.ngaySinh ? raw.ngaySinh.split('T')[0] : '2000-01-01',
+      gioiTinh: raw.gioiTinh === 'Nữ' || raw.gioiTinh === 'Nu' ? 'Nu' : 'Nam',
+      trangThai: raw.trangThai === 'BiKhoa' ? 'BiKhoa' : 'HoatDong',
+      ngayDangKy: raw.ngayTao ? raw.ngayTao.split('T')[0] : '2024-01-01',
+      soXe: `XE00${raw.maKH || 1}`,
+      tongChiTieu: 0,
+      avatar: `/images/KH/kh${raw.maKH ? (raw.maKH % 10) + 1 : 1}.jpg`,
+      soThich: raw.soThich || 'Xe máy, phụ tùng chính hãng',
+    };
+
+    const existIdx = mockCustomers.findIndex(c => c.id === customer.id || c.email === customer.email || c.soDienThoai === customer.soDienThoai);
+    if (existIdx === -1) {
+      mockCustomers.unshift(customer);
+    } else {
+      mockCustomers[existIdx] = customer;
+    }
+
+    return customer;
+  },
+
+  async checkAccount(emailHoacSdt: string): Promise<{ success: boolean; hoTen: string; soDienThoai: string; email: string }> {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/KhachHang/kiem-tra-tai-khoan`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ emailHoacSdt }),
+    });
+
+    if (!res.ok) {
+      let msg = 'Không tìm thấy tài khoản với thông tin này!';
+      try {
+        const data = await res.json();
+        if (data.message) msg = data.message;
+      } catch {}
+      throw new Error(msg);
+    }
+
+    return await res.json();
+  },
+
+  async resetPassword(emailHoacSdt: string, matKhauMoi: string): Promise<boolean> {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/KhachHang/dat-lai-mat-khau`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ emailHoacSdt, matKhauMoi }),
+    });
+
+    if (!res.ok) {
+      let msg = 'Đặt lại mật khẩu thất bại!';
+      try {
+        const data = await res.json();
+        if (data.message) msg = data.message;
+      } catch {}
+      throw new Error(msg);
+    }
+
+    return true;
+  },
 };
 
 // ────────────────────────────────────────────────────────────
