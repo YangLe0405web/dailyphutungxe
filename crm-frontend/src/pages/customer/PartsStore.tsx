@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { mockParts, formatVND, Part, mockProductReviews, ProductReview, Customer } from '../../data/mockData';
 import { useCart } from '../../contexts/CartContext';
+import { matchVietnameseSearch } from '../../utils/vietnameseSearch';
 
 const categories = ['Tất cả', 'Nhớt', 'Lọc', 'Phanh', 'Bugi', 'Đèn', 'Lốp xe', 'Phụ kiện', 'Trang trí', 'Truyền động', 'Thân máy'];
 
@@ -97,10 +98,11 @@ export default function PartsStore({ currentCustomer, onRequireLogin }: Props = 
       const matchCat = cat === 'Tất cả' || p.danhMuc === cat;
       const matchBrand = selectedBrand === 'Tất cả' || p.thuongHieu === selectedBrand;
       const matchSearch =
-        !q ||
-        p.tenSanPham.toLowerCase().includes(q) ||
-        p.thuongHieu.toLowerCase().includes(q) ||
-        (p.dongXePhuHop && p.dongXePhuHop.toLowerCase().includes(q));
+        !search.trim() ||
+        matchVietnameseSearch(p.tenSanPham, search) ||
+        matchVietnameseSearch(p.thuongHieu, search) ||
+        (p.dongXePhuHop ? matchVietnameseSearch(p.dongXePhuHop, search) : false) ||
+        matchVietnameseSearch(p.danhMuc, search);
 
       const effectivePrice = p.giaKhuyenMai ?? p.giaGoc;
       let matchPrice = true;

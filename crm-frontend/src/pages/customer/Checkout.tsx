@@ -11,7 +11,9 @@ interface CheckoutProps {
 }
 
 export default function Checkout({ onBack, onSuccess, currentCustomer, onCustomerChange }: CheckoutProps) {
-  const { items, total, clear } = useCart();
+  const { items, total, clear, selectedItems, selectedTotal, selectedCount, remove } = useCart();
+  const checkoutItems = selectedCount > 0 ? selectedItems : items;
+  const checkoutTotal = selectedCount > 0 ? selectedTotal : total;
   
   // Auth state for non-logged in users
   const [authTab, setAuthTab] = useState<'login' | 'register'>('login');
@@ -49,7 +51,7 @@ export default function Checkout({ onBack, onSuccess, currentCustomer, onCustome
   const [submitting, setSubmitting] = useState(false);
 
   const ship = 30000;
-  const grand = total + ship;
+  const grand = checkoutTotal + ship;
 
   // Handle inline login
   const handleInlineLogin = async (e: React.FormEvent) => {
@@ -106,7 +108,7 @@ export default function Checkout({ onBack, onSuccess, currentCustomer, onCustome
         hoTenKH: form.hoTen.trim() || currentCustomer.hoTen,
         soDienThoai: form.soDienThoai.trim() || currentCustomer.soDienThoai,
         diaChiGiao: form.diaChi.trim() || currentCustomer.diaChi || 'TP.HCM',
-        items: items.map(it => {
+        items: checkoutItems.map(it => {
           const numId = parseInt(it.part.id.replace(/\D/g, ''), 10) || 1;
           const unitPrice = it.part.giaKhuyenMai ?? it.part.giaGoc;
           return {
@@ -124,7 +126,11 @@ export default function Checkout({ onBack, onSuccess, currentCustomer, onCustome
     } finally {
       setSubmitting(false);
       setDone(true);
-      clear();
+      if (selectedCount > 0) {
+        checkoutItems.forEach(it => remove(it.part.id));
+      } else {
+        clear();
+      }
       setTimeout(onSuccess, 3000);
     }
   }
@@ -145,11 +151,11 @@ export default function Checkout({ onBack, onSuccess, currentCustomer, onCustome
     );
   }
 
-  if (items.length === 0) {
+  if (checkoutItems.length === 0) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-8">
         <div className="text-4xl mb-4">🛒</div>
-        <div className="font-600 mb-4">Giỏ hàng trống</div>
+        <div className="font-600 mb-4">Không có sản phẩm nào được chọn để thanh toán</div>
         <button onClick={onBack} className="px-6 py-2.5 rounded-lg text-sm font-600 text-white"
           style={{ background: 'var(--color-red-700)', border: 'none', cursor: 'pointer' }}>← Quay lại cửa hàng</button>
       </div>
@@ -447,7 +453,7 @@ export default function Checkout({ onBack, onSuccess, currentCustomer, onCustome
         <div className="rounded-2xl p-6 h-fit sticky top-24 bg-white border border-zinc-200">
           <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 18, letterSpacing: '0.04em', color: 'var(--color-zinc-900)', textTransform: 'uppercase', marginBottom: 16 }}>ĐƠN HÀNG</div>
           <div className="flex flex-col gap-3 mb-4 max-h-[350px] overflow-y-auto pr-1">
-            {items.map(item => {
+            {checkoutItems.map(item => {
               const price = item.part.giaKhuyenMai ?? item.part.giaGoc;
               return (
                 <div key={item.part.id} className="flex items-center gap-3">
@@ -464,7 +470,7 @@ export default function Checkout({ onBack, onSuccess, currentCustomer, onCustome
           </div>
           <div className="border-t pt-4 flex flex-col gap-2" style={{ borderColor: 'var(--color-zinc-200)' }}>
             <div className="flex justify-between text-sm" style={{ color: 'var(--color-zinc-600)' }}>
-              <span>Tạm tính</span><span>{formatVND(total)}</span>
+              <span>Tạm tính ({checkoutItems.length} sản phẩm)</span><span>{formatVND(checkoutTotal)}</span>
             </div>
             <div className="flex justify-between text-sm" style={{ color: 'var(--color-zinc-600)' }}>
               <span>Phí giao hàng</span><span>{formatVND(ship)}</span>

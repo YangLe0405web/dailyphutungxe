@@ -15,8 +15,11 @@ Dưới đây là danh sách toàn bộ các tập tin đã can thiệp. Khi x�
 4. `D:\crm-project\crm-frontend\src\services\api.ts` (Bắt và xử lý lỗi chính xác từ backend, không fallback giả mạo)
 5. `D:\crm-project\crm-frontend\src\layouts\CustomerLayout.tsx` (Giao diện form đăng ký mới: validate regex SĐT, cascaded address select, DOB, giới tính, mật khẩu mạnh 6 tiêu chuẩn, xác thực OTP 2 bước; lắng nghe sự kiện mở popup đăng nhập toàn cục)
 6. `D:\crm-project\crm-frontend\src\App.tsx` (Truyền state `currentCustomer` và trigger `crm-open-login` xuống `VehiclesShowroom` và `PartsStore`)
-7. `D:\crm-project\crm-frontend\src\pages\customer\VehiclesShowroom.tsx` (Bộ lọc đa tiêu chí: hãng, khoảng giá, xuất xứ Trong nước/Nhập khẩu, sắp xếp; khóa gửi form đánh giá khi chưa đăng nhập)
-8. `D:\crm-project\crm-frontend\src\pages\customer\PartsStore.tsx` (Chặn thêm vào giỏ hàng và khóa form đánh giá khi chưa đăng nhập, kích hoạt popup đăng nhập)
+7. `D:\crm-project\crm-frontend\src\pages\customer\VehiclesShowroom.tsx` (Bộ lọc đa tiêu chí; trang chi tiết xe máy riêng biệt TC04; khung bộ lọc tập trung TC05; chặn gửi đánh giá và chặn đăng ký lái thử khi chưa đăng nhập TC01 & TC03; tìm kiếm tiếng Việt không dấu & khoảng trắng thừa TC07 & TC08)
+8. `D:\crm-project\crm-frontend\src\pages\customer\PartsStore.tsx` (Chặn thêm vào giỏ hàng và khóa form đánh giá khi chưa đăng nhập; trang chi tiết sản phẩm riêng biệt TC04; khung bộ lọc tập trung TC05; Flash Sale và bán chạy TC06; tìm kiếm tiếng Việt không dấu & khoảng trắng thừa TC07 & TC08)
+9. `D:\crm-project\crm-frontend\src\utils\vietnameseSearch.ts` (File tạo mới: Chuẩn hóa tìm kiếm tiếng Việt không dấu, xóa khoảng trắng thừa, tìm kiếm tokenized multi-word)
+10. `D:\crm-project\crm-frontend\src\contexts\CartContext.tsx` (Quản lý trạng thái chọn sản phẩm trong giỏ hàng: `selectedIds`, `toggleSelect`, `selectAll`, `deselectAll`, tính tổng tiền theo sản phẩm được chọn `selectedTotal`)
+11. `D:\crm-project\crm-frontend\src\pages\customer\Checkout.tsx` (Chỉ thanh toán các sản phẩm được chọn trong giỏ hàng và chỉ xóa những sản phẩm đó sau khi đặt hàng thành công)
 
 ---
 
@@ -202,3 +205,78 @@ Dưới đây là danh sách toàn bộ các tập tin đã can thiệp. Khi x�
     - Bổ sung khu vực **👑 SẢN PHẨM BÁN CHẠY NHẤT THÁNG** xếp hạng top phụ tùng được mua và đánh giá cao nhất.
 * **Kết quả test:**
   - Banner và dải tiện ích hiển thị đẹp mắt, đồng hồ Flash Sale đếm ngược mượt mà thời gian thực, các sản phẩm bán chạy nổi bật.
+
+#### 7. TC07 – Lỗi tìm kiếm không hỗ trợ từ khóa không dấu (Áp dụng cho Phụ tùng & Showroom xe)
+* **Mô tả lỗi:** Khi tìm kiếm sản phẩm hoặc xe máy, người dùng gõ từ khóa không dấu (vd: `sh`, `air blade`, `nhot motul`, `loc gio`, `phanh`) thì hệ thống không trả về kết quả vì chỉ so khớp chuỗi có dấu nguyên bản.
+* **Kết quả mong đợi:** Cho phép tìm kiếm linh hoạt bằng cả tiếng Việt có dấu, không dấu, chữ hoa, chữ thường.
+* **Giải pháp đã thực hiện:**
+  - Tạo tiện ích `src/utils/vietnameseSearch.ts` với hàm `removeVietnameseTones(str)` chuẩn hóa các ký tự tiếng Việt (`á, à, ả, ã, ạ, â, ấ, ...` -> `a`, `đ` -> `d`) và loại bỏ dấu thanh Unicode NFD.
+  - Xây dựng hàm `matchVietnameseSearch(target, query)` so khớp song song cả chuỗi gốc lẫn chuỗi đã loại bỏ dấu.
+  - Tích hợp vào bộ lọc tìm kiếm tại `PartsStore.tsx` (tên phụ tùng, thương hiệu, danh mục, dòng xe tương thích) và `VehiclesShowroom.tsx` (tên xe, hãng, phân khúc, động cơ, màu sắc).
+* **Kết quả test:**
+  - Gõ `nhot` -> Tìm ra đúng "Nhớt Motul 7100 4T", "Nhớt Castrol Power1", "Nhớt Liqui Moly Motorbike".
+  - Gõ `dia phanh` -> Tìm ra đúng "Đĩa phanh Brembo Oro".
+  - Gõ `sh` hoặc `air blade` -> Tìm ra đúng xe "Honda SH 160i ABS", "Honda Air Blade 160 ABS".
+
+#### 8. TC08 – Lỗi tìm kiếm khi có khoảng trắng thừa (Áp dụng cho Phụ tùng & Showroom xe)
+* **Mô tả lỗi:** Khi người dùng vô tình nhập nhiều dấu cách liên tiếp giữa các từ hoặc ở đầu/cuối từ khóa (vd: `nhot   motul`, `  honda   sh  `), hệ thống tìm kiếm chuỗi nguyên bản nên không trả về kết quả nào.
+* **Kết quả mong đợi:** Tự động loại bỏ khoảng trắng thừa ở đầu/cuối, gom các dấu cách liên tiếp thành 1 dấu cách đơn, đồng thời tách từ khóa thành các token độc lập để tìm kiếm chính xác ngay cả khi thứ tự từ hơi xê dịch.
+* **Giải pháp đã thực hiện:**
+  - Trong `src/utils/vietnameseSearch.ts`:
+    - Tiền xử lý từ khóa: `.trim().replace(/\s+/g, ' ')`.
+    - Tokenized search: Tách chuỗi truy vấn thành danh sách các từ khóa con (`query.split(' ')`). Yêu cầu mục tiêu phải thỏa mãn chứa toàn bộ các token đã nhập (`tokens.every(token => ...)`).
+  - Tích hợp đồng nhất vào thuật toán lọc của cả `PartsStore.tsx` và `VehiclesShowroom.tsx`.
+* **Kết quả test:**
+  - Nhập `  nhot    motul  ` -> Hệ thống tự động chuẩn hóa và tìm đúng các sản phẩm nhớt Motul.
+  - Nhập `  honda     160  ` -> Hệ thống tìm chính xác "Honda SH 160i ABS" và "Honda Air Blade 160 ABS".
+
+#### 9. TC09 – Lỗi thiếu nút chọn sản phẩm trong giỏ hàng (Checkboxes chọn sản phẩm muốn mua)
+* **Mô tả lỗi:** Trong giỏ hàng không có nút checkbox để chọn sản phẩm, dẫn đến khi nhấn Thanh toán thì hệ thống bắt buộc phải thanh toán toàn bộ tất cả sản phẩm đang có trong giỏ hàng.
+* **Kết quả mong đợi:** 
+  - Bổ sung ô Checkbox trước mỗi sản phẩm trong giỏ hàng để khách hàng tự chọn món muốn mua.
+  - Bổ sung ô Checkbox "Chọn tất cả" (`Select All`) ở thanh tiêu đề giỏ hàng.
+  - Tổng tiền chỉ tính dựa trên những sản phẩm đang được chọn (`selectedTotal`).
+  - Nút "Thanh toán" hiển thị số lượng món đã chọn (vd: `THANH TOÁN (2)`) và bị vô hiệu hóa khi chưa chọn sản phẩm nào.
+  - Trang Đặt hàng / Checkout chỉ xử lý thanh toán và chỉ xóa khỏi giỏ những sản phẩm đã được chọn mua, các sản phẩm còn lại vẫn được lưu nguyên vẹn trong giỏ hàng.
+* **Giải pháp đã thực hiện:**
+  - `CartContext.tsx`:
+    - Thêm state `selectedIds: Set<string>` quản lý danh sách sản phẩm được chọn.
+    - Cung cấp các helper: `toggleSelect(id)`, `selectAll()`, `deselectAll()`, `isSelected(id)`.
+    - Tính toán `selectedTotal`, `selectedCount`, `selectedItems` phục vụ thanh toán. Khi thêm sản phẩm mới vào giỏ hàng, tự động đánh dấu chọn sản phẩm đó.
+  - `CustomerLayout.tsx`:
+    - Bổ sung thanh chọn tất cả: Checkbox "Chọn tất cả (X sản phẩm)".
+    - Bổ sung checkbox tùy chọn trước từng dòng sản phẩm trong Drawer giỏ hàng.
+    - Cập nhật hiển thị tổng tiền theo `selectedTotal`.
+    - Nút thanh toán hiển thị: `THANH TOÁN ({selectedCount})`, disable nếu `selectedCount === 0`.
+  - `Checkout.tsx`:
+    - Cập nhật luồng thanh toán chỉ lấy `selectedItems` để hiển thị và tính tiền đơn hàng.
+    - Sau khi tạo đơn thành công, chỉ gọi `remove(item.id)` đối với các mặt hàng vừa mua; giữ nguyên các mặt hàng chưa chọn trong giỏ.
+* **Kết quả test:**
+  - Giỏ hàng có 3 sản phẩm: Bỏ tick 1 sản phẩm -> Tổng tiền tự động trừ bớt giá trị sản phẩm đó.
+  - Nhấn checkbox "Chọn tất cả" -> Chọn toàn bộ hoặc bỏ chọn toàn bộ tức thì.
+  - Bỏ chọn toàn bộ -> Nút thanh toán mờ đi và bị disable.
+  - Tiến hành thanh toán với 2/3 sản phẩm -> Đơn hàng chỉ gồm 2 sản phẩm đó, sản phẩm thứ 3 vẫn còn nguyên vẹn trong giỏ hàng sau khi đặt thành công.
+
+#### 10. Mở rộng TC03, TC04, TC05 cho Trang "Xem xe mẫu" (VehiclesShowroom)
+* **Yêu cầu của bạn:** *"tc 03,04,05 áp dụng cho trang xem xe mẫu luôn"*
+* **Chi tiết thực hiện:**
+  1. **TC03 (Áp dụng cho Showroom xe):**
+     - Chặn đăng ký lái thử khi chưa đăng nhập.
+     - Tại danh sách xe mẫu và trang chi tiết xe: Khi bấm nút "🏍️ Lái thử ngay" hoặc "🏍️ Đăng ký lái thử ngay", kiểm tra `currentCustomer`. Nếu chưa đăng nhập -> Chặn lại và phát sự kiện `crm-open-login` để bật ngay popup đăng nhập. Khi đã đăng nhập -> Chuyển tiếp vào form đặt lịch lái thử kèm mã xe đã chọn.
+  2. **TC04 (Áp dụng cho Showroom xe):**
+     - Thay thế hoàn toàn popup modal nhỏ cũ bằng **TRANG CHI TIẾT XE MÁY RIÊNG BIỆT (Dedicated Full-Page View)** chuẩn showroom thương mại điện tử.
+     - Breadcrumbs điều hướng: `Showroom xe máy / [Hãng] / [Tên xe]` kèm nút `✕ Quay lại danh sách xe`.
+     - Bố cục 2 cột cao cấp:
+       * Cột trái: Ảnh xe góc rộng lớn (aspect 16:10), badge hãng, badge phân khúc, badge trạng thái xe lái thử, dải 4 cam kết dịch vụ (Bảo hành 3 năm / 30.000km, Lái thử miễn phí tận showroom, Trả góp 0% duyệt 15 phút, Quà tặng chính hãng).
+       * Cột phải: Tiêu đề xe lớn, đánh giá ⭐ 4.9 (100% khách khuyên mua), khối giá niêm yết chính hãng màu đỏ sang trọng, lưới thông số nhanh (Động cơ, Công suất, Tiêu hao nhiên liệu, Hệ thống phanh), bảng màu sắc phân phối, nút "🏍️ Đăng ký lái thử ngay" (TC03) và nút "📞 Báo giá lăn bánh".
+     - Hệ thống Tab chi tiết bên dưới:
+       * Tab 1: Thông số kỹ thuật & Mô tả chi tiết toàn diện.
+       * Tab 2: Đánh giá & nhận xét từ khách hàng thực tế (kế thừa TC01: chặn viết đánh giá khi chưa đăng nhập).
+     - Khu vực **🏍️ CÁC MẪU XE CÙNG HÃNG HOẶC PHÂN KHÚC** ở chân trang giúp khách hàng dễ dàng so sánh và khám phá thêm các dòng xe tương tự.
+  3. **TC05 (Áp dụng cho Showroom xe):**
+     - Gom toàn bộ thanh tìm kiếm, bộ lọc Phân khúc, bộ lọc Mức giá, bộ lọc Xuất xứ, bộ lọc Sắp xếp, thanh chọn Hãng xe (All, Honda, Yamaha, Suzuki, Vespa) và công tắc "Chỉ xe có Lái thử" vào cùng **MỘT KHUNG ĐIỀU KHIỂN BỘ LỌC TẬP TRUNG (Unified Filter Card)**.
+     - Hiển thị số lượng xe tìm thấy theo thời gian thực và nút "✕ Xóa tất cả bộ lọc" tiện lợi.
+* **Kết quả test:**
+  - Nhấp vào bất kỳ mẫu xe nào ngoài showroom -> Chuyển ngay sang trang chi tiết xe máy riêng biệt toàn màn hình, mượt mà và trực quan.
+  - Bấm "Lái thử ngay" khi chưa đăng nhập -> Lập tức bật popup đăng nhập.
+  - Bộ lọc xe nằm gọn gàng trong 1 khung điều khiển, tìm kiếm không dấu / khoảng trắng thừa hoạt động hoàn hảo.

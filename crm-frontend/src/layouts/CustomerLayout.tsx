@@ -23,7 +23,7 @@ const navItems = [
 ] as const;
 
 export default function CustomerLayout({ children, activePage, onNavigate, onHome, currentCustomer = null, onCustomerChange }: Props) {
-  const { count, items, total, remove, updateQty } = useCart();
+  const { count, items, total, remove, updateQty, isSelected, toggleSelect, selectAll, deselectAll, selectedCount, selectedTotal, selectedIds } = useCart();
   const [cartOpen, setCartOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
@@ -163,10 +163,38 @@ export default function CustomerLayout({ children, activePage, onNavigate, onHom
             <div className="flex items-center justify-between px-6 py-5 border-b" style={{ borderColor: 'var(--color-zinc-200)', background: 'var(--color-zinc-950)' }}>
               <div>
                 <div style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 800, color: 'white', letterSpacing: '0.04em' }}>GIỎ HÀNG</div>
-                <div className="text-xs" style={{ color: 'var(--color-zinc-500)', fontFamily: 'var(--font-mono)' }}>{count} sản phẩm</div>
+                <div className="text-xs" style={{ color: 'var(--color-zinc-400)', fontFamily: 'var(--font-mono)' }}>
+                  {count} sản phẩm · Đã chọn: <strong className="text-amber-400">{selectedCount}</strong>
+                </div>
               </div>
               <button onClick={() => setCartOpen(false)} style={{ background: 'var(--color-zinc-800)', border: 'none', color: 'var(--color-zinc-300)', cursor: 'pointer', borderRadius: 8, width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>×</button>
             </div>
+
+            {/* Select All Bar (TC09) */}
+            {items.length > 0 && (
+              <div className="px-5 py-3 bg-zinc-100/90 border-b border-zinc-200 flex items-center justify-between text-xs">
+                <label className="flex items-center gap-2 cursor-pointer font-semibold text-zinc-800 select-none">
+                  <input
+                    type="checkbox"
+                    checked={items.length > 0 && selectedIds.size === items.length}
+                    onChange={(e) => {
+                      if (e.target.checked) selectAll();
+                      else deselectAll();
+                    }}
+                    className="w-4 h-4 accent-red-600 rounded cursor-pointer"
+                  />
+                  <span>Chọn tất cả ({items.length} món)</span>
+                </label>
+                {selectedCount > 0 && (
+                  <button
+                    onClick={deselectAll}
+                    className="text-[11px] text-zinc-500 hover:text-red-700 transition cursor-pointer"
+                  >
+                    Bỏ chọn tất cả
+                  </button>
+                )}
+              </div>
+            )}
 
             {/* Items */}
             <div className="flex-1 overflow-y-auto p-5">
@@ -184,25 +212,44 @@ export default function CustomerLayout({ children, activePage, onNavigate, onHom
                   </button>
                 </div>
               ) : (
-                <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-3">
                   {items.map(item => {
                     const price = item.part.giaKhuyenMai ?? item.part.giaGoc;
+                    const checked = isSelected(item.part.id);
+
                     return (
-                      <div key={item.part.id} className="flex gap-3 rounded-xl p-3" style={{ background: 'var(--color-zinc-50)', border: '1px solid var(--color-zinc-200)' }}>
+                      <div
+                        key={item.part.id}
+                        className={`flex items-center gap-3 rounded-2xl p-3 border transition-all ${
+                          checked
+                            ? 'bg-white border-zinc-300 shadow-2xs'
+                            : 'bg-zinc-50/70 border-zinc-200 opacity-60'
+                        }`}
+                      >
+                        {/* TC09 Checkbox for each item */}
+                        <div className="shrink-0 flex items-center">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleSelect(item.part.id)}
+                            className="w-4 h-4 accent-red-600 rounded cursor-pointer"
+                          />
+                        </div>
+
                         <img src={item.part.hinhAnh} alt={item.part.tenSanPham}
-                          className="rounded-lg object-cover shrink-0"
-                          style={{ width: 64, height: 64, background: 'var(--color-zinc-200)' }} />
+                          className="rounded-xl object-contain shrink-0 mix-blend-multiply"
+                          style={{ width: 60, height: 60, background: 'var(--color-zinc-100)', padding: 4 }} />
                         <div className="flex-1 min-w-0">
-                          <div className="text-sm font-600 leading-snug" style={{ color: 'var(--color-zinc-900)' }}>{item.part.tenSanPham}</div>
-                          <div className="text-xs mt-0.5" style={{ color: 'var(--color-zinc-500)' }}>{item.part.thuongHieu}</div>
+                          <div className="text-xs font-bold leading-snug line-clamp-1" style={{ color: 'var(--color-zinc-900)' }}>{item.part.tenSanPham}</div>
+                          <div className="text-[10px] mt-0.5 text-zinc-400 font-mono">{item.part.thuongHieu}</div>
                           <div className="flex items-center justify-between mt-2">
-                            <div className="font-700" style={{ color: 'var(--color-red-700)', fontSize: 14 }}>{fmt(price * item.soLuong)}</div>
+                            <div className="font-bold text-red-700 font-mono text-xs">{fmt(price * item.soLuong)}</div>
                             <div className="flex items-center gap-1">
                               <button onClick={() => updateQty(item.part.id, item.soLuong - 1)}
-                                style={{ width: 24, height: 24, borderRadius: 6, border: '1px solid var(--color-zinc-200)', background: 'white', cursor: 'pointer', fontWeight: 700, color: 'var(--color-zinc-700)' }}>-</button>
-                              <span className="text-sm font-600 w-6 text-center" style={{ fontFamily: 'var(--font-mono)' }}>{item.soLuong}</span>
+                                style={{ width: 22, height: 22, borderRadius: 6, border: '1px solid var(--color-zinc-200)', background: 'white', cursor: 'pointer', fontWeight: 700, color: 'var(--color-zinc-700)', fontSize: 12 }}>-</button>
+                              <span className="text-xs font-semibold w-5 text-center font-mono">{item.soLuong}</span>
                               <button onClick={() => updateQty(item.part.id, item.soLuong + 1)}
-                                style={{ width: 24, height: 24, borderRadius: 6, border: '1px solid var(--color-zinc-200)', background: 'white', cursor: 'pointer', fontWeight: 700, color: 'var(--color-zinc-700)' }}>+</button>
+                                style={{ width: 22, height: 22, borderRadius: 6, border: '1px solid var(--color-zinc-200)', background: 'white', cursor: 'pointer', fontWeight: 700, color: 'var(--color-zinc-700)', fontSize: 12 }}>+</button>
                             </div>
                           </div>
                         </div>
@@ -214,17 +261,31 @@ export default function CustomerLayout({ children, activePage, onNavigate, onHom
               )}
             </div>
 
-            {/* Footer */}
+            {/* Footer (TC09: Chỉ tính tiền các sản phẩm được chọn) */}
             {items.length > 0 && (
-              <div className="border-t p-5" style={{ borderColor: 'var(--color-zinc-200)' }}>
-                <div className="flex items-center justify-between mb-4">
-                  <span className="font-600" style={{ color: 'var(--color-zinc-700)' }}>Tổng cộng</span>
-                  <span className="text-xl font-700" style={{ color: 'var(--color-red-700)', fontFamily: 'var(--font-display)', letterSpacing: '0.02em' }}>{fmt(total)}</span>
+              <div className="border-t p-5 bg-zinc-50" style={{ borderColor: 'var(--color-zinc-200)' }}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-semibold text-zinc-600">Đã chọn mua:</span>
+                  <span className="text-xs font-mono font-bold text-zinc-900">{selectedCount} / {count} sản phẩm</span>
                 </div>
-                <button onClick={() => { setCartOpen(false); onNavigate('checkout'); }}
-                  className="w-full py-3.5 rounded-xl text-base font-700 text-white"
-                  style={{ background: 'var(--color-red-700)', border: 'none', cursor: 'pointer', fontFamily: 'var(--font-display)', letterSpacing: '0.06em' }}>
-                  THANH TOÁN →
+                <div className="flex items-center justify-between mb-4">
+                  <span className="font-bold text-sm text-zinc-900">Tổng thanh toán:</span>
+                  <span className="text-2xl font-extrabold text-red-700 font-mono">{fmt(selectedTotal)}</span>
+                </div>
+                <button
+                  disabled={selectedCount === 0}
+                  onClick={() => {
+                    setCartOpen(false);
+                    onNavigate('checkout');
+                  }}
+                  className={`w-full py-3.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all duration-200 shadow-md ${
+                    selectedCount === 0
+                      ? 'bg-zinc-300 text-zinc-500 cursor-not-allowed shadow-none'
+                      : 'bg-red-700 hover:bg-red-800 text-white cursor-pointer shadow-red-700/20'
+                  }`}
+                  style={{ fontFamily: 'var(--font-display)', letterSpacing: '0.06em' }}
+                >
+                  {selectedCount === 0 ? 'VUI LÒNG CHỌN SẢN PHẨM' : `THANH TOÁN (${selectedCount}) →`}
                 </button>
               </div>
             )}
