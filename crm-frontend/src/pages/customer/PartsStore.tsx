@@ -4,20 +4,29 @@ import { useCart } from '../../contexts/CartContext';
 
 const categories = ['Tất cả', 'Nhớt', 'Lọc', 'Phanh', 'Bugi', 'Đèn', 'Lốp xe', 'Phụ kiện', 'Trang trí', 'Truyền động', 'Thân máy'];
 
+const categoryIcons: Record<string, string> = {
+  'Tất cả': '🏍️',
+  'Nhớt': '🛢️',
+  'Lọc': '🔘',
+  'Phanh': '🛑',
+  'Bugi': '⚡',
+  'Đèn': '💡',
+  'Lốp xe': '⭕',
+  'Phụ kiện': '🧰',
+  'Trang trí': '✨',
+  'Truyền động': '⚙️',
+  'Thân máy': '🔩',
+};
+
 function StarRow({ rating, count }: { rating: number; count: number }) {
   return (
     <div className="flex items-center gap-1.5">
-      <div className="flex gap-0.5">
-        {[1,2,3,4,5].map(s => (
-          <svg key={s} width="11" height="11" viewBox="0 0 24 24"
-            fill={s <= Math.round(rating) ? '#f59e0b' : 'none'}
-            stroke={s <= Math.round(rating) ? '#f59e0b' : 'var(--color-zinc-300)'}
-            strokeWidth="1.5">
-            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
-          </svg>
+      <div className="flex gap-0.5 text-amber-500 text-xs">
+        {[1, 2, 3, 4, 5].map(s => (
+          <span key={s}>{s <= Math.round(rating) ? '★' : '☆'}</span>
         ))}
       </div>
-      <span style={{ fontSize: 11, color: 'var(--color-zinc-500)', fontFamily: 'var(--font-mono)' }}>({count})</span>
+      <span className="text-[11px] text-zinc-500 font-mono">({count})</span>
     </div>
   );
 }
@@ -28,16 +37,39 @@ interface Props {
 }
 
 export default function PartsStore({ currentCustomer, onRequireLogin }: Props = {}) {
-  const { add } = useCart();
+  const { add, updateQty, items } = useCart();
+
+  // Navigation & Page View State: null = Store Home, Part = Dedicated Product Detail Page (TC04)
+  const [selectedPart, setSelectedPart] = useState<Part | null>(null);
+
+  // Search & Filter State (TC05)
   const [cat, setCat] = useState('Tất cả');
   const [selectedBrand, setSelectedBrand] = useState('Tất cả');
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<'default' | 'priceAsc' | 'priceDesc' | 'rating'>('default');
-  const [added, setAdded] = useState<Set<string>>(new Set());
-  const [viewingPart, setViewingPart] = useState<Part | null>(null);
-  const [modalTab, setModalTab] = useState<'details' | 'reviews'>('details');
+  const [priceRange, setPriceRange] = useState<'ALL' | 'under200k' | '200kTo500k' | '500kTo1m' | 'above1m'>('ALL');
 
-  // Local reviews state
+  // Interactive & Feedback State
+  const [added, setAdded] = useState<Set<string>>(new Set());
+  const [detailQty, setDetailQty] = useState(1);
+  const [detailTab, setDetailTab] = useState<'desc' | 'specs' | 'reviews'>('desc');
+
+  // Flash Sale Countdown Timer (TC06)
+  const [countdown, setCountdown] = useState({ hours: 5, minutes: 24, seconds: 38 });
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCountdown(prev => {
+        if (prev.seconds > 0) return { ...prev, seconds: prev.seconds - 1 };
+        if (prev.minutes > 0) return { ...prev, minutes: 59, seconds: 59 };
+        if (prev.hours > 0) return { hours: prev.hours - 1, minutes: 59, seconds: 59 };
+        return { hours: 5, minutes: 59, seconds: 59 };
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Review states
   const [allReviews, setAllReviews] = useState<ProductReview[]>([...mockProductReviews]);
   const [newReviewAuthor, setNewReviewAuthor] = useState(currentCustomer?.hoTen || '');
   const [newReviewPhone, setNewReviewPhone] = useState(currentCustomer?.soDienThoai || '');
@@ -58,636 +90,1114 @@ export default function PartsStore({ currentCustomer, onRequireLogin }: Props = 
     return ['Tất cả', ...list];
   }, []);
 
+  // Filtered store catalog
   const filtered = useMemo(() => {
     let list = mockParts.filter(p => {
-      const q = search.toLowerCase();
+      const q = search.toLowerCase().trim();
       const matchCat = cat === 'Tất cả' || p.danhMuc === cat;
       const matchBrand = selectedBrand === 'Tất cả' || p.thuongHieu === selectedBrand;
-      const matchSearch = !q || 
-        p.tenSanPham.toLowerCase().includes(q) || 
+      const matchSearch =
+        !q ||
+        p.tenSanPham.toLowerCase().includes(q) ||
         p.thuongHieu.toLowerCase().includes(q) ||
         (p.dongXePhuHop && p.dongXePhuHop.toLowerCase().includes(q));
-      return matchCat && matchBrand && matchSearch;
+
+      const effectivePrice = p.giaKhuyenMai ?? p.giaGoc;
+      let matchPrice = true;
+      if (priceRange === 'under200k') matchPrice = effectivePrice < 200000;
+      else if (priceRange === '200kTo500k') matchPrice = effectivePrice >= 200000 && effectivePrice <= 500000;
+      else if (priceRange === '500kTo1m') matchPrice = effectivePrice > 500000 && effectivePrice <= 1000000;
+      else if (priceRange === 'above1m') matchPrice = effectivePrice > 1000000;
+
+      return matchCat && matchBrand && matchSearch && matchPrice;
     });
+
     if (sort === 'priceAsc') list = [...list].sort((a, b) => (a.giaKhuyenMai ?? a.giaGoc) - (b.giaKhuyenMai ?? b.giaGoc));
     if (sort === 'priceDesc') list = [...list].sort((a, b) => (b.giaKhuyenMai ?? b.giaGoc) - (a.giaKhuyenMai ?? a.giaGoc));
     if (sort === 'rating') list = [...list].sort((a, b) => b.rating - a.rating);
+
     return list;
-  }, [cat, selectedBrand, search, sort]);
+  }, [cat, selectedBrand, search, sort, priceRange]);
 
-  const currentPartReviews = viewingPart
-    ? allReviews.filter(r => r.targetId === viewingPart.id)
-    : [];
+  // Flash Sale Items (TC06): Items with promotion discount
+  const flashSaleItems = useMemo(() => {
+    return mockParts.filter(p => p.giaKhuyenMai !== null).slice(0, 4);
+  }, []);
 
-  function handleAdd(p: Part, e?: React.MouseEvent) {
+  // Best Seller Items (TC06): Top rated with highest ratings & reviews
+  const bestSellers = useMemo(() => {
+    return [...mockParts]
+      .sort((a, b) => (b.rating * (b.luotDanh || 10)) - (a.rating * (a.luotDanh || 10)))
+      .slice(0, 4);
+  }, []);
+
+  // Related parts when viewing details
+  const relatedParts = useMemo(() => {
+    if (!selectedPart) return [];
+    return mockParts
+      .filter(p => p.id !== selectedPart.id && (p.danhMuc === selectedPart.danhMuc || p.thuongHieu === selectedPart.thuongHieu))
+      .slice(0, 4);
+  }, [selectedPart]);
+
+  // Handle Add to cart with TC03 auth check
+  function handleAdd(p: Part, qty = 1, e?: React.MouseEvent) {
     if (e) e.stopPropagation();
     if (!currentCustomer) {
       if (onRequireLogin) onRequireLogin();
       else window.dispatchEvent(new CustomEvent('crm-open-login'));
       return;
     }
-    add(p);
+    const existing = items.find(i => i.part.id === p.id);
+    if (existing) {
+      updateQty(p.id, existing.soLuong + qty);
+    } else {
+      add(p);
+      if (qty > 1) updateQty(p.id, qty);
+    }
     setAdded(prev => new Set(prev).add(p.id));
-    setTimeout(() => setAdded(prev => { const n = new Set(prev); n.delete(p.id); return n; }), 1200);
+    setTimeout(() => setAdded(prev => { const n = new Set(prev); n.delete(p.id); return n; }), 1400);
   }
 
+  // Handle Buy Now (TC03)
+  function handleBuyNow(p: Part, qty = 1) {
+    if (!currentCustomer) {
+      if (onRequireLogin) onRequireLogin();
+      else window.dispatchEvent(new CustomEvent('crm-open-login'));
+      return;
+    }
+    handleAdd(p, qty);
+    window.location.hash = '#cart';
+  }
+
+  // Handle Submit Review (TC01)
   const handleAddReview = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!viewingPart || !newReviewAuthor.trim() || !newReviewContent.trim()) return;
+    if (!selectedPart || !newReviewAuthor.trim() || !newReviewContent.trim()) return;
 
     const newRev: ProductReview = {
       id: 'RV-PART-' + Date.now(),
-      targetId: viewingPart.id,
+      targetId: selectedPart.id,
       tenKhachHang: newReviewAuthor.trim(),
-      soDienThoai: newReviewPhone ? newReviewPhone.slice(0, 4) + '***' + newReviewPhone.slice(-3) : '091***' + Math.floor(100 + Math.random() * 900),
+      soDienThoai: newReviewPhone
+        ? newReviewPhone.slice(0, 4) + '***' + newReviewPhone.slice(-3)
+        : '091***' + Math.floor(100 + Math.random() * 900),
       soSao: newReviewStars,
       ngayDanhGia: new Date().toISOString().split('T')[0],
       noiDung: newReviewContent.trim(),
       daMua: true,
-      dongXeDaMua: viewingPart.dongXePhuHop ? viewingPart.dongXePhuHop.split(',')[0] : 'Xe máy',
+      dongXeDaMua: selectedPart.dongXePhuHop ? selectedPart.dongXePhuHop.split(',')[0] : 'Xe máy',
     };
 
     setAllReviews(prev => [newRev, ...prev]);
-    setNewReviewAuthor('');
-    setNewReviewPhone('');
+    setNewReviewAuthor(currentCustomer?.hoTen || '');
+    setNewReviewPhone(currentCustomer?.soDienThoai || '');
     setNewReviewContent('');
     setReviewSubmitted(true);
     setTimeout(() => setReviewSubmitted(false), 3000);
   };
 
-  return (
-    <div style={{ background: 'var(--color-zinc-50)', minHeight: '100vh' }}>
-      {/* Hero banner */}
-      <div className="py-10" style={{ background: 'linear-gradient(135deg, var(--color-zinc-950) 0%, var(--color-red-900) 60%, var(--color-zinc-950) 100%)' }}>
-        <div className="max-w-7xl mx-auto px-6 sm:px-8">
-          <div style={{ fontFamily: 'var(--font-display)', fontSize: 40, fontWeight: 800, color: 'white', lineHeight: 1.1, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-            CỬA HÀNG PHỤ TÙNG & PHỤ KIỆN
-          </div>
-          <div className="mt-2 text-sm text-zinc-300">
-            100% Phụ tùng chính hãng · Honda, Motul, Brembo, Michelin, NGK, Bando, D.I.D · Đánh giá thực từ người mua
-          </div>
+  const selectedPartReviews = selectedPart
+    ? allReviews.filter(r => r.targetId === selectedPart.id)
+    : [];
 
-          {/* Search bar */}
-          <div className="relative mt-5 max-w-xl">
-            <svg className="absolute left-4 top-1/2 -translate-y-1/2" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-zinc-400)" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Tìm theo tên phụ tùng, thương hiệu, hoặc dòng xe (vd: SH, Exciter, Motul)..."
-              style={{ width: '100%', padding: '12px 16px 12px 44px', borderRadius: 10, border: 'none', background: 'rgba(255,255,255,0.12)', color: 'white', fontSize: 14, fontFamily: 'var(--font-sans)', outline: 'none' }}
-            />
-          </div>
-        </div>
-      </div>
+  // ─────────────────────────────────────────────────────────────
+  // 1. DEDICATED PRODUCT DETAIL PAGE VIEW (TC04)
+  // ─────────────────────────────────────────────────────────────
+  if (selectedPart) {
+    const effectivePrice = selectedPart.giaKhuyenMai ?? selectedPart.giaGoc;
+    const hasDiscount = selectedPart.giaKhuyenMai !== null;
+    const discountPct = hasDiscount
+      ? Math.round(((selectedPart.giaGoc - selectedPart.giaKhuyenMai!) / selectedPart.giaGoc) * 100)
+      : 0;
+    const isAdded = added.has(selectedPart.id);
 
-      <div className="max-w-7xl mx-auto px-6 sm:px-8 py-6">
-        {/* Brand filter chips */}
-        <div className="mb-4">
-          <div className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2" style={{ fontFamily: 'var(--font-mono)' }}>
-            HÃNG SẢN XUẤT / THƯƠNG HIỆU:
-          </div>
-          <div className="flex gap-2 flex-wrap items-center">
-            {brands.map(b => (
+    return (
+      <div className="bg-zinc-50 min-h-screen pb-16">
+        {/* Sticky Breadcrumb Bar */}
+        <div className="bg-white border-b border-zinc-200 sticky top-0 z-30 shadow-2xs">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2 text-xs text-zinc-500 font-mono overflow-x-auto whitespace-nowrap">
               <button
-                key={b}
-                onClick={() => setSelectedBrand(b)}
-                className="px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer"
-                style={{
-                  background: selectedBrand === b ? 'var(--color-zinc-950)' : 'white',
-                  color: selectedBrand === b ? 'white' : 'var(--color-zinc-700)',
-                  border: selectedBrand === b ? '1px solid var(--color-zinc-950)' : '1px solid var(--color-zinc-200)',
-                  boxShadow: selectedBrand === b ? '0 2px 8px rgba(0,0,0,0.15)' : 'none',
-                }}
+                onClick={() => setSelectedPart(null)}
+                className="text-red-700 hover:underline font-bold flex items-center gap-1 cursor-pointer"
               >
-                {b}
+                <span>←</span> Cửa hàng phụ tùng
               </button>
-            ))}
-          </div>
-        </div>
+              <span>/</span>
+              <span className="text-zinc-700">{selectedPart.danhMuc}</span>
+              <span>/</span>
+              <span className="text-zinc-900 font-bold truncate max-w-xs">{selectedPart.tenSanPham}</span>
+            </div>
 
-        {/* Category filters & Sort */}
-        <div className="flex items-center justify-between gap-4 flex-wrap mb-6 pt-3 border-t border-zinc-200">
-          {/* Category pills */}
-          <div className="flex gap-2 flex-wrap">
-            {categories.map(c => (
-              <button
-                key={c}
-                onClick={() => setCat(c)}
-                className="px-3 py-1.5 rounded-full text-xs font-600 transition-all cursor-pointer"
-                style={{
-                  background: cat === c ? 'var(--color-red-700)' : 'white',
-                  color: cat === c ? 'white' : 'var(--color-zinc-600)',
-                  border: cat === c ? '1px solid var(--color-red-700)' : '1px solid var(--color-zinc-200)',
-                  fontFamily: 'var(--font-sans)',
-                }}
-              >
-                {c}
-              </button>
-            ))}
-          </div>
-
-          {/* Sort */}
-          <select
-            value={sort}
-            onChange={e => setSort(e.target.value as typeof sort)}
-            style={{
-              padding: '8px 12px',
-              borderRadius: 8,
-              border: '1px solid var(--color-zinc-200)',
-              background: 'white',
-              fontSize: 13,
-              fontFamily: 'var(--font-sans)',
-              color: 'var(--color-zinc-700)',
-              outline: 'none',
-              cursor: 'pointer',
-            }}
-          >
-            <option value="default">Sắp xếp: Mặc định</option>
-            <option value="priceAsc">Giá tăng dần</option>
-            <option value="priceDesc">Giá giảm dần</option>
-            <option value="rating">Đánh giá cao nhất</option>
-          </select>
-        </div>
-
-        <div className="flex items-center justify-between text-sm mb-4" style={{ color: 'var(--color-zinc-500)', fontFamily: 'var(--font-mono)' }}>
-          <div>
-            Hiển thị <strong>{filtered.length}</strong> sản phẩm
-            {cat !== 'Tất cả' ? ` · Danh mục: ${cat}` : ''}
-            {selectedBrand !== 'Tất cả' ? ` · Hãng: ${selectedBrand}` : ''}
-          </div>
-          {(cat !== 'Tất cả' || selectedBrand !== 'Tất cả' || search) && (
             <button
-              onClick={() => { setCat('Tất cả'); setSelectedBrand('Tất cả'); setSearch(''); }}
-              className="text-xs text-red-700 font-bold hover:underline cursor-pointer"
+              onClick={() => {
+                setSelectedPart(null);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              className="px-3.5 py-1.5 rounded-xl border border-zinc-300 text-xs font-semibold text-zinc-700 hover:bg-zinc-100 transition cursor-pointer flex items-center gap-1.5"
             >
-              ✕ Xóa tất cả bộ lọc
+              <span>✕</span> Quay lại danh sách
             </button>
-          )}
+          </div>
         </div>
 
-        {/* Product grid */}
-        <div className="grid gap-5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}>
-          {filtered.map(p => {
-            const price = p.giaKhuyenMai ?? p.giaGoc;
-            const discounted = p.giaKhuyenMai !== null;
-            const isAdded = added.has(p.id);
-            const pReviews = allReviews.filter(r => r.targetId === p.id);
-
-            return (
-              <div
-                key={p.id}
-                onClick={() => {
-                  setViewingPart(p);
-                  setModalTab('details');
-                }}
-                className="rounded-2xl overflow-hidden flex flex-col group cursor-pointer hover:-translate-y-1 transition-all"
-                style={{
-                  background: 'white',
-                  border: '1px solid var(--color-zinc-200)',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-                }}
-              >
-                {/* Image container */}
-                <div className="relative overflow-hidden" style={{ height: 180, background: 'var(--color-zinc-100)' }}>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 space-y-8">
+          {/* Main 2-Column Product Detail Layout (Shopee / Tiki style) */}
+          <div className="bg-white rounded-3xl border border-zinc-200/80 shadow-xs p-6 lg:p-8">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+              {/* Left Column: Big Image & Guarantees */}
+              <div className="lg:col-span-5 space-y-4">
+                <div className="relative rounded-2xl overflow-hidden border border-zinc-200 bg-zinc-100 aspect-square flex items-center justify-center p-4 group">
                   <img
-                    src={p.hinhAnh}
-                    alt={p.tenSanPham}
-                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                    src={selectedPart.hinhAnh}
+                    alt={selectedPart.tenSanPham}
+                    className="w-full h-full object-contain mix-blend-multiply group-hover:scale-105 transition-transform duration-300"
                   />
-                  {/* Promo discount badge */}
-                  {discounted && (
-                    <div
-                      className="absolute top-2 left-2 rounded-md text-white text-xs font-bold px-2 py-0.5 shadow"
-                      style={{ background: 'var(--color-red-700)', fontFamily: 'var(--font-mono)' }}
-                    >
-                      -{Math.round((1 - p.giaKhuyenMai! / p.giaGoc) * 100)}%
+                  {hasDiscount && (
+                    <div className="absolute top-4 left-4 bg-red-600 text-white text-xs font-extrabold px-3 py-1.5 rounded-xl shadow-md uppercase tracking-wider font-mono">
+                      GIẢM {discountPct}%
                     </div>
                   )}
-
-                  {/* Origin badge */}
-                  {p.xuatXu && (
-                    <div
-                      className="absolute bottom-2 left-2 rounded bg-black/60 backdrop-blur-sm text-white text-[10px] font-medium px-2 py-0.5"
-                    >
-                      Xuất xứ: {p.xuatXu}
-                    </div>
-                  )}
-
-                  {/* Stock status badge */}
-                  {p.soLuongTon <= 15 ? (
-                    <div
-                      className="absolute top-2 right-2 rounded-md text-white text-xs font-bold px-2 py-0.5 shadow"
-                      style={{ background: '#d97706', fontFamily: 'var(--font-mono)' }}
-                    >
-                      Còn {p.soLuongTon}
-                    </div>
-                  ) : (
-                    <div
-                      className="absolute top-2 right-2 rounded-md bg-emerald-600/90 text-white text-[11px] font-semibold px-2 py-0.5"
-                    >
-                      Sẵn hàng
-                    </div>
-                  )}
+                  <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-xs text-zinc-800 text-[11px] font-bold px-2.5 py-1 rounded-lg border border-zinc-200 shadow-xs font-mono">
+                    ✓ 100% Chính hãng
+                  </div>
                 </div>
 
-                {/* Card Info */}
-                <div className="flex flex-col flex-1 p-4">
-                  <div className="flex items-center justify-between gap-2 mb-1.5">
-                    <span
-                      className="text-[11px] font-bold px-2 py-0.5 rounded bg-zinc-100 text-zinc-700 uppercase tracking-wider font-mono"
-                    >
-                      {p.thuongHieu}
-                    </span>
-                    <span className="text-[11px] text-zinc-400 font-medium">
-                      {p.danhMuc}
-                    </span>
-                  </div>
-
-                  <h3 className="font-bold text-sm leading-snug text-zinc-900 group-hover:text-red-700 transition line-clamp-2 mb-1.5">
-                    {p.tenSanPham}
-                  </h3>
-
-                  {p.dongXePhuHop && (
-                    <p className="text-[11px] text-blue-700 font-medium line-clamp-1 mb-2 bg-blue-50 px-2 py-0.5 rounded">
-                      Xe: {p.dongXePhuHop}
-                    </p>
-                  )}
-
-                  <p className="text-xs text-zinc-500 line-clamp-2 leading-relaxed mb-3">
-                    {p.moTa}
-                  </p>
-
-                  <div className="flex items-center justify-between mb-2">
-                    <StarRow rating={p.rating} count={p.luotDanh} />
-                    <span className="text-[11px] text-zinc-400 font-mono">
-                      💬 {pReviews.length || 2} ĐG
-                    </span>
-                  </div>
-
-                  {/* Price & Add to Cart button */}
-                  <div className="flex items-end justify-between mt-auto pt-3 border-t border-zinc-100">
+                {/* Service Perks Box */}
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="p-3 rounded-xl bg-zinc-50 border border-zinc-200/70 flex items-center gap-2.5">
+                    <span className="text-xl">🛡️</span>
                     <div>
-                      <div
-                        className="font-bold text-red-700"
-                        style={{ fontFamily: 'var(--font-display)', fontSize: 18, letterSpacing: '0.01em' }}
-                      >
-                        {formatVND(price)}
-                      </div>
-                      {discounted && (
-                        <div className="text-xs line-through text-zinc-400 font-medium">
-                          {formatVND(p.giaGoc)}
-                        </div>
+                      <div className="font-bold text-zinc-900">Bảo hành chính hãng</div>
+                      <div className="text-[10px] text-zinc-500">{selectedPart.baoHanh || '12 tháng điện tử'}</div>
+                    </div>
+                  </div>
+                  <div className="p-3 rounded-xl bg-zinc-50 border border-zinc-200/70 flex items-center gap-2.5">
+                    <span className="text-xl">🔄</span>
+                    <div>
+                      <div className="font-bold text-zinc-900">Đổi trả miễn phí</div>
+                      <div className="text-[10px] text-zinc-500">Trong 7 ngày nếu lỗi NSX</div>
+                    </div>
+                  </div>
+                  <div className="p-3 rounded-xl bg-zinc-50 border border-zinc-200/70 flex items-center gap-2.5">
+                    <span className="text-xl">🔧</span>
+                    <div>
+                      <div className="font-bold text-zinc-900">Lắp ráp miễn phí</div>
+                      <div className="text-[10px] text-zinc-500">Tại trạm dịch vụ showroom</div>
+                    </div>
+                  </div>
+                  <div className="p-3 rounded-xl bg-zinc-50 border border-zinc-200/70 flex items-center gap-2.5">
+                    <span className="text-xl">🚚</span>
+                    <div>
+                      <div className="font-bold text-zinc-900">Giao hàng hỏa tốc</div>
+                      <div className="text-[10px] text-zinc-500">Nhận trong 2H nội thành</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Column: Title, Ratings, Shopee-style Price Box, Actions */}
+              <div className="lg:col-span-7 flex flex-col justify-between space-y-6">
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="px-2.5 py-1 rounded-lg bg-red-100 text-red-700 text-xs font-bold font-mono uppercase tracking-wider">
+                      {selectedPart.thuongHieu}
+                    </span>
+                    <span className="px-2.5 py-1 rounded-lg bg-zinc-100 text-zinc-700 text-xs font-semibold">
+                      {selectedPart.danhMuc}
+                    </span>
+                    {selectedPart.xuatXu && (
+                      <span className="px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 text-xs font-medium border border-blue-100">
+                        Xuất xứ: {selectedPart.xuatXu}
+                      </span>
+                    )}
+                  </div>
+
+                  <h1 className="text-2xl sm:text-3xl font-extrabold text-zinc-950 tracking-tight leading-snug" style={{ fontFamily: 'var(--font-display)' }}>
+                    {selectedPart.tenSanPham}
+                  </h1>
+
+                  {/* Rating & Sold count */}
+                  <div className="flex items-center gap-4 text-xs flex-wrap pb-2 border-b border-zinc-100">
+                    <div className="flex items-center gap-1.5 text-amber-500">
+                      <span className="font-bold text-sm text-zinc-900 underline">{selectedPart.rating}</span>
+                      <span>★★★★★</span>
+                    </div>
+                    <span className="text-zinc-300">|</span>
+                    <span className="text-zinc-600">
+                      <strong className="text-zinc-900">{selectedPartReviews.length || selectedPart.luotDanh}</strong> Đánh giá
+                    </span>
+                    <span className="text-zinc-300">|</span>
+                    <span className="text-emerald-700 font-semibold flex items-center gap-1">
+                      <span>✓</span> Đã bán {(selectedPart.luotDanh || 10) * 8} sản phẩm
+                    </span>
+                  </div>
+
+                  {/* Shopee-style Highlight Price Container */}
+                  <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-red-50/90 via-orange-50/50 to-red-50/90 border border-red-200/80 space-y-2">
+                    <div className="flex items-baseline gap-3 flex-wrap">
+                      <span className="text-3xl sm:text-4xl font-extrabold text-red-700 font-mono tracking-tight">
+                        {formatVND(effectivePrice)}
+                      </span>
+                      {hasDiscount && (
+                        <>
+                          <span className="text-base text-zinc-400 line-through font-mono">
+                            {formatVND(selectedPart.giaGoc)}
+                          </span>
+                          <span className="px-2 py-0.5 rounded-md bg-red-600 text-white text-xs font-extrabold font-mono uppercase">
+                            Tiết kiệm {formatVND(selectedPart.giaGoc - effectivePrice)} (-{discountPct}%)
+                          </span>
+                        </>
                       )}
                     </div>
+                    <div className="text-xs text-red-800/80 font-medium flex items-center gap-1.5">
+                      <span>🎁</span> Ưu đãi độc quyền: Tặng voucher kiểm tra và tra dầu nhớt miễn phí tại hệ thống showroom!
+                    </div>
+                  </div>
+
+                  {/* Specs Quick Pill */}
+                  {selectedPart.dongXePhuHop && (
+                    <div className="p-3 rounded-xl bg-zinc-50 border border-zinc-200 text-xs flex items-center justify-between">
+                      <span className="text-zinc-500">Dòng xe phù hợp:</span>
+                      <strong className="text-blue-700 font-semibold">{selectedPart.dongXePhuHop}</strong>
+                    </div>
+                  )}
+
+                  {/* Quantity selector */}
+                  <div className="flex items-center gap-4 pt-2">
+                    <span className="text-xs font-semibold text-zinc-600">Số lượng:</span>
+                    <div className="flex items-center border border-zinc-300 rounded-xl overflow-hidden bg-white shadow-2xs">
+                      <button
+                        type="button"
+                        onClick={() => setDetailQty(Math.max(1, detailQty - 1))}
+                        className="px-3.5 py-1.5 text-zinc-600 hover:bg-zinc-100 font-bold transition cursor-pointer text-sm"
+                      >
+                        -
+                      </button>
+                      <input
+                        type="number"
+                        min={1}
+                        max={selectedPart.soLuongTon}
+                        value={detailQty}
+                        onChange={e => setDetailQty(Math.max(1, Math.min(selectedPart.soLuongTon, parseInt(e.target.value) || 1)))}
+                        className="w-14 text-center text-xs font-bold font-mono focus:outline-none py-1.5"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setDetailQty(Math.min(selectedPart.soLuongTon, detailQty + 1))}
+                        className="px-3.5 py-1.5 text-zinc-600 hover:bg-zinc-100 font-bold transition cursor-pointer text-sm"
+                      >
+                        +
+                      </button>
+                    </div>
+                    <span className="text-xs text-zinc-500 font-mono">
+                      (Còn <strong className="text-zinc-900">{selectedPart.soLuongTon}</strong> sản phẩm trong kho)
+                    </span>
+                  </div>
+                </div>
+
+                {/* Big Action Buttons (TC03: Auth check) */}
+                <div className="pt-4 border-t border-zinc-100 space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <button
+                      onClick={() => handleAdd(selectedPart, detailQty)}
+                      className={`py-3.5 px-6 rounded-2xl font-bold text-xs uppercase tracking-wider transition-all duration-200 cursor-pointer flex items-center justify-center gap-2 border-2 ${
+                        isAdded
+                          ? 'bg-emerald-600 border-emerald-600 text-white'
+                          : 'bg-red-50 hover:bg-red-100/80 border-red-700 text-red-700'
+                      }`}
+                    >
+                      <span className="text-base">{isAdded ? '✓' : '🛒'}</span>
+                      <span>{isAdded ? 'Đã thêm vào giỏ hàng!' : 'Thêm vào giỏ hàng'}</span>
+                    </button>
 
                     <button
-                      onClick={e => handleAdd(p, e)}
-                      className="flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold transition-all shadow-sm cursor-pointer"
-                      style={{
-                        background: isAdded ? '#10b981' : 'var(--color-zinc-950)',
-                        color: 'white',
-                        border: 'none',
-                        fontFamily: 'var(--font-sans)',
-                      }}
+                      onClick={() => handleBuyNow(selectedPart, detailQty)}
+                      className="py-3.5 px-6 rounded-2xl bg-red-700 hover:bg-red-800 text-white font-bold text-xs uppercase tracking-wider transition-all shadow-md shadow-red-700/30 cursor-pointer flex items-center justify-center gap-2"
                     >
-                      {isAdded ? (
-                        <>
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
-                            <polyline points="20 6 9 17 4 12"/>
-                          </svg>
-                          Đã thêm
-                        </>
-                      ) : (
-                        <>
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                            <line x1="12" y1="5" x2="12" y2="19"/>
-                            <line x1="5" y1="12" x2="19" y2="12"/>
-                          </svg>
-                          Thêm giỏ
-                        </>
-                      )}
+                      <span>⚡</span> Mua ngay với giá ưu đãi
                     </button>
                   </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
 
-        {filtered.length === 0 && (
-          <div className="text-center py-20 bg-white rounded-3xl border border-zinc-200 my-6 shadow-sm">
-            <div className="text-5xl mb-4">🔍</div>
-            <div className="font-bold text-zinc-800 text-lg">Không tìm thấy phụ tùng phù hợp</div>
-            <p className="text-xs text-zinc-500 mt-1 max-w-md mx-auto">
-              Hãy thử tìm kiếm với từ khóa khác hoặc xóa bớt tiêu chí lọc danh mục/thương hiệu.
-            </p>
-            <button
-              onClick={() => { setSearch(''); setCat('Tất cả'); setSelectedBrand('Tất cả'); }}
-              className="mt-4 px-4 py-2 bg-red-700 text-white text-xs font-bold rounded-xl hover:bg-red-800 transition cursor-pointer"
-            >
-              Đặt lại tất cả bộ lọc
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* QUICK VIEW / DETAIL & REVIEWS MODAL */}
-      {viewingPart && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn"
-          onClick={() => setViewingPart(null)}
-        >
-          <div
-            className="bg-white rounded-3xl max-w-2xl w-full overflow-hidden shadow-2xl border border-zinc-200 max-h-[90vh] overflow-y-auto"
-            onClick={e => e.stopPropagation()}
-          >
-            {/* Modal Header */}
-            <div className="p-5 pb-3 border-b border-zinc-200 flex justify-between items-start">
-              <div>
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-50 text-red-700 border border-red-200 font-mono">
-                  {viewingPart.thuongHieu} · {viewingPart.danhMuc}
-                </span>
-                <h2 className="text-lg font-extrabold text-zinc-900 leading-snug mt-1" style={{ fontFamily: 'var(--font-display)' }}>
-                  {viewingPart.tenSanPham}
-                </h2>
-              </div>
-              <button
-                onClick={() => setViewingPart(null)}
-                className="w-8 h-8 rounded-full bg-zinc-100 hover:bg-zinc-200 flex items-center justify-center text-zinc-500 font-bold transition cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Modal Tabs */}
-            <div className="px-6 pt-3 flex gap-4 border-b border-zinc-200">
-              <button
-                onClick={() => setModalTab('details')}
-                className={`pb-2.5 text-xs font-bold font-mono transition cursor-pointer ${
-                  modalTab === 'details'
-                    ? 'border-b-2 border-red-700 text-red-700'
-                    : 'text-zinc-500 hover:text-zinc-800'
-                }`}
-              >
-                ⚙️ CHI TIẾT SẢN PHẨM
-              </button>
-              <button
-                onClick={() => setModalTab('reviews')}
-                className={`pb-2.5 text-xs font-bold font-mono transition cursor-pointer flex items-center gap-1.5 ${
-                  modalTab === 'reviews'
-                    ? 'border-b-2 border-red-700 text-red-700'
-                    : 'text-zinc-500 hover:text-zinc-800'
-                }`}
-              >
-                <span>💬 ĐÁNH GIÁ & BÌNH LUẬN</span>
-                <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-red-100 text-red-800 font-mono">
-                  {currentPartReviews.length || 2}
-                </span>
-              </button>
-            </div>
-
-            {/* TAB 1: PRODUCT DETAILS */}
-            {modalTab === 'details' && (
-              <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-5">
-                {/* Product Image */}
-                <div className="relative bg-zinc-100 rounded-2xl overflow-hidden h-60 md:h-full min-h-[220px]">
-                  <img
-                    src={viewingPart.hinhAnh}
-                    alt={viewingPart.tenSanPham}
-                    className="w-full h-full object-cover"
-                  />
-                  {viewingPart.giaKhuyenMai && (
-                    <div className="absolute top-3 left-3 bg-red-700 text-white font-bold text-xs px-2.5 py-1 rounded-md shadow font-mono">
-                      GIẢM {Math.round((1 - viewingPart.giaKhuyenMai / viewingPart.giaGoc) * 100)}%
+                  {!currentCustomer && (
+                    <div className="text-center text-[11px] text-zinc-500 font-sans">
+                      🔒 Chưa đăng nhập? Nhấn nút trên hệ thống sẽ mở form đăng nhập để bảo vệ đơn hàng của bạn.
                     </div>
                   )}
                 </div>
+              </div>
+            </div>
+          </div>
 
-                {/* Specs Box */}
-                <div className="flex flex-col justify-between space-y-4">
-                  <div className="bg-zinc-50 rounded-xl p-3.5 border border-zinc-200 space-y-2 text-xs">
-                    <div className="flex justify-between">
-                      <span className="text-zinc-500">Thương hiệu:</span>
-                      <strong className="text-zinc-900">{viewingPart.thuongHieu}</strong>
+          {/* Product Tabs: Description / Technical Specs / Reviews (TC01) */}
+          <div className="bg-white rounded-3xl border border-zinc-200/80 shadow-xs overflow-hidden">
+            {/* Tab Headers */}
+            <div className="flex border-b border-zinc-200 bg-zinc-50/70 px-6 gap-6">
+              <button
+                onClick={() => setDetailTab('desc')}
+                className={`py-4 text-xs font-bold uppercase tracking-wider transition border-b-2 cursor-pointer ${
+                  detailTab === 'desc'
+                    ? 'border-red-600 text-red-700'
+                    : 'border-transparent text-zinc-500 hover:text-zinc-900'
+                }`}
+              >
+                📖 Mô tả chi tiết & Hướng dẫn
+              </button>
+              <button
+                onClick={() => setDetailTab('specs')}
+                className={`py-4 text-xs font-bold uppercase tracking-wider transition border-b-2 cursor-pointer ${
+                  detailTab === 'specs'
+                    ? 'border-red-600 text-red-700'
+                    : 'border-transparent text-zinc-500 hover:text-zinc-900'
+                }`}
+              >
+                ⚙️ Bảng thông số kỹ thuật
+              </button>
+              <button
+                onClick={() => setDetailTab('reviews')}
+                className={`py-4 text-xs font-bold uppercase tracking-wider transition border-b-2 cursor-pointer flex items-center gap-2 ${
+                  detailTab === 'reviews'
+                    ? 'border-red-600 text-red-700'
+                    : 'border-transparent text-zinc-500 hover:text-zinc-900'
+                }`}
+              >
+                <span>⭐ Đánh giá khách hàng</span>
+                <span className="px-2 py-0.2 rounded-full bg-zinc-200 text-zinc-700 text-[10px] font-mono">
+                  {selectedPartReviews.length}
+                </span>
+              </button>
+            </div>
+
+            {/* Tab Content */}
+            <div className="p-6 lg:p-8">
+              {detailTab === 'desc' && (
+                <div className="space-y-4 max-w-4xl text-xs text-zinc-700 leading-relaxed">
+                  <h3 className="text-sm font-bold text-zinc-900 uppercase font-mono">
+                    Giới thiệu sản phẩm {selectedPart.tenSanPham}
+                  </h3>
+                  <p>{selectedPart.moTa}</p>
+                  <div className="p-4 rounded-2xl bg-zinc-50 border border-zinc-200 space-y-2">
+                    <div className="font-bold text-zinc-900 uppercase font-mono text-[11px]">
+                      🔧 Hướng dẫn sử dụng & Khuyến nghị lắp đặt:
                     </div>
-                    {viewingPart.xuatXu && (
-                      <div className="flex justify-between">
-                        <span className="text-zinc-500">Xuất xứ:</span>
-                        <strong className="text-zinc-900">{viewingPart.xuatXu}</strong>
-                      </div>
-                    )}
-                    {viewingPart.dongXePhuHop && (
-                      <div className="flex justify-between">
-                        <span className="text-zinc-500">Dòng xe phù hợp:</span>
-                        <strong className="text-blue-700 text-right">{viewingPart.dongXePhuHop}</strong>
-                      </div>
-                    )}
-                    {viewingPart.baoHanh && (
-                      <div className="flex justify-between">
-                        <span className="text-zinc-500">Chính sách BH:</span>
-                        <strong className="text-emerald-700">{viewingPart.baoHanh}</strong>
-                      </div>
-                    )}
-                    <div className="flex justify-between">
-                      <span className="text-zinc-500">Tình trạng tồn kho:</span>
-                      <strong className="text-zinc-900">{viewingPart.soLuongTon} sản phẩm có sẵn</strong>
+                    <ul className="list-disc pl-5 space-y-1 text-zinc-600">
+                      <li>Khuyến cáo kiểm tra xe định kỳ và lắp ráp tại đại lý ủy quyền để đảm bảo độ chuẩn xác kỹ thuật.</li>
+                      <li>Vệ sinh sạch vị trí lắp đặt trước khi thay thế phụ tùng mới.</li>
+                      <li>Sau khi lắp đặt, kỹ thuật viên sẽ kiểm tra áp suất, lực siết ốc và test vận hành trước khi bàn giao xe.</li>
+                    </ul>
+                  </div>
+                </div>
+              )}
+
+              {detailTab === 'specs' && (
+                <div className="max-w-2xl">
+                  <div className="rounded-2xl border border-zinc-200 overflow-hidden divide-y divide-zinc-200 text-xs">
+                    <div className="grid grid-cols-2 p-3 bg-zinc-50/80 font-medium">
+                      <span className="text-zinc-500">Mã phụ tùng (SKU)</span>
+                      <strong className="text-zinc-900 font-mono">{selectedPart.id}</strong>
+                    </div>
+                    <div className="grid grid-cols-2 p-3 bg-white font-medium">
+                      <span className="text-zinc-500">Thương hiệu</span>
+                      <strong className="text-zinc-900">{selectedPart.thuongHieu}</strong>
+                    </div>
+                    <div className="grid grid-cols-2 p-3 bg-zinc-50/80 font-medium">
+                      <span className="text-zinc-500">Danh mục sản phẩm</span>
+                      <strong className="text-zinc-900">{selectedPart.danhMuc}</strong>
+                    </div>
+                    <div className="grid grid-cols-2 p-3 bg-white font-medium">
+                      <span className="text-zinc-500">Dòng xe tương thích</span>
+                      <strong className="text-blue-700">{selectedPart.dongXePhuHop || 'Nhiều dòng xe'}</strong>
+                    </div>
+                    <div className="grid grid-cols-2 p-3 bg-zinc-50/80 font-medium">
+                      <span className="text-zinc-500">Xuất xứ</span>
+                      <strong className="text-zinc-900">{selectedPart.xuatXu || 'Chính hãng'}</strong>
+                    </div>
+                    <div className="grid grid-cols-2 p-3 bg-white font-medium">
+                      <span className="text-zinc-500">Chính sách bảo hành</span>
+                      <strong className="text-emerald-700">{selectedPart.baoHanh || '12 tháng điện tử'}</strong>
+                    </div>
+                    <div className="grid grid-cols-2 p-3 bg-zinc-50/80 font-medium">
+                      <span className="text-zinc-500">Tình trạng kho hàng</span>
+                      <strong className="text-zinc-900">{selectedPart.soLuongTon} sản phẩm có sẵn</strong>
                     </div>
                   </div>
+                </div>
+              )}
 
-                  <p className="text-xs text-zinc-600 leading-relaxed bg-zinc-50/50 p-3 rounded-xl border border-zinc-100">
-                    {viewingPart.moTa}
-                  </p>
-
-                  <div className="pt-2 border-t border-zinc-100 flex items-center justify-between">
-                    <div>
-                      <div className="text-[11px] text-zinc-400 font-mono">Giá bán niêm yết:</div>
-                      <div className="text-2xl font-bold text-red-700" style={{ fontFamily: 'var(--font-display)' }}>
-                        {formatVND(viewingPart.giaKhuyenMai ?? viewingPart.giaGoc)}
-                      </div>
-                      {viewingPart.giaKhuyenMai && (
-                        <div className="text-xs line-through text-zinc-400 font-mono">
-                          {formatVND(viewingPart.giaGoc)}
+              {detailTab === 'reviews' && (
+                <div className="space-y-6">
+                  {/* Rating Overview */}
+                  <div className="p-4 sm:p-5 rounded-2xl bg-zinc-50 border border-zinc-200 flex items-center justify-between flex-wrap gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="text-4xl font-extrabold text-zinc-900 font-mono">4.9</div>
+                      <div>
+                        <div className="flex text-amber-500 text-sm">★★★★★</div>
+                        <div className="text-[11px] text-zinc-500 font-mono">
+                          Dựa trên {selectedPartReviews.length || 2} nhận xét thực tế từ khách mua hàng
                         </div>
-                      )}
+                      </div>
                     </div>
+                    <span className="px-3.5 py-1.5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold font-mono">
+                      ✓ 100% Khách hàng hài lòng
+                    </span>
+                  </div>
 
-                    <button
-                      onClick={() => {
-                        if (!currentCustomer) {
+                  {/* Reviews List */}
+                  <div className="space-y-3">
+                    {selectedPartReviews.length === 0 ? (
+                      <div className="p-6 text-center text-zinc-500 text-xs">
+                        Chưa có đánh giá nào cho phụ tùng này. Hãy là người đầu tiên chia sẻ cảm nhận!
+                      </div>
+                    ) : (
+                      selectedPartReviews.map(r => (
+                        <div key={r.id} className="p-4 rounded-2xl bg-white border border-zinc-200 shadow-2xs space-y-2">
+                          <div className="flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-2">
+                              <span className="w-7 h-7 rounded-full bg-red-100 text-red-700 font-bold flex items-center justify-center text-xs">
+                                {r.tenKhachHang[0]}
+                              </span>
+                              <div>
+                                <span className="font-bold text-zinc-900">{r.tenKhachHang}</span>
+                                {r.soDienThoai && (
+                                  <span className="text-[10px] text-zinc-400 font-mono ml-2">({r.soDienThoai})</span>
+                                )}
+                              </div>
+                              <span className="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-200 font-semibold">
+                                ✓ Đã mua hàng chính hãng
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-zinc-400 font-mono">{r.ngayDanhGia}</span>
+                          </div>
+
+                          <div className="flex text-amber-500 text-xs">
+                            {'★'.repeat(r.soSao)}{'☆'.repeat(5 - r.soSao)}
+                          </div>
+
+                          <p className="text-xs text-zinc-700 leading-relaxed">{r.noiDung}</p>
+
+                          {r.phanHoiShowroom && (
+                            <div className="mt-2 p-2.5 rounded-xl bg-zinc-50 border-l-2 border-red-600 text-[11px] text-zinc-600">
+                              <span className="font-bold text-red-700 block">Phản hồi từ Showroom:</span>
+                              {r.phanHoiShowroom}
+                            </div>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  {/* Add Review Form (TC01: Blocked when unauthenticated) */}
+                  {!currentCustomer ? (
+                    <div className="p-5 rounded-2xl bg-amber-50 border border-amber-200 text-center space-y-2">
+                      <div className="text-2xl">🔒</div>
+                      <div className="text-xs font-bold text-amber-900 uppercase font-mono">
+                        Đăng nhập để viết đánh giá
+                      </div>
+                      <p className="text-xs text-amber-700 max-w-md mx-auto">
+                        Chỉ khách hàng đã đăng nhập tài khoản mới có thể gửi đánh giá và nhận xét về phụ tùng này.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
                           if (onRequireLogin) onRequireLogin();
                           else window.dispatchEvent(new CustomEvent('crm-open-login'));
-                          return;
-                        }
-                        handleAdd(viewingPart);
-                        setViewingPart(null);
-                      }}
-                      className="px-5 py-2.5 rounded-xl bg-red-700 hover:bg-red-800 text-white font-bold text-xs uppercase tracking-wider transition shadow-lg shadow-red-700/20 cursor-pointer"
-                    >
-                      + Thêm vào giỏ
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* TAB 2: REVIEWS & COMMENTS */}
-            {modalTab === 'reviews' && (
-              <div className="p-6 space-y-4">
-                {/* Rating Overview */}
-                <div className="p-4 rounded-2xl bg-zinc-50 border border-zinc-200 flex items-center justify-between flex-wrap gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="text-3xl font-extrabold text-zinc-900 font-display">4.9</div>
-                    <div>
-                      <div className="flex text-amber-500 text-sm">★★★★★</div>
-                      <div className="text-[11px] text-zinc-500 font-mono">
-                        Dựa trên {currentPartReviews.length || 2} đánh giá từ khách hàng đã mua
-                      </div>
-                    </div>
-                  </div>
-                  <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold font-mono">
-                    ✓ 100% Khuyên dùng phụ tùng này
-                  </span>
-                </div>
-
-                {/* Reviews List */}
-                <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
-                  {currentPartReviews.length === 0 ? (
-                    <div className="p-4 text-center text-zinc-500 text-xs">
-                      Chưa có đánh giá nào cho phụ tùng này. Hãy chia sẻ cảm nhận của bạn!
+                        }}
+                        className="mt-1 px-5 py-2.5 bg-red-700 hover:bg-red-800 text-white rounded-xl text-xs font-bold transition cursor-pointer shadow-sm"
+                      >
+                        Đăng nhập để đánh giá ngay →
+                      </button>
                     </div>
                   ) : (
-                    currentPartReviews.map(r => (
-                      <div key={r.id} className="p-3.5 rounded-xl bg-white border border-zinc-200 shadow-2xs space-y-1.5">
-                        <div className="flex items-center justify-between text-xs">
-                          <div className="flex items-center gap-2">
-                            <span className="w-6 h-6 rounded-full bg-red-100 text-red-700 font-bold flex items-center justify-center text-[10px]">
-                              {r.tenKhachHang[0]}
-                            </span>
-                            <span className="font-bold text-zinc-900">{r.tenKhachHang}</span>
-                            {r.soDienThoai && (
-                              <span className="text-[10px] text-zinc-400 font-mono">({r.soDienThoai})</span>
-                            )}
-                            <span className="text-[10px] bg-emerald-50 text-emerald-700 px-1.5 py-0.2 rounded border border-emerald-200 font-semibold">
-                              ✓ Đã mua hàng chính hãng
-                            </span>
-                          </div>
-                          <span className="text-[10px] text-zinc-400 font-mono">{r.ngayDanhGia}</span>
-                        </div>
-
-                        <div className="flex text-amber-500 text-xs">
-                          {'★'.repeat(r.soSao)}{'☆'.repeat(5 - r.soSao)}
-                        </div>
-
-                        <p className="text-xs text-zinc-700 leading-relaxed">
-                          {r.noiDung}
-                        </p>
-
-                        {r.phanHoiShowroom && (
-                          <div className="mt-2 p-2 rounded-lg bg-zinc-50 border-l-2 border-red-600 text-[11px] text-zinc-600">
-                            <span className="font-bold text-red-700 block">Phản hồi từ Showroom:</span>
-                            {r.phanHoiShowroom}
-                          </div>
-                        )}
+                    <form onSubmit={handleAddReview} className="p-5 rounded-2xl bg-zinc-50 border border-zinc-200 space-y-3">
+                      <div className="text-xs font-bold text-zinc-800 uppercase tracking-wider font-mono">
+                        ✍️ Viết nhận xét & đánh giá phụ tùng
                       </div>
-                    ))
-                  )}
-                </div>
 
-                {/* Add Review Form (TC01: Chỉ cho phép gửi đánh giá khi đã đăng nhập) */}
-                {!currentCustomer ? (
-                  <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-center space-y-2">
-                    <div className="text-2xl">🔒</div>
-                    <div className="text-xs font-bold text-amber-900 uppercase font-mono">
-                      Đăng nhập để viết đánh giá
-                    </div>
-                    <p className="text-[11px] text-amber-700 max-w-md mx-auto">
-                      Chỉ khách hàng đã đăng nhập tài khoản mới có thể gửi đánh giá và nhận xét về phụ tùng này.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (onRequireLogin) onRequireLogin();
-                        else window.dispatchEvent(new CustomEvent('crm-open-login'));
-                      }}
-                      className="mt-1 px-4 py-2 bg-red-700 hover:bg-red-800 text-white rounded-xl text-xs font-bold transition cursor-pointer shadow-sm"
-                    >
-                      Đăng nhập để đánh giá ngay →
-                    </button>
-                  </div>
-                ) : (
-                  <form onSubmit={handleAddReview} className="p-4 rounded-2xl bg-zinc-50 border border-zinc-200 space-y-3">
-                    <div className="text-xs font-bold text-zinc-800 uppercase tracking-wider font-mono">
-                      ✍️ Viết nhận xét & đánh giá phụ tùng
-                    </div>
+                      {reviewSubmitted && (
+                        <div className="p-3 rounded-xl bg-emerald-100 text-emerald-800 text-xs font-bold flex items-center gap-2">
+                          <span>✓</span> Cảm ơn bạn! Đánh giá đã được gửi và hiển thị thành công.
+                        </div>
+                      )}
 
-                    {reviewSubmitted && (
-                      <div className="p-2.5 rounded-xl bg-emerald-100 text-emerald-800 text-xs font-bold flex items-center gap-2">
-                        <span>✓</span> Cảm ơn bạn! Đánh giá đã được gửi và hiển thị thành công.
-                      </div>
-                    )}
-
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                         <input
                           type="text"
                           placeholder="Họ và tên của bạn *"
                           required
                           value={newReviewAuthor}
                           onChange={e => setNewReviewAuthor(e.target.value)}
-                          className="w-full px-3 py-2 rounded-xl border border-zinc-300 bg-white text-xs focus:outline-none focus:border-red-600"
+                          className="w-full px-3.5 py-2 rounded-xl border border-zinc-300 bg-white text-xs focus:outline-none focus:border-red-600"
                         />
-                      </div>
-                      <div>
                         <input
                           type="text"
                           placeholder="Số điện thoại của bạn"
                           value={newReviewPhone}
                           onChange={e => setNewReviewPhone(e.target.value)}
-                          className="w-full px-3 py-2 rounded-xl border border-zinc-300 bg-white text-xs focus:outline-none focus:border-red-600"
+                          className="w-full px-3.5 py-2 rounded-xl border border-zinc-300 bg-white text-xs focus:outline-none focus:border-red-600"
                         />
                       </div>
+
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className="text-zinc-500">Mức độ hài lòng:</span>
+                        <div className="flex gap-1">
+                          {[1, 2, 3, 4, 5].map(star => (
+                            <button
+                              key={star}
+                              type="button"
+                              onClick={() => setNewReviewStars(star)}
+                              className="text-lg text-amber-500 hover:scale-110 transition cursor-pointer"
+                            >
+                              {star <= newReviewStars ? '★' : '☆'}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <textarea
+                        rows={3}
+                        placeholder="Chia sẻ chất lượng sản phẩm, độ bền, cảm giác sử dụng sau khi lắp đặt..."
+                        required
+                        value={newReviewContent}
+                        onChange={e => setNewReviewContent(e.target.value)}
+                        className="w-full px-3.5 py-2 rounded-xl border border-zinc-300 bg-white text-xs focus:outline-none focus:border-red-600"
+                      />
+
+                      <div className="flex justify-end">
+                        <button
+                          type="submit"
+                          className="px-5 py-2.5 bg-red-700 text-white rounded-xl text-xs font-bold hover:bg-red-800 transition cursor-pointer shadow"
+                        >
+                          Gửi đánh giá phụ tùng
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Related Products Recommendation Row */}
+          {relatedParts.length > 0 && (
+            <div className="space-y-4 pt-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-bold text-zinc-900 uppercase font-mono tracking-tight">
+                    🔗 Phụ tùng cùng loại & Gợi ý cho bạn
+                  </h3>
+                  <p className="text-xs text-zinc-500">Các sản phẩm cùng hãng {selectedPart.thuongHieu} hoặc cùng danh mục</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {relatedParts.map(rp => (
+                  <div
+                    key={rp.id}
+                    onClick={() => {
+                      setSelectedPart(rp);
+                      setDetailQty(1);
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
+                    className="bg-white rounded-2xl border border-zinc-200 p-4 hover:shadow-md transition cursor-pointer flex flex-col justify-between"
+                  >
+                    <div className="aspect-square bg-zinc-100 rounded-xl overflow-hidden mb-3 p-2 flex items-center justify-center">
+                      <img src={rp.hinhAnh} alt={rp.tenSanPham} className="w-full h-full object-contain mix-blend-multiply" />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-[10px] text-zinc-400 font-mono">{rp.thuongHieu}</div>
+                      <div className="text-xs font-bold text-zinc-900 line-clamp-1">{rp.tenSanPham}</div>
+                      <div className="text-sm font-bold text-red-700 font-mono">
+                        {formatVND(rp.giaKhuyenMai ?? rp.giaGoc)}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // 2. MAIN STORE VIEW (TC04, TC05, TC06)
+  // ─────────────────────────────────────────────────────────────
+  return (
+    <div className="bg-zinc-50 min-h-screen pb-16 space-y-8">
+      {/* ── TC06: PROMO HERO BANNER & SERVICE PERKS ── */}
+      <div className="relative overflow-hidden bg-gradient-to-r from-zinc-950 via-zinc-900 to-red-950 text-white py-12 px-4 sm:px-6 lg:px-8">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(220,38,38,0.25),transparent_50%)]" />
+        <div className="max-w-7xl mx-auto relative z-10 space-y-4">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-600/30 border border-red-500/40 text-red-300 text-xs font-mono font-bold uppercase tracking-wider">
+            <span>✨</span> SIÊU THỊ PHỤ TÙNG & PHỤ KIỆN CHÍNH HÃNG 2025
+          </div>
+          <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight uppercase max-w-3xl leading-tight" style={{ fontFamily: 'var(--font-display)' }}>
+            CHĂM SÓC & NÂNG CẤP CHIẾC XE CỦA BẠN
+          </h1>
+          <p className="text-zinc-300 text-xs sm:text-sm max-w-2xl font-sans leading-relaxed">
+            100% Phụ tùng nhập khẩu & chính hãng Honda, Motul, Brembo, Michelin, NGK, Bando, D.I.D. Hỗ trợ tra cứu nhanh theo dòng xe, miễn phí công lắp đặt tại đại lý!
+          </p>
+
+          {/* Highlights Badges */}
+          <div className="flex items-center gap-3 pt-2 flex-wrap text-xs font-mono">
+            <span className="px-3 py-1.5 rounded-xl bg-white/10 backdrop-blur-xs border border-white/15 text-zinc-200">
+              🏷️ Giảm tới 30% phụ tùng phanh & nhớt
+            </span>
+            <span className="px-3 py-1.5 rounded-xl bg-white/10 backdrop-blur-xs border border-white/15 text-zinc-200">
+              🔧 Miễn phí công lắp ráp tại xưởng
+            </span>
+            <span className="px-3 py-1.5 rounded-xl bg-white/10 backdrop-blur-xs border border-white/15 text-zinc-200">
+              ⚡ Giao hàng hỏa tốc trong 2H
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
+        {/* Service Perks Strip */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="p-3.5 rounded-2xl bg-white border border-zinc-200/80 shadow-2xs flex items-center gap-3">
+            <span className="text-2xl">🛡️</span>
+            <div>
+              <div className="text-xs font-bold text-zinc-900">100% Chính Hãng</div>
+              <div className="text-[10px] text-zinc-500">Cam kết nguồn gốc xuất xứ</div>
+            </div>
+          </div>
+          <div className="p-3.5 rounded-2xl bg-white border border-zinc-200/80 shadow-2xs flex items-center gap-3">
+            <span className="text-2xl">🔄</span>
+            <div>
+              <div className="text-xs font-bold text-zinc-900">Đổi Trả 7 Ngày</div>
+              <div className="text-[10px] text-zinc-500">1 đổi 1 nếu lỗi từ nhà sản xuất</div>
+            </div>
+          </div>
+          <div className="p-3.5 rounded-2xl bg-white border border-zinc-200/80 shadow-2xs flex items-center gap-3">
+            <span className="text-2xl">⚡</span>
+            <div>
+              <div className="text-xs font-bold text-zinc-900">Giao Hàng 2 Giờ</div>
+              <div className="text-[10px] text-zinc-500">Hỏa tốc khu vực nội thành</div>
+            </div>
+          </div>
+          <div className="p-3.5 rounded-2xl bg-white border border-zinc-200/80 shadow-2xs flex items-center gap-3">
+            <span className="text-2xl">👨‍🔧</span>
+            <div>
+              <div className="text-xs font-bold text-zinc-900">Kỹ Thuật Chuyên Nghiệp</div>
+              <div className="text-[10px] text-zinc-500">Lắp ráp & bảo dưỡng tại xưởng</div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── TC06: FLASH SALE GIỜ VÀNG SECTION ── */}
+        <div className="rounded-3xl p-6 bg-gradient-to-r from-red-900 via-zinc-900 to-red-950 border border-red-800 text-white shadow-lg space-y-4">
+          <div className="flex items-center justify-between flex-wrap gap-4">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl animate-pulse">⚡</span>
+              <div>
+                <h2 className="text-xl sm:text-2xl font-black uppercase tracking-wide font-display text-amber-400">
+                  GIỜ VÀNG FLASH SALE
+                </h2>
+                <p className="text-xs text-zinc-300">Ưu đãi giảm giá phụ tùng cực sốc số lượng có hạn</p>
+              </div>
+            </div>
+
+            {/* Countdown Badges */}
+            <div className="flex items-center gap-2 font-mono">
+              <span className="text-xs text-zinc-300 mr-1 hidden sm:inline">Kết thúc trong:</span>
+              <div className="px-2.5 py-1.5 rounded-xl bg-zinc-950/80 border border-red-500/40 font-bold text-amber-400 text-sm">
+                {String(countdown.hours).padStart(2, '0')}
+              </div>
+              <span className="font-bold text-amber-400">:</span>
+              <div className="px-2.5 py-1.5 rounded-xl bg-zinc-950/80 border border-red-500/40 font-bold text-amber-400 text-sm">
+                {String(countdown.minutes).padStart(2, '0')}
+              </div>
+              <span className="font-bold text-amber-400">:</span>
+              <div className="px-2.5 py-1.5 rounded-xl bg-zinc-950/80 border border-red-500/40 font-bold text-amber-400 text-sm">
+                {String(countdown.seconds).padStart(2, '0')}
+              </div>
+            </div>
+          </div>
+
+          {/* Flash Sale Items Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
+            {flashSaleItems.map(p => {
+              const discountPct = Math.round(((p.giaGoc - p.giaKhuyenMai!) / p.giaGoc) * 100);
+              return (
+                <div
+                  key={p.id}
+                  onClick={() => {
+                    setSelectedPart(p);
+                    setDetailQty(1);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  className="bg-white rounded-2xl p-4 text-zinc-900 group hover:-translate-y-1 transition duration-200 cursor-pointer flex flex-col justify-between shadow"
+                >
+                  <div className="relative aspect-square rounded-xl bg-zinc-100 p-2 mb-3 flex items-center justify-center overflow-hidden">
+                    <img src={p.hinhAnh} alt={p.tenSanPham} className="w-full h-full object-contain mix-blend-multiply group-hover:scale-105 transition" />
+                    <div className="absolute top-2 left-2 bg-red-600 text-white font-mono text-[10px] font-extrabold px-2 py-0.5 rounded-lg shadow">
+                      -{discountPct}%
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider">{p.thuongHieu}</div>
+                    <div className="text-xs font-bold text-zinc-900 line-clamp-1 group-hover:text-red-700 transition">
+                      {p.tenSanPham}
                     </div>
 
-                    <div className="flex items-center gap-2 text-xs">
-                      <span className="text-zinc-500">Mức độ hài lòng:</span>
-                      <div className="flex gap-1">
-                        {[1, 2, 3, 4, 5].map(star => (
-                          <button
-                            key={star}
-                            type="button"
-                            onClick={() => setNewReviewStars(star)}
-                            className="text-lg text-amber-500 hover:scale-110 transition cursor-pointer"
-                          >
-                            {star <= newReviewStars ? '★' : '☆'}
-                          </button>
-                        ))}
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-base font-extrabold text-red-700 font-mono">
+                        {formatVND(p.giaKhuyenMai!)}
+                      </span>
+                      <span className="text-[11px] text-zinc-400 line-through font-mono">
+                        {formatVND(p.giaGoc)}
+                      </span>
+                    </div>
+
+                    {/* Progress Bar */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[10px] font-mono text-zinc-500">
+                        <span>🔥 Đã bán {p.luotDanh * 3}</span>
+                        <span className="text-red-700 font-bold">Sắp hết</span>
+                      </div>
+                      <div className="w-full h-1.5 bg-zinc-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-gradient-to-r from-amber-500 to-red-600 rounded-full w-4/5" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* ── TC06: SẢN PHẨM BÁN CHẠY NHẤT (BEST SELLERS) ── */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-extrabold text-zinc-950 uppercase tracking-tight font-display flex items-center gap-2">
+                <span>👑</span> SẢN PHẨM BÁN CHẠY NHẤT THÁNG
+              </h2>
+              <p className="text-xs text-zinc-500 font-sans">Được người tiêu dùng đánh giá cao nhất và lắp đặt nhiều nhất</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {bestSellers.map((p, idx) => (
+              <div
+                key={p.id}
+                onClick={() => {
+                  setSelectedPart(p);
+                  setDetailQty(1);
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                className="bg-white rounded-2xl border border-zinc-200 p-4 hover:border-red-400 hover:shadow-sm transition cursor-pointer flex flex-col justify-between group relative overflow-hidden"
+              >
+                <div className="absolute top-3 left-3 z-10 px-2 py-0.5 rounded-lg bg-amber-400 text-zinc-950 text-[10px] font-mono font-bold shadow-xs">
+                  #{idx + 1} Best Seller
+                </div>
+
+                <div className="aspect-square rounded-xl bg-zinc-50 p-2 mb-3 flex items-center justify-center overflow-hidden">
+                  <img src={p.hinhAnh} alt={p.tenSanPham} className="w-full h-full object-contain mix-blend-multiply group-hover:scale-105 transition" />
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-zinc-500 font-mono">{p.thuongHieu}</span>
+                    <span className="text-amber-500 font-bold">★ {p.rating}</span>
+                  </div>
+                  <div className="text-xs font-bold text-zinc-900 line-clamp-1 group-hover:text-red-700 transition">
+                    {p.tenSanPham}
+                  </div>
+                  <div className="text-sm font-bold text-red-700 font-mono">
+                    {formatVND(p.giaKhuyenMai ?? p.giaGoc)}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ── TC05: UNIFIED SEARCH & FILTER CONTAINER (CÙNG MỘT KHUNG ĐIỀU KHIỂN) ── */}
+        <div className="bg-white rounded-3xl border border-zinc-200/90 shadow-sm p-5 sm:p-6 space-y-5">
+          <div className="flex items-center justify-between border-b border-zinc-100 pb-3 flex-wrap gap-2">
+            <div className="text-sm font-bold text-zinc-900 uppercase font-mono flex items-center gap-2">
+              <span>🔍</span> BỘ LỌC TÌM KIẾM PHỤ TÙNG TẬP TRUNG
+            </div>
+            <div className="text-xs text-zinc-500 font-mono">
+              Hiển thị <strong className="text-zinc-900">{filtered.length}</strong> / {mockParts.length} sản phẩm
+            </div>
+          </div>
+
+          {/* Row 1: Search Input & Dropdown Selectors */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-center">
+            {/* Search Input (5 cols) */}
+            <div className="lg:col-span-5 relative">
+              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400 text-sm">🔍</span>
+              <input
+                type="text"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Tìm tên phụ tùng, thương hiệu, dòng xe (SH, Exciter, Motul)..."
+                className="w-full pl-9 pr-8 py-2.5 rounded-xl border border-zinc-300 text-xs focus:outline-none focus:border-red-600 bg-zinc-50/50"
+              />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => setSearch('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-700 text-xs cursor-pointer"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            {/* Brand Dropdown (2 cols) */}
+            <div className="lg:col-span-2">
+              <select
+                value={selectedBrand}
+                onChange={e => setSelectedBrand(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl border border-zinc-300 text-xs bg-white text-zinc-700 focus:outline-none focus:border-red-600 cursor-pointer font-mono"
+              >
+                <option value="Tất cả">Hãng: Tất cả</option>
+                {brands.filter(b => b !== 'Tất cả').map(b => (
+                  <option key={b} value={b}>{b}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Price Range Dropdown (2 cols) */}
+            <div className="lg:col-span-2">
+              <select
+                value={priceRange}
+                onChange={e => setPriceRange(e.target.value as typeof priceRange)}
+                className="w-full px-3 py-2.5 rounded-xl border border-zinc-300 text-xs bg-white text-zinc-700 focus:outline-none focus:border-red-600 cursor-pointer font-mono"
+              >
+                <option value="ALL">Khoảng giá: Tất cả</option>
+                <option value="under200k">Dưới 200.000 đ</option>
+                <option value="200kTo500k">200.000 - 500.000 đ</option>
+                <option value="500kTo1m">500.000 - 1.000.000 đ</option>
+                <option value="above1m">Trên 1.000.000 đ</option>
+              </select>
+            </div>
+
+            {/* Sort Dropdown (3 cols) */}
+            <div className="lg:col-span-3">
+              <select
+                value={sort}
+                onChange={e => setSort(e.target.value as typeof sort)}
+                className="w-full px-3 py-2.5 rounded-xl border border-zinc-300 text-xs bg-white text-zinc-700 focus:outline-none focus:border-red-600 cursor-pointer font-mono"
+              >
+                <option value="default">Sắp xếp: Mặc định</option>
+                <option value="priceAsc">Giá: Thấp đến Cao ↑</option>
+                <option value="priceDesc">Giá: Cao đến Thấp ↓</option>
+                <option value="rating">Đánh giá sao cao nhất ★</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Row 2: Category Filter Chips Bar */}
+          <div className="space-y-2 pt-2 border-t border-zinc-100">
+            <div className="text-[11px] font-bold text-zinc-500 uppercase tracking-wider font-mono">
+              DANH MỤC PHỤ TÙNG:
+            </div>
+            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none items-center">
+              {categories.map(c => {
+                const isSelected = cat === c;
+                const icon = categoryIcons[c] || '📦';
+                return (
+                  <button
+                    key={c}
+                    onClick={() => setCat(c)}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 border ${
+                      isSelected
+                        ? 'bg-zinc-950 text-white border-zinc-950 shadow-2xs'
+                        : 'bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-100'
+                    }`}
+                  >
+                    <span>{icon}</span>
+                    <span>{c}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Filter Status & Reset */}
+          {(cat !== 'Tất cả' || selectedBrand !== 'Tất cả' || search || priceRange !== 'ALL' || sort !== 'default') && (
+            <div className="pt-2 flex items-center justify-between text-xs text-zinc-500 font-mono border-t border-zinc-100">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span>Đang lọc:</span>
+                {cat !== 'Tất cả' && <span className="px-2 py-0.5 rounded bg-zinc-100 text-zinc-800">{cat}</span>}
+                {selectedBrand !== 'Tất cả' && <span className="px-2 py-0.5 rounded bg-zinc-100 text-zinc-800">{selectedBrand}</span>}
+                {priceRange !== 'ALL' && <span className="px-2 py-0.5 rounded bg-zinc-100 text-zinc-800">Khoảng giá</span>}
+                {search && <span className="px-2 py-0.5 rounded bg-zinc-100 text-zinc-800">Từ khóa: "{search}"</span>}
+              </div>
+
+              <button
+                onClick={() => {
+                  setCat('Tất cả');
+                  setSelectedBrand('Tất cả');
+                  setSearch('');
+                  setPriceRange('ALL');
+                  setSort('default');
+                }}
+                className="text-red-700 font-bold hover:underline cursor-pointer flex items-center gap-1 ml-auto"
+              >
+                <span>✕</span> Xóa tất cả bộ lọc
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* ── TC04: PRODUCT GRID LISTING ── */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-extrabold text-zinc-950 uppercase tracking-tight font-display">
+              TẤT CẢ PHỤ TÙNG & PHỤ KIỆN
+            </h2>
+            <span className="text-xs text-zinc-500 font-mono">
+              Trang 1 ({filtered.length} kết quả)
+            </span>
+          </div>
+
+          {filtered.length === 0 ? (
+            <div className="bg-white rounded-3xl border border-zinc-200 p-12 text-center space-y-3">
+              <div className="text-4xl">🔍</div>
+              <div className="text-sm font-bold text-zinc-900">Không tìm thấy sản phẩm phụ tùng nào!</div>
+              <p className="text-xs text-zinc-500 max-w-md mx-auto">
+                Không có sản phẩm nào phù hợp với từ khóa hoặc bộ lọc đã chọn. Hãy thử xóa bớt tiêu chí lọc.
+              </p>
+              <button
+                onClick={() => {
+                  setCat('Tất cả');
+                  setSelectedBrand('Tất cả');
+                  setSearch('');
+                  setPriceRange('ALL');
+                }}
+                className="px-4 py-2 bg-red-700 text-white rounded-xl text-xs font-bold hover:bg-red-800 transition cursor-pointer"
+              >
+                Xóa bộ lọc để xem tất cả
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+              {filtered.map(p => {
+                const price = p.giaKhuyenMai ?? p.giaGoc;
+                const hasDiscount = p.giaKhuyenMai !== null;
+                const discountPct = hasDiscount
+                  ? Math.round(((p.giaGoc - p.giaKhuyenMai!) / p.giaGoc) * 100)
+                  : 0;
+                const isAdded = added.has(p.id);
+
+                return (
+                  <div
+                    key={p.id}
+                    className="bg-white rounded-3xl border border-zinc-200/90 shadow-2xs hover:shadow-md hover:border-zinc-300 transition duration-200 flex flex-col justify-between overflow-hidden group"
+                  >
+                    {/* Top image section */}
+                    <div
+                      onClick={() => {
+                        setSelectedPart(p);
+                        setDetailQty(1);
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      className="relative aspect-square bg-zinc-100/70 p-4 flex items-center justify-center cursor-pointer overflow-hidden"
+                    >
+                      <img
+                        src={p.hinhAnh}
+                        alt={p.tenSanPham}
+                        className="w-full h-full object-contain mix-blend-multiply group-hover:scale-105 transition-transform duration-300"
+                      />
+                      {hasDiscount && (
+                        <div className="absolute top-3 left-3 bg-red-600 text-white font-mono text-[10px] font-extrabold px-2 py-0.5 rounded-lg shadow-xs uppercase">
+                          -{discountPct}%
+                        </div>
+                      )}
+                      <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-2xs text-[10px] font-bold text-zinc-700 px-2 py-0.5 rounded-md border border-zinc-200">
+                        {p.danhMuc}
                       </div>
                     </div>
 
-                    <textarea
-                      rows={2}
-                      placeholder="Chia sẻ chất lượng sản phẩm, độ bền, cảm giác sử dụng sau khi lắp đặt..."
-                      required
-                      value={newReviewContent}
-                      onChange={e => setNewReviewContent(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl border border-zinc-300 bg-white text-xs focus:outline-none focus:border-red-600"
-                    />
+                    {/* Content Section */}
+                    <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="font-mono font-bold text-zinc-500 uppercase">{p.thuongHieu}</span>
+                          <StarRow rating={p.rating} count={p.luotDanh} />
+                        </div>
 
-                    <div className="flex justify-end">
-                      <button
-                        type="submit"
-                        className="px-4 py-2 bg-red-700 text-white rounded-xl text-xs font-bold hover:bg-red-800 transition cursor-pointer shadow"
-                      >
-                        Gửi đánh giá phụ tùng
-                      </button>
+                        <h3
+                          onClick={() => {
+                            setSelectedPart(p);
+                            setDetailQty(1);
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                          }}
+                          className="text-xs font-bold text-zinc-900 line-clamp-2 hover:text-red-700 transition cursor-pointer leading-snug"
+                        >
+                          {p.tenSanPham}
+                        </h3>
+
+                        {p.dongXePhuHop && (
+                          <div className="text-[10px] text-blue-700 font-medium truncate">
+                            🏍️ {p.dongXePhuHop}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="space-y-2 pt-2 border-t border-zinc-100">
+                        {/* Price */}
+                        <div>
+                          <div className="flex items-baseline gap-2">
+                            <span className="text-base font-extrabold text-red-700 font-mono tracking-tight">
+                              {formatVND(price)}
+                            </span>
+                            {hasDiscount && (
+                              <span className="text-[11px] text-zinc-400 line-through font-mono">
+                                {formatVND(p.giaGoc)}
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[10px] text-emerald-700 font-mono font-semibold">
+                            ✓ Còn {p.soLuongTon} sản phẩm có sẵn
+                          </div>
+                        </div>
+
+                        {/* Action buttons (TC04 & TC03) */}
+                        <div className="grid grid-cols-2 gap-2 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedPart(p);
+                              setDetailQty(1);
+                              window.scrollTo({ top: 0, behavior: 'smooth' });
+                            }}
+                            className="py-2 px-2.5 rounded-xl border border-zinc-200 hover:bg-zinc-100 text-zinc-700 font-semibold text-[11px] transition cursor-pointer text-center"
+                          >
+                            Chi tiết
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={(e) => handleAdd(p, 1, e)}
+                            className={`py-2 px-2.5 rounded-xl font-bold text-[11px] transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                              isAdded
+                                ? 'bg-emerald-600 text-white shadow-xs'
+                                : 'bg-red-700 hover:bg-red-800 text-white shadow-xs shadow-red-700/20'
+                            }`}
+                          >
+                            <span>{isAdded ? '✓' : '+'}</span>
+                            <span>{isAdded ? 'Đã thêm' : 'Thêm giỏ'}</span>
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                  </form>
-                )}
-              </div>
-            )}
-          </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }

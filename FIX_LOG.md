@@ -166,3 +166,39 @@ Dưới đây là danh sách toàn bộ các tập tin đã can thiệp. Khi x�
 * **Kết quả test:**
   - Chưa đăng nhập: Bấm nút "Thêm vào giỏ" ở bất kỳ phụ tùng nào -> Giỏ hàng không tăng số lượng, popup Đăng nhập lập tức bật lên.
   - Đã đăng nhập: Bấm "Thêm vào giỏ" -> Thêm sản phẩm vào giỏ bình thường kèm badge xanh "✓ Đã thêm".
+
+#### 4. TC04 – Tối ưu thẻ sản phẩm và Xây dựng trang chi tiết riêng biệt chuẩn E-commerce
+* **Mô tả lỗi:** Giao diện thẻ phụ tùng còn rối, bố cục chưa dễ nhìn; xem chi tiết chỉ là popup modal nhỏ, chưa có trang chi tiết riêng biệt như các sàn TMĐT.
+* **Kết quả mong đợi:** 
+  - Thẻ sản phẩm được thiết kế rõ ràng, phân cấp giá, thương hiệu, badge tồn kho, rating, nút xem chi tiết và nút thêm giỏ hàng.
+  - Khi bấm "Xem chi tiết" (hoặc click vào sản phẩm), chuyển sang **TRANG CHI TIẾT SẢN PHẨM RIÊNG BIỆT** (Shopee/Tiki/Lazada style) có breadcrumbs điều hướng, bố cục 2 cột lớn, ảnh zoom, cam kết bảo hành, chọn số lượng, nút Thêm giỏ / Mua ngay, bảng thông số kỹ thuật, tab mô tả chi tiết & đánh giá khách hàng (kế thừa TC01 & TC03), và danh sách sản phẩm liên quan.
+* **Giải pháp đã thực hiện:**
+  - `PartsStore.tsx`:
+    - Thêm state `selectedPart: Part | null` điều hướng hiển thị view: khi `selectedPart !== null` hiển thị toàn bộ trang chi tiết sản phẩm riêng biệt; khi bấm nút "← Quay lại danh sách" hoặc breadcrumb thì quay lại danh sách cửa hàng phụ tùng.
+    - Xây dựng giao diện trang chi tiết 2 cột: Cột trái ảnh lớn + huy hiệu chính hãng + 4 cam kết dịch vụ; Cột phải tên sản phẩm, rating sao, khối giá Shopee đỏ nổi bật tiết kiệm %, bộ chọn số lượng `[-] [qty] [+]`, 2 nút CTA "🛒 Thêm vào giỏ hàng" và "⚡ Mua ngay với giá ưu đãi", bảng thông số kỹ thuật.
+    - Tích hợp tab điều hướng: Tab Mô tả chi tiết & Hướng dẫn lắp đặt; Tab Đánh giá khách hàng (chặn submit khi chưa đăng nhập theo TC01); Mục phụ tùng cùng loại & gợi ý cho bạn.
+    - Thiết kế lại thẻ card sản phẩm ngoài danh sách: Bo góc mềm mại, hiển thị rõ badge giảm giá %, thương hiệu, dòng xe tương thích, badge tồn kho xanh, 2 nút "Chi tiết" và "Thêm giỏ" tách biệt.
+* **Kết quả test:**
+  - Nhấp vào bất kỳ sản phẩm nào -> Giao diện chuyển mượt mà sang trang chi tiết riêng biệt chuẩn TMĐT.
+  - Đầy đủ thông tin, chọn số lượng, tab mô tả/đánh giá/thông số, nút quay lại giữ nguyên trạng thái tìm kiếm và bộ lọc.
+
+#### 5. TC05 – Bố trí bộ lọc cùng khung với thanh tìm kiếm (Trang Phụ tùng)
+* **Mô tả lỗi:** Thanh tìm kiếm nằm ở trên banner đen, bộ lọc danh mục và hãng nằm tách biệt bên dưới khiến trải nghiệm bị chia cắt.
+* **Kết quả mong đợi:** Bố trí thanh tìm kiếm và tất cả bộ lọc vào cùng một khung điều khiển tập trung (Unified Filter Card).
+* **Giải pháp đã thực hiện:**
+  - `PartsStore.tsx`:
+    - Gom ô tìm kiếm, dropdown Hãng, dropdown Khoảng giá, dropdown Sắp xếp và thanh danh mục chips (có icon sinh động) vào trong một Card bộ lọc thống nhất (`bg-white rounded-3xl border border-zinc-200 p-6`).
+    - Bổ sung thanh trạng thái hiển thị số lượng sản phẩm tìm thấy và nút "✕ Xóa tất cả bộ lọc" khi đang kích hoạt bất kỳ bộ lọc nào.
+* **Kết quả test:**
+  - Toàn bộ công cụ tìm kiếm và lọc nằm gọn gàng trong cùng 1 khung, thao tác nhanh chóng và mượt mà.
+
+#### 6. TC06 – Bổ sung các khu vực quảng bá sản phẩm (Banner, Flash Sale đếm ngược, Bán chạy nhất)
+* **Mô tả lỗi:** Trang bán hàng thiếu banner quảng cáo, chưa có khu vực Flash Sale và sản phẩm bán chạy/nổi bật.
+* **Kết quả mong đợi:** Bổ sung banner quảng bá chuyên nghiệp, dải cam kết tiện ích dịch vụ, khu vực Giờ vàng Flash Sale có đồng hồ đếm ngược thời gian thực, và khu vực Sản phẩm bán chạy nhất.
+* **Giải pháp đã thực hiện:**
+  - `PartsStore.tsx`:
+    - Bổ sung **Promo Hero Banner** phong cách showroom xe máy hiện đại với dải tiện ích dịch vụ 4 cam kết (100% Chính hãng, Đổi trả 7 ngày, Giao hàng 2H, Kỹ thuật viên bảo dưỡng).
+    - Bổ sung khu vực **⚡ GIỜ VÀNG FLASH SALE** với đồng hồ đếm ngược thời gian thực `[Giờ] : [Phút] : [Giây]` nhảy từng giây, thanh tiến độ bán hàng `🔥 Đã bán X / Sắp hết`, badge giảm giá sốc (-15%, -20%).
+    - Bổ sung khu vực **👑 SẢN PHẨM BÁN CHẠY NHẤT THÁNG** xếp hạng top phụ tùng được mua và đánh giá cao nhất.
+* **Kết quả test:**
+  - Banner và dải tiện ích hiển thị đẹp mắt, đồng hồ Flash Sale đếm ngược mượt mà thời gian thực, các sản phẩm bán chạy nổi bật.
