@@ -36,6 +36,7 @@ CREATE TABLE KHACH_HANG (
     NgaySinh DATE NOT NULL,
     GioiTinh NVARCHAR(10) CHECK (GioiTinh IN (N'Nam', N'Nữ', N'Khác')),
     SoDienThoai VARCHAR(15) NOT NULL,
+    Email VARCHAR(100) NULL,
     DiaChi NVARCHAR(255),
     SoThich NVARCHAR(255),
     NgayTao DATETIME DEFAULT GETDATE(),

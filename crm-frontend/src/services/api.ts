@@ -119,36 +119,39 @@ export const customerApi = {
     tenDangNhap?: string;
     matKhau?: string;
   }): Promise<{ success: boolean; customer: Customer; maKH?: number }> {
-    const defaultUsername = (data.tenDangNhap || data.email.split('@')[0] || data.soDienThoai).replace(/[^a-zA-Z0-9]/g, '');
+    const defaultUsername = (data.tenDangNhap || data.email || data.soDienThoai).trim();
     let createdMaKH: number | undefined;
     let customerId = `KH${Date.now().toString().slice(-4)}`;
 
-    try {
-      const res = await fetchWithTimeout(`${API_BASE_URL}/KhachHang`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          hoTen: data.hoTen,
-          ngaySinh: data.ngaySinh || '2000-01-01T00:00:00',
-          gioiTinh: data.gioiTinh || 'Nam',
-          soDienThoai: data.soDienThoai,
-          diaChi: data.diaChi || 'TP.HCM',
-          email: data.email,
-          soThich: data.soThich || 'Xe máy, phụ tùng chính hãng',
-          tenDangNhap: defaultUsername,
-          matKhau: data.matKhau || '123456',
-        }),
-      });
+    const res = await fetchWithTimeout(`${API_BASE_URL}/KhachHang`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        hoTen: data.hoTen,
+        ngaySinh: data.ngaySinh || '2000-01-01T00:00:00',
+        gioiTinh: data.gioiTinh || 'Nam',
+        soDienThoai: data.soDienThoai,
+        diaChi: data.diaChi || 'TP.HCM',
+        email: data.email,
+        soThich: data.soThich || 'Xe máy, phụ tùng chính hãng',
+        tenDangNhap: defaultUsername,
+        matKhau: data.matKhau || '123456',
+      }),
+    });
 
-      if (res.ok) {
-        const resData = await res.json();
-        createdMaKH = resData.maKH || resData.MaKH;
-        if (createdMaKH) {
-          customerId = createdMaKH < 10 ? `KH00${createdMaKH}` : `KH0${createdMaKH}`;
-        }
-      }
-    } catch (err) {
-      console.warn('[customerApi.create] Backend failed or offline, fallback to local:', err);
+    if (!res.ok) {
+      let errMsg = 'Đăng ký tài khoản không thành công!';
+      try {
+        const errJson = await res.json();
+        if (errJson && errJson.message) errMsg = errJson.message;
+      } catch {}
+      throw new Error(errMsg);
+    }
+
+    const resData = await res.json();
+    createdMaKH = resData.maKH || resData.MaKH;
+    if (createdMaKH) {
+      customerId = createdMaKH < 10 ? `KH00${createdMaKH}` : `KH0${createdMaKH}`;
     }
 
     const newCustomer: Customer = {

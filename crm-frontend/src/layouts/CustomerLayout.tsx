@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useCart } from '../contexts/CartContext';
 import { mockCustomers, type Customer } from '../data/mockData';
 import { customerApi } from '../services/api';
+import { VIETNAM_LOCATIONS } from '../data/vietnamLocations';
 
 type CustomerPage = 'store' | 'vehicles' | 'booking' | 'dashboard' | 'checkout';
 
@@ -246,8 +247,86 @@ function CustomerAuthModal({
   const [loginPass, setLoginPass] = useState('123456');
   const [loginErr, setLoginErr] = useState<string | null>(null);
 
-  const [form, setForm] = useState({ hoTen: '', email: '', soDienThoai: '', diaChi: '', matKhau: '' });
+  // Form đăng ký
+  const [form, setForm] = useState({
+    hoTen: '',
+    email: '',
+    soDienThoai: '',
+    ngaySinh: '2000-01-01',
+    gioiTinh: 'Nam',
+    province: VIETNAM_LOCATIONS[0].name,
+    district: VIETNAM_LOCATIONS[0].districts[0].name,
+    ward: VIETNAM_LOCATIONS[0].districts[0].wards[0],
+    streetAddress: '',
+    matKhau: '',
+    xacNhanMatKhau: '',
+  });
+
+  const [showPass, setShowPass] = useState(false);
+  const [showConfirmPass, setShowConfirmPass] = useState(false);
+  const [registerErr, setRegisterErr] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+
+  // Bước đăng ký: 'form' hoặc 'otp' (ĐK05)
+  const [regStep, setRegStep] = useState<'form' | 'otp'>('form');
+  const [generatedOtp, setGeneratedOtp] = useState<string>('');
+  const [userOtp, setUserOtp] = useState<string>('');
+  const [otpTimer, setOtpTimer] = useState<number>(120);
+  const [otpErr, setOtpErr] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+
+  // Timer cho OTP
+  useEffect(() => {
+    let interval: any = null;
+    if (regStep === 'otp' && otpTimer > 0) {
+      interval = setInterval(() => {
+        setOtpTimer(prev => prev - 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [regStep, otpTimer]);
+
+  // Danh sách Quận/Huyện theo Tỉnh/TP đã chọn (ĐK03)
+  const currentProvinceObj = VIETNAM_LOCATIONS.find(p => p.name === form.province) || VIETNAM_LOCATIONS[0];
+  const availableDistricts = currentProvinceObj.districts;
+  const currentDistrictObj = availableDistricts.find(d => d.name === form.district) || availableDistricts[0];
+  const availableWards = currentDistrictObj ? currentDistrictObj.wards : [];
+
+  const handleProvinceChange = (provinceName: string) => {
+    const prov = VIETNAM_LOCATIONS.find(p => p.name === provinceName) || VIETNAM_LOCATIONS[0];
+    const firstDist = prov.districts[0];
+    setForm(prev => ({
+      ...prev,
+      province: provinceName,
+      district: firstDist.name,
+      ward: firstDist.wards[0] || '',
+    }));
+  };
+
+  const handleDistrictChange = (districtName: string) => {
+    const dist = availableDistricts.find(d => d.name === districtName) || availableDistricts[0];
+    setForm(prev => ({
+      ...prev,
+      district: districtName,
+      ward: dist ? (dist.wards[0] || '') : '',
+    }));
+  };
+
+  // Kiểm tra quy chuẩn mật khẩu (ĐK06)
+  const pass = form.matKhau;
+  const passLengthValid = pass.length >= 8;
+  const passUpperValid = /[A-Z]/.test(pass);
+  const passLowerValid = /[a-z]/.test(pass);
+  const passNumberValid = /[0-9]/.test(pass);
+  const passSpecialValid = /[^A-Za-z0-9]/.test(pass);
+  const passMatch = pass.length > 0 && pass === form.xacNhanMatKhau;
+  const isPasswordValid = passLengthValid && passUpperValid && passLowerValid && passNumberValid && passSpecialValid && passMatch;
+
+  // Kiểm tra định dạng số điện thoại (ĐK01)
+  const isPhoneValid = /^0\d{9}$/.test(form.soDienThoai.trim());
+
+  // Kiểm tra định dạng email
+  const isEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim());
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -261,58 +340,130 @@ function CustomerAuthModal({
     }
   };
 
-  const handleRegister = async (e: React.FormEvent) => {
+  // Bước 1: Chuyển sang xác thực OTP (ĐK05)
+  const handleProceedToOtp = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.hoTen.trim() || !form.email.trim() || !form.soDienThoai.trim()) return;
+    setRegisterErr(null);
+
+    if (!form.hoTen.trim()) {
+      setRegisterErr('Vui lòng nhập họ và tên!');
+      return;
+    }
+
+    if (!isEmailValid) {
+      setRegisterErr('Địa chỉ Email không đúng định dạng!');
+      return;
+    }
+
+    // ĐK01
+    if (!isPhoneValid) {
+      setRegisterErr('Số điện thoại không hợp lệ! Phải gồm đúng 10 chữ số và bắt đầu bằng số 0.');
+      return;
+    }
+
+    // ĐK04
+    if (!form.ngaySinh) {
+      setRegisterErr('Vui lòng chọn ngày sinh!');
+      return;
+    }
+
+    // ĐK06
+    if (!isPasswordValid) {
+      setRegisterErr('Mật khẩu chưa đáp ứng đầy đủ yêu cầu bảo mật hoặc chưa trùng khớp!');
+      return;
+    }
+
+    // Tạo mã OTP 6 chữ số ngẫu nhiên
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    setGeneratedOtp(otp);
+    setUserOtp('');
+    setOtpTimer(120);
+    setOtpErr(null);
+    setRegStep('otp');
+  };
+
+  // Gửi lại mã OTP
+  const handleResendOtp = () => {
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    setGeneratedOtp(otp);
+    setUserOtp('');
+    setOtpTimer(120);
+    setOtpErr(null);
+  };
+
+  // Bước 2: Hoàn tất đăng ký sau khi xác thực OTP thành công
+  const handleFinalSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setOtpErr(null);
+
+    if (userOtp.trim() !== generatedOtp) {
+      setOtpErr('Mã OTP không chính xác. Vui lòng kiểm tra lại!');
+      return;
+    }
+
+    if (otpTimer <= 0) {
+      setOtpErr('Mã OTP đã hết hiệu lực. Vui lòng bấm gửi lại mã!');
+      return;
+    }
+
+    setIsSubmitting(true);
+    const fullAddress = `${form.streetAddress.trim() ? form.streetAddress.trim() + ', ' : ''}${form.ward}, ${form.district}, ${form.province}`;
+
     try {
       const res = await customerApi.create({
         hoTen: form.hoTen.trim(),
         email: form.email.trim(),
         soDienThoai: form.soDienThoai.trim(),
-        diaChi: form.diaChi.trim() || 'TP. Hồ Chí Minh',
-        ngaySinh: '2000-01-01T00:00:00',
-        gioiTinh: 'Nam',
-        tenDangNhap: form.email.split('@')[0],
-        matKhau: '123456',
+        diaChi: fullAddress,
+        ngaySinh: `${form.ngaySinh}T00:00:00`,
+        gioiTinh: form.gioiTinh,
+        tenDangNhap: form.email.trim(),
+        matKhau: form.matKhau,
       });
-      setToast(`🎉 Tạo tài khoản thành công cho ${res.customer.hoTen}! Đã tự động đăng nhập.`);
+
+      setToast(`🎉 Chúc mừng ${res.customer.hoTen}! Tài khoản đã được tạo thành công.`);
       setTimeout(() => {
         onSuccess(res.customer);
         onClose();
-      }, 1200);
-    } catch {
-      setToast(`Đã lưu tài khoản ${form.hoTen}!`);
-      setTimeout(() => {
-        onClose();
-      }, 1200);
+      }, 1500);
+    } catch (err: any) {
+      // ĐK02: Bắt lỗi nếu trùng sđt / email
+      setRegStep('form');
+      setRegisterErr(err?.message || 'Đăng ký thất bại! Vui lòng thử lại.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-zinc-200">
-        <div className="flex justify-between items-center mb-4">
+      <div className="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] flex flex-col p-6 shadow-2xl border border-zinc-200 overflow-hidden">
+        <div className="flex justify-between items-center mb-3 pb-2 border-b border-zinc-100 shrink-0">
           <h3 className="font-extrabold text-base text-zinc-900" style={{ fontFamily: 'var(--font-display)', letterSpacing: '0.04em' }}>
-            TÀI KHOẢN KHÁCH HÀNG
+            {activeTab === 'login' ? 'ĐĂNG NHẬP KHÁCH HÀNG' : (regStep === 'otp' ? 'XÁC THỰC MÃ OTP' : 'ĐĂNG KÝ TÀI KHOẢN MỚI')}
           </h3>
-          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-600 font-bold text-lg">✕</button>
+          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-600 font-bold text-lg p-1">✕</button>
         </div>
 
         {toast ? (
-          <div className="py-8 text-center">
-            <div className="text-4xl mb-2">🎉</div>
-            <div className="text-sm font-bold text-zinc-900">{toast}</div>
+          <div className="py-12 text-center">
+            <div className="text-5xl mb-3">🎉</div>
+            <div className="text-base font-bold text-zinc-900">{toast}</div>
+            <p className="text-xs text-zinc-500 mt-2">Hệ thống đang tự động đăng nhập cho bạn...</p>
           </div>
         ) : (
-          <div>
-            <div className="flex gap-2 mb-5 p-1 bg-zinc-100 rounded-xl">
+          <div className="flex-1 overflow-y-auto pr-1">
+            {/* Tabs */}
+            <div className="flex gap-2 mb-4 p-1 bg-zinc-100 rounded-xl shrink-0">
               <button
-                onClick={() => setActiveTab('login')}
+                type="button"
+                onClick={() => { setActiveTab('login'); setRegStep('form'); }}
                 className={`flex-1 py-2 rounded-lg text-xs font-bold transition ${activeTab === 'login' ? 'bg-white shadow text-zinc-900' : 'text-zinc-500'}`}
               >
                 🔑 Đăng nhập
               </button>
               <button
+                type="button"
                 onClick={() => setActiveTab('register')}
                 className={`flex-1 py-2 rounded-lg text-xs font-bold transition ${activeTab === 'register' ? 'bg-white shadow text-zinc-900' : 'text-zinc-500'}`}
               >
@@ -321,7 +472,7 @@ function CustomerAuthModal({
             </div>
 
             {activeTab === 'login' ? (
-              <form onSubmit={handleLogin} className="space-y-3">
+              <form onSubmit={handleLogin} className="space-y-3.5">
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 mb-1">Email hoặc Số điện thoại *</label>
                   <input
@@ -374,67 +525,316 @@ function CustomerAuthModal({
                 </div>
               </form>
             ) : (
-              <form onSubmit={handleRegister} className="space-y-3">
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 mb-1">Họ và tên *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="VD: Nguyễn Văn Hoàng"
-                    value={form.hoTen}
-                    onChange={e => setForm({ ...form, hoTen: e.target.value })}
-                    className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 mb-1">Email *</label>
-                  <input
-                    type="email"
-                    required
-                    placeholder="hoang@gmail.com"
-                    value={form.email}
-                    onChange={e => setForm({ ...form, email: e.target.value })}
-                    className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 mb-1">Số điện thoại *</label>
-                  <input
-                    type="tel"
-                    required
-                    placeholder="0987654321"
-                    value={form.soDienThoai}
-                    onChange={e => setForm({ ...form, soDienThoai: e.target.value })}
-                    className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 mb-1">Địa chỉ</label>
-                  <input
-                    type="text"
-                    placeholder="VD: Quận 1, TP.HCM"
-                    value={form.diaChi}
-                    onChange={e => setForm({ ...form, diaChi: e.target.value })}
-                    className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600"
-                  />
-                </div>
+              /* FORM ĐĂNG KÝ MỚI (ĐK01 -> ĐK06) */
+              regStep === 'form' ? (
+                <form onSubmit={handleProceedToOtp} className="space-y-3.5">
+                  {registerErr && (
+                    <div className="text-xs text-red-700 bg-red-50 p-3 rounded-xl border border-red-300 flex items-start gap-2">
+                      <span className="font-bold">⚠️</span>
+                      <span>{registerErr}</span>
+                    </div>
+                  )}
 
-                <div className="flex justify-end gap-2 mt-5">
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    className="px-4 py-2 rounded-xl text-xs font-semibold bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
-                  >
-                    Hủy
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-5 py-2 rounded-xl text-xs font-bold bg-red-700 text-white hover:bg-red-800 shadow-md"
-                  >
-                    Tạo tài khoản mới
-                  </button>
-                </div>
-              </form>
+                  {/* Họ và tên */}
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-700 mb-1">Họ và tên *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="VD: Nguyễn Văn Hoàng"
+                      value={form.hoTen}
+                      onChange={e => setForm({ ...form, hoTen: e.target.value })}
+                      className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600"
+                    />
+                  </div>
+
+                  {/* Email & Số điện thoại (ĐK01 & ĐK02) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-700 mb-1">Email *</label>
+                      <input
+                        type="email"
+                        required
+                        placeholder="hoang@gmail.com"
+                        value={form.email}
+                        onChange={e => setForm({ ...form, email: e.target.value })}
+                        className={`w-full p-2.5 rounded-xl border text-xs bg-white focus:outline-none ${form.email && !isEmailValid ? 'border-red-500 focus:border-red-600' : 'border-zinc-300 focus:border-red-600'}`}
+                      />
+                      {form.email && !isEmailValid && (
+                        <p className="text-[11px] text-red-600 mt-1">Email không đúng định dạng</p>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-700 mb-1">Số điện thoại *</label>
+                      <input
+                        type="tel"
+                        required
+                        maxLength={10}
+                        placeholder="0987654321"
+                        value={form.soDienThoai}
+                        onChange={e => setForm({ ...form, soDienThoai: e.target.value.replace(/\D/g, '') })}
+                        className={`w-full p-2.5 rounded-xl border text-xs bg-white focus:outline-none ${form.soDienThoai && !isPhoneValid ? 'border-red-500 focus:border-red-600' : 'border-zinc-300 focus:border-red-600'}`}
+                      />
+                      {form.soDienThoai && !isPhoneValid ? (
+                        <p className="text-[11px] text-red-600 mt-1">SĐT phải đủ 10 số và bắt đầu bằng số 0</p>
+                      ) : (
+                        <p className="text-[10px] text-zinc-400 mt-1">Ví dụ: 0901234567 (10 số)</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Ngày sinh & Giới tính (ĐK04) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-700 mb-1">Ngày sinh *</label>
+                      <input
+                        type="date"
+                        required
+                        max={new Date(new Date().setFullYear(new Date().getFullYear() - 16)).toISOString().split('T')[0]}
+                        value={form.ngaySinh}
+                        onChange={e => setForm({ ...form, ngaySinh: e.target.value })}
+                        className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-700 mb-1">Giới tính *</label>
+                      <select
+                        value={form.gioiTinh}
+                        onChange={e => setForm({ ...form, gioiTinh: e.target.value })}
+                        className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600"
+                      >
+                        <option value="Nam">Nam</option>
+                        <option value="Nữ">Nữ</option>
+                        <option value="Khác">Khác</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Địa chỉ phân cấp Tỉnh/TP - Quận/Huyện - Phường/Xã (ĐK03) */}
+                  <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-200 space-y-2.5">
+                    <label className="block text-xs font-bold text-zinc-800">Địa chỉ cư trú</label>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <div>
+                        <span className="text-[10px] font-semibold text-zinc-500">Tỉnh / Thành phố *</span>
+                        <select
+                          value={form.province}
+                          onChange={e => handleProvinceChange(e.target.value)}
+                          className="w-full mt-1 p-2 rounded-lg border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600"
+                        >
+                          {VIETNAM_LOCATIONS.map(p => (
+                            <option key={p.name} value={p.name}>{p.name}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <span className="text-[10px] font-semibold text-zinc-500">Quận / Huyện *</span>
+                        <select
+                          value={form.district}
+                          onChange={e => handleDistrictChange(e.target.value)}
+                          className="w-full mt-1 p-2 rounded-lg border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600"
+                        >
+                          {availableDistricts.map(d => (
+                            <option key={d.name} value={d.name}>{d.name}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <span className="text-[10px] font-semibold text-zinc-500">Phường / Xã *</span>
+                        <select
+                          value={form.ward}
+                          onChange={e => setForm({ ...form, ward: e.target.value })}
+                          className="w-full mt-1 p-2 rounded-lg border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600"
+                        >
+                          {availableWards.map(w => (
+                            <option key={w} value={w}>{w}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <span className="text-[10px] font-semibold text-zinc-500">Số nhà, tên đường</span>
+                      <input
+                        type="text"
+                        placeholder="VD: 123 Lê Lợi"
+                        value={form.streetAddress}
+                        onChange={e => setForm({ ...form, streetAddress: e.target.value })}
+                        className="w-full mt-1 p-2 rounded-lg border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Thiết lập mật khẩu mạnh (ĐK06) */}
+                  <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-200 space-y-2.5">
+                    <label className="block text-xs font-bold text-zinc-800">Thiết lập mật khẩu</label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div>
+                        <span className="text-[10px] font-semibold text-zinc-500">Mật khẩu mới *</span>
+                        <div className="relative mt-1">
+                          <input
+                            type={showPass ? 'text' : 'password'}
+                            required
+                            placeholder="Mật khẩu của bạn"
+                            value={form.matKhau}
+                            onChange={e => setForm({ ...form, matKhau: e.target.value })}
+                            className="w-full p-2 pr-8 rounded-lg border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPass(!showPass)}
+                            className="absolute right-2 top-2 text-zinc-400 hover:text-zinc-600 text-xs"
+                          >
+                            {showPass ? '🙈' : '👁️'}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <span className="text-[10px] font-semibold text-zinc-500">Xác nhận mật khẩu *</span>
+                        <div className="relative mt-1">
+                          <input
+                            type={showConfirmPass ? 'text' : 'password'}
+                            required
+                            placeholder="Nhập lại mật khẩu"
+                            value={form.xacNhanMatKhau}
+                            onChange={e => setForm({ ...form, xacNhanMatKhau: e.target.value })}
+                            className="w-full p-2 pr-8 rounded-lg border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowConfirmPass(!showConfirmPass)}
+                            className="absolute right-2 top-2 text-zinc-400 hover:text-zinc-600 text-xs"
+                          >
+                            {showConfirmPass ? '🙈' : '👁️'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Tiêu chí mật khẩu mạnh */}
+                    <div className="text-[10px] space-y-1 bg-white p-2.5 rounded-lg border border-zinc-200">
+                      <div className="font-semibold text-zinc-700 mb-1">Tiêu chuẩn mật khẩu an toàn:</div>
+                      <div className="grid grid-cols-2 gap-x-2 gap-y-0.5">
+                        <div className={passLengthValid ? 'text-green-600 font-medium' : 'text-zinc-400'}>
+                          {passLengthValid ? '✓' : '○'} Tối thiểu 8 ký tự
+                        </div>
+                        <div className={passUpperValid ? 'text-green-600 font-medium' : 'text-zinc-400'}>
+                          {passUpperValid ? '✓' : '○'} Có chữ hoa (A-Z)
+                        </div>
+                        <div className={passLowerValid ? 'text-green-600 font-medium' : 'text-zinc-400'}>
+                          {passLowerValid ? '✓' : '○'} Có chữ thường (a-z)
+                        </div>
+                        <div className={passNumberValid ? 'text-green-600 font-medium' : 'text-zinc-400'}>
+                          {passNumberValid ? '✓' : '○'} Có chữ số (0-9)
+                        </div>
+                        <div className={passSpecialValid ? 'text-green-600 font-medium' : 'text-zinc-400'}>
+                          {passSpecialValid ? '✓' : '○'} Có ký tự đặc biệt (!@#$)
+                        </div>
+                        <div className={passMatch ? 'text-green-600 font-medium' : 'text-zinc-400'}>
+                          {passMatch ? '✓' : '○'} Mật khẩu trùng khớp
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={onClose}
+                      className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
+                    >
+                      Hủy
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={!isPasswordValid || !isPhoneValid || !isEmailValid}
+                      className={`px-5 py-2.5 rounded-xl text-xs font-bold text-white shadow-md transition ${(!isPasswordValid || !isPhoneValid || !isEmailValid) ? 'bg-zinc-400 cursor-not-allowed opacity-70' : 'bg-red-700 hover:bg-red-800'}`}
+                    >
+                      Tiếp tục xác thực OTP →
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                /* BƯỚC XÁC MINH OTP (ĐK05) */
+                <form onSubmit={handleFinalSubmit} className="space-y-4 py-2">
+                  <div className="p-3.5 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900">
+                    <div className="flex items-center gap-1.5 font-bold mb-1">
+                      <span>📲</span>
+                      <span>Mô phỏng gửi mã OTP xác nhận</span>
+                    </div>
+                    <p className="text-zinc-600 text-[11px] leading-relaxed">
+                      Hệ thống đã gửi mã OTP 6 số đến Email/SĐT: <strong>{form.soDienThoai}</strong> / <strong>{form.email}</strong>.
+                    </p>
+                    <div className="mt-2.5 p-2 bg-white rounded-lg border border-blue-200 flex items-center justify-between">
+                      <span className="font-mono font-bold text-sm tracking-widest text-red-600">{generatedOtp}</span>
+                      <button
+                        type="button"
+                        onClick={() => setUserOtp(generatedOtp)}
+                        className="text-[11px] bg-blue-100 hover:bg-blue-200 text-blue-800 font-bold px-2 py-1 rounded"
+                      >
+                        ⚡ Tự động điền OTP
+                      </button>
+                    </div>
+                  </div>
+
+                  {otpErr && (
+                    <div className="text-xs text-red-700 bg-red-50 p-2.5 rounded-xl border border-red-300">
+                      {otpErr}
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-800 mb-1.5 text-center">
+                      Nhập mã OTP 6 chữ số:
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={6}
+                      required
+                      placeholder="• • • • • •"
+                      value={userOtp}
+                      onChange={e => setUserOtp(e.target.value.replace(/\D/g, ''))}
+                      className="w-full text-center tracking-widest font-mono font-bold text-xl py-3 rounded-xl border-2 border-zinc-300 focus:border-red-600 focus:outline-none bg-white"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs text-zinc-500 px-1">
+                    <span>
+                      {otpTimer > 0 ? (
+                        <>Mã còn hiệu lực: <strong className="text-red-600 font-mono">{Math.floor(otpTimer / 60)}:{String(otpTimer % 60).padStart(2, '0')}</strong></>
+                      ) : (
+                        <span className="text-red-600 font-semibold">Mã OTP đã hết hạn!</span>
+                      )}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleResendOtp}
+                      className="text-red-700 hover:underline font-bold"
+                    >
+                      Gửi lại mã OTP
+                    </button>
+                  </div>
+
+                  <div className="flex justify-between items-center gap-2 pt-3 border-t border-zinc-100">
+                    <button
+                      type="button"
+                      onClick={() => setRegStep('form')}
+                      className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
+                    >
+                      ← Quay lại sửa thông tin
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={userOtp.length !== 6 || isSubmitting}
+                      className={`px-5 py-2.5 rounded-xl text-xs font-bold text-white shadow-md transition ${userOtp.length !== 6 || isSubmitting ? 'bg-zinc-400 cursor-not-allowed opacity-70' : 'bg-red-700 hover:bg-red-800'}`}
+                    >
+                      {isSubmitting ? 'Đang xử lý...' : 'Xác nhận & Hoàn tất 🎉'}
+                    </button>
+                  </div>
+                </form>
+              )
             )}
           </div>
         )}
