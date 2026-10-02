@@ -16,6 +16,7 @@ export interface ShowroomVehicle {
   congSuat: string;
   tieuHaoNhienLieu?: string;
   phanh?: string;
+  xuatXu?: string;
 }
 
 export const showroomVehicles: ShowroomVehicle[] = [
@@ -238,8 +239,12 @@ export const showroomVehicles: ShowroomVehicle[] = [
   },
 ];
 
+import type { Customer } from '../../data/mockData';
+
 interface Props {
   onBookTestDrive: (vehicleId: string) => void;
+  currentCustomer?: Customer | null;
+  onRequireLogin?: () => void;
 }
 
 const brandMeta: Record<string, { label: string; color: string; bg: string; badge: string }> = {
@@ -249,11 +254,14 @@ const brandMeta: Record<string, { label: string; color: string; bg: string; badg
   'Piaggio & Vespa': { label: 'Piaggio & Vespa', color: '#059669', bg: '#ecfdf5', badge: '🟢 Vespa Ý' },
 };
 
-export default function VehiclesShowroom({ onBookTestDrive }: Props) {
+export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onRequireLogin }: Props) {
   const [vehicles, setVehicles] = useState<ShowroomVehicle[]>(showroomVehicles);
   const [search, setSearch] = useState('');
   const [selectedHang, setSelectedHang] = useState<string>('ALL');
   const [selectedPhanKhuc, setSelectedPhanKhuc] = useState<string>('ALL');
+  const [selectedPriceRange, setSelectedPriceRange] = useState<string>('ALL');
+  const [selectedOrigin, setSelectedOrigin] = useState<string>('ALL');
+  const [sortBy, setSortBy] = useState<'default' | 'priceAsc' | 'priceDesc' | 'nameAsc' | 'nameDesc'>('default');
   const [onlyTestDrive, setOnlyTestDrive] = useState<boolean>(false);
   const [detailVehicle, setDetailVehicle] = useState<ShowroomVehicle | null>(null);
   const [activeModalTab, setActiveModalTab] = useState<'specs' | 'reviews'>('specs');
@@ -280,6 +288,7 @@ export default function VehiclesShowroom({ onBookTestDrive }: Props) {
               congSuat: d.congSuat || found?.congSuat || '15.0 HP / 8.000 rpm',
               tieuHaoNhienLieu: d.tieuHaoNhienLieu || found?.tieuHaoNhienLieu || '2.2 L/100km',
               phanh: d.phanh || found?.phanh || 'Phanh đĩa ABS trước',
+              xuatXu: found?.xuatXu || (d.hang === 'Piaggio & Vespa' ? 'Nhập khẩu (Ý)' : 'Việt Nam'),
             };
           });
           setVehicles(merged);
@@ -294,19 +303,49 @@ export default function VehiclesShowroom({ onBookTestDrive }: Props) {
 
   // Local reviews state so user can add a review dynamically
   const [allReviews, setAllReviews] = useState<ProductReview[]>([...mockProductReviews]);
-  const [newReviewAuthor, setNewReviewAuthor] = useState('');
-  const [newReviewPhone, setNewReviewPhone] = useState('');
+  const [newReviewAuthor, setNewReviewAuthor] = useState(currentCustomer?.hoTen || '');
+  const [newReviewPhone, setNewReviewPhone] = useState(currentCustomer?.soDienThoai || '');
   const [newReviewStars, setNewReviewStars] = useState(5);
   const [newReviewContent, setNewReviewContent] = useState('');
   const [reviewSubmitted, setReviewSubmitted] = useState(false);
 
-  const filteredVehicles = vehicles.filter(v => {
-    const matchSearch = v.tenXe.toLowerCase().includes(search.toLowerCase()) || v.hang.toLowerCase().includes(search.toLowerCase());
-    const matchHang = selectedHang === 'ALL' || v.hang === selectedHang;
-    const matchPhanKhuc = selectedPhanKhuc === 'ALL' || v.phanKhuc === selectedPhanKhuc;
-    const matchTestDrive = !onlyTestDrive || v.coTheLaiThu;
-    return matchSearch && matchHang && matchPhanKhuc && matchTestDrive;
-  });
+  useEffect(() => {
+    if (currentCustomer) {
+      setNewReviewAuthor(currentCustomer.hoTen);
+      setNewReviewPhone(currentCustomer.soDienThoai);
+    }
+  }, [currentCustomer]);
+
+  // Bộ lọc đa tiêu chí (TC02)
+  const filteredVehicles = vehicles
+    .filter(v => {
+      const matchSearch = v.tenXe.toLowerCase().includes(search.toLowerCase()) || v.hang.toLowerCase().includes(search.toLowerCase());
+      const matchHang = selectedHang === 'ALL' || v.hang === selectedHang;
+      const matchPhanKhuc = selectedPhanKhuc === 'ALL' || v.phanKhuc === selectedPhanKhuc;
+      const matchTestDrive = !onlyTestDrive || v.coTheLaiThu;
+
+      // Khoảng giá (TC02)
+      let matchPrice = true;
+      if (selectedPriceRange === 'under30') matchPrice = v.giaNiemYet < 30000000;
+      else if (selectedPriceRange === '30to60') matchPrice = v.giaNiemYet >= 30000000 && v.giaNiemYet <= 60000000;
+      else if (selectedPriceRange === '60to100') matchPrice = v.giaNiemYet > 60000000 && v.giaNiemYet <= 100000000;
+      else if (selectedPriceRange === 'above100') matchPrice = v.giaNiemYet > 100000000;
+
+      // Xuất xứ (TC02)
+      let matchOrigin = true;
+      const origin = v.xuatXu || (v.hang === 'Piaggio & Vespa' ? 'Nhập khẩu (Ý)' : 'Việt Nam');
+      if (selectedOrigin === 'Trong nước') matchOrigin = origin.includes('Việt Nam');
+      else if (selectedOrigin === 'Nhập khẩu') matchOrigin = !origin.includes('Việt Nam');
+
+      return matchSearch && matchHang && matchPhanKhuc && matchTestDrive && matchPrice && matchOrigin;
+    })
+    .sort((a, b) => {
+      if (sortBy === 'priceAsc') return a.giaNiemYet - b.giaNiemYet;
+      if (sortBy === 'priceDesc') return b.giaNiemYet - a.giaNiemYet;
+      if (sortBy === 'nameAsc') return a.tenXe.localeCompare(b.tenXe);
+      if (sortBy === 'nameDesc') return b.tenXe.localeCompare(a.tenXe);
+      return 0;
+    });
 
   const currentVehicleReviews = detailVehicle
     ? allReviews.filter(r => r.targetId === detailVehicle.id)
@@ -410,20 +449,57 @@ export default function VehiclesShowroom({ onBookTestDrive }: Props) {
             />
           </div>
 
-          {/* Filters */}
-          <div className="flex flex-wrap items-center gap-3">
+          {/* Filters (TC02) */}
+          <div className="flex flex-wrap items-center gap-2.5">
             {/* Phân khúc */}
             <select
               value={selectedPhanKhuc}
               onChange={e => setSelectedPhanKhuc(e.target.value)}
               className="px-3 py-2 rounded-xl border border-zinc-300 text-xs font-medium bg-white focus:outline-none focus:border-red-600"
             >
-              <option value="ALL">Tất cả phân khúc</option>
+              <option value="ALL">🛵 Tất cả phân khúc</option>
               <option value="Tay ga">Xe Tay ga</option>
               <option value="Côn tay">Xe Côn tay</option>
               <option value="Xe số">Xe Số phổ thông</option>
-              <option value="Scrambler">Dòng Scrambler phượt</option>
-              <option value="Hyper-underbone">Hyper-underbone tốc độ</option>
+              <option value="Scrambler">Dòng Scrambler</option>
+              <option value="Hyper-underbone">Hyper-underbone</option>
+            </select>
+
+            {/* Khoảng giá (TC02) */}
+            <select
+              value={selectedPriceRange}
+              onChange={e => setSelectedPriceRange(e.target.value)}
+              className="px-3 py-2 rounded-xl border border-zinc-300 text-xs font-medium bg-white focus:outline-none focus:border-red-600"
+            >
+              <option value="ALL">💰 Tất cả mức giá</option>
+              <option value="under30">Dưới 30 triệu</option>
+              <option value="30to60">Từ 30 - 60 triệu</option>
+              <option value="60to100">Từ 60 - 100 triệu</option>
+              <option value="above100">Trên 100 triệu</option>
+            </select>
+
+            {/* Xuất xứ (TC02) */}
+            <select
+              value={selectedOrigin}
+              onChange={e => setSelectedOrigin(e.target.value)}
+              className="px-3 py-2 rounded-xl border border-zinc-300 text-xs font-medium bg-white focus:outline-none focus:border-red-600"
+            >
+              <option value="ALL">🌐 Tất cả xuất xứ</option>
+              <option value="Trong nước">Lắp ráp trong nước (Việt Nam)</option>
+              <option value="Nhập khẩu">Nhập khẩu nguyên chiếc</option>
+            </select>
+
+            {/* Sắp xếp (TC02) */}
+            <select
+              value={sortBy}
+              onChange={e => setSortBy(e.target.value as any)}
+              className="px-3 py-2 rounded-xl border border-zinc-300 text-xs font-medium bg-white focus:outline-none focus:border-red-600"
+            >
+              <option value="default">⚡ Sắp xếp: Mặc định</option>
+              <option value="priceAsc">Giá: Thấp → Cao</option>
+              <option value="priceDesc">Giá: Cao → Thấp</option>
+              <option value="nameAsc">Tên xe: A → Z</option>
+              <option value="nameDesc">Tên xe: Z → A</option>
             </select>
 
             {/* Checkbox Lái thử */}
@@ -434,20 +510,23 @@ export default function VehiclesShowroom({ onBookTestDrive }: Props) {
                 onChange={e => setOnlyTestDrive(e.target.checked)}
                 className="w-4 h-4 text-red-700 rounded-sm focus:ring-red-600 accent-red-700"
               />
-              <span>Chỉ xem xe có Lái thử</span>
+              <span>Chỉ xe có Lái thử</span>
             </label>
 
-            {(search || selectedHang !== 'ALL' || selectedPhanKhuc !== 'ALL' || onlyTestDrive) && (
+            {(search || selectedHang !== 'ALL' || selectedPhanKhuc !== 'ALL' || selectedPriceRange !== 'ALL' || selectedOrigin !== 'ALL' || sortBy !== 'default' || onlyTestDrive) && (
               <button
                 onClick={() => {
                   setSearch('');
                   setSelectedHang('ALL');
                   setSelectedPhanKhuc('ALL');
+                  setSelectedPriceRange('ALL');
+                  setSelectedOrigin('ALL');
+                  setSortBy('default');
                   setOnlyTestDrive(false);
                 }}
-                className="text-xs text-red-700 font-bold hover:underline cursor-pointer"
+                className="text-xs text-red-700 font-bold hover:underline cursor-pointer px-2"
               >
-                Xóa bộ lọc
+                ✕ Xóa bộ lọc
               </button>
             )}
           </div>
@@ -755,74 +834,96 @@ export default function VehiclesShowroom({ onBookTestDrive }: Props) {
                   )}
                 </div>
 
-                {/* Add Review Form */}
-                <form onSubmit={handleAddReview} className="p-4 rounded-2xl bg-zinc-50 border border-zinc-200 space-y-3">
-                  <div className="text-xs font-bold text-zinc-800 uppercase tracking-wider font-mono">
-                    ✍️ Gửi nhận xét & đánh giá của bạn
-                  </div>
-
-                  {reviewSubmitted && (
-                    <div className="p-2.5 rounded-xl bg-emerald-100 text-emerald-800 text-xs font-bold flex items-center gap-2">
-                      <span>✓</span> Cảm ơn bạn! Đánh giá đã được đăng thành công.
+                {/* Add Review Form (TC01: Chỉ cho phép gửi khi đã đăng nhập) */}
+                {!currentCustomer ? (
+                  <div className="p-4 rounded-2xl bg-zinc-50 border border-zinc-200 text-center space-y-2">
+                    <div className="text-2xl">🔒</div>
+                    <div className="text-xs font-bold text-zinc-900">
+                      Bạn cần đăng nhập để gửi nhận xét & đánh giá xe
                     </div>
-                  )}
-
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div>
-                      <input
-                        type="text"
-                        placeholder="Họ và tên của bạn *"
-                        required
-                        value={newReviewAuthor}
-                        onChange={e => setNewReviewAuthor(e.target.value)}
-                        className="w-full px-3 py-2 rounded-xl border border-zinc-300 bg-white text-xs focus:outline-none focus:border-red-600"
-                      />
-                    </div>
-                    <div>
-                      <input
-                        type="text"
-                        placeholder="Số điện thoại / Email"
-                        value={newReviewPhone}
-                        onChange={e => setNewReviewPhone(e.target.value)}
-                        className="w-full px-3 py-2 rounded-xl border border-zinc-300 bg-white text-xs focus:outline-none focus:border-red-600"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 text-xs">
-                    <span className="text-zinc-500">Mức độ hài lòng:</span>
-                    <div className="flex gap-1">
-                      {[1, 2, 3, 4, 5].map(star => (
-                        <button
-                          key={star}
-                          type="button"
-                          onClick={() => setNewReviewStars(star)}
-                          className="text-lg text-amber-500 hover:scale-110 transition cursor-pointer"
-                        >
-                          {star <= newReviewStars ? '★' : '☆'}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <textarea
-                    rows={2}
-                    placeholder="Chia sẻ trải nghiệm vận hành, cảm giác lái, mức ăn xăng hoặc dịch vụ..."
-                    required
-                    value={newReviewContent}
-                    onChange={e => setNewReviewContent(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-zinc-300 bg-white text-xs focus:outline-none focus:border-red-600"
-                  />
-
-                  <div className="flex justify-end">
+                    <p className="text-[11px] text-zinc-500 max-w-sm mx-auto">
+                      Khách hàng chưa đăng nhập chỉ được xem danh sách đánh giá từ người dùng khác.
+                    </p>
                     <button
-                      type="submit"
-                      className="px-4 py-2 bg-red-700 text-white rounded-xl text-xs font-bold hover:bg-red-800 transition cursor-pointer shadow"
+                      type="button"
+                      onClick={() => {
+                        if (onRequireLogin) onRequireLogin();
+                        else window.dispatchEvent(new CustomEvent('crm-open-login'));
+                      }}
+                      className="inline-block px-4 py-2 rounded-xl text-xs font-bold bg-red-700 hover:bg-red-800 text-white shadow transition cursor-pointer"
                     >
-                      Gửi đánh giá ngay
+                      Đăng nhập để đánh giá ngay →
                     </button>
                   </div>
-                </form>
+                ) : (
+                  <form onSubmit={handleAddReview} className="p-4 rounded-2xl bg-zinc-50 border border-zinc-200 space-y-3">
+                    <div className="text-xs font-bold text-zinc-800 uppercase tracking-wider font-mono">
+                      ✍️ Gửi nhận xét & đánh giá của bạn ({currentCustomer.hoTen})
+                    </div>
+
+                    {reviewSubmitted && (
+                      <div className="p-2.5 rounded-xl bg-emerald-100 text-emerald-800 text-xs font-bold flex items-center gap-2">
+                        <span>✓</span> Cảm ơn bạn! Đánh giá đã được đăng thành công.
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <input
+                          type="text"
+                          placeholder="Họ và tên của bạn *"
+                          required
+                          value={newReviewAuthor}
+                          onChange={e => setNewReviewAuthor(e.target.value)}
+                          className="w-full px-3 py-2 rounded-xl border border-zinc-300 bg-white text-xs focus:outline-none focus:border-red-600"
+                        />
+                      </div>
+                      <div>
+                        <input
+                          type="text"
+                          placeholder="Số điện thoại / Email"
+                          value={newReviewPhone}
+                          onChange={e => setNewReviewPhone(e.target.value)}
+                          className="w-full px-3 py-2 rounded-xl border border-zinc-300 bg-white text-xs focus:outline-none focus:border-red-600"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="text-zinc-500">Mức độ hài lòng:</span>
+                      <div className="flex gap-1">
+                        {[1, 2, 3, 4, 5].map(star => (
+                          <button
+                            key={star}
+                            type="button"
+                            onClick={() => setNewReviewStars(star)}
+                            className="text-lg text-amber-500 hover:scale-110 transition cursor-pointer"
+                          >
+                            {star <= newReviewStars ? '★' : '☆'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <textarea
+                      rows={2}
+                      placeholder="Chia sẻ trải nghiệm vận hành, cảm giác lái, mức ăn xăng hoặc dịch vụ..."
+                      required
+                      value={newReviewContent}
+                      onChange={e => setNewReviewContent(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-zinc-300 bg-white text-xs focus:outline-none focus:border-red-600"
+                    />
+
+                    <div className="flex justify-end">
+                      <button
+                        type="submit"
+                        className="px-4 py-2 bg-red-700 text-white rounded-xl text-xs font-bold hover:bg-red-800 transition cursor-pointer shadow"
+                      >
+                        Gửi đánh giá ngay
+                      </button>
+                    </div>
+                  </form>
+                )}
               </div>
             )}
 

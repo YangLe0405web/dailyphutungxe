@@ -13,7 +13,10 @@ Dưới đây là danh sách toàn bộ các tập tin đã can thiệp. Khi x�
 2. `D:\crm-project\CrmBackend\Controllers\KhachHangController.cs` (Validate SĐT 10 số, check trùng SĐT/Email, check mật khẩu mạnh, lưu Email, ngày sinh, giới tính)
 3. `D:\crm-project\crm-frontend\src\data\vietnamLocations.ts` (File tạo mới: Cung cấp dữ liệu Tỉnh/TP - Quận/Huyện - Phường/Xã)
 4. `D:\crm-project\crm-frontend\src\services\api.ts` (Bắt và xử lý lỗi chính xác từ backend, không fallback giả mạo)
-5. `D:\crm-project\crm-frontend\src\layouts\CustomerLayout.tsx` (Giao diện form đăng ký mới: validate regex SĐT, cascaded address select, DOB, giới tính, mật khẩu mạnh 6 tiêu chuẩn, xác thực OTP 2 bước)
+5. `D:\crm-project\crm-frontend\src\layouts\CustomerLayout.tsx` (Giao diện form đăng ký mới: validate regex SĐT, cascaded address select, DOB, giới tính, mật khẩu mạnh 6 tiêu chuẩn, xác thực OTP 2 bước; lắng nghe sự kiện mở popup đăng nhập toàn cục)
+6. `D:\crm-project\crm-frontend\src\App.tsx` (Truyền state `currentCustomer` và trigger `crm-open-login` xuống `VehiclesShowroom` và `PartsStore`)
+7. `D:\crm-project\crm-frontend\src\pages\customer\VehiclesShowroom.tsx` (Bộ lọc đa tiêu chí: hãng, khoảng giá, xuất xứ Trong nước/Nhập khẩu, sắp xếp; khóa gửi form đánh giá khi chưa đăng nhập)
+8. `D:\crm-project\crm-frontend\src\pages\customer\PartsStore.tsx` (Chặn thêm vào giỏ hàng và khóa form đánh giá khi chưa đăng nhập, kích hoạt popup đăng nhập)
 
 ---
 
@@ -113,3 +116,53 @@ Dưới đây là danh sách toàn bộ các tập tin đã can thiệp. Khi x�
 * **Kết quả test:**
   - Bấm "Quên mật khẩu?", nhập `baongoc@gmail.com` -> Hệ thống tìm thấy tài khoản và gửi mã OTP.
   - Điền OTP và thiết lập mật khẩu mới `NewBaoNgoc@2026` -> Mật khẩu được cập nhật vào DB và người dùng được tự động đăng nhập thành công.
+
+
+### Nhóm chức năng: TRANG CHỦ & CỬA HÀNG (Mã lỗi TC01 - TC03)
+- **Thời gian hoàn thành:** 03/10/2026 00:22
+- **Trạng thái:** ĐÃ FIX & ĐÃ KIỂM THỬ THÀNH CÔNG 100%
+
+#### 1. TC01 – Chỉ cho phép xem đánh giá khi chưa đăng nhập (Chặn gửi đánh giá trên Xem xe mẫu & Phụ tùng)
+* **Mô tả lỗi:** Khách hàng vãng lai (chưa đăng nhập) vẫn có thể viết và gửi đánh giá nhận xét trên chi tiết xe mẫu và phụ tùng.
+* **Kết quả mong đợi:** Khách hàng chưa đăng nhập chỉ được xem các đánh giá của người mua trước, không được phép gửi đánh giá; hiển thị khung thông báo bảo mật có nút "Đăng nhập để đánh giá ngay" mở popup đăng nhập. Khi đã đăng nhập, tự động điền họ tên và số điện thoại của khách hàng.
+* **Giải pháp đã thực hiện:**
+  - `VehiclesShowroom.tsx`:
+    - Truyền prop `currentCustomer` và `onRequireLogin`.
+    - Kiểm tra nếu `!currentCustomer`: Ẩn form viết nhận xét, thay thế bằng banner ổ khóa 🔒 với nút *"Đăng nhập để đánh giá ngay →"*.
+    - Khi bấm nút, bắn sự kiện `crm-open-login` để `CustomerLayout.tsx` mở ngay modal đăng nhập.
+    - Khi đã đăng nhập, tự động điền họ tên và SĐT của khách hàng vào form gửi đánh giá.
+  - `PartsStore.tsx`:
+    - Áp dụng cơ chế tương tự cho tab "Đánh giá & nhận xét" của modal phụ tùng: hiển thị banner khóa khi chưa đăng nhập và form đánh giá khi đã đăng nhập.
+* **Kết quả test:**
+  - Chưa đăng nhập: Mở chi tiết xe hoặc phụ tùng -> Vẫn đọc được 100% các đánh giá trước đó, nhưng form nhập đánh giá được khóa lại bằng banner kèm nút yêu cầu đăng nhập.
+  - Bấm "Đăng nhập để đánh giá ngay" -> Modal đăng nhập lập tức hiện lên.
+  - Đã đăng nhập: Form mở ra bình thường, tên và SĐT của khách hàng được tự động điền sẵn.
+
+#### 2. TC02 – Trang "Xem xe mẫu" thiếu bộ lọc nâng cao
+* **Mô tả lỗi:** Trang Xem xe mẫu chỉ có thanh tìm kiếm đơn giản, thiếu các bộ lọc theo hãng, khoảng giá, xuất xứ và sắp xếp giá/tên.
+* **Kết quả mong đợi:** Bổ sung thanh lọc toàn diện gồm:
+  - Lọc theo Hãng (Tất cả, Honda, Yamaha, Suzuki, Piaggio & Vespa).
+  - Lọc theo Khoảng giá (< 30 triệu, 30 - 60 triệu, 60 - 100 triệu, > 100 triệu).
+  - Lọc theo Xuất xứ (Trong nước, Nhập khẩu).
+  - Sắp xếp (Mặc định, Giá tăng dần, Giá giảm dần, Tên A-Z, Tên Z-A).
+  - Lọc nhanh dòng xe cho phép Lái thử.
+* **Giải pháp đã thực hiện:**
+  - Cập nhật model `ShowroomVehicle` bổ sung thuộc tính `xuatXu` cho các dòng xe (Việt Nam, Nhập khẩu Ý, Nhập khẩu Nhật...).
+  - Bổ sung bộ điều khiển lọc và sắp xếp trực quan với thanh tìm kiếm realtime, các dropdown chọn mức giá, xuất xứ và sắp xếp theo tiêu chí.
+  - Đồng bộ thuật toán lọc đa điều kiện kết hợp cùng lúc: `matchSearch && matchHang && matchPhanKhuc && matchTestDrive && matchPrice && matchOrigin`.
+* **Kết quả test:**
+  - Lọc "Dưới 30 triệu" -> Hiển thị đúng xe Wave Alpha (18.790.000 đ), Honda Vision,...
+  - Lọc "Trên 100 triệu" -> Hiển thị SH350i, Vespa GTS Super Tech 300, CBR150R,...
+  - Lọc Xuất xứ "Nhập khẩu" -> Hiển thị các dòng xe Piaggio/Vespa Ý và xe nhập khẩu.
+  - Chọn sắp xếp "Giá tăng dần" -> Danh sách sắp xếp chính xác từ giá thấp nhất đến cao nhất.
+
+#### 3. TC03 – Chặn thêm giỏ hàng khi chưa đăng nhập (Trang Phụ tùng)
+* **Mô tả lỗi:** Khách hàng chưa đăng nhập tài khoản vẫn bấm được nút "Thêm vào giỏ hàng" ở danh sách phụ tùng và trong modal chi tiết sản phẩm.
+* **Kết quả mong đợi:** Khi chưa đăng nhập, nhấn "Thêm vào giỏ hàng" sẽ bị chặn, không thêm vào giỏ và tự động bật popup yêu cầu đăng nhập tài khoản.
+* **Giải pháp đã thực hiện:**
+  - `PartsStore.tsx`:
+    - Trong hàm `handleAdd(p: Part)`: Kiểm tra `if (!currentCustomer)`, nếu chưa đăng nhập thì chặn thêm vào giỏ `add(p)` và phát sự kiện `crm-open-login` để mở modal đăng nhập.
+    - Trong nút "+ Thêm vào giỏ" của modal chi tiết phụ tùng: Kiểm tra xác thực tương tự và giữ nguyên modal để khách hàng không bị mất ngữ cảnh đang xem.
+* **Kết quả test:**
+  - Chưa đăng nhập: Bấm nút "Thêm vào giỏ" ở bất kỳ phụ tùng nào -> Giỏ hàng không tăng số lượng, popup Đăng nhập lập tức bật lên.
+  - Đã đăng nhập: Bấm "Thêm vào giỏ" -> Thêm sản phẩm vào giỏ bình thường kèm badge xanh "✓ Đã thêm".

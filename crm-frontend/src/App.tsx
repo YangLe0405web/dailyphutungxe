@@ -265,13 +265,20 @@ export default function App() {
       >
         {customerPage === 'vehicles' && (
           <VehiclesShowroom
+            currentCustomer={currentCustomer}
+            onRequireLogin={() => window.dispatchEvent(new CustomEvent('crm-open-login'))}
             onBookTestDrive={(vId) => {
               setSelectedVehicleForBooking(vId);
               setCustomerPage('booking');
             }}
           />
         )}
-        {customerPage === 'store' && <PartsStore />}
+        {customerPage === 'store' && (
+          <PartsStore
+            currentCustomer={currentCustomer}
+            onRequireLogin={() => window.dispatchEvent(new CustomEvent('crm-open-login'))}
+          />
+        )}
         {customerPage === 'booking' && (
           <ServiceBooking
             initialVehicleId={selectedVehicleForBooking}

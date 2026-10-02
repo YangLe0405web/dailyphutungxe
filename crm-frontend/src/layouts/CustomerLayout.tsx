@@ -29,6 +29,15 @@ export default function CustomerLayout({ children, activePage, onNavigate, onHom
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
 
+  useEffect(() => {
+    const handleOpenLogin = () => {
+      setAuthMode('login');
+      setAuthOpen(true);
+    };
+    window.addEventListener('crm-open-login', handleOpenLogin);
+    return () => window.removeEventListener('crm-open-login', handleOpenLogin);
+  }, []);
+
   const fmt = (n: number) => new Intl.NumberFormat('vi-VN').format(n) + '₫';
 
   return (
