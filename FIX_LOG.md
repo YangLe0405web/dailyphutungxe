@@ -349,3 +349,79 @@ Dưới đây là danh sách toàn bộ các tập tin đã can thiệp. Khi x�
   - Tài khoản chưa mua sản phẩm đang xem -> Bị chặn gửi đánh giá, hiển thị thông báo giải thích rõ ràng kèm gợi ý mua hàng/lái thử.
   - Tài khoản đã mua (ví dụ: Nguyễn Văn An đã mua Nhớt Motul, xe SH 160i) -> Mở form đánh giá bình thường với đầy đủ xác thực mua hàng.
 
+#### 4. ĐG04 – Lỗi đánh giá không cập nhật trên FE/BE
+* **Mô tả lỗi:** Đánh giá của khách hàng sau khi gửi không được lưu bền vững hoặc không đồng bộ giữa FE và CSDL backend, làm dữ liệu đánh giá bị mất khi tải lại trang.
+* **Kết quả mong đợi:** Đánh giá được lưu trực tiếp vào CSDL SQL Server và cập nhật đồng bộ realtime trên cả giao diện khách hàng và trang quản trị phản hồi của Admin.
+* **Giải pháp đã thực hiện:**
+  - Backend (`CrmBackend/Controllers/PhanHoiController.cs`):
+    - Mở rộng model `PHAN_HOI` và `PhanHoiDto` lưu `MaXe`, `MaPhuTung`, `TenPhuTung`, `TenXe`, `HangXe`, `LoaiXe`, `GhiChuXuLy`, `SoLanSua`.
+    - API `GET /api/PhanHoi`: Viết câu lệnh `SELECT` liên kết `LEFT JOIN` với bảng `KHACH_HANG`, `PHU_TUNG`, `SAN_PHAM_XE` để lấy toàn bộ dữ liệu phản hồi kèm thông tin sản phẩm và khách hàng.
+    - API `POST /api/PhanHoi`: Ghi nhận trực tiếp vào bảng `PHAN_HOI` trong SQL Server với ngày gửi hiện tại.
+    - API `PUT /api/PhanHoi/{id}`: Cho phép cập nhật nội dung và số sao của đánh giá.
+  - Frontend (`src/services/api.ts`, `PartsStore.tsx`, `VehiclesShowroom.tsx`, `Feedback.tsx`):
+    - Kết nối `feedbackApi.getAll()`, `feedbackApi.create()`, `feedbackApi.update()`.
+    - Khi khách hàng gửi đánh giá mới hoặc sửa đánh giá: Tự động gọi API backend, cập nhật state tức thời và lưu trữ bền vững.
+* **Kết quả test:**
+  - Khách hàng gửi đánh giá phụ tùng hoặc xe máy -> CSDL SQL Server lưu bản ghi mới, gọi `curl http://localhost:5208/api/PhanHoi` lập tức hiển thị bản ghi đã lưu, trang Admin Feedback nhận được ngay lập tức.
+
+#### 5. ĐG05 – Lỗi cho phép đánh giá nhiều lần trên cùng sản phẩm
+* **Mô tả lỗi:** Khách hàng có thể liên tục gửi nhiều đánh giá cho cùng một sản phẩm/xe máy.
+* **Kết quả mong đợi:** Mỗi tài khoản chỉ được đánh giá 1 lần duy nhất cho mỗi sản phẩm. Sau khi đã đánh giá, chỉ được phép chỉnh sửa đánh giá tối đa 1 lần (quy định 1 đánh giá & 1 lần sửa).
+* **Giải pháp đã thực hiện:**
+  - Backend (`PhanHoiController.cs`):
+    - Kiểm tra trong CSDL: Nếu khách hàng đã có bản ghi đánh giá cho `MaPhuTung` hoặc `MaXe` tương ứng, API `POST /api/PhanHoi` sẽ từ chối và trả về HTTP 400 Bad Request kèm thông báo lỗi *"Bạn đã đánh giá sản phẩm này rồi!"*.
+    - Thêm trường `SoLanSua` để đếm số lần chỉnh sửa, nếu đã sửa 1 lần thì không cho phép sửa tiếp.
+  - Frontend (`PartsStore.tsx` & `VehiclesShowroom.tsx`):
+    - Kiểm tra `existingReview` dựa trên `currentCustomer.id` và mã sản phẩm/xe máy.
+    - Nếu đã đánh giá và `editCount === 0`: Khóa form tạo mới, hiển thị thẻ đánh giá đã gửi kèm nút *"✏️ Chỉnh sửa đánh giá (Còn 1 lần sửa)"*. Khi bấm sửa, form chuyển sang chế độ cập nhật (`feedbackApi.update`).
+    - Nếu đã sửa (`editCount >= 1`): Khóa hoàn toàn tính năng sửa, hiển thị nhãn đỏ *"🔒 Đã hết lượt chỉnh sửa (Tối đa 1 lần theo quy định)"*.
+* **Kết quả test:**
+  - Gửi đánh giá lần 1 thành công -> Form chuyển sang hiển thị thẻ nhận xét đã gửi.
+  - Bấm nút sửa -> Cập nhật nội dung và số sao -> Đánh giá được lưu lại và nhãn thông báo chuyển thành "Đã hết lượt chỉnh sửa", không thể gửi thêm hoặc sửa thêm.
+
+#### 6. ĐG06 – Lỗi chức năng Gọi/Gửi Email chưa hoạt động (Admin Phản hồi)
+* **Mô tả lỗi:** Trong trang Admin Quản lý phản hồi, các nút thao tác Gọi điện thoại và Gửi Email cho khách hàng phản hồi không phản hồi hoặc chỉ là nút tĩnh không có tính năng.
+* **Kết quả mong đợi:** Tích hợp đầy đủ popup Gọi điện thoại và Gửi Email hoạt động thực tế:
+  - Gọi điện: Cho phép click-to-call `tel:`, ghi chú nhật ký cuộc gọi và cập nhật trạng thái xử lý phản hồi.
+  - Gửi Email: Cung cấp 3 mẫu email phản hồi chuyên nghiệp có sẵn (Cảm ơn 5 sao, Xử lý khiếu nại, Tặng voucher tri ân), soạn thảo nội dung và gửi phản hồi cho khách hàng.
+* **Giải pháp đã thực hiện:**
+  - Frontend (`Feedback.tsx`):
+    - Xây dựng Modal Gọi điện (`callFeedback`): Hiển thị thông tin khách hàng, số điện thoại, nút bấm gọi nhanh `tel:`, dropdown kết quả gọi (Đã nghe máy, Hẹn gọi lại, Không bắt máy), ô ghi chú biên bản cuộc gọi và nút lưu cập nhật trạng thái thành "Đã xử lý".
+    - Xây dựng Modal Gửi Email (`emailFeedback`): Hiển thị địa chỉ email người nhận, 3 nút chọn nhanh mẫu email tự động điền nội dung, vùng soạn thảo email và nút bấm xác nhận gửi.
+    - Backend: API `PATCH /api/PhanHoi/{id}/trang-thai` lưu trạng thái và ghi chú xử lý vào CSDL.
+* **Kết quả test:**
+  - Bấm nút Gọi trên một phản hồi -> Modal Gọi điện mở ra với SĐT khách hàng, bấm "Lưu nhật ký" -> Trạng thái phản hồi đổi sang "Đã phản hồi".
+  - Bấm nút Email -> Modal Soạn Email mở ra, bấm chọn mẫu "Xử lý khiếu nại" -> Tiêu đề và nội dung tự động điền sẵn, bấm "Gửi email" -> Hiển thị thông báo gửi thành công và đóng popup.
+
+#### 7. ĐG07 – Thêm chức năng nhắn tin Khách hàng trực tiếp trên Web
+* **Mô tả lỗi:** Thiếu kênh trao đổi và nhắn tin trực tiếp giữa khách hàng và nhân viên hỗ trợ chăm sóc khách hàng (CSKH) của showroom trên website.
+* **Kết quả mong đợi:** Bổ sung chức năng Live Chat trực tiếp 24/7 trên web:
+  - Giao diện Khách hàng: Nút chat nổi góc phải màn hình (`💬 Hỗ trợ trực tuyến`), có huy hiệu tin nhắn chưa đọc, mở khung chat trao đổi hai chiều với tư vấn viên.
+  - Giao diện Admin: Nút Nhắn tin trong trang Quản lý phản hồi mở khung chat trực tiếp với khách hàng, gửi tin phản hồi tư vấn phụ tùng/xe máy.
+* **Giải pháp đã thực hiện:**
+  - Backend (`PhanHoiController.cs`):
+    - Bổ sung API `GET /api/PhanHoi/messages?customerId={id}` và `POST /api/PhanHoi/messages` lưu trữ tin nhắn chat.
+  - Frontend (`src/services/api.ts`):
+    - Xây dựng service `chatApi` tích hợp Backend API và đồng bộ qua `localStorage` + Custom Event `crm-chat-update` đảm bảo tin nhắn xuất hiện tức thời giữa các tab trình duyệt.
+  - `CustomerLayout.tsx`:
+    - Tích hợp Floating Live Chat Widget ở góc dưới bên phải: Header CSKH Showroom chuyên nghiệp, danh sách tin nhắn phân biệt khách hàng (đỏ) và tư vấn viên (trắng), các nút câu hỏi gợi ý nhanh và ô nhập tin nhắn gửi nhanh.
+  - `Feedback.tsx`:
+    - Tích hợp Modal Chat CSKH với khách hàng cho Admin: Xem lịch sử chat, các nút trả lời nhanh chuyên nghiệp và ô gửi tin nhắn phản hồi đến khách hàng.
+* **Kết quả test:**
+  - Khách hàng bấm nút chat nổi -> Nhắn "Tư vấn lịch bảo dưỡng xe" -> Tin nhắn xuất hiện ngay trong khung chat.
+  - Admin bấm nút Chat trên bảng phản hồi của khách hàng -> Thấy tin nhắn của khách và gửi lại tin nhắn giải đáp -> Khách hàng nhận được tin phản hồi thời gian thực.
+
+#### 8. ĐG08 – Lỗi đánh giá không hiển thị rõ sản phẩm
+* **Mô tả lỗi:** Trong danh sách đánh giá của Admin và Khách hàng, các đánh giá không hiển thị rõ khách hàng đang đánh giá sản phẩm hay xe máy nào, khó phân biệt giữa phụ tùng và xe mẫu.
+* **Kết quả mong đợi:** Hiển thị chi tiết và trực quan thẻ thông tin sản phẩm được đánh giá (ảnh thumbnail, huy hiệu phân loại 📦 Phụ tùng / 🏍️ Xe máy, mã SKU/Mã xe và tên đầy đủ của sản phẩm).
+* **Giải pháp đã thực hiện:**
+  - Backend: Truy vấn SQL liên kết `PHU_TUNG` và `SAN_PHAM_XE` để trả về đầy đủ tên phụ tùng, loại phụ tùng, tên xe, hãng xe, loại xe cho từng bản ghi phản hồi.
+  - Frontend (`Feedback.tsx`):
+    - Thiết kế cột "Sản phẩm được đánh giá" riêng biệt và nổi bật:
+      * Nếu là Phụ tùng: Badge xanh dương `📦 PHỤ TÙNG`, hiển thị tên phụ tùng chính hãng kèm mã phụ tùng và danh mục (Nhớt, Phanh, v.v.).
+      * Nếu là Xe máy: Badge tím `🏍️ XE MÁY`, hiển thị tên mẫu xe, hãng xe (Honda, Yamaha,...) và phân khúc xe (Tay ga, Xe số,...).
+      * Nếu là đánh giá dịch vụ chung: Badge xám `🏢 DỊCH VỤ SHOWROOM`.
+* **Kết quả test:**
+  - Tại trang Quản lý phản hồi (Admin): Mỗi dòng đánh giá đều có thẻ thông tin sản phẩm rõ ràng, nhận biết ngay lập tức khách hàng đang đánh giá phụ tùng nào hoặc xe máy nào.
+
+

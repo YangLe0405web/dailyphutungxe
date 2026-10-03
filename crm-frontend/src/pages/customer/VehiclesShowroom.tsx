@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { formatVND, mockProductReviews, ProductReview, mockVehicles } from '../../data/mockData';
-import { catalogVehicleApi } from '../../services/api';
+import { catalogVehicleApi, feedbackApi } from '../../services/api';
 
 export interface ShowroomVehicle {
   id: string;
@@ -302,13 +302,56 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
     return () => window.removeEventListener('crm-data-refresh', loadVehicles);
   }, []);
 
-  // Local reviews state so user can add a review dynamically
+  // Local reviews state so user can add a review dynamically (ĐG04, ĐG05)
   const [allReviews, setAllReviews] = useState<ProductReview[]>([...mockProductReviews]);
   const [newReviewAuthor, setNewReviewAuthor] = useState(currentCustomer?.hoTen || '');
   const [newReviewPhone, setNewReviewPhone] = useState(currentCustomer?.soDienThoai || '');
   const [newReviewStars, setNewReviewStars] = useState(5);
   const [newReviewContent, setNewReviewContent] = useState('');
   const [reviewSubmitted, setReviewSubmitted] = useState(false);
+  const [isEditingReview, setIsEditingReview] = useState(false);
+  const [reviewToast, setReviewToast] = useState<string | null>(null);
+
+  // Sync vehicle reviews from feedbackApi (ĐG04)
+  useEffect(() => {
+    const syncVehicleReviews = async () => {
+      try {
+        const feedbacks = await feedbackApi.getAll();
+        const vFeedbacks: ProductReview[] = feedbacks
+          .filter(f => f.productType === 'XeMau' || f.productId?.startsWith('XM') || (f.xeDangDung && !f.productId?.startsWith('PT')))
+          .map(f => ({
+            id: f.id,
+            targetId: f.productId || '',
+            customerId: f.customerId,
+            tenKhachHang: f.hoTen,
+            soDienThoai: f.soDienThoai,
+            soSao: f.diemDanhGia,
+            ngayDanhGia: f.ngayGui,
+            noiDung: f.noiDung,
+            daMua: true,
+            dongXeDaMua: f.productName || f.xeDangDung || 'Xe máy chính hãng',
+            editCount: f.editCount || 0,
+            productName: f.productName || f.xeDangDung,
+          }));
+
+        setAllReviews(prev => {
+          const merged = [...prev];
+          vFeedbacks.forEach(vf => {
+            const idx = merged.findIndex(m => m.id === vf.id);
+            if (idx !== -1) merged[idx] = { ...merged[idx], ...vf };
+            else if (vf.targetId) merged.unshift(vf);
+          });
+          return merged;
+        });
+      } catch (err) {
+        console.warn('Sync vehicle reviews error:', err);
+      }
+    };
+
+    syncVehicleReviews();
+    window.addEventListener('crm-data-refresh', syncVehicleReviews);
+    return () => window.removeEventListener('crm-data-refresh', syncVehicleReviews);
+  }, []);
 
   useEffect(() => {
     if (currentCustomer) {
@@ -369,28 +412,93 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
     ? allReviews.filter(r => r.targetId === detailVehicle.id)
     : [];
 
-  const handleAddReview = (e: React.FormEvent) => {
+  // Check if currentCustomer has already reviewed detailVehicle (ĐG05)
+  const existingVehicleReview = useMemo(() => {
+    if (!currentCustomer || !detailVehicle) return null;
+    return allReviews.find(r =>
+      r.targetId === detailVehicle.id &&
+      (
+        r.customerId === currentCustomer.id ||
+        (r.soDienThoai && currentCustomer.soDienThoai && r.soDienThoai.replace(/\D/g, '') === currentCustomer.soDienThoai.replace(/\D/g, '')) ||
+        r.tenKhachHang.toLowerCase().trim() === currentCustomer.hoTen.toLowerCase().trim()
+      )
+    ) || null;
+  }, [currentCustomer, detailVehicle, allReviews]);
+
+  // Handle Submit Review (ĐG04: Lưu đồng bộ FE/BE, ĐG05: Giới hạn 1 lần đánh giá và 1 lần sửa)
+  const handleAddReview = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!detailVehicle || !newReviewAuthor.trim() || !newReviewContent.trim()) return;
+    if (!detailVehicle || !currentCustomer || !newReviewAuthor.trim() || !newReviewContent.trim()) return;
+
+    if (existingVehicleReview) {
+      if ((existingVehicleReview.editCount || 0) >= 1) {
+        alert('Bạn đã sử dụng hết lượt chỉnh sửa đánh giá cho dòng xe này (tối đa 1 lần).');
+        return;
+      }
+
+      await feedbackApi.update(existingVehicleReview.id, {
+        diemDanhGia: newReviewStars,
+        noiDung: newReviewContent.trim(),
+      });
+
+      setAllReviews(prev => prev.map(r => r.id === existingVehicleReview.id ? {
+        ...r,
+        soSao: newReviewStars,
+        noiDung: newReviewContent.trim(),
+        editCount: (r.editCount || 0) + 1,
+      } : r));
+
+      setIsEditingReview(false);
+      setReviewToast('✓ Đã cập nhật đánh giá xe thành công! Bạn đã hoàn thành lượt chỉnh sửa.');
+      setTimeout(() => setReviewToast(null), 4000);
+      return;
+    }
+
+    // ĐG04: Gửi đánh giá mới lên Backend và lưu đồng bộ
+    const res = await feedbackApi.create({
+      customerId: currentCustomer.id,
+      hoTen: newReviewAuthor.trim(),
+      soDienThoai: currentCustomer.soDienThoai,
+      email: currentCustomer.email,
+      diaChi: currentCustomer.diaChi,
+      noiDung: newReviewContent.trim(),
+      diemDanhGia: newReviewStars,
+      loaiDanhGia: 'SanPham',
+      loaiNhan: newReviewStars <= 3 ? 'KhieuNai' : 'DanhGia',
+      productId: detailVehicle.id,
+      productName: detailVehicle.tenXe,
+      productImage: detailVehicle.hinhAnh,
+      productType: 'XeMau',
+      xeDangDung: detailVehicle.tenXe,
+    });
 
     const newRev: ProductReview = {
-      id: 'RV-USER-' + Date.now(),
+      id: res.feedback.id,
       targetId: detailVehicle.id,
+      customerId: currentCustomer.id,
       tenKhachHang: newReviewAuthor.trim(),
-      soDienThoai: newReviewPhone ? newReviewPhone.slice(0, 4) + '***' + newReviewPhone.slice(-3) : '090***' + Math.floor(100 + Math.random() * 900),
+      soDienThoai: currentCustomer.soDienThoai
+        ? currentCustomer.soDienThoai.slice(0, 4) + '***' + currentCustomer.soDienThoai.slice(-3)
+        : '090***' + Math.floor(100 + Math.random() * 900),
       soSao: newReviewStars,
       ngayDanhGia: new Date().toISOString().split('T')[0],
       noiDung: newReviewContent.trim(),
       daMua: true,
       dongXeDaMua: `${detailVehicle.tenXe} (Chính hãng)`,
+      editCount: 0,
+      productName: detailVehicle.tenXe,
+      productImage: detailVehicle.hinhAnh,
+      productType: 'XeMau',
     };
 
     setAllReviews(prev => [newRev, ...prev]);
-    setNewReviewAuthor('');
-    setNewReviewPhone('');
     setNewReviewContent('');
     setReviewSubmitted(true);
-    setTimeout(() => setReviewSubmitted(false), 3000);
+    setReviewToast('✓ Đánh giá xe đã được lưu và cập nhật đồng bộ trên hệ thống!');
+    setTimeout(() => {
+      setReviewSubmitted(false);
+      setReviewToast(null);
+    }, 4000);
   };
 
   // ── TC04: DEDICATED FULL-PAGE VEHICLE DETAIL VIEW ──
@@ -823,21 +931,81 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
                         )}
                       </div>
                     </div>
-                  ) : (
-                    /* ĐG01 & ĐG02: Khung nhập đánh giá responsive & hiển thị thông tin tài khoản */
-                    <form onSubmit={handleAddReview} className="p-5 sm:p-6 rounded-3xl bg-zinc-50 border border-zinc-200 space-y-4">
+                  ) : existingVehicleReview && !isEditingReview ? (
+                    /* ĐG05: Đã đánh giá xe - Hiển thị đánh giá của khách hàng và nút sửa (tối đa 1 lần) */
+                    <div className="p-5 sm:p-6 rounded-3xl bg-zinc-50 border border-zinc-200 space-y-4">
                       <div className="flex items-center justify-between flex-wrap gap-2 pb-3 border-b border-zinc-200">
                         <div className="text-xs font-bold text-zinc-900 uppercase tracking-wider font-mono flex items-center gap-2">
-                          <span>✍️</span> VIẾT NHẬN XÉT & ĐÁNH GIÁ TRẢI NGHIỆM XE
+                          <span>✓</span> ĐÁNH GIÁ CỦA BẠN VỀ DÒNG XE NÀY
                         </div>
-                        <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                          ✓ Đã xác minh mua xe tại đại lý
+                        <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
+                          {(existingVehicleReview.editCount || 0) >= 1 ? 'Đã hết lượt sửa (tối đa 1 lần)' : 'Còn 1 lượt chỉnh sửa'}
                         </span>
                       </div>
 
-                      {reviewSubmitted && (
+                      {reviewToast && (
                         <div className="p-3.5 rounded-2xl bg-emerald-100 text-emerald-800 text-xs font-bold flex items-center gap-2">
-                          <span>✓</span> Cảm ơn bạn! Đánh giá đã được đăng thành công.
+                          <span>✓</span> {reviewToast}
+                        </div>
+                      )}
+
+                      <div className="p-4 rounded-2xl bg-white border border-zinc-200 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="w-7 h-7 rounded-full bg-red-100 text-red-700 font-bold flex items-center justify-center text-xs">
+                              {currentCustomer.hoTen[0]}
+                            </span>
+                            <span className="font-bold text-xs text-zinc-900">{currentCustomer.hoTen}</span>
+                          </div>
+                          <span className="text-[10px] text-zinc-400 font-mono">{existingVehicleReview.ngayDanhGia}</span>
+                        </div>
+
+                        <div className="flex text-amber-500 text-sm">
+                          {'★'.repeat(existingVehicleReview.soSao)}{'☆'.repeat(5 - existingVehicleReview.soSao)}
+                        </div>
+
+                        <p className="text-xs text-zinc-700 leading-relaxed">{existingVehicleReview.noiDung}</p>
+                      </div>
+
+                      <div className="flex items-center justify-between flex-wrap gap-3 pt-1">
+                        <div className="text-[11px] text-zinc-500">
+                          {(existingVehicleReview.editCount || 0) >= 1 ? (
+                            <span className="text-emerald-700 font-medium">✓ Bạn đã hoàn thành đánh giá và sử dụng lượt chỉnh sửa duy nhất.</span>
+                          ) : (
+                            <span>Mỗi tài khoản được gửi đánh giá xe 1 lần và sửa 1 lần duy nhất.</span>
+                          )}
+                        </div>
+
+                        {(existingVehicleReview.editCount || 0) < 1 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsEditingReview(true);
+                              setNewReviewStars(existingVehicleReview.soSao);
+                              setNewReviewContent(existingVehicleReview.noiDung);
+                            }}
+                            className="px-4 py-2 bg-zinc-900 hover:bg-black text-white rounded-xl text-xs font-bold transition cursor-pointer shadow-xs flex items-center gap-1.5"
+                          >
+                            <span>✏️</span> Chỉnh sửa đánh giá xe (Còn 1 lần sửa)
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    /* ĐG01, ĐG02, ĐG05: Khung nhập / sửa đánh giá xe */
+                    <form onSubmit={handleAddReview} className="p-5 sm:p-6 rounded-3xl bg-zinc-50 border border-zinc-200 space-y-4">
+                      <div className="flex items-center justify-between flex-wrap gap-2 pb-3 border-b border-zinc-200">
+                        <div className="text-xs font-bold text-zinc-900 uppercase tracking-wider font-mono flex items-center gap-2">
+                          <span>{isEditingReview ? '✏️' : '✍️'}</span> {isEditingReview ? 'CHỈNH SỬA ĐÁNH GIÁ XE (LƯỢT SỬA DUY NHẤT)' : 'VIẾT NHẬN XÉT & ĐÁNH GIÁ TRẢI NGHIỆM XE'}
+                        </div>
+                        <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                          {isEditingReview ? '⚠️ Còn 1 lần sửa' : '✓ Đã xác minh mua xe tại đại lý'}
+                        </span>
+                      </div>
+
+                      {reviewToast && (
+                        <div className="p-3.5 rounded-2xl bg-emerald-100 text-emerald-800 text-xs font-bold flex items-center gap-2">
+                          <span>✓</span> {reviewToast}
                         </div>
                       )}
 
@@ -917,12 +1085,21 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
                         />
                       </div>
 
-                      <div className="flex justify-end pt-1">
+                      <div className="flex items-center justify-end gap-2 pt-1">
+                        {isEditingReview && (
+                          <button
+                            type="button"
+                            onClick={() => setIsEditingReview(false)}
+                            className="px-4 py-3 rounded-xl border border-zinc-300 hover:bg-zinc-100 text-xs font-bold text-zinc-700 transition cursor-pointer"
+                          >
+                            Hủy bỏ
+                          </button>
+                        )}
                         <button
                           type="submit"
                           className="w-full sm:w-auto px-6 py-3 bg-red-700 text-white rounded-xl text-xs font-bold hover:bg-red-800 transition cursor-pointer shadow-md shadow-red-700/20"
                         >
-                          Gửi đánh giá ngay
+                          {isEditingReview ? 'Lưu cập nhật đánh giá xe' : 'Gửi đánh giá ngay'}
                         </button>
                       </div>
                     </form>

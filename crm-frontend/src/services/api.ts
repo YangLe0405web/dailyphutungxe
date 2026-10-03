@@ -869,6 +869,16 @@ export const catalogVehicleApi = {
 // 8. ĐÁNH GIÁ & PHẢN HỒI API (FEEDBACK & REVIEWS)
 // ────────────────────────────────────────────────────────────
 const FEEDBACK_STORAGE_KEY = 'crm_feedbacks';
+const CHAT_STORAGE_KEY = 'crm_chat_messages';
+
+export interface ChatMessage {
+  id: string;
+  customerId: string;
+  sender: 'staff' | 'customer';
+  senderName: string;
+  content: string;
+  sentAt: string;
+}
 
 export const feedbackApi = {
   async getAll(): Promise<Feedback[]> {
@@ -881,31 +891,55 @@ export const feedbackApi = {
             const id = item.maPH ? (item.maPH < 10 ? `PH00${item.maPH}` : `PH0${item.maPH}`) : `PH${idx + 1}`;
             const cId = item.maKH ? (item.maKH < 10 ? `KH00${item.maKH}` : `KH0${item.maKH}`) : 'KH001';
             const mockMatch = mockFeedbacks.find(f => f.id === id || f.customerId === cId);
+
+            const pName = item.tenPhuTung || item.tenXe || item.productName || mockMatch?.productName;
+            const pType: 'PhuTung' | 'XeMau' | 'DichVu' = item.tenPhuTung
+              ? 'PhuTung'
+              : item.tenXe
+              ? 'XeMau'
+              : mockMatch?.productType || 'DichVu';
+
+            let pImg = item.hinhAnh || mockMatch?.productImage;
+            if (!pImg && item.tenPhuTung) {
+              const pt = mockParts.find(p => p.tenSanPham.toLowerCase().includes(item.tenPhuTung.toLowerCase()));
+              pImg = pt?.hinhAnh;
+            }
+
             return {
               id,
               customerId: cId,
               hoTen: item.hoTenKH || mockMatch?.hoTen || 'Khách hàng',
-              soDienThoai: mockMatch?.soDienThoai || '0901234567',
-              email: mockMatch?.email || 'khachhang@motoshop.vn',
-              diaChi: mockMatch?.diaChi || 'TP.HCM',
-              xeDangDung: mockMatch?.xeDangDung,
+              soDienThoai: item.soDienThoai || mockMatch?.soDienThoai || '0901234567',
+              email: item.email || mockMatch?.email || 'khachhang@motoshop.vn',
+              diaChi: item.diaChi || mockMatch?.diaChi || 'TP.HCM',
+              xeDangDung: item.tenXe || mockMatch?.xeDangDung,
               noiDung: item.noiDung || '',
               diemDanhGia: item.diemDanhGia || 5,
               ngayGui: item.ngayGui ? item.ngayGui.split('T')[0] : '2024-12-01',
-              loaiDanhGia: mockMatch?.loaiDanhGia || 'DichVu',
+              loaiDanhGia: pType === 'DichVu' ? 'DichVu' : 'SanPham',
               trangThai: (item.trangThaiXuLy === 'Đã phản hồi' || item.trangThaiXuLy === 'DaXuLy') ? 'DaXuLy' : 'ChoXuLy',
               loaiNhan: (item.diemDanhGia <= 3 || item.noiDung?.toLowerCase().includes('chậm') || item.noiDung?.toLowerCase().includes('lỗi')) ? 'KhieuNai' : 'DanhGia',
-              ghiChuXuLy: mockMatch?.ghiChuXuLy,
+              ghiChuXuLy: item.ghiChuXuLy || mockMatch?.ghiChuXuLy,
+              productId: item.maPhuTung ? `PT00${item.maPhuTung}` : item.maXe ? `XM00${item.maXe}` : mockMatch?.productId,
+              productName: pName,
+              productImage: pImg,
+              productType: pType,
+              editCount: item.soLanSua || mockMatch?.editCount || 0,
             };
           });
 
-          // Merge any locally added items from storage
+          // Merge locally added/updated feedbacks from storage
           const cached = localStorage.getItem(FEEDBACK_STORAGE_KEY);
           if (cached) {
             try {
               const localList: Feedback[] = JSON.parse(cached);
               localList.forEach(lf => {
-                if (!mapped.some(m => m.id === lf.id)) mapped.unshift(lf);
+                const existingIdx = mapped.findIndex(m => m.id === lf.id);
+                if (existingIdx !== -1) {
+                  mapped[existingIdx] = { ...mapped[existingIdx], ...lf };
+                } else {
+                  mapped.unshift(lf);
+                }
               });
             } catch {}
           }
@@ -934,9 +968,16 @@ export const feedbackApi = {
     diemDanhGia: number;
     loaiDanhGia?: 'DichVu' | 'SanPham' | 'BaoHanh';
     loaiNhan?: 'DanhGia' | 'KhieuNai';
+    productId?: string;
+    productName?: string;
+    productImage?: string;
+    productType?: 'PhuTung' | 'XeMau' | 'DichVu';
   }): Promise<{ success: boolean; feedback: Feedback }> {
     const maKhInt = parseInt(data.customerId.replace(/\D/g, ''), 10) || 1;
     let newMaPH: number | undefined;
+
+    const maPhuTung = data.productType === 'PhuTung' && data.productId ? parseInt(data.productId.replace(/\D/g, ''), 10) : null;
+    const maXe = data.productType === 'XeMau' && data.productId ? parseInt(data.productId.replace(/\D/g, ''), 10) : null;
 
     try {
       const res = await fetchWithTimeout(`${API_BASE_URL}/PhanHoi`, {
@@ -944,8 +985,12 @@ export const feedbackApi = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           maKH: maKhInt,
+          maPhuTung,
+          maXe,
           diemDanhGia: data.diemDanhGia,
           noiDung: data.noiDung,
+          tenSanPham: data.productName,
+          loaiDoiTuong: data.productType,
         }),
       });
       if (res.ok) {
@@ -964,13 +1009,18 @@ export const feedbackApi = {
       soDienThoai: data.soDienThoai || '0901234567',
       email: data.email || 'khachhang@motoshop.vn',
       diaChi: data.diaChi || 'TP.HCM',
-      xeDangDung: data.xeDangDung,
+      xeDangDung: data.xeDangDung || (data.productType === 'XeMau' ? data.productName : undefined),
       noiDung: data.noiDung,
       diemDanhGia: data.diemDanhGia,
       ngayGui: new Date().toISOString().split('T')[0],
-      loaiDanhGia: data.loaiDanhGia || 'DichVu',
+      loaiDanhGia: data.loaiDanhGia || (data.productType ? 'SanPham' : 'DichVu'),
       trangThai: 'ChoXuLy',
       loaiNhan: data.loaiNhan || (data.diemDanhGia <= 3 ? 'KhieuNai' : 'DanhGia'),
+      productId: data.productId,
+      productName: data.productName,
+      productImage: data.productImage,
+      productType: data.productType || 'SanPham' as any,
+      editCount: 0,
     };
 
     mockFeedbacks.unshift(newFb);
@@ -986,7 +1036,7 @@ export const feedbackApi = {
     addAdminNotification({
       type: 'feedback_received',
       title: isComplaint ? '⚠️ Khiếu nại từ khách hàng' : '⭐ Đánh giá mới từ khách hàng',
-      message: `${newFb.hoTen} (${newFb.diemDanhGia}⭐): "${newFb.noiDung.slice(0, 60)}${newFb.noiDung.length > 60 ? '...' : ''}"`,
+      message: `${newFb.hoTen} (${newFb.diemDanhGia}⭐ - ${newFb.productName || 'Sản phẩm'}): "${newFb.noiDung.slice(0, 50)}${newFb.noiDung.length > 50 ? '...' : ''}"`,
       linkPage: 'feedback',
       meta: newFb,
     });
@@ -995,22 +1045,176 @@ export const feedbackApi = {
     return { success: true, feedback: newFb };
   },
 
-  async resolve(id: string): Promise<boolean> {
+  async update(id: string, data: { diemDanhGia: number; noiDung: string }): Promise<boolean> {
+    const maPH = parseInt(id.replace(/\D/g, ''), 10);
+    if (!isNaN(maPH) && maPH > 0) {
+      try {
+        await fetchWithTimeout(`${API_BASE_URL}/PhanHoi/${maPH}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            diemDanhGia: data.diemDanhGia,
+            noiDung: data.noiDung,
+          }),
+        });
+      } catch (err) {
+        console.warn('[feedbackApi.update] Backend call failed:', err);
+      }
+    }
+
     const f = mockFeedbacks.find(x => x.id === id);
-    if (f) f.trangThai = 'DaXuLy';
+    if (f) {
+      f.diemDanhGia = data.diemDanhGia;
+      f.noiDung = data.noiDung;
+      f.editCount = (f.editCount || 0) + 1;
+    }
 
     try {
       const cached = localStorage.getItem(FEEDBACK_STORAGE_KEY);
       if (cached) {
         const list: Feedback[] = JSON.parse(cached);
         const match = list.find(x => x.id === id);
-        if (match) match.trangThai = 'DaXuLy';
+        if (match) {
+          match.diemDanhGia = data.diemDanhGia;
+          match.noiDung = data.noiDung;
+          match.editCount = (match.editCount || 0) + 1;
+        }
+        localStorage.setItem(FEEDBACK_STORAGE_KEY, JSON.stringify(list));
+      }
+    } catch {}
+
+    window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'feedback_updated' } }));
+    return true;
+  },
+
+  async resolve(id: string, note?: string): Promise<boolean> {
+    const maPH = parseInt(id.replace(/\D/g, ''), 10);
+    if (!isNaN(maPH) && maPH > 0) {
+      try {
+        await fetchWithTimeout(`${API_BASE_URL}/PhanHoi/${maPH}/trang-thai`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ trangThai: 'Đã phản hồi' }),
+        });
+      } catch {}
+    }
+
+    const f = mockFeedbacks.find(x => x.id === id);
+    if (f) {
+      f.trangThai = 'DaXuLy';
+      if (note) f.ghiChuXuLy = note;
+    }
+
+    try {
+      const cached = localStorage.getItem(FEEDBACK_STORAGE_KEY);
+      if (cached) {
+        const list: Feedback[] = JSON.parse(cached);
+        const match = list.find(x => x.id === id);
+        if (match) {
+          match.trangThai = 'DaXuLy';
+          if (note) match.ghiChuXuLy = note;
+        }
         localStorage.setItem(FEEDBACK_STORAGE_KEY, JSON.stringify(list));
       }
     } catch {}
 
     window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'feedback' } }));
     return true;
+  },
+};
+
+// ────────────────────────────────────────────────────────────
+// 8.1. WEB LIVE CHAT API (ĐG07)
+// ────────────────────────────────────────────────────────────
+export const chatApi = {
+  async getMessages(customerId?: string): Promise<ChatMessage[]> {
+    try {
+      const url = customerId
+        ? `${API_BASE_URL}/PhanHoi/messages?customerId=${encodeURIComponent(customerId)}`
+        : `${API_BASE_URL}/PhanHoi/messages`;
+      const res = await fetchWithTimeout(url);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          return data.map((d: any) => ({
+            id: d.id,
+            customerId: d.customerId,
+            sender: d.sender,
+            senderName: d.senderName,
+            content: d.content,
+            sentAt: d.sentAt ? d.sentAt.replace('T', ' ').slice(0, 16) : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          }));
+        }
+      }
+    } catch (err) {
+      console.warn('[chatApi.getMessages] Fallback to localStorage:', err);
+    }
+
+    const cached = localStorage.getItem(CHAT_STORAGE_KEY);
+    if (cached) {
+      try {
+        const list: ChatMessage[] = JSON.parse(cached);
+        if (customerId) {
+          return list.filter(m => m.customerId === customerId || m.customerId === 'ALL');
+        }
+        return list;
+      } catch {}
+    }
+
+    return [
+      {
+        id: 'msg-sample-1',
+        customerId: 'KH001',
+        sender: 'customer',
+        senderName: 'Nguyễn Văn An',
+        content: 'Chào showroom, em vừa bảo dưỡng xe và thay nhớt Motul hôm qua, dịch vụ rất tốt ạ!',
+        sentAt: 'Hôm nay, 09:15',
+      },
+      {
+        id: 'msg-sample-2',
+        customerId: 'KH001',
+        sender: 'staff',
+        senderName: 'CSKH Showroom Motoshop',
+        content: 'Dạ cảm ơn anh An đã tin tưởng Motoshop! Chúc anh luôn có những hành trình vạn dặm bình an ❤️',
+        sentAt: 'Hôm nay, 09:20',
+      },
+    ];
+  },
+
+  async sendMessage(msg: {
+    customerId: string;
+    sender: 'staff' | 'customer';
+    senderName: string;
+    content: string;
+  }): Promise<ChatMessage> {
+    const newMsg: ChatMessage = {
+      id: 'msg-' + Date.now(),
+      customerId: msg.customerId,
+      sender: msg.sender,
+      senderName: msg.senderName,
+      content: msg.content.trim(),
+      sentAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+
+    try {
+      await fetchWithTimeout(`${API_BASE_URL}/PhanHoi/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newMsg),
+      });
+    } catch (err) {
+      console.warn('[chatApi.sendMessage] Backend call failed, saved locally:', err);
+    }
+
+    try {
+      const cached = localStorage.getItem(CHAT_STORAGE_KEY);
+      const list: ChatMessage[] = cached ? JSON.parse(cached) : [];
+      list.push(newMsg);
+      localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(list));
+    } catch {}
+
+    window.dispatchEvent(new CustomEvent('crm-chat-update', { detail: newMsg }));
+    return newMsg;
   },
 };
 

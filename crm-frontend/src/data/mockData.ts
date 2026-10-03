@@ -122,11 +122,17 @@ export interface Feedback {
   diaChi?: string;
   xeDangDung?: string;
   ghiChuXuLy?: string;
+  productId?: string;
+  productName?: string;
+  productImage?: string;
+  productType?: 'PhuTung' | 'XeMau' | 'DichVu';
+  editCount?: number;
 }
 
 export interface ProductReview {
   id: string;
   targetId: string; // vehicleId or partId
+  customerId?: string;
   tenKhachHang: string;
   soDienThoai?: string;
   soSao: number;
@@ -135,6 +141,10 @@ export interface ProductReview {
   daMua: boolean;
   dongXeDaMua?: string;
   phanHoiShowroom?: string;
+  editCount?: number;
+  productName?: string;
+  productImage?: string;
+  productType?: 'PhuTung' | 'XeMau';
 }
 
 export interface SurveyQuestion {
