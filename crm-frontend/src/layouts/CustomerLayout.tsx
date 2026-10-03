@@ -29,6 +29,61 @@ export default function CustomerLayout({ children, activePage, onNavigate, onHom
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
 
+  // Customer Notification Center states (TC10)
+  const [customerNotifOpen, setCustomerNotifOpen] = useState(false);
+  const [customerNotifCat, setCustomerNotifCat] = useState<'all' | 'order' | 'appointment' | 'review' | 'system'>('all');
+  const [customerNotifs, setCustomerNotifs] = useState<{
+    id: string;
+    category: string;
+    icon: string;
+    title: string;
+    message: string;
+    time: string;
+    read: boolean;
+    page: CustomerPage;
+  }[]>([
+    {
+      id: 'cn-1',
+      category: 'order',
+      icon: '📦',
+      title: 'Đơn hàng #DH001 đang vận chuyển',
+      message: 'Đơn hàng phụ tùng Nhớt Motul 7100 của bạn đã được bàn giao cho đơn vị vận chuyển hỏa tốc.',
+      time: '15 phút trước',
+      read: false,
+      page: 'dashboard',
+    },
+    {
+      id: 'cn-2',
+      category: 'appointment',
+      icon: '📅',
+      title: 'Nhắc lịch hẹn bảo dưỡng xe',
+      message: 'Lịch bảo dưỡng định kỳ xe Honda SH 160i vào 09:00 ngày mai tại showroom 12 Lý Thường Kiệt.',
+      time: '1 giờ trước',
+      read: false,
+      page: 'booking',
+    },
+    {
+      id: 'cn-3',
+      category: 'review',
+      icon: '⭐',
+      title: 'Mời bạn đánh giá dịch vụ & phụ tùng',
+      message: 'Bạn vừa hoàn thành bảo dưỡng xe. Đánh giá chất lượng dịch vụ ngay để nhận mã giảm giá 10%!',
+      time: '1 ngày trước',
+      read: true,
+      page: 'store',
+    },
+    {
+      id: 'cn-4',
+      category: 'system',
+      icon: '🎁',
+      title: 'Ưu đãi thành viên mới: Giảm 15% phụ tùng',
+      message: 'Mã giảm giá MOTONEW15 đã sẵn sàng trong ví của bạn. Áp dụng cho mọi đơn hàng phụ tùng.',
+      time: '2 ngày trước',
+      read: true,
+      page: 'store',
+    },
+  ]);
+
   useEffect(() => {
     const handleOpenLogin = () => {
       setAuthMode('login');
@@ -114,6 +169,111 @@ export default function CustomerLayout({ children, activePage, onNavigate, onHom
                 </button>
               </div>
             )}
+
+            {/* Trung tâm thông báo (TC10) */}
+            <div className="relative">
+              <button
+                onClick={() => setCustomerNotifOpen(!customerNotifOpen)}
+                className="relative flex items-center justify-center rounded-lg p-2 transition-all cursor-pointer bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700"
+                title="Trung tâm thông báo"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                  <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                </svg>
+                {customerNotifs.filter(n => !n.read).length > 0 && (
+                  <span className="absolute -top-1 -right-1 flex items-center justify-center rounded-full text-[10px] font-bold text-white bg-red-600 min-w-[17px] h-[17px] px-1 shadow animate-pulse font-mono">
+                    {customerNotifs.filter(n => !n.read).length}
+                  </span>
+                )}
+              </button>
+
+              {/* Popover Trung tâm thông báo khách hàng */}
+              {customerNotifOpen && (
+                <div className="absolute right-0 mt-2 w-[90vw] sm:w-[380px] bg-white rounded-3xl shadow-2xl border border-zinc-200 py-3 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                  <div className="flex items-center justify-between px-4 pb-2.5 border-b border-zinc-100">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-xs text-zinc-900 uppercase font-mono tracking-wider">
+                        🔔 TRUNG TÂM THÔNG BÁO
+                      </span>
+                      {customerNotifs.filter(n => !n.read).length > 0 && (
+                        <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+                          {customerNotifs.filter(n => !n.read).length} mới
+                        </span>
+                      )}
+                    </div>
+                    {customerNotifs.filter(n => !n.read).length > 0 && (
+                      <button
+                        onClick={() => setCustomerNotifs(prev => prev.map(n => ({ ...n, read: true })))}
+                        className="text-[11px] text-red-700 hover:text-red-800 font-bold transition cursor-pointer"
+                      >
+                        Đã đọc tất cả
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Category Filter Chips */}
+                  <div className="px-3 py-2 border-b border-zinc-100 flex items-center gap-1.5 overflow-x-auto scrollbar-none">
+                    {[
+                      { key: 'all', label: 'Tất cả' },
+                      { key: 'order', label: '📦 Đơn hàng' },
+                      { key: 'appointment', label: '📅 Lịch hẹn' },
+                      { key: 'review', label: '⭐ Đánh giá' },
+                      { key: 'system', label: '🎁 Ưu đãi' },
+                    ].map(c => (
+                      <button
+                        key={c.key}
+                        onClick={() => setCustomerNotifCat(c.key as any)}
+                        className={`px-2 py-0.5 rounded-lg text-[11px] font-bold transition shrink-0 cursor-pointer border ${
+                          customerNotifCat === c.key
+                            ? 'bg-zinc-950 text-white border-zinc-950 shadow-xs'
+                            : 'bg-zinc-50 text-zinc-700 border-zinc-200 hover:bg-zinc-100'
+                        }`}
+                      >
+                        {c.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* List */}
+                  <div className="max-h-[300px] overflow-y-auto divide-y divide-zinc-100">
+                    {customerNotifs
+                      .filter(n => customerNotifCat === 'all' || n.category === customerNotifCat)
+                      .map(n => (
+                        <div
+                          key={n.id}
+                          onClick={() => {
+                            setCustomerNotifs(prev => prev.map(item => item.id === n.id ? { ...item, read: true } : item));
+                            onNavigate(n.page);
+                            setCustomerNotifOpen(false);
+                          }}
+                          className={`p-3 hover:bg-zinc-50 transition cursor-pointer flex gap-3 ${!n.read ? 'bg-red-50/30' : ''}`}
+                        >
+                          <span className="text-lg shrink-0 pt-0.5">{n.icon}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-1">
+                              <span className={`text-xs truncate ${!n.read ? 'font-extrabold text-zinc-900' : 'font-semibold text-zinc-700'}`}>
+                                {n.title}
+                              </span>
+                              <span className="text-[10px] text-zinc-400 font-mono shrink-0">{n.time}</span>
+                            </div>
+                            <p className="text-[11px] text-zinc-600 line-clamp-2 mt-0.5 leading-snug">{n.message}</p>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+
+                  <div className="px-4 pt-2 border-t border-zinc-100 flex justify-end">
+                    <button
+                      onClick={() => setCustomerNotifOpen(false)}
+                      className="text-xs font-bold text-zinc-700 hover:text-zinc-900 px-3 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 cursor-pointer"
+                    >
+                      Đóng
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Cart button */}
             <button onClick={() => setCartOpen(true)}

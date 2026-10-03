@@ -6,6 +6,9 @@ import {
   markAllAsRead,
   markNotificationAsRead,
   clearAllNotifications,
+  deleteNotification,
+  NOTIFICATION_CATEGORIES,
+  type NotificationCategory,
   type AdminNotification,
 } from '../services/notifications';
 
@@ -78,6 +81,9 @@ export default function AdminLayout({
   const [notifications, setNotifications] = useState<AdminNotification[]>(getAdminNotifications);
   const [notifOpen, setNotifOpen] = useState(false);
   const [liveToast, setLiveToast] = useState<AdminNotification | null>(null);
+  const [selectedNotifCategory, setSelectedNotifCategory] = useState<NotificationCategory>('all');
+  const [unreadOnly, setUnreadOnly] = useState(false);
+  const [searchNotif, setSearchNotif] = useState('');
 
   useEffect(() => {
     const handleNewNotif = (e: any) => {
@@ -262,92 +268,239 @@ export default function AdminLayout({
                 )}
               </button>
 
-              {/* Dropdown Popover */}
+              {/* Dropdown Popover: TRUNG TÂM THÔNG BÁO (TC10) */}
               {notifOpen && (
-                <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-2xl shadow-2xl border border-zinc-200 py-3 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
-                  <div className="flex items-center justify-between px-4 pb-2.5 border-b border-zinc-100">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-sm text-zinc-900" style={{ fontFamily: 'var(--font-display)', letterSpacing: '0.04em' }}>
-                        THÔNG BÁO CRM
-                      </span>
+                <div className="absolute right-0 mt-2 w-[92vw] sm:w-[480px] md:w-[540px] bg-white rounded-3xl shadow-2xl border border-zinc-200 py-3 z-50 animate-in fade-in slide-in-from-top-2 duration-200 max-h-[90vh] flex flex-col">
+                  {/* Header */}
+                  <div className="flex items-center justify-between px-5 pb-3 border-b border-zinc-100">
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-lg">🔔</span>
+                      <div>
+                        <div className="font-extrabold text-sm text-zinc-950 uppercase tracking-wide" style={{ fontFamily: 'var(--font-display)' }}>
+                          TRUNG TÂM THÔNG BÁO
+                        </div>
+                        <div className="text-[11px] text-zinc-500 font-mono">
+                          Hệ thống quản trị CRM Motoshop
+                        </div>
+                      </div>
                       {unreadCount > 0 && (
-                        <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+                        <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700 ml-1">
                           {unreadCount} mới
                         </span>
                       )}
                     </div>
-                    {unreadCount > 0 && (
-                      <button
-                        onClick={() => {
-                          markAllAsRead();
-                          setNotifications(getAdminNotifications());
-                        }}
-                        className="text-[11px] text-zinc-500 hover:text-red-700 font-medium transition cursor-pointer"
-                      >
-                        Đã đọc tất cả
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="max-h-[360px] overflow-y-auto divide-y divide-zinc-100">
-                    {notifications.length === 0 ? (
-                      <div className="py-8 text-center text-xs text-zinc-400">
-                        Chưa có thông báo nào
-                      </div>
-                    ) : (
-                      notifications.map(n => (
-                        <div
-                          key={n.id}
+                    <div className="flex items-center gap-2">
+                      {unreadCount > 0 && (
+                        <button
                           onClick={() => {
-                            markNotificationAsRead(n.id);
+                            markAllAsRead(selectedNotifCategory);
                             setNotifications(getAdminNotifications());
-                            onNavigate(n.linkPage);
-                            setNotifOpen(false);
                           }}
-                          className={`p-3 hover:bg-zinc-50 transition cursor-pointer flex gap-3 ${!n.read ? 'bg-red-50/40' : ''}`}
+                          className="text-[11px] text-red-700 hover:text-red-800 font-bold transition cursor-pointer px-2 py-1 rounded-lg hover:bg-red-50"
                         >
-                          <div className="text-xl shrink-0 pt-0.5">
-                            {n.type === 'customer_registered' ? '👤' : n.type === 'appointment_booked' ? '📅' : '📦'}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between gap-1">
-                              <span className={`text-xs truncate ${!n.read ? 'font-bold text-zinc-900' : 'font-semibold text-zinc-700'}`}>
-                                {n.title}
-                              </span>
-                              <span className="text-[10px] text-zinc-400 shrink-0 font-mono">
-                                {n.time}
-                              </span>
-                            </div>
-                            <p className="text-[11px] text-zinc-600 line-clamp-2 mt-0.5 leading-snug">
-                              {n.message}
-                            </p>
-                            <div className="flex items-center justify-between mt-1.5">
-                              <span className="text-[10px] font-mono text-red-600 font-bold hover:underline">
-                                Xem ngay →
-                              </span>
-                              {!n.read && (
-                                <span className="w-2 h-2 rounded-full bg-red-600 shrink-0"></span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      ))
-                    )}
+                          ✓ Đã đọc tất cả
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setNotifOpen(false)}
+                        className="w-7 h-7 rounded-full bg-zinc-100 hover:bg-zinc-200 flex items-center justify-center text-zinc-500 font-bold text-xs transition cursor-pointer"
+                      >
+                        ✕
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="px-4 pt-2.5 border-t border-zinc-100 flex items-center justify-between text-[11px]">
+                  {/* Filter Toolbar: Search & Unread toggle */}
+                  <div className="px-4 py-2.5 border-b border-zinc-100 bg-zinc-50/60 flex items-center gap-2.5 flex-wrap">
+                    <div className="relative flex-1 min-w-[180px]">
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400 text-xs">🔍</span>
+                      <input
+                        type="text"
+                        value={searchNotif}
+                        onChange={e => setSearchNotif(e.target.value)}
+                        placeholder="Tìm theo tiêu đề, nội dung..."
+                        className="w-full pl-7 pr-6 py-1.5 rounded-xl border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600"
+                      />
+                      {searchNotif && (
+                        <button
+                          onClick={() => setSearchNotif('')}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 text-xs cursor-pointer"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+
+                    <label className="flex items-center gap-1.5 cursor-pointer text-[11px] font-semibold text-zinc-700 select-none bg-white px-2.5 py-1.5 rounded-xl border border-zinc-200">
+                      <input
+                        type="checkbox"
+                        checked={unreadOnly}
+                        onChange={e => setUnreadOnly(e.target.checked)}
+                        className="w-3.5 h-3.5 text-red-700 rounded-sm accent-red-700 cursor-pointer"
+                      />
+                      <span>Chỉ chưa đọc</span>
+                    </label>
+                  </div>
+
+                  {/* Category Filter Chips (TC10: Phân loại thông báo) */}
+                  <div className="px-4 py-2 border-b border-zinc-100 flex items-center gap-1.5 overflow-x-auto scrollbar-none">
+                    {NOTIFICATION_CATEGORIES.map(cat => {
+                      const count = cat.key === 'all'
+                        ? notifications.length
+                        : notifications.filter(n => n.category === cat.key).length;
+                      const unreadCat = cat.key === 'all'
+                        ? unreadCount
+                        : notifications.filter(n => n.category === cat.key && !n.read).length;
+                      const isSelected = selectedNotifCategory === cat.key;
+
+                      return (
+                        <button
+                          key={cat.key}
+                          onClick={() => setSelectedNotifCategory(cat.key)}
+                          className={`px-2.5 py-1 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer border ${
+                            isSelected
+                              ? 'bg-zinc-950 text-white border-zinc-950 shadow-xs'
+                              : 'bg-zinc-50 text-zinc-700 border-zinc-200 hover:bg-zinc-100'
+                          }`}
+                        >
+                          <span>{cat.icon}</span>
+                          <span>{cat.label}</span>
+                          <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${isSelected ? 'bg-white/20 text-white' : 'bg-zinc-200 text-zinc-600'}`}>
+                            {count}
+                          </span>
+                          {unreadCat > 0 && !isSelected && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-red-600 shrink-0"></span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Notifications List */}
+                  <div className="max-h-[380px] overflow-y-auto divide-y divide-zinc-100 flex-1">
+                    {(() => {
+                      const list = notifications.filter(n => {
+                        const matchCat = selectedNotifCategory === 'all' || n.category === selectedNotifCategory;
+                        const matchUnread = !unreadOnly || !n.read;
+                        const matchSearch = !searchNotif.trim() ||
+                          n.title.toLowerCase().includes(searchNotif.toLowerCase()) ||
+                          n.message.toLowerCase().includes(searchNotif.toLowerCase());
+                        return matchCat && matchUnread && matchSearch;
+                      });
+
+                      if (list.length === 0) {
+                        return (
+                          <div className="py-12 text-center text-zinc-400 space-y-1">
+                            <div className="text-3xl mb-1">📭</div>
+                            <div className="text-xs font-semibold text-zinc-600">Không có thông báo nào</div>
+                            <p className="text-[11px] text-zinc-400">Không tìm thấy thông báo trong danh mục này</p>
+                          </div>
+                        );
+                      }
+
+                      return list.map(n => {
+                        const catMeta = NOTIFICATION_CATEGORIES.find(c => c.key === n.category) || {
+                          key: 'system',
+                          label: 'Hệ thống',
+                          icon: '⚙️',
+                          color: '#4b5563',
+                          bgColor: '#f3f4f6',
+                        };
+
+                        return (
+                          <div
+                            key={n.id}
+                            className={`p-3.5 hover:bg-zinc-50/80 transition flex gap-3 group relative ${!n.read ? 'bg-red-50/30' : ''}`}
+                          >
+                            <div
+                              className="w-10 h-10 rounded-2xl flex items-center justify-center text-lg shrink-0 shadow-2xs"
+                              style={{ background: catMeta.bgColor, border: `1px solid ${catMeta.color}30` }}
+                            >
+                              {catMeta.icon}
+                            </div>
+
+                            <div className="flex-1 min-w-0 space-y-1">
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <span
+                                    className="px-2 py-0.5 rounded-md text-[10px] font-extrabold font-mono uppercase"
+                                    style={{ background: catMeta.bgColor, color: catMeta.color }}
+                                  >
+                                    {catMeta.label}
+                                  </span>
+                                  <span className={`text-xs truncate ${!n.read ? 'font-extrabold text-zinc-950' : 'font-semibold text-zinc-700'}`}>
+                                    {n.title}
+                                  </span>
+                                </div>
+                                <span className="text-[10px] text-zinc-400 shrink-0 font-mono">
+                                  {n.time}
+                                </span>
+                              </div>
+
+                              <p className="text-xs text-zinc-600 line-clamp-2 leading-relaxed">
+                                {n.message}
+                              </p>
+
+                              <div className="flex items-center justify-between pt-1">
+                                <button
+                                  onClick={() => {
+                                    markNotificationAsRead(n.id);
+                                    setNotifications(getAdminNotifications());
+                                    onNavigate(n.linkPage);
+                                    setNotifOpen(false);
+                                  }}
+                                  className="text-[11px] font-mono text-red-700 hover:text-red-800 font-bold cursor-pointer hover:underline flex items-center gap-1"
+                                >
+                                  <span>Xem chi tiết</span>
+                                  <span>→</span>
+                                </button>
+
+                                <div className="flex items-center gap-2">
+                                  {!n.read && (
+                                    <button
+                                      onClick={() => {
+                                        markNotificationAsRead(n.id);
+                                        setNotifications(getAdminNotifications());
+                                      }}
+                                      className="text-[10px] text-zinc-400 hover:text-zinc-700 cursor-pointer"
+                                      title="Đánh dấu đã đọc"
+                                    >
+                                      ✓ Đã đọc
+                                    </button>
+                                  )}
+                                  <button
+                                    onClick={() => {
+                                      deleteNotification(n.id);
+                                      setNotifications(getAdminNotifications());
+                                    }}
+                                    className="text-[10px] text-zinc-400 hover:text-red-600 cursor-pointer px-1"
+                                    title="Xóa thông báo này"
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
+
+                  {/* Footer */}
+                  <div className="px-5 pt-3 border-t border-zinc-100 flex items-center justify-between text-xs">
                     <button
                       onClick={() => {
-                        clearAllNotifications();
-                        setNotifications([]);
+                        clearAllNotifications(selectedNotifCategory);
+                        setNotifications(getAdminNotifications());
                       }}
-                      className="text-zinc-400 hover:text-zinc-600 cursor-pointer"
+                      className="text-zinc-400 hover:text-red-700 transition cursor-pointer text-[11px]"
                     >
-                      Xóa tất cả
+                      🗑️ Xóa thông báo ({selectedNotifCategory === 'all' ? 'Tất cả' : NOTIFICATION_CATEGORIES.find(c => c.key === selectedNotifCategory)?.label})
                     </button>
                     <button
                       onClick={() => setNotifOpen(false)}
-                      className="font-semibold text-zinc-700 hover:text-zinc-900 cursor-pointer"
+                      className="font-bold text-zinc-700 hover:text-zinc-950 px-3 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 transition cursor-pointer"
                     >
                       Đóng
                     </button>

@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { mockParts, formatVND, Part, mockProductReviews, ProductReview, Customer } from '../../data/mockData';
+import { mockParts, formatVND, Part, mockProductReviews, ProductReview, Customer, mockOrders } from '../../data/mockData';
 import { useCart } from '../../contexts/CartContext';
 import { matchVietnameseSearch } from '../../utils/vietnameseSearch';
 
@@ -84,6 +84,21 @@ export default function PartsStore({ currentCustomer, onRequireLogin }: Props = 
       setNewReviewPhone(currentCustomer.soDienThoai);
     }
   }, [currentCustomer]);
+
+  // Check if currentCustomer has purchased selectedPart (ĐG03)
+  const hasPurchased = useMemo(() => {
+    if (!currentCustomer || !selectedPart) return false;
+    return mockOrders.some(order => {
+      const isMyOrder =
+        order.customerId === currentCustomer.id ||
+        order.hoTenKH.toLowerCase().trim() === currentCustomer.hoTen.toLowerCase().trim();
+      if (!isMyOrder) return false;
+      return order.items.some(it =>
+        it.tenSanPham.toLowerCase().includes(selectedPart.tenSanPham.toLowerCase()) ||
+        selectedPart.tenSanPham.toLowerCase().includes(it.tenSanPham.toLowerCase())
+      );
+    });
+  }, [currentCustomer, selectedPart]);
 
   // Extract all unique brands dynamically
   const brands = useMemo(() => {
@@ -588,15 +603,15 @@ export default function PartsStore({ currentCustomer, onRequireLogin }: Props = 
                     )}
                   </div>
 
-                  {/* Add Review Form (TC01: Blocked when unauthenticated) */}
+                  {/* Add Review Form (TC01: Blocked when unauth, ĐG03: Blocked when unpurchased, ĐG01 & ĐG02: Responsive & Account Display) */}
                   {!currentCustomer ? (
-                    <div className="p-5 rounded-2xl bg-amber-50 border border-amber-200 text-center space-y-2">
-                      <div className="text-2xl">🔒</div>
-                      <div className="text-xs font-bold text-amber-900 uppercase font-mono">
-                        Đăng nhập để viết đánh giá
+                    <div className="p-6 rounded-3xl bg-amber-50 border border-amber-200 text-center space-y-2.5">
+                      <div className="text-3xl">🔒</div>
+                      <div className="text-xs font-bold text-amber-900 uppercase font-mono tracking-wider">
+                        ĐĂNG NHẬP ĐỂ VIẾT ĐÁNH GIÁ
                       </div>
                       <p className="text-xs text-amber-700 max-w-md mx-auto">
-                        Chỉ khách hàng đã đăng nhập tài khoản mới có thể gửi đánh giá và nhận xét về phụ tùng này.
+                        Chỉ khách hàng đã đăng nhập tài khoản và đã từng mua phụ tùng này tại hệ thống mới có thể gửi đánh giá và nhận xét.
                       </p>
                       <button
                         type="button"
@@ -604,72 +619,131 @@ export default function PartsStore({ currentCustomer, onRequireLogin }: Props = 
                           if (onRequireLogin) onRequireLogin();
                           else window.dispatchEvent(new CustomEvent('crm-open-login'));
                         }}
-                        className="mt-1 px-5 py-2.5 bg-red-700 hover:bg-red-800 text-white rounded-xl text-xs font-bold transition cursor-pointer shadow-sm"
+                        className="mt-2 px-6 py-2.5 bg-red-700 hover:bg-red-800 text-white rounded-xl text-xs font-bold transition cursor-pointer shadow-sm"
                       >
                         Đăng nhập để đánh giá ngay →
                       </button>
                     </div>
+                  ) : !hasPurchased ? (
+                    /* ĐG03: Khách hàng chưa mua sản phẩm */
+                    <div className="p-6 rounded-3xl bg-amber-50/80 border border-amber-200 text-center space-y-3">
+                      <div className="text-3xl">🛍️</div>
+                      <div className="text-xs font-bold text-amber-900 uppercase font-mono tracking-wider">
+                        BẠN CHƯA MUA SẢN PHẨM NÀY
+                      </div>
+                      <p className="text-xs text-amber-800 max-w-md mx-auto leading-relaxed">
+                        Theo chính sách đánh giá minh bạch, chỉ những khách hàng đã mua phụ tùng <strong>"{selectedPart.tenSanPham}"</strong> tại đại lý mới có thể gửi nhận xét thực tế về sản phẩm.
+                      </p>
+                      <div className="pt-2 flex items-center justify-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => handleBuyNow(selectedPart, 1)}
+                          className="px-5 py-2.5 bg-red-700 hover:bg-red-800 text-white rounded-xl text-xs font-bold transition cursor-pointer shadow-sm flex items-center gap-2"
+                        >
+                          <span>⚡</span> Mua ngay với giá ưu đãi
+                        </button>
+                      </div>
+                    </div>
                   ) : (
-                    <form onSubmit={handleAddReview} className="p-5 rounded-2xl bg-zinc-50 border border-zinc-200 space-y-3">
-                      <div className="text-xs font-bold text-zinc-800 uppercase tracking-wider font-mono">
-                        ✍️ Viết nhận xét & đánh giá phụ tùng
+                    /* ĐG01 & ĐG02: Khung nhập đánh giá responsive & hiển thị thông tin tài khoản */
+                    <form onSubmit={handleAddReview} className="p-5 sm:p-6 rounded-3xl bg-zinc-50 border border-zinc-200 space-y-4">
+                      <div className="flex items-center justify-between flex-wrap gap-2 pb-3 border-b border-zinc-200">
+                        <div className="text-xs font-bold text-zinc-900 uppercase tracking-wider font-mono flex items-center gap-2">
+                          <span>✍️</span> VIẾT NHẬN XÉT & ĐÁNH GIÁ PHỤ TÙNG
+                        </div>
+                        <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                          ✓ Đã xác minh mua hàng tại đại lý
+                        </span>
                       </div>
 
                       {reviewSubmitted && (
-                        <div className="p-3 rounded-xl bg-emerald-100 text-emerald-800 text-xs font-bold flex items-center gap-2">
+                        <div className="p-3.5 rounded-2xl bg-emerald-100 text-emerald-800 text-xs font-bold flex items-center gap-2">
                           <span>✓</span> Cảm ơn bạn! Đánh giá đã được gửi và hiển thị thành công.
                         </div>
                       )}
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                        <input
-                          type="text"
-                          placeholder="Họ và tên của bạn *"
-                          required
-                          value={newReviewAuthor}
-                          onChange={e => setNewReviewAuthor(e.target.value)}
-                          className="w-full px-3.5 py-2 rounded-xl border border-zinc-300 bg-white text-xs focus:outline-none focus:border-red-600"
-                        />
-                        <input
-                          type="text"
-                          placeholder="Số điện thoại của bạn"
-                          value={newReviewPhone}
-                          onChange={e => setNewReviewPhone(e.target.value)}
-                          className="w-full px-3.5 py-2 rounded-xl border border-zinc-300 bg-white text-xs focus:outline-none focus:border-red-600"
-                        />
+                      {/* ĐG02: Hiển thị thông tin tài khoản đang đánh giá */}
+                      <div className="flex items-center gap-3 p-3.5 rounded-2xl bg-white border border-zinc-200">
+                        <div className="w-10 h-10 rounded-full bg-red-100 text-red-700 font-bold flex items-center justify-center text-sm font-mono shrink-0">
+                          {currentCustomer.hoTen.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-extrabold text-xs text-zinc-900">{currentCustomer.hoTen}</span>
+                            <span className="text-[10px] font-mono text-zinc-500 font-semibold bg-zinc-100 px-2 py-0.5 rounded-md">
+                              {currentCustomer.soDienThoai}
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-zinc-400 mt-0.5 truncate">
+                            Email: {currentCustomer.email || 'Chưa cập nhật'} · Khách hàng Motoshop
+                          </div>
+                        </div>
                       </div>
 
-                      <div className="flex items-center gap-2 text-xs">
-                        <span className="text-zinc-500">Mức độ hài lòng:</span>
-                        <div className="flex gap-1">
+                      {/* ĐG01: Khung nhập đánh giá responsive */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <label className="block text-[11px] font-semibold text-zinc-600 mb-1">Họ và tên người đánh giá *</label>
+                          <input
+                            type="text"
+                            required
+                            value={newReviewAuthor}
+                            onChange={e => setNewReviewAuthor(e.target.value)}
+                            className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-300 bg-white text-xs focus:outline-none focus:border-red-600 font-medium"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-zinc-600 mb-1">Số điện thoại liên hệ *</label>
+                          <input
+                            type="text"
+                            required
+                            value={newReviewPhone}
+                            onChange={e => setNewReviewPhone(e.target.value)}
+                            className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-300 bg-white text-xs focus:outline-none focus:border-red-600 font-mono font-medium"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3 text-xs pt-1 flex-wrap">
+                        <span className="font-semibold text-zinc-700">Mức độ hài lòng:</span>
+                        <div className="flex gap-1.5">
                           {[1, 2, 3, 4, 5].map(star => (
                             <button
                               key={star}
                               type="button"
                               onClick={() => setNewReviewStars(star)}
-                              className="text-lg text-amber-500 hover:scale-110 transition cursor-pointer"
+                              className="text-xl text-amber-500 hover:scale-110 transition cursor-pointer p-0.5"
                             >
                               {star <= newReviewStars ? '★' : '☆'}
                             </button>
                           ))}
                         </div>
+                        <span className="text-xs font-mono font-bold text-amber-600 ml-1">
+                          {newReviewStars === 5 ? 'Tuyệt vời (5 sao)' : newReviewStars === 4 ? 'Hài lòng (4 sao)' : newReviewStars === 3 ? 'Bình thường (3 sao)' : 'Chưa hài lòng'}
+                        </span>
                       </div>
 
-                      <textarea
-                        rows={3}
-                        placeholder="Chia sẻ chất lượng sản phẩm, độ bền, cảm giác sử dụng sau khi lắp đặt..."
-                        required
-                        value={newReviewContent}
-                        onChange={e => setNewReviewContent(e.target.value)}
-                        className="w-full px-3.5 py-2 rounded-xl border border-zinc-300 bg-white text-xs focus:outline-none focus:border-red-600"
-                      />
+                      <div>
+                        <label className="block text-[11px] font-semibold text-zinc-600 mb-1">
+                          Chia sẻ chi tiết trải nghiệm sử dụng ({newReviewContent.length}/500)
+                        </label>
+                        <textarea
+                          rows={4}
+                          maxLength={500}
+                          placeholder="Chia sẻ chất lượng sản phẩm, độ bền, cảm giác sử dụng sau khi lắp đặt vào xe..."
+                          required
+                          value={newReviewContent}
+                          onChange={e => setNewReviewContent(e.target.value)}
+                          className="w-full px-4 py-3 rounded-2xl border border-zinc-300 bg-white text-xs focus:outline-none focus:border-red-600 leading-relaxed"
+                        />
+                      </div>
 
-                      <div className="flex justify-end">
+                      <div className="flex justify-end pt-1">
                         <button
                           type="submit"
-                          className="px-5 py-2.5 bg-red-700 text-white rounded-xl text-xs font-bold hover:bg-red-800 transition cursor-pointer shadow"
+                          className="w-full sm:w-auto px-6 py-3 bg-red-700 text-white rounded-xl text-xs font-bold hover:bg-red-800 transition cursor-pointer shadow-md shadow-red-700/20"
                         >
-                          Gửi đánh giá phụ tùng
+                          Gửi đánh giá phụ tùng ngay
                         </button>
                       </div>
                     </form>

@@ -20,6 +20,8 @@ Dưới đây là danh sách toàn bộ các tập tin đã can thiệp. Khi x�
 9. `D:\crm-project\crm-frontend\src\utils\vietnameseSearch.ts` (File tạo mới: Chuẩn hóa tìm kiếm tiếng Việt không dấu, xóa khoảng trắng thừa, tìm kiếm tokenized multi-word)
 10. `D:\crm-project\crm-frontend\src\contexts\CartContext.tsx` (Quản lý trạng thái chọn sản phẩm trong giỏ hàng: `selectedIds`, `toggleSelect`, `selectAll`, `deselectAll`, tính tổng tiền theo sản phẩm được chọn `selectedTotal`)
 11. `D:\crm-project\crm-frontend\src\pages\customer\Checkout.tsx` (Chỉ thanh toán các sản phẩm được chọn trong giỏ hàng và chỉ xóa những sản phẩm đó sau khi đặt hàng thành công)
+12. `D:\crm-project\crm-frontend\src\services\notifications.ts` (Nâng cấp hệ thống thông báo đa danh mục TC10: Khách hàng, Đánh giá, Khảo sát, Đơn hàng, Thanh toán, Kho hàng, Hệ thống)
+13. `D:\crm-project\crm-frontend\src\layouts\AdminLayout.tsx` (Xây dựng Trung tâm thông báo TC10 quản trị CRM với bộ lọc 7 danh mục, tìm kiếm và thao tác đánh dấu đã đọc)
 
 ---
 
@@ -280,3 +282,68 @@ Dưới đây là danh sách toàn bộ các tập tin đã can thiệp. Khi x�
   - Nhấp vào bất kỳ mẫu xe nào ngoài showroom -> Chuyển ngay sang trang chi tiết xe máy riêng biệt toàn màn hình, mượt mà và trực quan.
   - Bấm "Lái thử ngay" khi chưa đăng nhập -> Lập tức bật popup đăng nhập.
   - Bộ lọc xe nằm gọn gàng trong 1 khung điều khiển, tìm kiếm không dấu / khoảng trắng thừa hoạt động hoàn hảo.
+
+#### 11. TC10 – Thay thông báo thành Trung tâm thông báo (Phân loại thông báo đa nhóm)
+* **Mô tả lỗi:** Tất cả thông báo nằm chung trong một danh sách đơn lẻ, khi số lượng thông báo tăng lên sẽ rất khó theo dõi và tìm kiếm theo ngữ cảnh nghiệp vụ.
+* **Kết quả mong đợi:** Nâng cấp thành **TRUNG TÂM THÔNG BÁO (Notification Center)** chuyên nghiệp, phân loại rõ ràng thành các nhóm: *Khách hàng, Đánh giá, Khảo sát, Đơn hàng, Thanh toán, Kho hàng, Hệ thống*.
+* **Giải pháp đã thực hiện:**
+  - `src/services/notifications.ts`:
+    - Định nghĩa kiểu `NotificationItemCategory`: `'customer' | 'review' | 'survey' | 'order' | 'payment' | 'inventory' | 'system'`.
+    - Tạo mảng cấu hình `NOTIFICATION_CATEGORIES` với đầy đủ icon (👤, ⭐, 📋, 📦, 💳, 🏬, ⚙️), màu sắc nhận diện và tên tiếng Việt.
+    - Cập nhật hàm `getAdminNotifications`, `addAdminNotification`, `markAllAsRead`, `clearAllNotifications` hỗ trợ xử lý và lưu trữ theo từng danh mục riêng biệt.
+  - `AdminLayout.tsx`:
+    - Thiết kế lại Popover thành **TRUNG TÂM THÔNG BÁO CRM** rộng rãi (540px), có thanh tìm kiếm nội dung thông báo realtime và checkbox "Chỉ chưa đọc".
+    - Bổ sung thanh tab chips phân loại 7 nhóm có huy hiệu số lượng và chấm đỏ báo tin chưa đọc.
+    - Mỗi thông báo hiển thị tag danh mục, icon, tiêu đề, thời gian, nút "Xem chi tiết →" chuyển trang nghiệp vụ tương ứng và nút "✕" xóa nhanh.
+  - `CustomerLayout.tsx`:
+    - Tích hợp thêm chuông Trung tâm thông báo tại thanh điều hướng khách hàng, phân loại các thông báo về: Đơn hàng, Lịch hẹn, Đánh giá, Ưu đãi hệ thống.
+* **Kết quả test:**
+  - Bấm chuông thông báo -> Mở Trung tâm thông báo với đầy đủ các tab phân loại.
+  - Chọn tab "📦 Đơn hàng" -> Chỉ lọc ra các thông báo về đơn hàng; chọn "⭐ Đánh giá" -> Chỉ hiển thị đánh giá mới.
+  - Bấm "Đã đọc tất cả" theo từng danh mục -> Trạng thái cập nhật tức thì.
+
+### Nhóm chức năng: ĐÁNH GIÁ (Mã lỗi ĐG01 - ĐG03)
+- **Thời gian hoàn thành:** 04/10/2026 00:15
+- **Trạng thái:** ĐÃ FIX & ĐÃ KIỂM THỬ THÀNH CÔNG 100%
+
+#### 1. ĐG01 – Lỗi khung nhập đánh giá chưa tương thích, nhỏ
+* **Mô tả lỗi:** Khung nhập đánh giá ở trang xem chi tiết chưa tương thích responsive, kích thước hiển thị nhỏ, khó thao tác trên các thiết bị màn hình khác nhau.
+* **Kết quả mong đợi:** Tối ưu khung nhập đánh giá chuẩn responsive, tự co giãn mượt mà trên mobile, tablet và desktop.
+* **Giải pháp đã thực hiện:**
+  - `PartsStore.tsx` & `VehiclesShowroom.tsx`:
+    - Tái cấu trúc khung form: Thẻ form bo góc lớn (`rounded-3xl`), padding thoáng (`p-5 sm:p-6`), viền border sắc nét.
+    - Lưới responsive: Trường Họ tên và SĐT tự động chuyển đổi giữa 1 cột trên mobile (`grid-cols-1`) và 2 cột trên desktop (`sm:grid-cols-2`).
+    - Nút chọn số sao tương tác lớn (`text-xl`), có nhãn cảm xúc trực quan (Tuyệt vời 5 sao, Hài lòng 4 sao, v.v.).
+    - Textarea rộng rãi (`rows={4}`), hiển thị bộ đếm ký tự thời gian thực (`{newReviewContent.length}/500`).
+    - Nút submit toàn chiều rộng trên mobile (`w-full sm:w-auto`) và hiệu ứng đổ bóng sang trọng.
+* **Kết quả test:**
+  - Hiển thị hoàn hảo trên màn hình điện thoại di động và máy tính, khung rộng rãi, nhập liệu thoải mái.
+
+#### 2. ĐG02 – Lỗi đánh giá không hiển thị thông tin tài khoản
+* **Mô tả lỗi:** Khách hàng đã đăng nhập tài khoản nhưng khi vào form đánh giá thì các ô thông tin vẫn trống, chưa hiển thị tên và SĐT của chủ tài khoản.
+* **Kết quả mong đợi:** Tự động điền và hiển thị rõ ràng thông tin tài khoản (Tên và SĐT) của khách hàng đang thực hiện đánh giá.
+* **Giải pháp đã thực hiện:**
+  - `PartsStore.tsx` & `VehiclesShowroom.tsx`:
+    - Khởi tạo và đồng bộ `useEffect` tự động điền `currentCustomer.hoTen` vào `newReviewAuthor` và `currentCustomer.soDienThoai` vào `newReviewPhone`.
+    - Bổ sung khối huy hiệu tài khoản xác thực ngay đầu form:
+      * Avatar chữ cái đầu kèm nền đỏ thương hiệu.
+      * Họ tên in đậm + SĐT font mono trong badge xám.
+      * Huy hiệu xanh lá `✓ Đã xác minh mua hàng tại đại lý`.
+      * Hiển thị email và thông tin tài khoản đang đăng nhập.
+* **Kết quả test:**
+  - Đăng nhập tài khoản (ví dụ: `0901234567` - Nguyễn Văn An) -> Vào chi tiết phụ tùng/xe máy -> Khối thông tin tài khoản tự động hiển thị đầy đủ tên "Nguyễn Văn An" và SĐT "0901234567".
+
+#### 3. ĐG03 – Lỗi cho phép đánh giá sản phẩm chưa mua
+* **Mô tả lỗi:** Khách hàng chưa từng mua sản phẩm hoặc chưa sở hữu xe vẫn có thể gửi đánh giá và nhận xét.
+* **Kết quả mong đợi:** Chỉ cho phép khách hàng đã mua sản phẩm/xe máy thực hiện gửi đánh giá. Nếu chưa mua, hiển thị thông báo giải thích và khóa form gửi đánh giá.
+* **Giải pháp đã thực hiện:**
+  - `PartsStore.tsx`:
+    - Tính toán `hasPurchased`: Đối chiếu `currentCustomer.id` hoặc `currentCustomer.hoTen` với danh sách đơn hàng `mockOrders`, kiểm tra sản phẩm đang xem có nằm trong danh sách các mặt hàng đã mua hay không.
+    - Nếu khách hàng chưa mua: Thay thế form đánh giá bằng thẻ thông báo khóa `BẠN CHƯA MUA SẢN PHẨM NÀY` (icon 🛍️), kèm lời giải thích về chính sách đánh giá minh bạch và nút "⚡ Mua ngay với giá ưu đãi".
+  - `VehiclesShowroom.tsx`:
+    - Tính toán `hasPurchasedVehicle`: Kiểm tra `currentCustomer.id` có sở hữu dòng xe đang xem trong danh sách xe đã mua tại đại lý (`mockVehicles`) hay không.
+    - Nếu chưa mua/chưa sở hữu xe: Khóa form đánh giá và hiển thị thông báo `BẠN CHƯA MUA DÒNG XE NÀY` (icon 🏍️), kèm nút "🏍️ Đăng ký lái thử xe này" để khách hàng trải nghiệm xe trước.
+* **Kết quả test:**
+  - Tài khoản chưa mua sản phẩm đang xem -> Bị chặn gửi đánh giá, hiển thị thông báo giải thích rõ ràng kèm gợi ý mua hàng/lái thử.
+  - Tài khoản đã mua (ví dụ: Nguyễn Văn An đã mua Nhớt Motul, xe SH 160i) -> Mở form đánh giá bình thường với đầy đủ xác thực mua hàng.
+
