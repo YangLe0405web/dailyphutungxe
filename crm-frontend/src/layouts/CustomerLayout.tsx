@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useCart } from '../contexts/CartContext';
 import { mockCustomers, type Customer } from '../data/mockData';
 import { customerApi } from '../services/api';
@@ -32,6 +32,16 @@ export default function CustomerLayout({ children, activePage, onNavigate, onHom
   // Customer Notification Center states (TC10)
   const [customerNotifOpen, setCustomerNotifOpen] = useState(false);
   const [customerNotifCat, setCustomerNotifCat] = useState<'all' | 'order' | 'appointment' | 'review' | 'system'>('all');
+  const customerNotifTabsRef = useRef<HTMLDivElement>(null);
+
+  const scrollCustomerNotifTabs = (direction: 'left' | 'right') => {
+    if (customerNotifTabsRef.current) {
+      customerNotifTabsRef.current.scrollBy({
+        left: direction === 'left' ? -120 : 120,
+        behavior: 'smooth',
+      });
+    }
+  };
   const [customerNotifs, setCustomerNotifs] = useState<{
     id: string;
     category: string;
@@ -212,27 +222,58 @@ export default function CustomerLayout({ children, activePage, onNavigate, onHom
                     )}
                   </div>
 
-                  {/* Category Filter Chips */}
-                  <div className="px-3 py-2 border-b border-zinc-100 flex items-center gap-1.5 overflow-x-auto scrollbar-none">
-                    {[
-                      { key: 'all', label: 'Tất cả' },
-                      { key: 'order', label: '📦 Đơn hàng' },
-                      { key: 'appointment', label: '📅 Lịch hẹn' },
-                      { key: 'review', label: '⭐ Đánh giá' },
-                      { key: 'system', label: '🎁 Ưu đãi' },
-                    ].map(c => (
-                      <button
-                        key={c.key}
-                        onClick={() => setCustomerNotifCat(c.key as any)}
-                        className={`px-2 py-0.5 rounded-lg text-[11px] font-bold transition shrink-0 cursor-pointer border ${
-                          customerNotifCat === c.key
-                            ? 'bg-zinc-950 text-white border-zinc-950 shadow-xs'
-                            : 'bg-zinc-50 text-zinc-700 border-zinc-200 hover:bg-zinc-100'
-                        }`}
-                      >
-                        {c.label}
-                      </button>
-                    ))}
+                  {/* Category Filter Chips with Horizontal Scroll Navigation */}
+                  <div className="relative px-2 py-1.5 border-b border-zinc-100 flex items-center gap-1 bg-zinc-50/50">
+                    <button
+                      type="button"
+                      onClick={() => scrollCustomerNotifTabs('left')}
+                      className="shrink-0 w-5 h-5 flex items-center justify-center rounded-md bg-white border border-zinc-200 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 shadow-2xs transition cursor-pointer"
+                      title="Cuộn sang trái"
+                    >
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="15 18 9 12 15 6" />
+                      </svg>
+                    </button>
+
+                    <div
+                      ref={customerNotifTabsRef}
+                      className="flex-1 flex items-center gap-1.5 overflow-x-auto scroll-smooth py-1 px-1"
+                      style={{
+                        scrollbarWidth: 'thin',
+                        scrollbarColor: '#cbd5e1 transparent',
+                      }}
+                    >
+                      {[
+                        { key: 'all', label: 'Tất cả' },
+                        { key: 'order', label: '📦 Đơn hàng' },
+                        { key: 'appointment', label: '📅 Lịch hẹn' },
+                        { key: 'review', label: '⭐ Đánh giá' },
+                        { key: 'system', label: '🎁 Ưu đãi' },
+                      ].map(c => (
+                        <button
+                          key={c.key}
+                          onClick={() => setCustomerNotifCat(c.key as any)}
+                          className={`px-2 py-0.5 rounded-lg text-[11px] font-bold transition shrink-0 cursor-pointer border select-none ${
+                            customerNotifCat === c.key
+                              ? 'bg-zinc-950 text-white border-zinc-950 shadow-xs'
+                              : 'bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-100'
+                          }`}
+                        >
+                          {c.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => scrollCustomerNotifTabs('right')}
+                      className="shrink-0 w-5 h-5 flex items-center justify-center rounded-md bg-white border border-zinc-200 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 shadow-2xs transition cursor-pointer"
+                      title="Cuộn sang phải"
+                    >
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="9 18 15 12 9 6" />
+                      </svg>
+                    </button>
                   </div>
 
                   {/* List */}

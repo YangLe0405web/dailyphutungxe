@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import type { AdminRole, StaffAccount } from '../data/mockData';
 import {
@@ -84,6 +84,16 @@ export default function AdminLayout({
   const [selectedNotifCategory, setSelectedNotifCategory] = useState<NotificationCategory>('all');
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [searchNotif, setSearchNotif] = useState('');
+  const notifTabsRef = useRef<HTMLDivElement>(null);
+
+  const scrollNotifTabs = (direction: 'left' | 'right') => {
+    if (notifTabsRef.current) {
+      notifTabsRef.current.scrollBy({
+        left: direction === 'left' ? -160 : 160,
+        behavior: 'smooth',
+      });
+    }
+  };
 
   useEffect(() => {
     const handleNewNotif = (e: any) => {
@@ -342,38 +352,69 @@ export default function AdminLayout({
                     </label>
                   </div>
 
-                  {/* Category Filter Chips (TC10: Phân loại thông báo) */}
-                  <div className="px-4 py-2 border-b border-zinc-100 flex items-center gap-1.5 overflow-x-auto scrollbar-none">
-                    {NOTIFICATION_CATEGORIES.map(cat => {
-                      const count = cat.key === 'all'
-                        ? notifications.length
-                        : notifications.filter(n => n.category === cat.key).length;
-                      const unreadCat = cat.key === 'all'
-                        ? unreadCount
-                        : notifications.filter(n => n.category === cat.key && !n.read).length;
-                      const isSelected = selectedNotifCategory === cat.key;
+                  {/* Category Filter Chips with Horizontal Navigation (TC10: Phân loại thông báo) */}
+                  <div className="relative px-2 py-1.5 border-b border-zinc-100 flex items-center gap-1 bg-zinc-50/50">
+                    <button
+                      type="button"
+                      onClick={() => scrollNotifTabs('left')}
+                      className="shrink-0 w-6 h-6 flex items-center justify-center rounded-lg bg-white border border-zinc-200 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 shadow-2xs transition cursor-pointer"
+                      title="Cuộn sang trái"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="15 18 9 12 15 6" />
+                      </svg>
+                    </button>
 
-                      return (
-                        <button
-                          key={cat.key}
-                          onClick={() => setSelectedNotifCategory(cat.key)}
-                          className={`px-2.5 py-1 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer border ${
-                            isSelected
-                              ? 'bg-zinc-950 text-white border-zinc-950 shadow-xs'
-                              : 'bg-zinc-50 text-zinc-700 border-zinc-200 hover:bg-zinc-100'
-                          }`}
-                        >
-                          <span>{cat.icon}</span>
-                          <span>{cat.label}</span>
-                          <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${isSelected ? 'bg-white/20 text-white' : 'bg-zinc-200 text-zinc-600'}`}>
-                            {count}
-                          </span>
-                          {unreadCat > 0 && !isSelected && (
-                            <span className="w-1.5 h-1.5 rounded-full bg-red-600 shrink-0"></span>
-                          )}
-                        </button>
-                      );
-                    })}
+                    <div
+                      ref={notifTabsRef}
+                      className="flex-1 flex items-center gap-1.5 overflow-x-auto scroll-smooth py-1 px-1"
+                      style={{
+                        scrollbarWidth: 'thin',
+                        scrollbarColor: '#cbd5e1 transparent',
+                      }}
+                    >
+                      {NOTIFICATION_CATEGORIES.map(cat => {
+                        const count = cat.key === 'all'
+                          ? notifications.length
+                          : notifications.filter(n => n.category === cat.key).length;
+                        const unreadCat = cat.key === 'all'
+                          ? unreadCount
+                          : notifications.filter(n => n.category === cat.key && !n.read).length;
+                        const isSelected = selectedNotifCategory === cat.key;
+
+                        return (
+                          <button
+                            key={cat.key}
+                            onClick={() => setSelectedNotifCategory(cat.key)}
+                            className={`px-2.5 py-1 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer border select-none ${
+                              isSelected
+                                ? 'bg-zinc-950 text-white border-zinc-950 shadow-xs'
+                                : 'bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-100'
+                            }`}
+                          >
+                            <span>{cat.icon}</span>
+                            <span>{cat.label}</span>
+                            <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${isSelected ? 'bg-white/20 text-white' : 'bg-zinc-100 text-zinc-600'}`}>
+                              {count}
+                            </span>
+                            {unreadCat > 0 && !isSelected && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-red-600 shrink-0"></span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => scrollNotifTabs('right')}
+                      className="shrink-0 w-6 h-6 flex items-center justify-center rounded-lg bg-white border border-zinc-200 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 shadow-2xs transition cursor-pointer"
+                      title="Cuộn sang phải"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="9 18 15 12 9 6" />
+                      </svg>
+                    </button>
                   </div>
 
                   {/* Notifications List */}

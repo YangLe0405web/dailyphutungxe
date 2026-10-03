@@ -301,6 +301,8 @@ Dưới đây là danh sách toàn bộ các tập tin đã can thiệp. Khi x�
   - Bấm chuông thông báo -> Mở Trung tâm thông báo với đầy đủ các tab phân loại.
   - Chọn tab "📦 Đơn hàng" -> Chỉ lọc ra các thông báo về đơn hàng; chọn "⭐ Đánh giá" -> Chỉ hiển thị đánh giá mới.
   - Bấm "Đã đọc tất cả" theo từng danh mục -> Trạng thái cập nhật tức thì.
+  - **Cập nhật bổ sung (Điều hướng cuộn ngang):** Trang bị thêm 2 nút điều hướng mũi tên trái/phải (`‹` và `›`) ở cả giao diện Admin và Khách hàng, kèm theo thanh cuộn ngang tinh gọn `scrollbar-thin`. Người dùng trên máy tính (desktop không có chuột cuộn ngang) có thể bấm nút mũi tên để cuộn mượt mà sang các nhóm thông báo phía sau (Kho hàng, Hệ thống, Đơn hàng,...) mà không bị che khuất hay mất tab.
+
 
 ### Nhóm chức năng: ĐÁNH GIÁ (Mã lỗi ĐG01 - ĐG03)
 - **Thời gian hoàn thành:** 04/10/2026 00:15
