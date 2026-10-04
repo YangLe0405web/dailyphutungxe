@@ -476,9 +476,10 @@ export default function CustomersPage() {
                       {c.avatar ? (
                         <img src={c.avatar} alt={c.hoTen} className="w-8 h-8 rounded-full object-cover shrink-0 border border-zinc-200" />
                       ) : (
-                        <div className="flex items-center justify-center rounded-full text-sm font-700 shrink-0"
-                          style={{ width: 34, height: 34, background: 'var(--color-red-700)', color: 'white', fontFamily: 'var(--font-display)' }}>
-                          {c.hoTen[0]}
+                        <div className="w-8 h-8 rounded-full bg-zinc-100 border border-zinc-300 text-zinc-400 flex items-center justify-center shrink-0" title="Chưa thiết lập ảnh đại diện">
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                          </svg>
                         </div>
                       )}
                       <div>

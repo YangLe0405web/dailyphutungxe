@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
-import { formatVND, mockProductReviews, ProductReview, mockVehicles, countWords } from '../../data/mockData';
-import { catalogVehicleApi, feedbackApi } from '../../services/api';
+import { formatVND, mockProductReviews, ProductReview, mockVehicles, countWords, getCustomerTier, computeSurveyStatus } from '../../data/mockData';
+import { catalogVehicleApi, feedbackApi, surveyApi } from '../../services/api';
 
 export interface ShowroomVehicle {
   id: string;
@@ -246,6 +246,7 @@ interface Props {
   onBookTestDrive: (vehicleId: string) => void;
   currentCustomer?: Customer | null;
   onRequireLogin?: () => void;
+  onNavigateToSurvey?: () => void;
 }
 
 const brandMeta: Record<string, { label: string; color: string; bg: string; badge: string }> = {
@@ -255,7 +256,23 @@ const brandMeta: Record<string, { label: string; color: string; bg: string; badg
   'Piaggio & Vespa': { label: 'Piaggio & Vespa', color: '#059669', bg: '#ecfdf5', badge: '🟢 Vespa Ý' },
 };
 
-export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onRequireLogin }: Props) {
+export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onRequireLogin, onNavigateToSurvey }: Props) {
+  // TC15: Đếm khảo sát đang chờ làm của khách hàng đăng nhập
+  const pendingSurveysCount = useMemo(() => {
+    if (!currentCustomer) return 0;
+    const custTier = getCustomerTier(currentCustomer.tongChiTieu).tier;
+    return surveyApi.getAll().filter(s => {
+      const liveStatus = computeSurveyStatus(s);
+      if (liveStatus !== 'DangDienRa') return false;
+      const isEligible =
+        s.targetCustomerId === currentCustomer.id ||
+        (s.targetCustomerIds && s.targetCustomerIds.includes(currentCustomer.id)) ||
+        ((s.targetCustomerId === 'ALL' || !s.targetCustomerId) && (!s.targetCustomerTier || s.targetCustomerTier === 'ALL' || s.targetCustomerTier === custTier));
+      if (!isEligible) return false;
+      const done = surveyApi.getResponses().some(r => r.surveyId === s.id && r.customerId === currentCustomer.id);
+      return !done;
+    }).length;
+  }, [currentCustomer]);
   const [vehicles, setVehicles] = useState<ShowroomVehicle[]>(showroomVehicles);
   const [search, setSearch] = useState('');
   const [selectedHang, setSelectedHang] = useState<string>('ALL');
@@ -1312,6 +1329,28 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
           </p>
         </div>
       </div>
+
+      {/* ── TC15: Survey Notification Banner on Trang Chủ ── */}
+      {pendingSurveysCount > 0 && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-5">
+          <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-between flex-wrap gap-3 shadow-xs">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">🔔</span>
+              <div>
+                <div className="text-xs font-bold text-amber-900 uppercase font-mono">THÔNG BÁO KHẢO SÁT MỚI TỪ ĐẠI LÝ</div>
+                <div className="text-xs text-amber-700">Bạn có {pendingSurveysCount} cuộc khảo sát ý kiến đang chờ hoàn thành.</div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => onNavigateToSurvey?.()}
+              className="px-4 py-2 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white shadow transition cursor-pointer"
+            >
+              Làm khảo sát ngay →
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── TC05: UNIFIED SEARCH & FILTER CONTAINER ── */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-6 space-y-4">

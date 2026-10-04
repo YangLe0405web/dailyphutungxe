@@ -4,7 +4,7 @@ import { mockCustomers, type Customer } from '../data/mockData';
 import { customerApi, chatApi, formatCustomerId, type ChatMessage } from '../services/api';
 import { VIETNAM_LOCATIONS } from '../data/vietnamLocations';
 
-type CustomerPage = 'store' | 'vehicles' | 'booking' | 'dashboard' | 'checkout';
+type CustomerPage = 'store' | 'vehicles' | 'booking' | 'dashboard' | 'checkout' | 'survey';
 
 interface Props {
   children: React.ReactNode;
@@ -257,7 +257,11 @@ export default function CustomerLayout({ children, activePage, onNavigate, onHom
                   {currentCustomer.avatar ? (
                     <img src={currentCustomer.avatar} alt={currentCustomer.hoTen} className="w-5 h-5 rounded-full object-cover shrink-0 border border-zinc-700" />
                   ) : (
-                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                    <div className="w-5 h-5 rounded-full bg-zinc-800 border border-zinc-700 text-zinc-400 flex items-center justify-center shrink-0">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                      </svg>
+                    </div>
                   )}
                   <span className="font-bold max-w-[120px] truncate">{currentCustomer.hoTen}</span>
                 </div>

@@ -22,10 +22,11 @@ import ServiceBooking from './pages/customer/ServiceBooking';
 import CustomerDashboard from './pages/customer/CustomerDashboard';
 import Checkout from './pages/customer/Checkout';
 import VehiclesShowroom from './pages/customer/VehiclesShowroom';
+import SurveyTaking from './pages/customer/SurveyTaking';
 
 type Mode = 'admin' | 'customer' | null;
 type AdminPage = 'dashboard' | 'sales' | 'appointments' | 'customers' | 'feedback' | 'reports' | 'parts' | 'vehicles' | 'suppliers' | 'staff';
-type CustomerPage = 'store' | 'vehicles' | 'booking' | 'dashboard' | 'checkout';
+type CustomerPage = 'store' | 'vehicles' | 'booking' | 'dashboard' | 'checkout' | 'survey';
 
 
 /* ── Landing / Mode selector ── */
@@ -271,6 +272,7 @@ export default function App() {
               setSelectedVehicleForBooking(vId);
               setCustomerPage('booking');
             }}
+            onNavigateToSurvey={() => setCustomerPage('survey')}
           />
         )}
         {customerPage === 'store' && (
@@ -290,7 +292,16 @@ export default function App() {
           <CustomerDashboard
             currentCustomer={currentCustomer}
             onNavigateToShowroom={() => setCustomerPage('vehicles')}
+            onNavigateToSurvey={() => setCustomerPage('survey')}
             onCustomerChange={setCurrentCustomer}
+          />
+        )}
+        {customerPage === 'survey' && (
+          <SurveyTaking
+            currentCustomer={currentCustomer}
+            onBack={() => setCustomerPage('vehicles')}
+            onNavigateToDashboard={() => setCustomerPage('dashboard')}
+            onRequireLogin={() => window.dispatchEvent(new CustomEvent('crm-open-login'))}
           />
         )}
         {customerPage === 'checkout' && (

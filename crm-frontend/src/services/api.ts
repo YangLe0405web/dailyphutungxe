@@ -192,7 +192,7 @@ export const customerApi = {
       ngayDangKy: new Date().toISOString().split('T')[0],
       soXe: '',
       tongChiTieu: 0,
-      avatar: `/images/KH/kh${(createdMaKH ? (createdMaKH % 10) + 1 : 1)}.jpg`,
+      avatar: (data as any).avatar || '',
     };
 
     const existIdx = mockCustomers.findIndex(c => c.id === newCustomer.id || c.email === newCustomer.email);
@@ -255,7 +255,7 @@ export const customerApi = {
       ngayDangKy: raw.ngayTao ? raw.ngayTao.split('T')[0] : '2024-01-01',
       soXe: `XE00${raw.maKH || 1}`,
       tongChiTieu: 0,
-      avatar: `/images/KH/kh${raw.maKH ? (raw.maKH % 10) + 1 : 1}.jpg`,
+      avatar: raw.avatar || mockCustomers.find(c => c.id === cId || c.email === (raw.email || raw.tenDangNhap) || c.soDienThoai === raw.soDienThoai)?.avatar || '',
       soThich: raw.soThich || 'Xe máy, phụ tùng chính hãng',
     };
 

@@ -23,6 +23,7 @@ import ImageUploader from '../../components/shared/ImageUploader';
 interface CustomerDashboardProps {
   currentCustomer: Customer | null;
   onNavigateToShowroom?: () => void;
+  onNavigateToSurvey?: () => void;
   onCustomerChange?: (c: Customer | null) => void;
 }
 
@@ -636,7 +637,7 @@ function EditProfileModal({ customer, onClose, onSave }: { customer: Customer; o
   );
 }
 
-export default function CustomerDashboard({ currentCustomer, onNavigateToShowroom, onCustomerChange }: CustomerDashboardProps) {
+export default function CustomerDashboard({ currentCustomer, onNavigateToShowroom, onNavigateToSurvey, onCustomerChange }: CustomerDashboardProps) {
   const [tab, setTab] = useState<0 | 1 | 2>(0);
   const [myVehicles, setMyVehicles] = useState<Vehicle[]>([]);
   const [activeVehicleIndex, setActiveVehicleIndex] = useState(0);
@@ -839,9 +840,11 @@ export default function CustomerDashboard({ currentCustomer, onNavigateToShowroo
             {currentCustomer.avatar ? (
               <img src={currentCustomer.avatar} alt={currentCustomer.hoTen} className="w-16 h-16 rounded-full object-cover shrink-0 border-2 border-red-600 shadow-md" />
             ) : (
-              <div className="flex items-center justify-center rounded-full text-2xl font-800 shrink-0"
-                style={{ width: 60, height: 60, background: 'var(--color-red-700)', color: 'white', fontFamily: 'var(--font-display)' }}>
-                {currentCustomer.hoTen[0]}
+              <div className="flex items-center justify-center rounded-full shrink-0 border-2 border-zinc-700 shadow-md bg-zinc-900 text-zinc-400"
+                style={{ width: 64, height: 64 }}>
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                </svg>
               </div>
             )}
             <div>
@@ -884,8 +887,8 @@ export default function CustomerDashboard({ currentCustomer, onNavigateToShowroo
               </div>
             </div>
             <button
-              onClick={() => setTab(2)}
-              className="px-4 py-1.5 rounded-xl text-xs font-bold bg-amber-600 text-white hover:bg-amber-700 shadow transition"
+              onClick={() => (onNavigateToSurvey ? onNavigateToSurvey() : setTab(2))}
+              className="px-4 py-1.5 rounded-xl text-xs font-bold bg-amber-600 text-white hover:bg-amber-700 shadow transition cursor-pointer"
             >
               Làm khảo sát ngay →
             </button>
@@ -1160,7 +1163,23 @@ export default function CustomerDashboard({ currentCustomer, onNavigateToShowroo
           </div>
         )}
 
-        {tab === 2 && <DynamicSurveyTab customer={currentCustomer} />}
+        {tab === 2 && (
+          <div>
+            {onNavigateToSurvey && (
+              <div className="mb-4 flex justify-end">
+                <button
+                  type="button"
+                  onClick={onNavigateToSurvey}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-white border border-zinc-200 text-zinc-700 hover:bg-zinc-100 shadow-2xs transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <span>Mở trang làm khảo sát riêng</span>
+                  <span>↗</span>
+                </button>
+              </div>
+            )}
+            <DynamicSurveyTab customer={currentCustomer} />
+          </div>
+        )}
       </div>
 
       {/* Edit Profile Modal */}
