@@ -5,7 +5,11 @@ import {
   type SurveyResponse,
   type Customer,
   type StaffAccount,
-  mockStaffAccounts
+  mockStaffAccounts,
+  computeSurveyStatus,
+  formatSurveyDateTime,
+  surveyStatusLabels,
+  getCustomerTier,
 } from '../../data/mockData';
 import { customerApi, feedbackApi, surveyApi, chatApi, formatCustomerId, type ChatMessage } from '../../services/api';
 
@@ -91,15 +95,28 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
   const [statusFilter, setStatusFilter] = useState<'All' | 'ChoXuLy' | 'DaXuLy'>('All');
   const [previewMedia, setPreviewMedia] = useState<string | null>(null);
 
-  // Survey state
+  // Survey state (KS01 - KS08)
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [surveyResponses, setSurveyResponses] = useState<SurveyResponse[]>([]);
   const [selectedSurveyForStats, setSelectedSurveyForStats] = useState<Survey | null>(null);
+  const [surveyStatusTab, setSurveyStatusTab] = useState<'ALL' | 'DangDienRa' | 'SapDienRa' | 'DaKetThuc' | 'Nhap'>('ALL');
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newSurveyTitle, setNewSurveyTitle] = useState('');
   const [newSurveyDesc, setNewSurveyDesc] = useState('');
-  const [targetCustId, setTargetCustId] = useState<string>('ALL');
+  // KS05: Đối tượng nhận khảo sát
+  const [targetMode, setTargetMode] = useState<'ALL' | 'TIER' | 'CUSTOM'>('ALL');
+  const [selectedTier, setSelectedTier] = useState<'ALL' | 'VIP' | 'ThanThiet' | 'PhoThong' | 'New'>('ALL');
+  const [selectedCustIds, setSelectedCustIds] = useState<string[]>([]);
+  const [custSearchTerm, setCustSearchTerm] = useState('');
+
+  // KS06: Thời gian khảo sát
+  const [surveyStartDate, setSurveyStartDate] = useState('');
+  const [surveyEndDate, setSurveyEndDate] = useState('');
+
+  // KS07: Thời gian đăng khảo sát
+  const [surveyPublishDate, setSurveyPublishDate] = useState('');
+
   const [questions, setQuestions] = useState<Array<{ id: string; text: string; opts: string[] }>>([
     { id: 'q1', text: 'Bạn đánh giá thế nào về chất lượng dịch vụ?', opts: ['Rất tốt', 'Tốt', 'Bình thường', 'Cần cải thiện'] },
   ]);
@@ -338,17 +355,66 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
     }));
   };
 
+  const handleOpenCreateModal = () => {
+    const now = new Date();
+    const nowIso = now.toISOString().slice(0, 16);
+    const endIso = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 16);
+    setSurveyPublishDate(nowIso);
+    setSurveyStartDate(nowIso);
+    setSurveyEndDate(endIso);
+    setTargetMode('ALL');
+    setSelectedTier('ALL');
+    setSelectedCustIds([]);
+    setCustSearchTerm('');
+    setShowCreateModal(true);
+  };
+
   const handleCreateSurvey = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newSurveyTitle.trim()) return;
 
-    const targetCustomer = customers.find(c => c.id === targetCustId);
+    let targetCustomerId: string = 'ALL';
+    let targetCustomerName: string | undefined = undefined;
+    let targetCustomerTier: 'ALL' | 'VIP' | 'Gold' | 'Standard' | 'New' = 'ALL';
+    let targetCustomerIds: string[] = [];
+
+    if (targetMode === 'ALL') {
+      targetCustomerId = 'ALL';
+      targetCustomerTier = 'ALL';
+    } else if (targetMode === 'TIER') {
+      targetCustomerId = 'ALL';
+      targetCustomerTier = selectedTier as any;
+    } else if (targetMode === 'CUSTOM') {
+      if (selectedCustIds.length === 0) {
+        setToast('⚠️ Vui lòng chọn ít nhất 1 khách hàng trong danh sách!');
+        setTimeout(() => setToast(null), 3000);
+        return;
+      }
+      targetCustomerIds = selectedCustIds;
+      if (selectedCustIds.length === 1) {
+        targetCustomerId = selectedCustIds[0];
+        const c = customers.find(x => x.id === selectedCustIds[0]);
+        targetCustomerName = c ? c.hoTen : undefined;
+      } else {
+        targetCustomerId = 'ALL';
+        targetCustomerName = `${selectedCustIds.length} khách hàng được chọn`;
+      }
+    }
+
+    const pubDate = surveyPublishDate || new Date().toISOString().slice(0, 16);
+    const sDate = surveyStartDate || pubDate;
+    const eDate = surveyEndDate || new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 16);
 
     const created = surveyApi.create({
       title: newSurveyTitle.trim(),
       description: newSurveyDesc.trim() || 'Khảo sát ý kiến đóng góp của khách hàng',
-      targetCustomerId: targetCustId,
-      targetCustomerName: targetCustomer ? targetCustomer.hoTen : undefined,
+      targetCustomerId,
+      targetCustomerName,
+      targetCustomerTier,
+      targetCustomerIds,
+      publishDate: pubDate,
+      startDate: sDate,
+      endDate: eDate,
       questions: questions.filter(q => q.text.trim().length > 0).map(q => ({
         id: q.id,
         text: q.text.trim(),
@@ -360,10 +426,18 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
     setShowCreateModal(false);
     setNewSurveyTitle('');
     setNewSurveyDesc('');
-    setTargetCustId('ALL');
+    setTargetMode('ALL');
+    setSelectedTier('ALL');
+    setSelectedCustIds([]);
+    setCustSearchTerm('');
     setQuestions([{ id: 'q1', text: 'Bạn đánh giá thế nào về chất lượng dịch vụ?', opts: ['Rất tốt', 'Tốt', 'Bình thường', 'Cần cải thiện'] }]);
 
-    setToast(`🎉 Đã tạo & gửi cuộc khảo sát "${created.title}" tới ${targetCustId === 'ALL' ? 'TẤT CẢ KHÁCH HÀNG' : targetCustomer?.hoTen}!`);
+    const statusBadge = surveyStatusLabels[created.status]?.label || created.status;
+    let targetLabel = 'TẤT CẢ KHÁCH HÀNG';
+    if (targetMode === 'TIER') targetLabel = `HẠNG KHÁCH HÀNG ${selectedTier}`;
+    else if (targetMode === 'CUSTOM') targetLabel = `${selectedCustIds.length} KHÁCH HÀNG ĐƯỢC CHỌN`;
+
+    setToast(`🎉 Đã tạo cuộc khảo sát "${created.title}" [${statusBadge}] gửi tới ${targetLabel}!`);
     setTimeout(() => setToast(null), 4000);
   };
 
@@ -739,309 +813,629 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
         </div>
       )}
 
-      {/* ── TAB 2: SURVEY CREATOR & MANAGEMENT ── */}
-      {activeMainTab === 'survey' && (
-        <div className="space-y-6">
-          <div className="flex justify-between items-center bg-white p-5 rounded-2xl border border-zinc-200 shadow-sm">
-            <div>
-              <h3 className="font-extrabold text-zinc-900 text-lg uppercase" style={{ fontFamily: 'var(--font-display)' }}>DANH SÁCH KHẢO SÁT ĐÃ GỬI</h3>
-              <p className="text-xs text-zinc-500">Tạo khảo sát mới để gửi câu hỏi trực tiếp vào ứng dụng của khách hàng</p>
-            </div>
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="px-4 py-2.5 rounded-xl text-xs font-bold text-white bg-red-700 hover:bg-red-800 shadow transition flex items-center gap-2"
-              style={{ fontFamily: 'var(--font-display)', letterSpacing: '0.04em' }}
-            >
-              <span>+ TẠO KHẢO SÁT MỚI</span>
-            </button>
-          </div>
+      {/* ── TAB 2: SURVEY CREATOR & MANAGEMENT (KS01 - KS08) ── */}
+      {activeMainTab === 'survey' && (() => {
+        const dangDienRaCount = surveys.filter(s => computeSurveyStatus(s) === 'DangDienRa').length;
+        const sapDienRaCount = surveys.filter(s => computeSurveyStatus(s) === 'SapDienRa').length;
+        const daKetThucCount = surveys.filter(s => computeSurveyStatus(s) === 'DaKetThuc').length;
+        const nhapCount = surveys.filter(s => computeSurveyStatus(s) === 'Nhap').length;
 
-          {/* List of Surveys */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {surveys.map(s => {
-              const responses = surveyResponses.filter(r => r.surveyId === s.id);
-              return (
-                <div key={s.id} className="bg-white rounded-2xl p-5 border border-zinc-200 shadow-sm flex flex-col justify-between">
-                  <div>
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <span className="text-xs font-mono px-2 py-0.5 rounded bg-zinc-100 text-zinc-600">{s.id}</span>
-                      <span className="text-xs font-bold font-mono px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
-                        {s.status === 'Active' ? '✓ Đang hoạt động' : 'Đã đóng'}
-                      </span>
-                    </div>
+        const displayedSurveys = surveys.filter(s => {
+          if (surveyStatusTab === 'ALL') return true;
+          return computeSurveyStatus(s) === surveyStatusTab;
+        });
 
-                    <h4 className="font-extrabold text-zinc-900 text-base mb-1" style={{ fontFamily: 'var(--font-display)' }}>
-                      {s.title}
-                    </h4>
-                    <p className="text-xs text-zinc-500 mb-3 leading-relaxed">{s.description}</p>
+        const filteredCustomersForSurvey = customers.filter(c => {
+          if (!custSearchTerm.trim()) return true;
+          const term = custSearchTerm.toLowerCase();
+          return (
+            c.hoTen.toLowerCase().includes(term) ||
+            c.soDienThoai.toLowerCase().includes(term) ||
+            c.id.toLowerCase().includes(term) ||
+            (c.email && c.email.toLowerCase().includes(term))
+          );
+        });
 
-                    <div className="bg-zinc-50 p-3 rounded-xl border border-zinc-200 space-y-1 text-xs mb-3 font-mono">
-                      <div><span className="text-zinc-500">Đối tượng nhận:</span> <strong className="text-zinc-800">{s.targetCustomerId === 'ALL' ? '🌐 TẤT CẢ KHÁCH HÀNG' : `👤 ${s.targetCustomerName || s.targetCustomerId}`}</strong></div>
-                      <div><span className="text-zinc-500">Số câu hỏi:</span> <strong className="text-zinc-800">{s.questions.length} câu</strong></div>
-                      <div><span className="text-zinc-500">Ngày tạo:</span> <strong className="text-zinc-800">{s.createdDate}</strong></div>
-                    </div>
-                  </div>
+        const handleSelectAllCustomers = () => {
+          const allFilteredIds = filteredCustomersForSurvey.map(c => c.id);
+          const union = Array.from(new Set([...selectedCustIds, ...allFilteredIds]));
+          setSelectedCustIds(union);
+        };
 
-                  <div className="pt-3 border-t border-zinc-100 flex items-center justify-between">
-                    <span className="text-xs font-bold text-red-700 font-mono">
-                      📊 {responses.length} phản hồi từ khách hàng
-                    </span>
-                    <button
-                      onClick={() => setSelectedSurveyForStats(s)}
-                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-50 text-red-700 hover:bg-red-100 border border-red-200 cursor-pointer transition"
-                    >
-                      📊 Xem thống kê kết quả
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+        const handleDeselectAllCustomers = () => {
+          setSelectedCustIds([]);
+        };
 
-          {/* Modal Create Survey */}
-          {showCreateModal && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-              <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-zinc-200 max-h-[90vh] overflow-y-auto">
-                <div className="flex justify-between items-center mb-4 pb-3 border-b border-zinc-200">
-                  <h3 className="font-extrabold text-base text-zinc-900 uppercase" style={{ fontFamily: 'var(--font-display)', letterSpacing: '0.04em' }}>
-                    TẠO KHẢO SÁT & GỬI TỚI KHÁCH HÀNG
-                  </h3>
-                  <button onClick={() => setShowCreateModal(false)} className="text-zinc-400 hover:text-zinc-600 font-bold text-lg">✕</button>
-                </div>
+        const handleToggleCustomer = (cId: string) => {
+          setSelectedCustIds(prev =>
+            prev.includes(cId) ? prev.filter(id => id !== cId) : [...prev, cId]
+          );
+        };
 
-                <form onSubmit={handleCreateSurvey} className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-zinc-700 mb-1 uppercase">Tiêu đề khảo sát *</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="VD: Khảo sát dịch vụ thay nhớt chính hãng 2025"
-                      value={newSurveyTitle}
-                      onChange={e => setNewSurveyTitle(e.target.value)}
-                      className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-zinc-700 mb-1 uppercase">Mô tả cuộc khảo sát</label>
-                    <textarea
-                      rows={2}
-                      placeholder="Mô tả mục đích khảo sát..."
-                      value={newSurveyDesc}
-                      onChange={e => setNewSurveyDesc(e.target.value)}
-                      className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-zinc-700 mb-1 uppercase">Gửi tới đối tượng khách hàng *</label>
-                    <select
-                      value={targetCustId}
-                      onChange={e => setTargetCustId(e.target.value)}
-                      className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600 font-semibold"
-                    >
-                      <option value="ALL">🌐 TẤT CẢ KHÁCH HÀNG (Gửi toàn hệ thống)</option>
-                      {customers.map(c => (
-                        <option key={c.id} value={c.id}>
-                          👤 {c.hoTen} ({c.soDienThoai} - {c.email})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Questions Section */}
-                  <div className="pt-2">
-                    <div className="flex items-center justify-between mb-2">
-                      <label className="text-xs font-bold text-zinc-900 uppercase">Danh sách câu hỏi ({questions.length})</label>
-                      <button
-                        type="button"
-                        onClick={handleAddQuestion}
-                        className="text-xs font-bold text-red-700 hover:underline"
-                      >
-                        + Thêm câu hỏi
-                      </button>
-                    </div>
-
-                    <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
-                      {questions.map((q, qIdx) => (
-                        <div key={q.id || qIdx} className="p-3 bg-zinc-50 rounded-xl border border-zinc-200 space-y-2">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-red-700">Câu {qIdx + 1}.</span>
-                            <input
-                              type="text"
-                              required
-                              placeholder="Nhập nội dung câu hỏi..."
-                              value={q.text}
-                              onChange={e => handleQuestionTextChange(qIdx, e.target.value)}
-                              className="flex-1 p-2 rounded-lg border border-zinc-300 text-xs bg-white"
-                            />
-                            {questions.length > 1 && (
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveQuestion(qIdx)}
-                                className="text-zinc-400 hover:text-red-600 text-xs font-bold px-1"
-                              >
-                                ✕
-                              </button>
-                            )}
-                          </div>
-
-                          <div className="pl-6 space-y-1">
-                            <span className="text-[10px] font-semibold text-zinc-500 uppercase">Các lựa chọn đáp án:</span>
-                            <div className="grid grid-cols-2 gap-1.5">
-                              {q.opts.map((opt, oIdx) => (
-                                <input
-                                  key={oIdx}
-                                  type="text"
-                                  value={opt}
-                                  onChange={e => handleQuestionOptChange(qIdx, oIdx, e.target.value)}
-                                  className="p-1.5 rounded border border-zinc-200 text-xs bg-white"
-                                  placeholder={`Đáp án ${oIdx + 1}`}
-                                />
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end gap-2 pt-3 border-t border-zinc-200">
-                    <button
-                      type="button"
-                      onClick={() => setShowCreateModal(false)}
-                      className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
-                    >
-                      Hủy
-                    </button>
-                    <button
-                      type="submit"
-                      className="px-5 py-2.5 rounded-xl text-xs font-bold bg-red-700 text-white hover:bg-red-800 shadow"
-                    >
-                      🚀 GỬI KHẢO SÁT NGAY
-                    </button>
-                  </div>
-                </form>
+        return (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center bg-white p-5 rounded-2xl border border-zinc-200 shadow-sm flex-wrap gap-4">
+              <div>
+                <h3 className="font-extrabold text-zinc-900 text-lg uppercase" style={{ fontFamily: 'var(--font-display)' }}>
+                  QUẢN LÝ & TẠO KHẢO SÁT KHÁCH HÀNG
+                </h3>
+                <p className="text-xs text-zinc-500 mt-0.5">
+                  Tạo khảo sát theo đối tượng, hẹn giờ công bố và theo dõi thống kê phản hồi thời gian thực
+                </p>
               </div>
+              <button
+                type="button"
+                onClick={handleOpenCreateModal}
+                className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-red-700 hover:bg-red-800 shadow transition flex items-center gap-2 cursor-pointer"
+                style={{ fontFamily: 'var(--font-display)', letterSpacing: '0.04em' }}
+              >
+                <span>+ TẠO KHẢO SÁT MỚI</span>
+              </button>
             </div>
-          )}
 
-          {/* Modal Survey Statistics (Rubric 4.1.7) */}
-          {selectedSurveyForStats && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-              <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-zinc-200 max-h-[90vh] overflow-y-auto space-y-5">
-                <div className="flex justify-between items-start pb-3 border-b border-zinc-200">
-                  <div>
-                    <span className="text-xs font-mono font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded">
-                      MÃ KHẢO SÁT: {selectedSurveyForStats.id}
-                    </span>
-                    <h3 className="font-extrabold text-lg text-zinc-900 mt-1 uppercase" style={{ fontFamily: 'var(--font-display)' }}>
-                      THỐNG KÊ KẾT QUẢ: {selectedSurveyForStats.title}
-                    </h3>
-                    <p className="text-xs text-zinc-500 mt-0.5">{selectedSurveyForStats.description}</p>
-                  </div>
-                  <button
-                    onClick={() => setSelectedSurveyForStats(null)}
-                    className="text-zinc-400 hover:text-zinc-700 font-bold text-xl px-2"
-                  >
-                    ✕
-                  </button>
-                </div>
+            {/* KS08: Thanh lọc trạng thái khảo sát tự động */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
+              {[
+                { id: 'ALL', label: `Tất cả (${surveys.length})` },
+                { id: 'DangDienRa', label: `🟢 Đang diễn ra (${dangDienRaCount})` },
+                { id: 'SapDienRa', label: `🟡 Sắp diễn ra (${sapDienRaCount})` },
+                { id: 'DaKetThuc', label: `⚪ Đã kết thúc (${daKetThucCount})` },
+                { id: 'Nhap', label: `🔵 Bản nháp (${nhapCount})` },
+              ].map(tab => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setSurveyStatusTab(tab.id as any)}
+                  className={`px-3.5 py-2 rounded-xl font-bold transition whitespace-nowrap cursor-pointer ${
+                    surveyStatusTab === tab.id
+                      ? 'bg-zinc-950 text-white shadow-sm'
+                      : 'bg-white text-zinc-600 hover:bg-zinc-100 border border-zinc-200'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
 
-                {/* Quick summary stats */}
-                {(() => {
-                  const sResponses = surveyResponses.filter(r => r.surveyId === selectedSurveyForStats.id);
+            {/* List of Surveys */}
+            {displayedSurveys.length === 0 ? (
+              <div className="text-center py-12 bg-white rounded-2xl border border-zinc-200 text-zinc-400 text-xs font-mono">
+                Không tìm thấy bài khảo sát nào trong danh mục này.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {displayedSurveys.map(s => {
+                  const responses = surveyResponses.filter(r => r.surveyId === s.id);
+                  const liveStatus = computeSurveyStatus(s);
+                  const statusCfg = surveyStatusLabels[liveStatus] || surveyStatusLabels.DangDienRa;
+
+                  let targetText = '🌐 TẤT CẢ KHÁCH HÀNG';
+                  if (s.targetCustomerIds && s.targetCustomerIds.length > 0) {
+                    targetText = `👥 ${s.targetCustomerIds.length} khách hàng được chọn`;
+                  } else if (s.targetCustomerTier && s.targetCustomerTier !== 'ALL') {
+                    targetText = `👑 Hạng hội viên: ${s.targetCustomerTier}`;
+                  } else if (s.targetCustomerId && s.targetCustomerId !== 'ALL') {
+                    targetText = `👤 ${s.targetCustomerName || s.targetCustomerId}`;
+                  }
+
                   return (
-                    <div className="space-y-5">
-                      <div className="grid grid-cols-3 gap-3">
-                        <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-200 text-center">
-                          <div className="text-xl font-extrabold text-zinc-900 font-display">{sResponses.length}</div>
-                          <div className="text-[11px] text-zinc-500 uppercase font-mono">Tổng phản hồi</div>
+                    <div key={s.id} className="bg-white rounded-2xl p-5 border border-zinc-200 shadow-sm flex flex-col justify-between hover:shadow-md transition">
+                      <div>
+                        {/* Header card with Live Status Badge (KS08) */}
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <span className="text-xs font-mono px-2.5 py-0.5 rounded bg-zinc-100 text-zinc-700 font-bold border border-zinc-200">
+                            {s.id}
+                          </span>
+                          <span
+                            className="text-xs font-bold font-mono px-2.5 py-0.5 rounded-full"
+                            style={{
+                              background: statusCfg.bg,
+                              color: statusCfg.text,
+                              border: `1px solid ${statusCfg.border}`,
+                            }}
+                          >
+                            ● {statusCfg.label}
+                          </span>
                         </div>
-                        <div className="p-3 bg-blue-50 rounded-xl border border-blue-200 text-center">
-                          <div className="text-xl font-extrabold text-blue-700 font-display">{selectedSurveyForStats.questions.length}</div>
-                          <div className="text-[11px] text-blue-600 uppercase font-mono">Câu hỏi đánh giá</div>
-                        </div>
-                        <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-center">
-                          <div className="text-xl font-extrabold text-emerald-700 font-display">
-                            {selectedSurveyForStats.targetCustomerId === 'ALL' ? 'Toàn bộ' : selectedSurveyForStats.targetCustomerName || 'Cá nhân'}
+
+                        <h4 className="font-extrabold text-zinc-900 text-base mb-1" style={{ fontFamily: 'var(--font-display)' }}>
+                          {s.title}
+                        </h4>
+                        <p className="text-xs text-zinc-500 mb-3 leading-relaxed">{s.description}</p>
+
+                        {/* KS05, KS06, KS07 Information Details */}
+                        <div className="bg-zinc-50 p-3.5 rounded-xl border border-zinc-200 space-y-1.5 text-xs mb-3 font-mono">
+                          <div>
+                            <span className="text-zinc-500">Đối tượng nhận:</span>{' '}
+                            <strong className="text-zinc-800">{targetText}</strong>
                           </div>
-                          <div className="text-[11px] text-emerald-700 uppercase font-mono">Đối tượng khảo sát</div>
+                          <div>
+                            <span className="text-zinc-500">📅 Thời gian KS:</span>{' '}
+                            <strong className="text-zinc-800">{formatSurveyDateTime(s.startDate)} - {formatSurveyDateTime(s.endDate)}</strong>
+                          </div>
+                          <div>
+                            <span className="text-zinc-500">🚀 Ngày đăng:</span>{' '}
+                            <strong className="text-zinc-800">{formatSurveyDateTime(s.publishDate)}</strong>
+                          </div>
+                          <div className="flex items-center justify-between text-zinc-500 pt-1 border-t border-zinc-200">
+                            <span>Số câu hỏi: <strong className="text-zinc-800">{s.questions.length} câu</strong></span>
+                            <span>Ngày tạo: <strong className="text-zinc-800">{s.createdDate}</strong></span>
+                          </div>
                         </div>
                       </div>
 
-                      {/* Question-by-question statistical breakdown */}
-                      <div className="space-y-4">
-                        <h4 className="text-xs font-bold font-mono text-zinc-800 uppercase tracking-wider">
-                          TỶ LỆ LỰA CHỌN THEO TỪNG CÂU HỎI
-                        </h4>
-
-                        {selectedSurveyForStats.questions.map((q, qIdx) => {
-                          const totalAnswersForQ = sResponses.filter(r => r.answers && r.answers[q.id]).length;
-
-                          return (
-                            <div key={q.id} className="p-4 rounded-xl border border-zinc-200 bg-zinc-50/50 space-y-3">
-                              <div className="text-sm font-bold text-zinc-900 flex items-start gap-2">
-                                <span className="text-red-700 font-mono">Câu {qIdx + 1}:</span>
-                                <span>{q.text}</span>
-                              </div>
-
-                              <div className="space-y-2">
-                                {q.opts.map((opt, optIdx) => {
-                                  const voteCount = sResponses.filter(r => r.answers && r.answers[q.id] === opt).length;
-                                  const pct = totalAnswersForQ > 0 ? Math.round((voteCount / totalAnswersForQ) * 100) : 0;
-                                  const colors = ['#2563eb', '#16a34a', '#d97706', '#dc2626', '#7c3aed'];
-                                  const barColor = colors[optIdx % colors.length];
-
-                                  return (
-                                    <div key={opt} className="space-y-1">
-                                      <div className="flex justify-between items-center text-xs">
-                                        <span className="font-semibold text-zinc-700">{opt}</span>
-                                        <span className="font-mono text-zinc-500 font-bold">
-                                          {voteCount} phiếu ({pct}%)
-                                        </span>
-                                      </div>
-                                      <div className="w-full h-2 rounded-full bg-zinc-200 overflow-hidden">
-                                        <div
-                                          className="h-full rounded-full transition-all duration-500"
-                                          style={{ width: `${pct}%`, background: barColor }}
-                                        />
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      {/* Respondent list */}
-                      <div className="pt-3 border-t border-zinc-200">
-                        <h4 className="text-xs font-bold font-mono text-zinc-800 uppercase tracking-wider mb-2">
-                          DANH SÁCH KHÁCH HÀNG ĐÃ THAM GIA ({sResponses.length})
-                        </h4>
-                        {sResponses.length === 0 ? (
-                          <div className="text-xs text-zinc-400 py-3 text-center">Chưa có khách hàng nào gửi câu trả lời.</div>
-                        ) : (
-                          <div className="divide-y divide-zinc-100 max-h-40 overflow-y-auto">
-                            {sResponses.map(r => (
-                              <div key={r.id} className="py-2 flex items-center justify-between text-xs">
-                                <div className="font-semibold text-zinc-900">👤 {r.customerName}</div>
-                                <div className="text-zinc-400 font-mono">Ngày gửi: {r.submittedDate}</div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
+                      <div className="pt-3 border-t border-zinc-100 flex items-center justify-between">
+                        <span className="text-xs font-bold text-red-700 font-mono">
+                          📊 {responses.length} phản hồi từ khách hàng
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedSurveyForStats(s)}
+                          className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-700 hover:bg-red-100 border border-red-200 cursor-pointer transition flex items-center gap-1.5"
+                        >
+                          <span>📊 Xem thống kê kết quả</span>
+                        </button>
                       </div>
                     </div>
                   );
-                })()}
+                })}
               </div>
-            </div>
-          )}
-        </div>
-      )}
+            )}
+
+            {/* Modal Create Survey (KS05, KS06, KS07, KS08) */}
+            {showCreateModal && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-zinc-200 max-h-[92vh] overflow-y-auto">
+                  <div className="flex justify-between items-center mb-4 pb-3 border-b border-zinc-200">
+                    <div>
+                      <h3 className="font-extrabold text-base text-zinc-900 uppercase" style={{ fontFamily: 'var(--font-display)', letterSpacing: '0.04em' }}>
+                        TẠO KHẢO SÁT & CÀI ĐẶT LỊCH PHÁT HÀNH
+                      </h3>
+                      <p className="text-[11px] text-zinc-500 mt-0.5">
+                        Thiết lập thời gian khảo sát, đối tượng nhận và các câu hỏi thăm dò ý kiến
+                      </p>
+                    </div>
+                    <button type="button" onClick={() => setShowCreateModal(false)} className="text-zinc-400 hover:text-zinc-600 font-bold text-xl px-2">✕</button>
+                  </div>
+
+                  <form onSubmit={handleCreateSurvey} className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-700 mb-1 uppercase">Tiêu đề khảo sát *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="VD: Khảo sát chất lượng dịch vụ bảo dưỡng định kỳ 2026"
+                        value={newSurveyTitle}
+                        onChange={e => setNewSurveyTitle(e.target.value)}
+                        className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-700 mb-1 uppercase">Mô tả cuộc khảo sát</label>
+                      <textarea
+                        rows={2}
+                        placeholder="Mô tả mục đích khảo sát và ý nghĩa đóng góp của khách hàng..."
+                        value={newSurveyDesc}
+                        onChange={e => setNewSurveyDesc(e.target.value)}
+                        className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600"
+                      />
+                    </div>
+
+                    {/* KS06 & KS07: Cài đặt thời gian đăng và thời gian khảo sát */}
+                    <div className="p-4 bg-zinc-50 rounded-xl border border-zinc-200 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-red-700 font-bold">📅</span>
+                        <span className="text-xs font-bold text-zinc-800 uppercase">Cài đặt thời gian & Lịch đăng (KS06 & KS07)</span>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div>
+                          <label className="block text-[11px] font-semibold text-zinc-600 mb-1">
+                            🚀 Ngày giờ đăng (Publish) *
+                          </label>
+                          <input
+                            type="datetime-local"
+                            required
+                            value={surveyPublishDate}
+                            onChange={e => setSurveyPublishDate(e.target.value)}
+                            className="w-full p-2 rounded-lg border border-zinc-300 text-xs bg-white font-mono"
+                          />
+                          <p className="text-[10px] text-zinc-400 mt-1">Trước giờ đăng sẽ ở trạng thái Nháp</p>
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-zinc-600 mb-1">
+                            🟢 Bắt đầu khảo sát (Start) *
+                          </label>
+                          <input
+                            type="datetime-local"
+                            required
+                            value={surveyStartDate}
+                            onChange={e => setSurveyStartDate(e.target.value)}
+                            className="w-full p-2 rounded-lg border border-zinc-300 text-xs bg-white font-mono"
+                          />
+                          <p className="text-[10px] text-zinc-400 mt-1">Thời điểm mở nhận câu trả lời</p>
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-zinc-600 mb-1">
+                            🔴 Kết thúc khảo sát (End) *
+                          </label>
+                          <input
+                            type="datetime-local"
+                            required
+                            value={surveyEndDate}
+                            onChange={e => setSurveyEndDate(e.target.value)}
+                            className="w-full p-2 rounded-lg border border-zinc-300 text-xs bg-white font-mono"
+                          />
+                          <p className="text-[10px] text-zinc-400 mt-1">Sau thời điểm này sẽ đóng khảo sát</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* KS05: Chọn và lọc đối tượng khảo sát */}
+                    <div className="p-4 bg-zinc-50 rounded-xl border border-zinc-200 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-blue-700 font-bold">🎯</span>
+                          <span className="text-xs font-bold text-zinc-800 uppercase">Đối tượng nhận khảo sát (KS05)</span>
+                        </div>
+                        <span className="text-[11px] font-mono font-bold text-zinc-500">
+                          {targetMode === 'ALL' && 'Toàn hệ thống'}
+                          {targetMode === 'TIER' && `Hạng: ${selectedTier}`}
+                          {targetMode === 'CUSTOM' && `Đã chọn: ${selectedCustIds.length} KH`}
+                        </span>
+                      </div>
+
+                      {/* Mode selection buttons */}
+                      <div className="grid grid-cols-3 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setTargetMode('ALL')}
+                          className={`p-2 rounded-xl text-xs font-bold transition border cursor-pointer ${
+                            targetMode === 'ALL'
+                              ? 'bg-red-700 text-white border-red-700'
+                              : 'bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-100'
+                          }`}
+                        >
+                          🌐 Tất cả khách hàng
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setTargetMode('TIER')}
+                          className={`p-2 rounded-xl text-xs font-bold transition border cursor-pointer ${
+                            targetMode === 'TIER'
+                              ? 'bg-red-700 text-white border-red-700'
+                              : 'bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-100'
+                          }`}
+                        >
+                          👑 Theo Hạng hội viên
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setTargetMode('CUSTOM')}
+                          className={`p-2 rounded-xl text-xs font-bold transition border cursor-pointer ${
+                            targetMode === 'CUSTOM'
+                              ? 'bg-red-700 text-white border-red-700'
+                              : 'bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-100'
+                          }`}
+                        >
+                          👥 Chọn nhiều KH cụ thể
+                        </button>
+                      </div>
+
+                      {/* Mode: TIER */}
+                      {targetMode === 'TIER' && (
+                        <div className="space-y-1.5 pt-2">
+                          <label className="block text-[11px] font-semibold text-zinc-600">Chọn Hạng thành viên mục tiêu:</label>
+                          <select
+                            value={selectedTier}
+                            onChange={e => setSelectedTier(e.target.value as any)}
+                            className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs bg-white font-semibold focus:outline-none focus:border-red-600"
+                          >
+                            <option value="ALL">🌐 Tất cả các hạng thành viên ({customers.length} khách)</option>
+                            <option value="VIP">👑 Khách VIP (Chi tiêu ≥ 10 triệu) - {customers.filter(c => c.tongChiTieu >= 10000000).length} khách</option>
+                            <option value="ThanThiet">⭐ Khách Thân thiết (Chi tiêu 4tr - 10tr) - {customers.filter(c => c.tongChiTieu >= 4000000 && c.tongChiTieu < 10000000).length} khách</option>
+                            <option value="PhoThong">🌱 Khách Phổ thông (Chi tiêu &lt; 4 triệu) - {customers.filter(c => c.tongChiTieu < 4000000).length} khách</option>
+                            <option value="New">🆕 Khách hàng mới (0₫) - {customers.filter(c => c.tongChiTieu === 0).length} khách</option>
+                          </select>
+                        </div>
+                      )}
+
+                      {/* Mode: CUSTOM (Multi-select with search and select-all) */}
+                      {targetMode === 'CUSTOM' && (
+                        <div className="space-y-2 pt-2">
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              placeholder="Tìm kiếm khách hàng theo tên, SĐT, mã KH..."
+                              value={custSearchTerm}
+                              onChange={e => setCustSearchTerm(e.target.value)}
+                              className="flex-1 p-2 rounded-lg border border-zinc-300 text-xs bg-white"
+                            />
+                            <button
+                              type="button"
+                              onClick={handleSelectAllCustomers}
+                              className="px-2.5 py-2 rounded-lg bg-zinc-200 text-zinc-800 text-xs font-bold hover:bg-zinc-300 cursor-pointer"
+                            >
+                              Chọn tất cả ({filteredCustomersForSurvey.length})
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleDeselectAllCustomers}
+                              className="px-2.5 py-2 rounded-lg bg-zinc-100 text-zinc-600 text-xs font-bold hover:bg-zinc-200 cursor-pointer"
+                            >
+                              Bỏ chọn
+                            </button>
+                          </div>
+
+                          <div className="max-h-48 overflow-y-auto border border-zinc-200 rounded-xl divide-y divide-zinc-100 bg-white p-1">
+                            {filteredCustomersForSurvey.length === 0 ? (
+                              <div className="p-3 text-center text-xs text-zinc-400">Không tìm thấy khách hàng phù hợp</div>
+                            ) : (
+                              filteredCustomersForSurvey.map(c => {
+                                const isChecked = selectedCustIds.includes(c.id);
+                                const tier = getCustomerTier(c.tongChiTieu);
+                                return (
+                                  <label
+                                    key={c.id}
+                                    onClick={() => handleToggleCustomer(c.id)}
+                                    className={`flex items-center justify-between p-2 rounded-lg cursor-pointer text-xs transition ${
+                                      isChecked ? 'bg-red-50/70 font-semibold' : 'hover:bg-zinc-50'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-2.5">
+                                      <input
+                                        type="checkbox"
+                                        checked={isChecked}
+                                        onChange={() => {}}
+                                        className="rounded accent-red-700 w-4 h-4 cursor-pointer"
+                                      />
+                                      <span className="font-mono text-zinc-500 font-bold">{c.id}</span>
+                                      <span className="text-zinc-900">{c.hoTen}</span>
+                                      <span className="text-zinc-400 font-mono text-[11px]">{c.soDienThoai}</span>
+                                    </div>
+                                    <span
+                                      className="px-2 py-0.5 rounded text-[10px] font-bold"
+                                      style={{ background: tier.badgeBg, color: tier.badgeColor, border: `1px solid ${tier.badgeBorder}` }}
+                                    >
+                                      {tier.shortLabel}
+                                    </span>
+                                  </label>
+                                );
+                              })
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Questions Section */}
+                    <div className="pt-2">
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="text-xs font-bold text-zinc-900 uppercase">Danh sách câu hỏi ({questions.length})</label>
+                        <button
+                          type="button"
+                          onClick={handleAddQuestion}
+                          className="text-xs font-bold text-red-700 hover:underline cursor-pointer"
+                        >
+                          + Thêm câu hỏi
+                        </button>
+                      </div>
+
+                      <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
+                        {questions.map((q, qIdx) => (
+                          <div key={q.id || qIdx} className="p-3 bg-zinc-50 rounded-xl border border-zinc-200 space-y-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-red-700">Câu {qIdx + 1}.</span>
+                              <input
+                                type="text"
+                                required
+                                placeholder="Nhập nội dung câu hỏi..."
+                                value={q.text}
+                                onChange={e => handleQuestionTextChange(qIdx, e.target.value)}
+                                className="flex-1 p-2 rounded-lg border border-zinc-300 text-xs bg-white"
+                              />
+                              {questions.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveQuestion(qIdx)}
+                                  className="text-zinc-400 hover:text-red-600 text-xs font-bold px-1 cursor-pointer"
+                                >
+                                  ✕
+                                </button>
+                              )}
+                            </div>
+
+                            <div className="pl-6 space-y-1">
+                              <span className="text-[10px] font-semibold text-zinc-500 uppercase">Các lựa chọn đáp án:</span>
+                              <div className="grid grid-cols-2 gap-1.5">
+                                {q.opts.map((opt, oIdx) => (
+                                  <input
+                                    key={oIdx}
+                                    type="text"
+                                    value={opt}
+                                    onChange={e => handleQuestionOptChange(qIdx, oIdx, e.target.value)}
+                                    className="p-1.5 rounded border border-zinc-200 text-xs bg-white"
+                                    placeholder={`Đáp án ${oIdx + 1}`}
+                                  />
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-3 border-t border-zinc-200">
+                      <button
+                        type="button"
+                        onClick={() => setShowCreateModal(false)}
+                        className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-zinc-100 text-zinc-700 hover:bg-zinc-200 cursor-pointer"
+                      >
+                        Hủy
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-6 py-2.5 rounded-xl text-xs font-bold bg-red-700 text-white hover:bg-red-800 shadow cursor-pointer"
+                      >
+                        🚀 PHÁT HÀNH / LƯU KHẢO SÁT
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {/* Modal Survey Statistics (KS03) */}
+            {selectedSurveyForStats && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-zinc-200 max-h-[90vh] overflow-y-auto space-y-5">
+                  <div className="flex justify-between items-start pb-3 border-b border-zinc-200">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-xs font-mono font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded border border-red-200">
+                          MÃ KHẢO SÁT: {selectedSurveyForStats.id}
+                        </span>
+                        {(() => {
+                          const liveSt = computeSurveyStatus(selectedSurveyForStats);
+                          const cfg = surveyStatusLabels[liveSt] || surveyStatusLabels.DangDienRa;
+                          return (
+                            <span
+                              className="text-[11px] font-bold font-mono px-2 py-0.5 rounded-full"
+                              style={{ background: cfg.bg, color: cfg.text, border: `1px solid ${cfg.border}` }}
+                            >
+                              ● {cfg.label}
+                            </span>
+                          );
+                        })()}
+                      </div>
+                      <h3 className="font-extrabold text-lg text-zinc-900 uppercase" style={{ fontFamily: 'var(--font-display)' }}>
+                        THỐNG KÊ KẾT QUẢ: {selectedSurveyForStats.title}
+                      </h3>
+                      <p className="text-xs text-zinc-500 mt-0.5">{selectedSurveyForStats.description}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedSurveyForStats(null)}
+                      className="text-zinc-400 hover:text-zinc-700 font-bold text-xl px-2 cursor-pointer"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  {/* Quick summary stats */}
+                  {(() => {
+                    const sResponses = surveyResponses.filter(r => r.surveyId === selectedSurveyForStats.id);
+                    return (
+                      <div className="space-y-5">
+                        <div className="grid grid-cols-3 gap-3">
+                          <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-200 text-center">
+                            <div className="text-xl font-extrabold text-zinc-900 font-display">{sResponses.length}</div>
+                            <div className="text-[11px] text-zinc-500 uppercase font-mono">Tổng phản hồi</div>
+                          </div>
+                          <div className="p-3 bg-blue-50 rounded-xl border border-blue-200 text-center">
+                            <div className="text-xl font-extrabold text-blue-700 font-display">{selectedSurveyForStats.questions.length}</div>
+                            <div className="text-[11px] text-blue-600 uppercase font-mono">Câu hỏi đánh giá</div>
+                          </div>
+                          <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-center">
+                            <div className="text-xl font-extrabold text-emerald-700 font-display">
+                              {selectedSurveyForStats.targetCustomerIds?.length
+                                ? `${selectedSurveyForStats.targetCustomerIds.length} KH`
+                                : selectedSurveyForStats.targetCustomerTier && selectedSurveyForStats.targetCustomerTier !== 'ALL'
+                                ? `Hạng ${selectedSurveyForStats.targetCustomerTier}`
+                                : selectedSurveyForStats.targetCustomerId === 'ALL'
+                                ? 'Toàn bộ'
+                                : selectedSurveyForStats.targetCustomerName || 'Cá nhân'}
+                            </div>
+                            <div className="text-[11px] text-emerald-700 uppercase font-mono">Đối tượng khảo sát</div>
+                          </div>
+                        </div>
+
+                        {/* Question-by-question statistical breakdown */}
+                        <div className="space-y-4">
+                          <h4 className="text-xs font-bold font-mono text-zinc-800 uppercase tracking-wider">
+                            TỶ LỆ LỰA CHỌN THEO TỪNG CÂU HỎI
+                          </h4>
+
+                          {selectedSurveyForStats.questions.map((q, qIdx) => {
+                            const totalAnswersForQ = sResponses.filter(r => r.answers && r.answers[q.id]).length;
+
+                            return (
+                              <div key={q.id} className="p-4 rounded-xl border border-zinc-200 bg-zinc-50/50 space-y-3">
+                                <div className="text-sm font-bold text-zinc-900 flex items-start gap-2">
+                                  <span className="text-red-700 font-mono">Câu {qIdx + 1}:</span>
+                                  <span>{q.text}</span>
+                                </div>
+
+                                <div className="space-y-2">
+                                  {q.opts.map((opt, optIdx) => {
+                                    const voteCount = sResponses.filter(r => r.answers && r.answers[q.id] === opt).length;
+                                    const pct = totalAnswersForQ > 0 ? Math.round((voteCount / totalAnswersForQ) * 100) : 0;
+                                    const colors = ['#2563eb', '#16a34a', '#d97706', '#dc2626', '#7c3aed'];
+                                    const barColor = colors[optIdx % colors.length];
+
+                                    return (
+                                      <div key={opt} className="space-y-1">
+                                        <div className="flex justify-between items-center text-xs">
+                                          <span className="font-semibold text-zinc-700">{opt}</span>
+                                          <span className="font-mono text-zinc-500 font-bold">
+                                            {voteCount} phiếu ({pct}%)
+                                          </span>
+                                        </div>
+                                        <div className="w-full h-2 rounded-full bg-zinc-200 overflow-hidden">
+                                          <div
+                                            className="h-full rounded-full transition-all duration-500"
+                                            style={{ width: `${pct}%`, background: barColor }}
+                                          />
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* KS03: Danh sách khách hàng đã tham gia với mã KH */}
+                        <div className="pt-3 border-t border-zinc-200">
+                          <h4 className="text-xs font-bold font-mono text-zinc-800 uppercase tracking-wider mb-2">
+                            DANH SÁCH KHÁCH HÀNG ĐÃ THAM GIA ({sResponses.length})
+                          </h4>
+                          {sResponses.length === 0 ? (
+                            <div className="text-xs text-zinc-400 py-4 text-center bg-zinc-50 rounded-xl">
+                              Chưa có khách hàng nào gửi câu trả lời.
+                            </div>
+                          ) : (
+                            <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                              {sResponses.map(r => (
+                                <div key={r.id} className="p-3 bg-zinc-50 rounded-xl border border-zinc-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                                  <div className="flex items-center gap-2.5">
+                                    {/* KS03: Bổ sung mã khách hàng rõ ràng */}
+                                    <span className="font-mono text-[11px] font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded border border-blue-200">
+                                      Mã KH: {r.customerId || 'KH001'}
+                                    </span>
+                                    <span className="font-bold text-zinc-900">👤 {r.customerName}</span>
+                                  </div>
+                                  <div className="flex items-center gap-3 text-[11px] text-zinc-500 font-mono">
+                                    <span>📅 {formatSurveyDateTime(r.submittedDate)}</span>
+                                    <span className="text-emerald-700 font-bold bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
+                                      ✓ {Object.keys(r.answers || {}).length} câu trả lời
+                                    </span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* ── MODAL 1: CUỘC GỌI & NHẬT KÝ TRAO ĐỔI (ĐG06) ── */}
       {callFeedback && (

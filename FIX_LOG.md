@@ -628,3 +628,128 @@ Dưới đây là danh sách toàn bộ các tập tin đã can thiệp. Khi x�
   - Đăng nhập bằng tài khoản `admin@motoshop.vn` (Trần Văn Quản Lý - Giám đốc Showroom):
     * Bấm "Xác nhận đã xử lý" -> Thẻ phản hồi hiển thị: `👤 Nhân viên xử lý: Trần Văn Quản Lý (Giám đốc Showroom)`.
   - Toàn bộ lịch sử cuộc gọi và gửi email cũng đồng bộ chính xác theo tài khoản nhân viên đang thao tác.
+
+### Nhóm chức năng: KHẢO SÁT Ý KIẾN KHÁCH HÀNG (KS01 - KS08)
+- **Thời gian hoàn thành:** 04/10/2026 23:15
+- **Trạng thái:** ĐÃ FIX & ĐÃ KIỂM THỬ THÀNH CÔNG 100%
+
+#### 1. KS01 – Khung cảm ơn khảo sát tự động đóng
+* **Mô tả lỗi:** Khi khách hàng gửi câu trả lời khảo sát, hệ thống hiển thị một khung cảm ơn cố định ("🎉 Đã hoàn thành cuộc khảo sát!") chiếm diện tích lớn, không tự đóng và không có nút đóng. Nếu khách hàng làm nhiều khảo sát thì các khung này xếp chồng vĩnh viễn gây chật chội màn hình.
+* **Kết quả mong đợi:** Khung cảm ơn chỉ hiển thị tạm thời với bộ đếm ngược tự đóng sau 4 giây hoặc bấm nút ✕ để tắt ngay; không tạo thêm khung vĩnh viễn gây chật màn hình; lịch sử khảo sát đã làm được thu gọn gàng.
+* **Giải pháp đã thực hiện:**
+  - `CustomerDashboard.tsx`: Thay thế khung cảm ơn tĩnh bằng banner thông báo `surveyToast` nổi bật với icon ăn mừng `🎉 CẢM ƠN BẠN ĐÃ GỬI PHẢN HỒI KHẢO SÁT!`.
+  - Hiển thị badge đếm ngược thời gian: `⏱ Tự đóng sau {surveyToast.countdown}s`.
+  - Tích hợp nút `✕` cho phép khách hàng đóng ngay lập tức nếu muốn.
+  - Sử dụng hook `useEffect` và `setInterval` tự động đếm ngược từ 4 giây về 0 và tự hủy banner.
+  - Chuyển các khảo sát đã hoàn thành xuống mục accordion thu gọn `LỊCH SỬ KHẢO SÁT ĐÃ HOÀN THÀNH ({doneSurveys.length})` ở cuối tab, giúp khách hàng bấm xem lại khi cần mà không chiếm diện tích làm việc chính.
+* **Kết quả test:**
+  - Nộp bài khảo sát -> Banner cảm ơn màu xanh lá xuất hiện đẹp mắt, hiển thị đếm ngược 4s, 3s, 2s, 1s và tự đóng mượt mà.
+  - Bấm nút `✕` -> Banner tắt ngay lập tức.
+  - Màn hình thông thoáng, không còn hiện tượng khung thẻ bất tử bị xếp chồng.
+
+#### 2. KS02 – Hiển thị đầy đủ danh sách bài khảo sát đang phát hành
+* **Mô tả lỗi:** Khách hàng đăng nhập chỉ thấy 1 bài khảo sát thay vì thấy toàn bộ các bài khảo sát đang được phát hành trên hệ thống (như KS001, KS002...).
+* **Kết quả mong đợi:** Khách hàng thấy danh sách đầy đủ tất cả các bài khảo sát đang phát hành mà mình đủ điều kiện tham gia, có thể làm lần lượt từng bài.
+* **Giải pháp đã thực hiện:**
+  - `mockData.ts`: Chuẩn hóa dữ liệu `mockSurveys`, đảm bảo các bài khảo sát đang phát hành (`KS001` - Dịch vụ bảo dưỡng, `KS002` - Nhu cầu mua xe Honda SH 160i) có cấu hình `targetCustomerId: 'ALL'`, `targetCustomerTier: 'ALL'`, trạng thái `DangDienRa`.
+  - `CustomerDashboard.tsx`: Mở rộng điều kiện lọc khảo sát hợp lệ (`loadSurveys`):
+    * Khảo sát gửi đích danh cho khách hàng: `s.targetCustomerId === customer.id || s.targetCustomerIds?.includes(customer.id)`.
+    * Khảo sát gửi toàn hệ thống: `s.targetCustomerId === 'ALL'` kết hợp điều kiện phân hạng: `!s.targetCustomerTier || s.targetCustomerTier === 'ALL' || s.targetCustomerTier === custTier`.
+  - Hiển thị huy hiệu số lượng bài cần làm: `Có {pendingSurveys.length} bài khảo sát cần làm`.
+* **Kết quả test:**
+  - Khách hàng đăng nhập vào tab Khảo sát -> Thấy danh sách đầy đủ các bài khảo sát khả dụng (`KS001`, `KS002`...).
+  - Với tài khoản VIP: Thấy thêm khảo sát đặc quyền tri ân VIP (`KS003`).
+
+#### 3. KS03 – Bổ sung mã khách hàng trong danh sách phản hồi khảo sát
+* **Mô tả lỗi:** Trong modal thống kê kết quả khảo sát của Admin, danh sách khách hàng đã nộp bài chỉ hiển thị tên khách hàng mà không có mã khách hàng (Customer ID).
+* **Kết quả mong đợi:** Bổ sung mã khách hàng (ví dụ: `Mã KH: KH001`) bên cạnh tên khách hàng trong bảng thống kê của Admin.
+* **Giải pháp đã thực hiện:**
+  - `mockData.ts` & `api.ts`: Đảm bảo mỗi bản ghi `SurveyResponse` luôn lưu trữ đầy đủ `customerId`, `customerName`, `submittedDate`.
+  - `Feedback.tsx`: Trong mục "DANH SÁCH KHÁCH HÀNG ĐÃ THAM GIA" của Modal Thống kê kết quả:
+    * Hiển thị huy hiệu Mã KH màu xanh nổi bật: `<span className="font-mono text-[11px] font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded border border-blue-200">Mã KH: {r.customerId}</span>` ngay cạnh họ tên khách hàng `👤 {r.customerName}`.
+    * Hiển thị ngày giờ nộp bài `📅 {formatSurveyDateTime(r.submittedDate)}` và số câu hỏi đã trả lời.
+* **Kết quả test:**
+  - Admin bấm "Xem thống kê kết quả" bài KS001 -> Thấy danh sách người tham gia hiển thị rõ ràng: `Mã KH: KH001 👤 Nguyễn Văn An`, `Mã KH: KH002 👤 Trần Thị Bình`...
+
+#### 4. KS04 – Bắt buộc chọn đáp án tất cả câu hỏi trước khi gửi khảo sát
+* **Mô tả lỗi:** Khách hàng chưa chọn đáp án hoặc chỉ chọn một vài câu hỏi vẫn có thể bấm nút gửi khảo sát, dẫn đến dữ liệu khảo sát bị thiếu sót.
+* **Kết quả mong đợi:** Bắt buộc khách hàng chọn đủ đáp án cho tất cả câu hỏi trước khi gửi; cảnh báo rõ ràng và đánh dấu câu hỏi còn thiếu.
+* **Giải pháp đã thực hiện:**
+  - `CustomerDashboard.tsx`: Trong hàm `handleSubmitSurvey`:
+    * Kiểm tra danh sách câu hỏi chưa trả lời: `const missing = survey.questions.filter(q => !sAnswers[q.id] || !sAnswers[q.id].trim()).map(q => q.id);`.
+    * Nếu còn câu hỏi thiếu (`missing.length > 0`):
+      - Chặn hoàn toàn thao tác gửi khảo sát.
+      - Hiển thị thông báo lỗi màu đỏ: `"⚠️ Vui lòng hoàn thành tất cả câu hỏi trước khi gửi khảo sát! (Còn thiếu {missing.length}/{survey.questions.length} câu)"`.
+      - Đánh dấu nổi bật câu hỏi còn thiếu bằng viền đỏ dày `border-2 border-red-500 bg-red-50/40` và huy hiệu đỏ `⚠️ Chưa chọn đáp án`.
+      - Tự động cuộn trang (`scrollIntoView`) tới câu hỏi chưa trả lời đầu tiên để khách hàng bổ sung ngay.
+    * Khi khách hàng bấm chọn đáp án, hệ thống tự động gỡ bỏ cảnh báo đỏ của câu hỏi đó.
+    * Nút gửi câu trả lời hiển thị tiến độ thời gian thực: `GỬI CÂU TRẢ LỜI KHẢO SÁT ({answeredCount}/{total} CÂU)`.
+* **Kết quả test:**
+  - Để trống 1 câu rồi bấm Gửi -> Bị chặn lại ngay, câu hỏi bị viền đỏ và màn hình tự cuộn đến câu hỏi đó kèm cảnh báo lỗi.
+  - Chọn đủ tất cả đáp án -> Nút gửi chuyển trạng thái sẵn sàng và gửi thành công 100%.
+
+#### 5. KS05 – Chọn và lọc đối tượng khảo sát đa dạng
+* **Mô tả lỗi:** Form tạo khảo sát của Admin chỉ có 1 ô chọn đơn giản hoặc không cho lọc đối tượng theo phân khúc khách hàng hay chọn nhiều khách hàng cùng lúc.
+* **Kết quả mong đợi:** Cho phép Admin chọn đối tượng khảo sát linh hoạt: Tất cả khách hàng, lọc theo Hạng thành viên (VIP, Thân thiết, Phổ thông, Mới), hoặc chọn nhiều khách hàng cụ thể (checklist multi-select có tìm kiếm).
+* **Giải pháp đã thực hiện:**
+  - `Feedback.tsx`: Thiết kế lại khối "Đối tượng nhận khảo sát (KS05)" trong modal Tạo khảo sát với 3 chế độ:
+    1. **Tất cả khách hàng (ALL):** Phát hành rộng rãi tới toàn bộ khách hàng trên hệ thống.
+    2. **Theo Hạng hội viên (TIER):** Dropdown lọc theo Hạng thành viên (Tất cả, VIP ≥ 10tr, Thân thiết 4tr-10tr, Phổ thông < 4tr, Khách mới 0đ). Hiển thị số lượng khách hàng thuộc từng hạng theo thời gian thực.
+    3. **Chọn nhiều KH cụ thể (CUSTOM):**
+       - Ô tìm kiếm khách hàng tức thì theo tên, số điện thoại, mã khách hàng.
+       - Nút tiện ích "Chọn tất cả" và "Bỏ chọn".
+       - Danh sách checkbox dạng cuộn với đầy đủ thông tin: Checkbox, Mã KH, Họ tên, SĐT, Badge hạng hội viên.
+       - Huy hiệu đếm số lượng: `Đã chọn: X KH`.
+  - `api.ts`: API `surveyApi.create()` lưu trữ đầy đủ `targetCustomerTier`, `targetCustomerIds`, `targetCustomerId`.
+* **Kết quả test:**
+  - Admin tạo khảo sát chọn Hạng VIP -> Chỉ khách hàng có tổng chi tiêu ≥ 10 triệu mới thấy bài khảo sát.
+  - Admin tìm kiếm và tích chọn 2 khách hàng cụ thể (`KH001`, `KH003`) -> Bài khảo sát gửi đúng tới 2 tài khoản này.
+
+#### 6. KS06 – Bổ sung thời gian khảo sát (Bắt đầu và Kết thúc)
+* **Mô tả lỗi:** Bài khảo sát thiếu thông tin thời gian bắt đầu (`startDate`) và thời gian kết thúc (`endDate`), người dùng không biết thời hạn của cuộc khảo sát.
+* **Kết quả mong đợi:** Bổ sung trường thời gian bắt đầu và kết thúc; hiển thị rõ ràng trên thẻ khảo sát cả phía Admin và Khách hàng.
+* **Giải pháp đã thực hiện:**
+  - `mockData.ts`: Bổ sung `startDate?: string` và `endDate?: string` vào interface `Survey`.
+  - Xây dựng hàm tiện ích `formatSurveyDateTime(dtStr)` định dạng ngày giờ chuẩn Việt Nam: `DD/MM/YYYY HH:mm`.
+  - Form tạo khảo sát Admin: Bổ sung 2 trường chọn ngày giờ `datetime-local`: "Bắt đầu khảo sát (Start)" và "Kết thúc khảo sát (End)".
+  - Hiển thị thông tin thời gian trên từng thẻ khảo sát:
+    * Thẻ Admin: `📅 Thời gian KS: DD/MM/YYYY HH:mm - DD/MM/YYYY HH:mm`.
+    * Thẻ Khách hàng: `📅 Thời gian: DD/MM/YYYY HH:mm - DD/MM/YYYY HH:mm` trong khung badge trực quan.
+* **Kết quả test:**
+  - Thẻ khảo sát hiển thị rõ ràng khoảng thời gian hiệu lực, giúp khách hàng nắm rõ thời hạn phản hồi.
+
+#### 7. KS07 – Cài đặt thời gian đăng khảo sát
+* **Mô tả lỗi:** Admin không thể lên lịch công bố bài khảo sát trước, bài tạo ra lập tức phát hành mà không có tính năng hẹn giờ đăng.
+* **Kết quả mong đợi:** Cho phép Admin thiết lập thời gian bài khảo sát được đăng lên hệ thống (`publishDate`).
+* **Giải pháp đã thực hiện:**
+  - Bổ sung trường `publishDate?: string` vào model `Survey`.
+  - Form tạo khảo sát Admin: Bổ sung ô nhập `datetime-local`: "Ngày giờ đăng (Publish Date)".
+  - Logic kiểm soát: Nếu Admin đặt `publishDate` trong tương lai, khảo sát sẽ tự động ở trạng thái `Bản nháp (Nhap)` và chưa mở cho khách hàng làm trước thời điểm đăng.
+  - Trên thẻ khảo sát Admin: Hiển thị `🚀 Ngày đăng: DD/MM/YYYY HH:mm`.
+* **Kết quả test:**
+  - Admin đặt ngày đăng vào tuần sau -> Bài khảo sát lưu thành công ở trạng thái Bản nháp, phía khách hàng chưa thấy bài này.
+
+#### 8. KS08 – Tự động cập nhật trạng thái khảo sát thời gian thực
+* **Mô tả lỗi:** Trạng thái bài khảo sát bị gán cứng, không tự động chuyển đổi theo tiến trình thời gian thực tế.
+* **Kết quả mong đợi:** Tự động tính toán và cập nhật trạng thái theo 4 giai đoạn vòng đời: Nháp -> Sắp diễn ra -> Đang diễn ra -> Đã kết thúc.
+* **Giải pháp đã thực hiện:**
+  - Xây dựng hàm `computeSurveyStatus(survey: Survey)` trong `mockData.ts`:
+    * Nếu thời gian hiện tại `< survey.publishDate` $\to$ Trả về `Nhap` (Bản nháp).
+    * Nếu thời gian hiện tại `< survey.startDate` $\to$ Trả về `SapDienRa` (Sắp diễn ra).
+    * Nếu thời gian hiện tại `> survey.endDate` $\to$ Trả về `DaKetThuc` (Đã kết thúc).
+    * Ngược lại $\to$ Trả về `DangDienRa` (Đang diễn ra).
+  - Cấu hình màu sắc huy hiệu chuẩn `surveyStatusLabels`:
+    * `DangDienRa`: Xanh lá (`#ecfdf5`, viền `#a7f3d0`, chữ `#047857`)
+    * `SapDienRa`: Vàng cam (`#fffbeb`, viền `#fde68a`, chữ `#b45309`)
+    * `DaKetThuc`: Xám tro (`#f4f4f5`, viền `#e4e4e7`, chữ `#52525b`)
+    * `Nhap`: Xanh lam (`#eff6ff`, viền `#bfdbfe`, chữ `#1d4ed8`)
+  - `surveyApi.getAll()`: Tự động tính lại trạng thái thời gian thực cho từng khảo sát mỗi khi truy vấn.
+  - Giao diện Admin:
+    * Thêm thanh tab lọc trạng thái: `Tất cả ({total})`, `🟢 Đang diễn ra ({count})`, `🟡 Sắp diễn ra ({count})`, `⚪ Đã kết thúc ({count})`, `🔵 Bản nháp ({count})`.
+    * Từng thẻ khảo sát hiển thị chấm tròn màu và tên trạng thái trực quan.
+  - Giao diện Khách hàng:
+    * Tự động kiểm tra trạng thái khi nộp bài: Khóa gửi câu trả lời nếu khảo sát chưa mở hoặc đã kết thúc kèm thông báo giải thích cụ thể.
+* **Kết quả test:**
+  - Khảo sát quá hạn (ví dụ KS004) -> Tự động chuyển sang "Đã kết thúc" màu xám.
+  - Khảo sát tương lai (ví dụ KS003) -> Tự động hiển thị "Sắp diễn ra" màu vàng cam.
+  - Khảo sát hiện hành (KS001, KS002) -> Hiển thị "Đang diễn ra" màu xanh lá, cho phép nộp câu trả lời bình thường.

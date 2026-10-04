@@ -162,16 +162,81 @@ export interface SurveyQuestion {
   opts: string[];
 }
 
+export type SurveyStatus = 'Nhap' | 'SapDienRa' | 'DangDienRa' | 'DaKetThuc' | 'Active' | 'Closed';
+
 export interface Survey {
   id: string;
   title: string;
   description: string;
   targetCustomerId: string | 'ALL';
   targetCustomerName?: string;
+  targetCustomerIds?: string[]; // KS05: Cho phép chọn nhiều KH
+  targetCustomerTier?: 'ALL' | 'VIP' | 'Gold' | 'Standard' | 'New'; // KS05: Lọc theo Hạng KH
   createdDate: string;
+  publishDate?: string; // KS07: Cài đặt thời gian đăng khảo sát
+  startDate?: string;   // KS06: Thời gian bắt đầu
+  endDate?: string;     // KS06: Thời gian kết thúc
   questions: SurveyQuestion[];
-  status: 'Active' | 'Closed';
+  status: SurveyStatus; // KS08: Tự động cập nhật Nháp -> Sắp diễn ra -> Đang diễn ra -> Đã kết thúc
 }
+
+export function computeSurveyStatus(survey: Survey): 'Nhap' | 'SapDienRa' | 'DangDienRa' | 'DaKetThuc' {
+  if (survey.status === 'Nhap') return 'Nhap';
+  if (survey.status === 'Closed' || survey.status === 'DaKetThuc') return 'DaKetThuc';
+  
+  const now = new Date().getTime();
+
+  // Kiểm tra thời gian đăng (KS07)
+  if (survey.publishDate) {
+    const pub = new Date(survey.publishDate).getTime();
+    if (!isNaN(pub) && now < pub) {
+      return 'Nhap';
+    }
+  }
+
+  // Kiểm tra thời gian bắt đầu (KS06 & KS08)
+  if (survey.startDate) {
+    const start = new Date(survey.startDate).getTime();
+    if (!isNaN(start) && now < start) {
+      return 'SapDienRa';
+    }
+  }
+
+  // Kiểm tra thời gian kết thúc (KS06 & KS08)
+  if (survey.endDate) {
+    const end = new Date(survey.endDate).getTime();
+    if (!isNaN(end) && now > end) {
+      return 'DaKetThuc';
+    }
+  }
+
+  return 'DangDienRa';
+}
+
+export function formatSurveyDateTime(dtStr?: string): string {
+  if (!dtStr) return 'Không giới hạn';
+  try {
+    const d = new Date(dtStr);
+    if (isNaN(d.getTime())) return dtStr;
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    const hours = String(d.getHours()).padStart(2, '0');
+    const mins = String(d.getMinutes()).padStart(2, '0');
+    return `${day}/${month}/${year} ${hours}:${mins}`;
+  } catch {
+    return dtStr;
+  }
+}
+
+export const surveyStatusLabels: Record<string, { label: string; bg: string; text: string; border: string }> = {
+  DangDienRa: { label: 'Đang diễn ra', bg: '#ecfdf5', text: '#047857', border: '#a7f3d0' },
+  SapDienRa: { label: 'Sắp diễn ra', bg: '#fffbeb', text: '#b45309', border: '#fde68a' },
+  DaKetThuc: { label: 'Đã kết thúc', bg: '#f4f4f5', text: '#52525b', border: '#e4e4e7' },
+  Nhap: { label: 'Bản nháp', bg: '#eff6ff', text: '#1d4ed8', border: '#bfdbfe' },
+  Active: { label: 'Đang diễn ra', bg: '#ecfdf5', text: '#047857', border: '#a7f3d0' },
+  Closed: { label: 'Đã kết thúc', bg: '#f4f4f5', text: '#52525b', border: '#e4e4e7' },
+};
 
 export interface SurveyResponse {
   id: string;
@@ -882,8 +947,12 @@ export const mockSurveys: Survey[] = [
     title: 'Khảo sát chất lượng Dịch vụ Bảo dưỡng 2025',
     description: 'Đánh giá chất lượng phục vụ và thái độ nhân viên kỹ thuật tại showroom Motoshop.',
     targetCustomerId: 'ALL',
+    targetCustomerTier: 'ALL',
     createdDate: '2024-12-15',
-    status: 'Active',
+    publishDate: '2024-12-15T08:00',
+    startDate: '2024-12-15T08:00',
+    endDate: '2026-12-31T23:59',
+    status: 'DangDienRa',
     questions: [
       { id: 'q1', text: 'Bạn hài lòng với thái độ phục vụ của nhân viên kỹ thuật?', opts: ['Rất hài lòng', 'Hài lòng', 'Bình thường', 'Chưa hài lòng'] },
       { id: 'q2', text: 'Thời gian bảo dưỡng xe có đúng với cam kết?', opts: ['Nhanh hơn dự kiến', 'Đúng giờ', 'Hơi chậm', 'Quá chậm'] },
@@ -893,14 +962,49 @@ export const mockSurveys: Survey[] = [
   {
     id: 'KS002',
     title: 'Khảo sát nhu cầu mua xe mới Honda SH 160i 2025',
-    description: 'Dành riêng cho khách hàng Nguyễn Văn An tìm hiểu ưu đãi nâng cấp dòng xe ga cao cấp.',
-    targetCustomerId: 'KH001',
-    targetCustomerName: 'Nguyễn Văn An',
+    description: 'Chương trình tìm hiểu nhu cầu và ưu đãi nâng cấp dòng xe tay ga cao cấp.',
+    targetCustomerId: 'ALL',
+    targetCustomerTier: 'ALL',
     createdDate: '2024-12-16',
-    status: 'Active',
+    publishDate: '2024-12-16T08:00',
+    startDate: '2024-12-16T08:00',
+    endDate: '2026-12-31T23:59',
+    status: 'DangDienRa',
     questions: [
       { id: 'q1', text: 'Bạn có dự định đổi xe mới trong 6 tháng tới?', opts: ['Có, chắc chắn', 'Đang cân nhắc', 'Chưa có nhu cầu'] },
       { id: 'q2', text: 'Màu sắc xe Honda SH 160i nào bạn yêu thích nhất?', opts: ['Đen nhám', 'Đỏ kim loại', 'Trắng ngọc trai', 'Xám xi măng'] },
+    ]
+  },
+  {
+    id: 'KS003',
+    title: 'Khảo sát đặc quyền tri ân Khách hàng VIP Xuân 2027',
+    description: 'Khảo sát ý kiến đóng góp về chính sách quà tặng và cứu hộ miễn phí 24/7 dành cho hội viên thân thiết.',
+    targetCustomerId: 'ALL',
+    targetCustomerTier: 'VIP',
+    createdDate: '2024-12-20',
+    publishDate: '2024-12-20T08:00',
+    startDate: '2026-12-01T08:00',
+    endDate: '2027-02-28T23:59',
+    status: 'SapDienRa',
+    questions: [
+      { id: 'q1', text: 'Bạn mong muốn nhận đặc quyền nào nhất từ Motoshop?', opts: ['Bảo dưỡng tại nhà', 'Voucher giảm giá 30%', 'Tặng 1 năm cứu hộ 24/7', 'Rửa xe miễn phí trọn đời'] },
+      { id: 'q2', text: 'Kênh nhận thông tin ưu đãi tiện lợi nhất với bạn?', opts: ['Zalo CSKH', 'SMS điện thoại', 'Email thông báo', 'Gọi điện trực tiếp'] },
+    ]
+  },
+  {
+    id: 'KS004',
+    title: 'Khảo sát đánh giá trải nghiệm phụ tùng Quý 3/2024',
+    description: 'Đánh giá độ bền và độ tương thích của phụ tùng Motul, Michelin, Brembo lắp đặt tại showroom.',
+    targetCustomerId: 'ALL',
+    targetCustomerTier: 'ALL',
+    createdDate: '2024-07-01',
+    publishDate: '2024-07-01T08:00',
+    startDate: '2024-07-01T08:00',
+    endDate: '2024-09-30T23:59',
+    status: 'DaKetThuc',
+    questions: [
+      { id: 'q1', text: 'Độ êm ái của nhớt Motul sau 1.500km di chuyển?', opts: ['Rất êm', 'Bình thường', 'Hơi nóng máy'] },
+      { id: 'q2', text: 'Độ bám đường của lốp Michelin khi trời mưa?', opts: ['Rất tốt', 'Khá tốt', 'Chưa an tâm'] },
     ]
   }
 ];
@@ -916,7 +1020,30 @@ export const mockSurveyResponses: SurveyResponse[] = [
       q2: 'Đúng giờ',
       q3: 'Tốt'
     },
-    submittedDate: '2024-12-16'
+    submittedDate: '2024-12-16 10:30'
+  },
+  {
+    id: 'RSP002',
+    surveyId: 'KS001',
+    customerId: 'KH001',
+    customerName: 'Nguyễn Văn An',
+    answers: {
+      q1: 'Rất hài lòng',
+      q2: 'Nhanh hơn dự kiến',
+      q3: 'Hiện đại'
+    },
+    submittedDate: '2024-12-17 14:15'
+  },
+  {
+    id: 'RSP003',
+    surveyId: 'KS002',
+    customerId: 'KH001',
+    customerName: 'Nguyễn Văn An',
+    answers: {
+      q1: 'Đang cân nhắc',
+      q2: 'Đen nhám'
+    },
+    submittedDate: '2024-12-18 09:20'
   }
 ];
 

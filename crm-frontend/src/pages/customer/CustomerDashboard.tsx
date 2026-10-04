@@ -6,6 +6,9 @@ import {
   mockAppointments,
   formatVND,
   getCustomerTier,
+  computeSurveyStatus,
+  formatSurveyDateTime,
+  surveyStatusLabels,
   type OrderStatus,
   type AppointmentStatus,
   type Vehicle,
@@ -48,11 +51,15 @@ function StatusBadge({ label, color, bg }: { label: string; color: string; bg: s
 
 const SVC_LABELS: Record<string, string> = { BaoDuong: 'Bảo dưỡng', SuaChua: 'Sửa chữa', LaiThu: 'Lái thử xe' };
 
-/* ── Survey Component for Admin-assigned Surveys ── */
+/* ── Survey Component for Admin-assigned Surveys (KS01 - KS08) ── */
 function DynamicSurveyTab({ customer }: { customer: Customer }) {
   const [activeSurveys, setActiveSurveys] = useState<Survey[]>([]);
   const [completedIds, setCompletedIds] = useState<string[]>([]);
   const [answersMap, setAnswersMap] = useState<Record<string, Record<string, string>>>({});
+  const [unansweredMap, setUnansweredMap] = useState<Record<string, string[]>>({});
+  const [surveyToast, setSurveyToast] = useState<{ show: boolean; title: string; countdown: number } | null>(null);
+  const [errorToast, setErrorToast] = useState<string | null>(null);
+  const [showCompletedList, setShowCompletedList] = useState(false);
   const [rating, setRating] = useState(0);
   const [hovered, setHovered] = useState(0);
   const [review, setReview] = useState('');
@@ -61,10 +68,24 @@ function DynamicSurveyTab({ customer }: { customer: Customer }) {
 
   const loadSurveys = () => {
     const all = surveyApi.getAll();
-    const valid = all.filter(
-      s => s.status === 'Active' && (s.targetCustomerId === 'ALL' || s.targetCustomerId === customer.id)
-    );
-    setActiveSurveys(valid);
+    const custTier = getCustomerTier(customer.tongChiTieu).tier;
+
+    // KS02: Hiển thị đầy đủ các bài khảo sát mà khách hàng đủ điều kiện tham gia
+    const eligible = all.filter(s => {
+      // 1. Kiểm tra gửi đích danh cho khách hàng
+      if (s.targetCustomerId === customer.id) return true;
+      if (s.targetCustomerIds && s.targetCustomerIds.includes(customer.id)) return true;
+
+      // 2. Nếu gửi cho TẤT CẢ (ALL) hoặc không giới hạn khách hàng cụ thể
+      if (s.targetCustomerId === 'ALL' || !s.targetCustomerId) {
+        // Kiểm tra điều kiện phân hạng
+        if (!s.targetCustomerTier || s.targetCustomerTier === 'ALL') return true;
+        if (s.targetCustomerTier === custTier) return true;
+      }
+      return false;
+    });
+
+    setActiveSurveys(eligible);
 
     const responses = surveyApi.getResponses();
     const done = responses
@@ -79,6 +100,23 @@ function DynamicSurveyTab({ customer }: { customer: Customer }) {
     return () => window.removeEventListener('crm-data-refresh', loadSurveys);
   }, [customer.id]);
 
+  // KS01: Tự động đếm ngược 4s và đóng khung cảm ơn
+  useEffect(() => {
+    if (!surveyToast) return;
+    if (surveyToast.countdown <= 0) {
+      setSurveyToast(null);
+      return;
+    }
+    const timer = setInterval(() => {
+      setSurveyToast(prev => {
+        if (!prev) return null;
+        if (prev.countdown <= 1) return null;
+        return { ...prev, countdown: prev.countdown - 1 };
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [surveyToast?.show, surveyToast?.countdown]);
+
   const handleSelectAnswer = (surveyId: string, questionId: string, option: string) => {
     setAnswersMap(prev => ({
       ...prev,
@@ -87,17 +125,66 @@ function DynamicSurveyTab({ customer }: { customer: Customer }) {
         [questionId]: option
       }
     }));
+
+    // KS04: Bỏ cảnh báo lỗi câu hỏi này nếu người dùng đã vừa chọn đáp án
+    setUnansweredMap(prev => {
+      const currentList = prev[surveyId] || [];
+      const updated = currentList.filter(id => id !== questionId);
+      return { ...prev, [surveyId]: updated };
+    });
+    if (errorToast) setErrorToast(null);
   };
 
   const handleSubmitSurvey = (survey: Survey) => {
+    // KS08: Kiểm tra trạng thái bài khảo sát
+    const liveStatus = computeSurveyStatus(survey);
+    if (liveStatus !== 'DangDienRa') {
+      const statusInfo = surveyStatusLabels[liveStatus] || { label: liveStatus };
+      setErrorToast(`⚠️ Cuộc khảo sát hiện tại chưa bắt đầu hoặc đã kết thúc (${statusInfo.label})!`);
+      setTimeout(() => setErrorToast(null), 4000);
+      return;
+    }
+
+    // KS04: Bắt buộc chọn đáp án cho tất cả câu hỏi trước khi gửi
     const sAnswers = answersMap[survey.id] || {};
+    const missing = survey.questions
+      .filter(q => !sAnswers[q.id] || !sAnswers[q.id].trim())
+      .map(q => q.id);
+
+    if (missing.length > 0) {
+      setUnansweredMap(prev => ({ ...prev, [survey.id]: missing }));
+      setErrorToast(`⚠️ Vui lòng hoàn thành tất cả câu hỏi trước khi gửi khảo sát! (Còn thiếu ${missing.length}/${survey.questions.length} câu)`);
+      setTimeout(() => setErrorToast(null), 4000);
+
+      // Cuộn tới câu hỏi đầu tiên chưa trả lời
+      const firstMissingEl = document.getElementById(`survey-${survey.id}-q-${missing[0]}`);
+      if (firstMissingEl) {
+        firstMissingEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      return;
+    }
+
+    // Gửi câu trả lời
     surveyApi.submitResponse({
       surveyId: survey.id,
       customerId: customer.id,
       customerName: customer.hoTen,
       answers: sAnswers,
     });
+
     setCompletedIds(prev => [...prev, survey.id]);
+    setUnansweredMap(prev => {
+      const copy = { ...prev };
+      delete copy[survey.id];
+      return copy;
+    });
+
+    // KS01: Kích hoạt thông báo cảm ơn tạm thời (tự đóng 4s hoặc bấm X)
+    setSurveyToast({
+      show: true,
+      title: survey.title,
+      countdown: 4,
+    });
   };
 
   const handleSendFeedback = async () => {
@@ -128,89 +215,226 @@ function DynamicSurveyTab({ customer }: { customer: Customer }) {
   const active = hovered || rating;
   const starLabels = ['', 'Rất không hài lòng', 'Không hài lòng', 'Bình thường', 'Hài lòng', 'Rất hài lòng'];
 
+  // Phân chia danh sách khảo sát: Chưa làm vs Đã làm
+  const pendingSurveys = activeSurveys.filter(s => !completedIds.includes(s.id));
+  const doneSurveys = activeSurveys.filter(s => completedIds.includes(s.id));
+
   return (
     <div className="flex flex-col gap-6">
       {/* Admin Assigned Surveys */}
       <div className="rounded-2xl p-6" style={{ background: 'white', border: '1px solid var(--color-zinc-200)' }}>
-        <div className="flex items-center gap-2 mb-5">
-          <div className="w-1 h-5 rounded-full" style={{ background: 'var(--color-red-700)' }} />
-          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 18, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--color-zinc-900)' }}>
-            KHẢO SÁT TỪ ĐẠI LÝ
+        <div className="flex items-center justify-between gap-4 mb-5 flex-wrap">
+          <div className="flex items-center gap-2">
+            <div className="w-1 h-5 rounded-full" style={{ background: 'var(--color-red-700)' }} />
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 18, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--color-zinc-900)' }}>
+              KHẢO SÁT TỪ ĐẠI LÝ
+            </div>
           </div>
+          {pendingSurveys.length > 0 && (
+            <span className="text-xs font-mono font-bold px-3 py-1 rounded-full bg-red-100 text-red-700">
+              Có {pendingSurveys.length} bài khảo sát cần làm
+            </span>
+          )}
         </div>
 
-        {activeSurveys.length === 0 ? (
-          <div className="text-center py-8 text-zinc-400 text-xs font-mono">
-            Hiện chưa có cuộc khảo sát nào được gửi tới tài khoản của bạn.
+        {/* KS01: Khung cảm ơn tự đóng sau 4s hoặc bấm ✕ */}
+        {surveyToast && (
+          <div className="mb-6 p-4 rounded-2xl bg-emerald-50 border-2 border-emerald-300 shadow-md flex items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-100 border border-emerald-300 flex items-center justify-center text-2xl shrink-0">
+                🎉
+              </div>
+              <div>
+                <div className="text-sm font-extrabold text-emerald-950 uppercase tracking-wide">
+                  CẢM ƠN BẠN ĐÃ GỬI PHẢN HỒI KHẢO SÁT!
+                </div>
+                <div className="text-xs text-emerald-800 font-semibold mt-0.5">
+                  Bài khảo sát: <span className="font-bold underline">{surveyToast.title}</span> đã được ghi nhận thành công.
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2.5 shrink-0">
+              <span className="text-[11px] font-mono font-bold text-emerald-800 bg-emerald-200/80 px-2.5 py-1 rounded-full border border-emerald-300">
+                ⏱ Tự đóng sau {surveyToast.countdown}s
+              </span>
+              <button
+                type="button"
+                onClick={() => setSurveyToast(null)}
+                className="w-7 h-7 rounded-lg bg-emerald-200 hover:bg-emerald-300 text-emerald-900 font-bold flex items-center justify-center transition cursor-pointer"
+                title="Đóng thông báo"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Error Toast for missing answers */}
+        {errorToast && (
+          <div className="mb-6 p-3.5 rounded-xl bg-red-50 border-2 border-red-300 shadow-sm flex items-center justify-between gap-3 text-red-900 text-xs font-bold animate-in fade-in duration-200">
+            <div className="flex items-center gap-2">
+              <span className="text-base">⚠️</span>
+              <span>{errorToast}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setErrorToast(null)}
+              className="text-red-700 hover:text-red-900 font-bold px-2 py-1 rounded hover:bg-red-100 cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
+        {/* KS02: Danh sách các bài khảo sát chưa làm */}
+        {pendingSurveys.length === 0 ? (
+          <div className="text-center py-8 px-4 bg-zinc-50 rounded-2xl border border-zinc-200">
+            <div className="text-3xl mb-2">✨</div>
+            <h4 className="text-sm font-bold text-zinc-800">
+              {doneSurveys.length > 0 ? 'Bạn đã hoàn thành tất cả các bài khảo sát hiện có!' : 'Hiện chưa có cuộc khảo sát nào dành cho bạn.'}
+            </h4>
+            <p className="text-xs text-zinc-500 mt-1">Cảm ơn bạn đã luôn đồng hành và đóng góp ý kiến xây dựng dịch vụ của showroom.</p>
           </div>
         ) : (
           <div className="space-y-6">
-            {activeSurveys.map(s => {
-              const isDone = completedIds.includes(s.id);
+            {pendingSurveys.map(s => {
+              const liveStatus = computeSurveyStatus(s);
+              const statusCfg = surveyStatusLabels[liveStatus] || surveyStatusLabels.DangDienRa;
               const sAnswers = answersMap[s.id] || {};
-
-              if (isDone) {
-                return (
-                  <div key={s.id} className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-center py-6">
-                    <div className="text-3xl mb-1">🎉</div>
-                    <div className="text-sm font-bold text-emerald-900">Đã hoàn thành cuộc khảo sát!</div>
-                    <div className="text-xs text-emerald-700 font-semibold mt-1">{s.title}</div>
-                    <p className="text-xs text-zinc-500 mt-2">Cảm ơn bạn đã gửi ý kiến phản hồi giúp đại lý cải thiện chất lượng dịch vụ.</p>
-                  </div>
-                );
-              }
+              const missingForThis = unansweredMap[s.id] || [];
+              const answeredCount = s.questions.filter(q => !!sAnswers[q.id]).length;
+              const isAllAnswered = answeredCount === s.questions.length;
 
               return (
-                <div key={s.id} className="p-5 rounded-xl border border-zinc-200 bg-zinc-50 space-y-4">
-                  <div className="border-b border-zinc-200 pb-3">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-[10px] font-bold font-mono px-2 py-0.5 rounded bg-red-100 text-red-700">MỚI</span>
-                      <h4 className="font-extrabold text-zinc-900 text-base" style={{ fontFamily: 'var(--font-display)' }}>{s.title}</h4>
-                    </div>
-                    <p className="text-xs text-zinc-500">{s.description}</p>
-                  </div>
-
-                  <div className="space-y-4">
-                    {s.questions.map((q, qi) => (
-                      <div key={q.id}>
-                        <div className="text-sm font-600 mb-2 text-zinc-900">
-                          <span className="text-red-700 font-bold mr-1.5">{qi + 1}.</span>{q.text}
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          {q.opts.map(opt => {
-                            const sel = sAnswers[q.id] === opt;
-                            return (
-                              <button
-                                key={opt}
-                                type="button"
-                                onClick={() => handleSelectAnswer(s.id, q.id, opt)}
-                                className="rounded-lg px-3.5 py-2 text-xs font-600 transition-all"
-                                style={{
-                                  border: sel ? '1.5px solid var(--color-red-700)' : '1.5px solid var(--color-zinc-200)',
-                                  background: sel ? 'var(--color-red-700)' : 'white',
-                                  color: sel ? 'white' : 'var(--color-zinc-700)',
-                                  cursor: 'pointer',
-                                }}
-                              >
-                                {opt}
-                              </button>
-                            );
-                          })}
-                        </div>
+                <div key={s.id} className="p-5 rounded-2xl border border-zinc-200 bg-zinc-50/70 shadow-sm space-y-4">
+                  <div className="border-b border-zinc-200 pb-3 flex flex-col md:flex-row md:items-center justify-between gap-2">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <span className="text-[10px] font-bold font-mono px-2 py-0.5 rounded bg-zinc-200 text-zinc-700">
+                          MÃ: {s.id}
+                        </span>
+                        <span
+                          className="text-[11px] font-bold font-mono px-2.5 py-0.5 rounded-full"
+                          style={{ background: statusCfg.bg, color: statusCfg.text, border: `1px solid ${statusCfg.border}` }}
+                        >
+                          ● {statusCfg.label}
+                        </span>
                       </div>
-                    ))}
+                      <h4 className="font-extrabold text-zinc-900 text-base" style={{ fontFamily: 'var(--font-display)' }}>
+                        {s.title}
+                      </h4>
+                      <p className="text-xs text-zinc-500 mt-0.5">{s.description}</p>
+                    </div>
+
+                    {/* KS06: Hiển thị thời gian khảo sát */}
+                    <div className="text-right shrink-0">
+                      <div className="text-[11px] font-mono text-zinc-600 bg-white px-3 py-1.5 rounded-xl border border-zinc-200 inline-block shadow-2xs">
+                        📅 <span className="font-semibold text-zinc-800">Thời gian:</span> {formatSurveyDateTime(s.startDate)} - {formatSurveyDateTime(s.endDate)}
+                      </div>
+                    </div>
                   </div>
 
-                  <button
-                    onClick={() => handleSubmitSurvey(s)}
-                    className="w-full mt-3 py-2.5 rounded-xl font-bold text-xs bg-red-700 text-white hover:bg-red-800 transition shadow"
-                    style={{ fontFamily: 'var(--font-display)', letterSpacing: '0.04em' }}
-                  >
-                    GỬI CÂU TRẢ LỜI KHẢO SÁT
-                  </button>
+                  {/* Danh sách câu hỏi */}
+                  <div className="space-y-4">
+                    {s.questions.map((q, qi) => {
+                      const isMissing = missingForThis.includes(q.id);
+                      return (
+                        <div
+                          key={q.id}
+                          id={`survey-${s.id}-q-${q.id}`}
+                          className={`p-3.5 rounded-xl transition-all duration-200 ${
+                            isMissing
+                              ? 'border-2 border-red-500 bg-red-50/40 shadow-xs'
+                              : 'border border-zinc-200/80 bg-white'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2 mb-2.5">
+                            <div className="text-sm font-bold text-zinc-900">
+                              <span className="text-red-700 font-bold mr-1.5">Câu {qi + 1}.</span>
+                              {q.text}
+                            </div>
+                            {isMissing && (
+                              <span className="text-[11px] font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded shrink-0">
+                                ⚠️ Chưa chọn đáp án
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {q.opts.map(opt => {
+                              const sel = sAnswers[q.id] === opt;
+                              return (
+                                <button
+                                  key={opt}
+                                  type="button"
+                                  onClick={() => handleSelectAnswer(s.id, q.id, opt)}
+                                  className="rounded-lg px-3.5 py-2 text-xs font-semibold transition-all cursor-pointer"
+                                  style={{
+                                    border: sel ? '1.5px solid var(--color-red-700)' : '1.5px solid var(--color-zinc-200)',
+                                    background: sel ? 'var(--color-red-700)' : 'white',
+                                    color: sel ? 'white' : 'var(--color-zinc-700)',
+                                    boxShadow: sel ? '0 2px 4px rgba(185, 28, 28, 0.2)' : 'none',
+                                  }}
+                                >
+                                  {sel ? '✓ ' : ''}{opt}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* KS04: Nút gửi câu trả lời khảo sát có validation */}
+                  <div className="pt-2 flex flex-col md:flex-row items-center justify-between gap-3">
+                    <div className="text-xs font-mono text-zinc-600">
+                      Tiến độ hoàn thành: <strong className={isAllAnswered ? 'text-emerald-700' : 'text-red-700'}>{answeredCount}/{s.questions.length}</strong> câu
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleSubmitSurvey(s)}
+                      className={`w-full md:w-auto px-6 py-2.5 rounded-xl font-bold text-xs transition shadow flex items-center justify-center gap-2 cursor-pointer ${
+                        isAllAnswered
+                          ? 'bg-red-700 text-white hover:bg-red-800'
+                          : 'bg-zinc-800 text-white hover:bg-zinc-900'
+                      }`}
+                      style={{ fontFamily: 'var(--font-display)', letterSpacing: '0.04em' }}
+                    >
+                      <span>🚀 GỬI CÂU TRẢ LỜI KHẢO SÁT ({answeredCount}/{s.questions.length})</span>
+                    </button>
+                  </div>
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {/* KS01: Lịch sử khảo sát đã hoàn thành thu gọn, không chiếm chỗ */}
+        {doneSurveys.length > 0 && (
+          <div className="mt-6 pt-4 border-t border-zinc-200">
+            <button
+              type="button"
+              onClick={() => setShowCompletedList(!showCompletedList)}
+              className="text-xs font-bold text-zinc-600 hover:text-zinc-900 flex items-center gap-2 cursor-pointer"
+            >
+              <span>{showCompletedList ? '▼' : '▶'}</span>
+              <span>LỊCH SỬ KHẢO SÁT ĐÃ HOÀN THÀNH ({doneSurveys.length})</span>
+            </button>
+            {showCompletedList && (
+              <div className="mt-3 space-y-2 animate-in fade-in duration-200">
+                {doneSurveys.map(ds => (
+                  <div key={ds.id} className="p-3 bg-zinc-50 rounded-xl border border-zinc-200 flex items-center justify-between text-xs">
+                    <div>
+                      <span className="font-bold text-zinc-800">{ds.title}</span>
+                      <span className="text-[10px] font-mono text-zinc-500 ml-2">({ds.id})</span>
+                    </div>
+                    <span className="text-emerald-700 font-bold bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded text-[11px]">
+                      ✓ Đã hoàn thành
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>

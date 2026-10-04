@@ -8,6 +8,8 @@ import {
   type Feedback,
   type Survey,
   type SurveyResponse,
+  type SurveyStatus,
+  computeSurveyStatus,
   mockCustomers,
   mockVehicles,
   mockParts,
@@ -1429,23 +1431,68 @@ const SURVEY_RESPONSE_KEY = 'crm_survey_responses';
 
 export const surveyApi = {
   getAll(): Survey[] {
+    let list: Survey[] = [];
     try {
       const cached = localStorage.getItem(SURVEY_STORAGE_KEY);
       if (cached) {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) list = parsed;
       }
     } catch {}
-    localStorage.setItem(SURVEY_STORAGE_KEY, JSON.stringify(mockSurveys));
-    return mockSurveys;
+
+    if (list.length === 0) {
+      list = [...mockSurveys];
+      localStorage.setItem(SURVEY_STORAGE_KEY, JSON.stringify(list));
+    } else {
+      // Merge any new surveys from mockSurveys if missing
+      mockSurveys.forEach(ms => {
+        const existing = list.find(s => s.id === ms.id);
+        if (!existing) {
+          list.push(ms);
+        } else {
+          // Merge missing dates and fields
+          if (!existing.startDate && ms.startDate) existing.startDate = ms.startDate;
+          if (!existing.endDate && ms.endDate) existing.endDate = ms.endDate;
+          if (!existing.publishDate && ms.publishDate) existing.publishDate = ms.publishDate;
+          if (!existing.targetCustomerTier && ms.targetCustomerTier) existing.targetCustomerTier = ms.targetCustomerTier;
+        }
+      });
+    }
+
+    // KS08: Tự động cập nhật trạng thái thời gian thực: Nháp -> Sắp diễn ra -> Đang diễn ra -> Đã kết thúc
+    return list.map(s => {
+      const liveStatus = computeSurveyStatus(s);
+      return {
+        ...s,
+        status: liveStatus,
+      };
+    });
   },
 
-  create(survey: Omit<Survey, 'id' | 'createdDate' | 'status'> & { id?: string }): Survey {
-    const newSurvey: Survey = {
+  create(survey: Omit<Survey, 'id' | 'createdDate' | 'status'> & { id?: string; status?: SurveyStatus }): Survey {
+    const nowIso = new Date().toISOString();
+    const createdDate = nowIso.split('T')[0];
+    const pubDate = survey.publishDate || nowIso.slice(0, 16);
+    const sDate = survey.startDate || nowIso.slice(0, 16);
+    const eDate = survey.endDate || new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 16);
+
+    const tempSurvey: Survey = {
       ...survey,
       id: survey.id || `KS${Date.now().toString().slice(-4)}`,
-      createdDate: new Date().toISOString().split('T')[0],
-      status: 'Active',
+      createdDate,
+      publishDate: pubDate,
+      startDate: sDate,
+      endDate: eDate,
+      status: survey.status || 'DangDienRa',
+      targetCustomerId: survey.targetCustomerId || 'ALL',
+      targetCustomerTier: survey.targetCustomerTier || 'ALL',
+      targetCustomerIds: survey.targetCustomerIds || [],
+    };
+
+    const liveStatus = computeSurveyStatus(tempSurvey);
+    const newSurvey: Survey = {
+      ...tempSurvey,
+      status: liveStatus,
     };
 
     const current = surveyApi.getAll();
@@ -1470,10 +1517,11 @@ export const surveyApi = {
   },
 
   submitResponse(response: Omit<SurveyResponse, 'id' | 'submittedDate'>): SurveyResponse {
+    const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 16);
     const newResp: SurveyResponse = {
       ...response,
       id: `RSP${Date.now().toString().slice(-4)}`,
-      submittedDate: new Date().toISOString().split('T')[0],
+      submittedDate: nowStr,
     };
 
     const all = surveyApi.getResponses();
@@ -1485,7 +1533,7 @@ export const surveyApi = {
     addAdminNotification({
       type: 'survey_submitted',
       title: '📊 Khách hàng vừa gửi câu trả lời khảo sát',
-      message: `${response.customerName} đã hoàn thành khảo sát "${sMatch?.title || response.surveyId}".`,
+      message: `${response.customerName} (${response.customerId}) đã hoàn thành khảo sát "${sMatch?.title || response.surveyId}".`,
       linkPage: 'feedback',
       meta: newResp,
     });
