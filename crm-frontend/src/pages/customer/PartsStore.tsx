@@ -185,8 +185,8 @@ export default function PartsStore({ currentCustomer, onRequireLogin }: Props = 
     return list;
   }, [cat, selectedBrand, search, sort, priceRange]);
 
-  // TC12: Phân trang 20 sản phẩm/trang
-  const ITEMS_PER_PAGE = 20;
+  // TC12: Phân trang 10 sản phẩm/trang
+  const ITEMS_PER_PAGE = 10;
   const [currentPage, setCurrentPage] = useState(1);
 
   // Reset to page 1 whenever filters change
@@ -1616,7 +1616,7 @@ export default function PartsStore({ currentCustomer, onRequireLogin }: Props = 
             {totalPages > 1 && (
               <div className="pt-6 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-zinc-200">
                 <div className="text-xs text-zinc-500 font-mono">
-                  Hiển thị từ {((currentPage - 1) * ITEMS_PER_PAGE) + 1} đến {Math.min(currentPage * ITEMS_PER_PAGE, filtered.length)} trên tổng số {filtered.length} sản phẩm (20 sản phẩm/trang)
+                  Hiển thị từ {((currentPage - 1) * ITEMS_PER_PAGE) + 1} đến {Math.min(currentPage * ITEMS_PER_PAGE, filtered.length)} trên tổng số {filtered.length} sản phẩm (10 sản phẩm/trang)
                 </div>
 
                 <div className="flex items-center gap-1.5 flex-wrap">
