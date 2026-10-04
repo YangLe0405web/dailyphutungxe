@@ -22,6 +22,9 @@ namespace CrmBackend.Models
         public string? HangXe { get; set; }
         public string? LoaiXe { get; set; }
         public string? GhiChuXuLy { get; set; }
+        public string? NhanVienXuLy { get; set; }
+        public DateTime? NgayXuLy { get; set; }
+        public List<string>? HinhAnhDinhKem { get; set; } = new();
         public int SoLanSua { get; set; } = 0;
     }
 
@@ -34,12 +37,14 @@ namespace CrmBackend.Models
         public string NoiDung { get; set; } = "";
         public string? TenSanPham { get; set; }
         public string? LoaiDoiTuong { get; set; }
+        public List<string>? HinhAnhDinhKem { get; set; } = new();
     }
 
     public class PhanHoiUpdateDto
     {
         public int DiemDanhGia { get; set; }
         public string NoiDung { get; set; } = "";
+        public List<string>? HinhAnhDinhKem { get; set; } = new();
     }
 
     public class ChatMessageDto

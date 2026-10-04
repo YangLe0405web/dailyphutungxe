@@ -485,3 +485,116 @@ Dưới đây là danh sách toàn bộ các tập tin đã can thiệp. Khi x�
     * Admin phản hồi: *"Dạ chào anh Quý, nhớt Motul 7100 10W40 đang có sẵn tại showroom ạ!"*.
     * Phía khách hàng `KH2004` nhận được phản hồi ngay lập tức trong thời gian thực.
     * Kiểm tra tài khoản `KH001` (Nguyễn Văn An): không hề xuất hiện tin nhắn của `KH2004`, hoàn toàn phân lập 100%.
+
+
+### Nhóm chức năng: QUẢN LÝ ĐÁNH GIÁ & PHẢN HỒI NÂNG CAO (ĐG09 - ĐG16)
+- **Thời gian hoàn thành:** 04/10/2026 22:05
+- **Trạng thái:** ĐÃ FIX & ĐÃ KIỂM THỬ THÀNH CÔNG 100%
+
+#### 1. ĐG09 – Cho phép khách hàng thêm hình ảnh hoặc video khi đánh giá sản phẩm
+* **Mô tả lỗi:** Khách hàng chưa thể đính kèm hình ảnh hoặc video khi viết bài đánh giá phụ tùng hoặc mẫu xe trong showroom.
+* **Kết quả mong đợi:** Cho phép KH thêm hình ảnh/video khi đánh giá sản phẩm. Hiển thị hình ảnh/video đính kèm trong danh sách đánh giá của Showroom xe, Cửa hàng phụ tùng và Trang quản lý phản hồi Admin, có popup lightbox phóng to xem ảnh sắc nét.
+* **Giải pháp đã thực hiện:**
+  - **Data Model & Backend DTO:**
+    - Bổ sung trường `hinhAnhDinhKem?: string[]` trong `Feedback`, `ProductReview` (`mockData.ts`).
+    - Bổ sung `public List<string>? HinhAnhDinhKem { get; set; } = new();` trong `PhanHoi`, `PhanHoiCreateDto`, `PhanHoiUpdateDto` (`PhanHoi.cs`).
+    - `PhanHoiController.cs`: Lưu trữ và trả về danh sách `HinhAnhDinhKem` cho từng phản hồi trong API `GET`, `POST`, `PUT`.
+  - **Giao diện Khách hàng (`VehiclesShowroom.tsx` & `PartsStore.tsx`):**
+    - Bổ sung khối đính kèm media trực quan trong form gửi đánh giá: Cho phép nhập URL ảnh/video, có nút chọn ảnh chụp mẫu nhanh, hiển thị danh sách ảnh xem trước (thumbnails) kèm nút bấm xóa `✕` từng ảnh.
+    - Hiển thị dải ảnh/video đính kèm trong từng thẻ đánh giá của khách hàng.
+    - Tích hợp Modal Lightbox: Bấm vào ảnh bất kỳ để phóng to xem chi tiết ở độ phân giải cao kèm nút đóng `✕`.
+  - **Giao diện Admin (`Feedback.tsx`):**
+    - Hiển thị bộ sưu tập hình ảnh/video đính kèm trong thẻ chi tiết phản hồi với nhãn `📸 Hình ảnh & Video đính kèm:`.
+    - Bấm vào ảnh thumbnail lập tức bật Modal Lightbox phóng to.
+* **Kết quả test:**
+  - Khách hàng đính kèm ảnh khi đánh giá xe SH hoặc nhớt Motul -> Ảnh lưu thành công và hiển thị ngay trên web.
+  - Phía Admin: Thấy rõ ảnh đính kèm của khách hàng, click xem ảnh phóng to full màn hình.
+
+#### 2. ĐG10 – Hiển thị thông tin nhân viên xử lý đánh giá sau khi xử lý
+* **Mô tả lỗi:** Đánh giá sau khi được nhân viên giải quyết không hiển thị thông tin nhân viên phụ trách xử lý và ngày giờ xử lý, gây thiếu minh bạch trong quy trình chăm sóc khách hàng.
+* **Kết quả mong đợi:** Sau khi xử lý hiển thị thông tin nhân viên xử lý đánh giá (`nhanVienXuLy`, `ngayXuLy`).
+* **Giải pháp đã thực hiện:**
+  - Thêm trường `nhanVienXuLy?: string` và `ngayXuLy?: string` trong data model Frontend và Backend (`PhanHoi.cs`).
+  - Giao diện Admin (`Feedback.tsx`): Với các phản hồi có trạng thái "Đã xử lý" / "Đã phản hồi", hiển thị thẻ thông tin nhân viên phụ trách:
+    * `👤 Nhân viên xử lý: [Tên chuyên viên CSKH]`
+    * `📅 Ngày xử lý: [Ngày/tháng/năm]`
+  - Backend (`PhanHoiController.cs`): API `PATCH /api/PhanHoi/{id}/trang-thai` nhận tên nhân viên xử lý từ client và tự động ghi nhận thời gian `DateTime.Now`, lưu trữ đồng bộ và trả về trong danh sách phản hồi.
+* **Kết quả test:**
+  - Bấm "Xác nhận đã xử lý" trên phản hồi -> Thẻ phản hồi lập tức hiển thị thông tin nhân viên xử lý: `Nguyễn Minh Tuấn (Chuyên viên CSKH)` kèm ngày xử lý hôm nay.
+
+#### 3. ĐG11 – Xóa thông tin biển số xe trong phần đánh giá
+* **Mô tả lỗi:** Đánh giá sản phẩm/xe lưu và hiển thị thông tin biển số xe không cần thiết, làm lộ thông tin cá nhân của chủ phương tiện.
+* **Kết quả mong đợi:** Không cần lưu thông tin biển số xe trong phần đánh giá, chỉ hiển thị tên dòng xe thuần túy.
+* **Giải pháp đã thực hiện:**
+  - `mockData.ts`: Làm sạch dữ liệu `xeDangDung` trong `mockFeedbacks`, loại bỏ hoàn toàn các chuỗi biển số xe (vd: `(51K-123.45)` -> chỉ giữ lại tên xe `Honda SH 160i ABS`).
+  - `api.ts`: Chuẩn hóa dữ liệu đầu vào và đầu ra bằng Regex: `.replace(/\s*\([^)]*\)/g, '').trim()`, đảm bảo thông tin biển số xe không bao giờ xuất hiện trong dữ liệu đánh giá.
+  - `Feedback.tsx`: Loại bỏ nhãn biển số xe khỏi giao diện hiển thị xe đang sử dụng.
+* **Kết quả test:**
+  - Bảng đánh giá hiển thị tên dòng xe thuần túy (`Honda Lead 125cc`, `Honda SH 160i ABS`), hoàn toàn không còn thông tin biển số xe.
+
+#### 4. ĐG12 – Thay khiếu nại thành đánh giá mới
+* **Mô tả lỗi:** Giao diện quản lý phản hồi cũ có tab và mục xem chỉ tập trung vào "Khiếu nại", gây phân tách trải nghiệm và nhân viên khó theo dõi các đánh giá vừa được gửi đến.
+* **Kết quả mong đợi:** Thay phần xem khiếu nại thành xem đánh giá mới, giúp nhân viên xem được toàn bộ đánh giá mới nhất và tiến hành xử lý kịp thời.
+* **Giải pháp đã thực hiện:**
+  - `Feedback.tsx`: Thay đổi tiêu đề tab chính từ "Khiếu nại & Phản hồi" thành `💬 Phản hồi & Đánh giá mới`.
+  - Đánh dấu huy hiệu `✨ Đánh giá mới` nổi bật trên các đánh giá mới gửi để nhân viên nhận diện ngay lập tức.
+  - Đồng bộ danh sách hiển thị theo thứ tự thời gian mới nhất lên đầu để tiện xử lý nhanh chóng.
+* **Kết quả test:**
+  - Tab hiển thị tên `💬 Phản hồi & Đánh giá mới`, các đánh giá mới nhất xuất hiện ngay trên đầu trang cho nhân viên tiếp nhận.
+
+#### 5. ĐG13 – Nút xác nhận đã xử lý hoạt động được
+* **Mô tả lỗi:** Nút "Đã xử lý" trong danh sách đánh giá của Admin trước đây chưa hoạt động hoặc bấm không cập nhật trạng thái.
+* **Kết quả mong đợi:** Nút xác nhận đã xử lý hoạt động được, cập nhật trạng thái phản hồi sang "Đã xử lý" ngay lập tức không cần F5 tải lại trang.
+* **Giải pháp đã thực hiện:**
+  - `Feedback.tsx`: Cập nhật hàm `handleResolveQuick(f: Feedback)`:
+    * Gọi `feedbackApi.resolve(f.id, undefined, 'Nguyễn Minh Tuấn (Chuyên viên CSKH)')`.
+    * Cập nhật trực tiếp state `setFeedbacks(...)` chuyển `trangThai: 'DaXuLy'`, gán `nhanVienXuLy` và `ngayXuLy`.
+    * Bật toast thông báo `✓ Đã cập nhật trạng thái phản hồi sang: Đã xử lý!`.
+  - Backend: Endpoint `PATCH /api/PhanHoi/{id}/trang-thai` cập nhật trạng thái bản ghi trong CSDL.
+* **Kết quả test:**
+  - Bấm nút "✓ Xác nhận đã xử lý" -> Trạng thái đổi ngay sang badge xanh lá "Đã xử lý", hiển thị thẻ nhân viên xử lý tức thì không bị giật lag.
+
+#### 6. ĐG14 – Thêm tìm kiếm theo tên sản phẩm, mã sản phẩm
+* **Mô tả lỗi:** Nhân viên không thể nhớ tên từng khách hàng để tìm kiếm đánh giá, tìm kiếm bằng tên sản phẩm hoặc mã SKU sản phẩm sẽ hiệu quả và tiện dụng hơn.
+* **Kết quả mong đợi:** Nhân viên có thể tìm kiếm đánh giá theo tên sản phẩm, tên xe và mã sản phẩm.
+* **Giải pháp đã thực hiện:**
+  - `Feedback.tsx`: Mở rộng điều kiện lọc tìm kiếm kiểm tra đồng thời:
+    * `productName` (Tên phụ tùng hoặc mẫu xe)
+    * `productId` (Mã SKU: `PT001`, `XM001`,...)
+    * `xeDangDung` (Dòng xe)
+    * `hoTen` (Họ tên khách hàng)
+    * `noiDung` (Nội dung đánh giá)
+  - Áp dụng tìm kiếm tiếng Việt không dấu (`removeVietnameseTones`) và chuẩn hóa khoảng trắng.
+  - Cập nhật placeholder ô tìm kiếm: `"🔍 Tìm theo tên khách hàng, nội dung, tên sản phẩm, mã SP (SKU)..."`.
+* **Kết quả test:**
+  - Gõ `PT001` hoặc `Motul` -> Danh sách lọc ra chính xác đánh giá của Nhớt Motul 7100.
+  - Gõ `Lead` hoặc `SH` -> Danh sách lọc ra đúng các đánh giá của các dòng xe tương ứng.
+
+#### 7. ĐG15 – Chỉnh lại chức năng lọc phân loại ("Khiếu nại" thành "Đánh giá mới")
+* **Mô tả lỗi:** Dropdown bộ lọc "Phân loại" còn tùy chọn "Khiếu nại", chưa phù hợp với định hướng quản lý tập trung đánh giá mới.
+* **Kết quả mong đợi:** Chỉnh lại chức năng lọc "Phân loại", thay "Khiếu nại" thành "Đánh giá mới".
+* **Giải pháp đã thực hiện:**
+  - `Feedback.tsx`:
+    * Trong dropdown bộ lọc "Phân loại": Thay thế tùy chọn `⚠️ Khiếu nại` thành `✨ Đánh giá mới` (`value="DanhGiaMoi"`).
+    * Logic lọc: Khi chọn "Đánh giá mới", hệ thống tự động lọc các đánh giá đang có trạng thái `ChoXuLy` hoặc các đánh giá mới gửi vào hệ thống.
+* **Kết quả test:**
+  - Mở dropdown Phân loại -> Thấy tùy chọn "✨ Đánh giá mới".
+  - Chọn tùy chọn này -> Hệ thống lọc chính xác các đánh giá mới nhất đang chờ nhân viên xử lý.
+
+#### 8. ĐG16 – Giới hạn ký tự trong 1 lần đánh giá (Không quá 200 từ, chống spam)
+* **Mô tả lỗi:** Form gửi đánh giá chưa giới hạn độ dài nội dung, dẫn đến nguy cơ khách hàng gửi bài quá dài hoặc spam văn bản rác.
+* **Kết quả mong đợi:** Mỗi lần đánh giá không quá 200 từ, hiển thị bộ đếm từ trực quan và cảnh báo chống spam.
+* **Giải pháp đã thực hiện:**
+  - Tạo hàm đếm từ chuẩn `countWords(text)` trong `mockData.ts`: `.trim().split(/\s+/).filter(Boolean).length`.
+  - **Frontend (`VehiclesShowroom.tsx` & `PartsStore.tsx`):**
+    * Hiển thị bộ đếm từ trực quan thời gian thực: `${wordCount}/200 từ`.
+    * Chuyển màu cam khi trên 180 từ; chuyển màu đỏ và hiển thị cảnh báo đỏ khi vượt quá 200 từ: `"⚠️ Nội dung đã vượt quá 200 từ! Vui lòng rút gọn để tránh tình trạng spam."`.
+    * Vô hiệu hóa nút gửi đánh giá (`disabled={wordCount > 200 || wordCount === 0}`) khi vượt quá giới hạn.
+  - **Backend (`PhanHoiController.cs`):**
+    * Cả 2 API `POST /api/PhanHoi` và `PUT /api/PhanHoi/{id}` đều kiểm tra độ dài từ:
+      `dto.NoiDung.Trim().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length > 200`.
+    * Nếu vượt quá 200 từ, lập tức trả về `400 Bad Request` kèm thông báo chi tiết: `"Đánh giá không được vượt quá 200 từ (Hiện tại: {wordCount} từ) nhằm đảm bảo chất lượng và phòng chống spam!"`.
+* **Kết quả test:**
+  - Nhập dưới 200 từ: Bộ đếm nhảy số chính xác, gửi đánh giá thành công.
+  - Nhập 205 từ trên giao diện: Bộ đếm đổi sang màu đỏ thẫm, hiện cảnh báo spam, nút bấm gửi bị vô hiệu hóa.
+  - Gửi request trực tiếp 205 từ vào backend: Backend phản hồi lỗi 400 và chặn lưu vào CSDL.

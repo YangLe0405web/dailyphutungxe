@@ -26,10 +26,11 @@ export default function FeedbackPage() {
   const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [typeFilter, setTypeFilter] = useState<'All' | 'DanhGia' | 'KhieuNai'>('All');
+  const [typeFilter, setTypeFilter] = useState<'All' | 'DanhGiaMoi' | 'DanhGia'>('All');
   const [ratingFilter, setRatingFilter] = useState<number | 'All'>('All');
   const [categoryFilter, setCategoryFilter] = useState<'All' | 'DichVu' | 'SanPham' | 'BaoHanh'>('All');
   const [statusFilter, setStatusFilter] = useState<'All' | 'ChoXuLy' | 'DaXuLy'>('All');
+  const [previewMedia, setPreviewMedia] = useState<string | null>(null);
 
   // Survey state
   const [surveys, setSurveys] = useState<Survey[]>([]);
@@ -185,18 +186,26 @@ export default function FeedbackPage() {
     }, 50);
   };
 
-  // Multi-criteria filter logic
+  // Multi-criteria filter logic (ĐG12, ĐG14, ĐG15)
   const filteredFeedbacks = feedbacks.filter(f => {
-    // Search filter
+    // Search filter (ĐG14: Tìm theo tên khách hàng, nội dung, tên sản phẩm, mã SP/SKU)
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       const matchName = f.hoTen.toLowerCase().includes(q);
       const matchContent = f.noiDung.toLowerCase().includes(q);
-      if (!matchName && !matchContent) return false;
+      const matchProductName = (f.productName || '').toLowerCase().includes(q);
+      const matchProductId = (f.productId || '').toLowerCase().includes(q);
+      const matchVehicle = (f.xeDangDung || '').toLowerCase().includes(q);
+      if (!matchName && !matchContent && !matchProductName && !matchProductId && !matchVehicle) return false;
     }
 
-    // Type filter
-    if (typeFilter !== 'All' && f.loaiNhan !== typeFilter) return false;
+    // Type filter (ĐG12 & ĐG15: Đổi 'Khiếu nại' thành 'Đánh giá mới')
+    if (typeFilter === 'DanhGiaMoi') {
+      const isNewReview = f.trangThai === 'ChoXuLy' || f.loaiNhan === 'KhieuNai' || (f as any).loaiNhan === 'DanhGiaMoi';
+      if (!isNewReview) return false;
+    } else if (typeFilter === 'DanhGia') {
+      if (f.trangThai === 'ChoXuLy') return false;
+    }
 
     // Rating filter
     if (ratingFilter !== 'All' && f.diemDanhGia !== Number(ratingFilter)) return false;
@@ -210,9 +219,20 @@ export default function FeedbackPage() {
     return true;
   });
 
+  // ĐG10 & ĐG13: Nút đã xử lý hoạt động ngay lập tức và lưu thông tin nhân viên xử lý
   async function resolveFeedback(id: string) {
-    await feedbackApi.resolve(id);
-    setFeedbacks(fs => fs.map(f => f.id === id ? { ...f, trangThai: 'DaXuLy' } : f));
+    const staffName = 'Nguyễn Minh Tuấn (Chuyên viên CSKH)';
+    const today = new Date().toISOString().split('T')[0];
+    await feedbackApi.resolve(id, 'Đã xác nhận và hoàn tất xử lý đánh giá của khách hàng.', staffName);
+    setFeedbacks(fs => fs.map(f => f.id === id ? {
+      ...f,
+      trangThai: 'DaXuLy',
+      nhanVienXuLy: staffName,
+      ngayXuLy: today,
+      ghiChuXuLy: f.ghiChuXuLy || 'Đã xác nhận và hoàn tất xử lý đánh giá của khách hàng.'
+    } : f));
+    setToast(`✓ Đã xác nhận xử lý thành công! Nhân viên: ${staffName} (${today})`);
+    setTimeout(() => setToast(null), 3500);
   }
 
   const pending = feedbacks.filter(f => f.trangThai === 'ChoXuLy').length;
@@ -291,7 +311,7 @@ export default function FeedbackPage() {
             onClick={() => setActiveMainTab('feedback')}
             className={`px-4 py-2 rounded-lg text-xs font-bold transition ${activeMainTab === 'feedback' ? 'bg-white text-zinc-900 shadow' : 'text-zinc-600'}`}
           >
-            💬 Phản hồi & Khiếu nại ({pending > 0 ? `${pending} mới` : '0'})
+            💬 Phản hồi & Đánh giá mới ({pending > 0 ? `${pending} mới` : '0'})
           </button>
           <button
             onClick={() => setActiveMainTab('survey')}
@@ -309,17 +329,17 @@ export default function FeedbackPage() {
         </div>
       )}
 
-      {/* ── TAB 1: FEEDBACK & COMPLAINTS ── */}
+      {/* ── TAB 1: FEEDBACK & REVIEWS (ĐG12: ĐÁNH GIÁ MỚI & XỬ LÝ) ── */}
       {activeMainTab === 'feedback' && (
         <div>
           {/* Multi-criteria Filter Bar */}
           <div className="bg-white p-4 rounded-2xl border border-zinc-200 mb-5 shadow-sm space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-              {/* Search */}
+              {/* Search (ĐG14: Tìm theo tên khách hàng, nội dung, tên sản phẩm, mã SP/SKU) */}
               <div className="lg:col-span-2 relative">
                 <input
                   type="text"
-                  placeholder="🔍 Tìm theo tên khách hàng, nội dung..."
+                  placeholder="🔍 Tìm theo tên khách hàng, nội dung, tên sản phẩm, mã SP (SKU)..."
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
                   className="w-full pl-3 pr-8 py-2 rounded-xl border border-zinc-300 text-xs focus:outline-none focus:border-red-600"
@@ -329,16 +349,16 @@ export default function FeedbackPage() {
                 )}
               </div>
 
-              {/* Type Filter */}
+              {/* Type Filter (ĐG15: Đổi 'Khiếu nại' thành 'Đánh giá mới') */}
               <div>
                 <select
                   value={typeFilter}
                   onChange={e => setTypeFilter(e.target.value as any)}
                   className="w-full p-2 rounded-xl border border-zinc-300 text-xs font-semibold bg-white focus:outline-none focus:border-red-600"
                 >
-                  <option value="All">Loại: Tất cả</option>
-                  <option value="DanhGia">⭐ Đánh giá</option>
-                  <option value="KhieuNai">⚠️ Khiếu nại</option>
+                  <option value="All">Phân loại: Tất cả</option>
+                  <option value="DanhGiaMoi">✨ Đánh giá mới ({feedbacks.filter(f => f.trangThai === 'ChoXuLy').length})</option>
+                  <option value="DanhGia">⭐ Đánh giá thông thường</option>
                 </select>
               </div>
 
@@ -407,12 +427,16 @@ export default function FeedbackPage() {
                 Không tìm thấy phản hồi nào phù hợp với bộ lọc hiện tại.
               </div>
             ) : (
-              filteredFeedbacks.map(f => (
-                <div key={f.id} className="rounded-2xl p-5" style={{ background: 'white', border: `1px solid ${f.trangThai === 'ChoXuLy' && f.loaiNhan === 'KhieuNai' ? 'var(--color-red-300)' : 'var(--color-zinc-200)'}` }}>
+              filteredFeedbacks.map(f => {
+                const isNewReview = f.trangThai === 'ChoXuLy';
+                const cleanProductTitle = (f.productName || f.xeDangDung || 'Dịch vụ bảo dưỡng & phụ tùng chính hãng').replace(/\s*\([^)]*\)/g, '').trim();
+
+                return (
+                <div key={f.id} className="rounded-2xl p-5" style={{ background: 'white', border: `1px solid ${isNewReview ? 'var(--color-amber-300)' : 'var(--color-zinc-200)'}` }}>
                   <div className="flex items-start justify-between gap-4 flex-wrap">
                     <div className="flex items-center gap-3">
                       <div className="flex items-center justify-center rounded-full font-700"
-                        style={{ width: 40, height: 40, background: f.loaiNhan === 'KhieuNai' ? 'var(--color-red-100)' : 'var(--color-zinc-100)', color: f.loaiNhan === 'KhieuNai' ? 'var(--color-red-700)' : 'var(--color-zinc-700)', fontFamily: 'var(--font-display)', fontSize: 16 }}>
+                        style={{ width: 40, height: 40, background: isNewReview ? 'var(--color-amber-100)' : 'var(--color-zinc-100)', color: isNewReview ? 'var(--color-amber-800)' : 'var(--color-zinc-700)', fontFamily: 'var(--font-display)', fontSize: 16 }}>
                         {f.hoTen[0]}
                       </div>
                       <div>
@@ -422,18 +446,19 @@ export default function FeedbackPage() {
                     </div>
                     <div className="flex items-center gap-3">
                       <Stars r={f.diemDanhGia} />
+                      {/* ĐG12 & ĐG15: Đổi 'Khiếu nại' thành 'Đánh giá mới' */}
                       <span className="text-xs font-600 rounded-full px-2.5 py-1"
-                        style={{ background: f.loaiNhan === 'KhieuNai' ? '#fee2e2' : '#dcfce7', color: f.loaiNhan === 'KhieuNai' ? 'var(--color-red-700)' : '#16a34a', fontFamily: 'var(--font-mono)' }}>
-                        {f.loaiNhan === 'KhieuNai' ? '⚠️ Khiếu nại' : '⭐ Đánh giá'}
+                        style={{ background: isNewReview ? '#fef3c7' : '#dcfce7', color: isNewReview ? '#92400e' : '#16a34a', fontFamily: 'var(--font-mono)' }}>
+                        {isNewReview ? '✨ Đánh giá mới' : '⭐ Đánh giá'}
                       </span>
                       <span className="text-xs font-600 rounded-full px-2.5 py-1"
-                        style={{ background: f.trangThai === 'ChoXuLy' ? '#fef3c7' : '#f4f4f5', color: f.trangThai === 'ChoXuLy' ? '#92400e' : 'var(--color-zinc-500)', fontFamily: 'var(--font-mono)' }}>
+                        style={{ background: f.trangThai === 'ChoXuLy' ? '#fee2e2' : '#f4f4f5', color: f.trangThai === 'ChoXuLy' ? '#b91c1c' : 'var(--color-zinc-500)', fontFamily: 'var(--font-mono)' }}>
                         {f.trangThai === 'ChoXuLy' ? 'Chờ xử lý' : 'Đã xử lý'}
                       </span>
                     </div>
                   </div>
 
-                  {/* Product Information Card (ĐG08: Hiển thị rõ ràng sản phẩm tương ứng) */}
+                  {/* Product Information Card (ĐG08 & ĐG11: Không hiển thị biển số xe) */}
                   <div className="mt-3 p-3 rounded-2xl bg-zinc-50 border border-zinc-200/90 flex items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
                       {f.productImage ? (
@@ -455,11 +480,11 @@ export default function FeedbackPage() {
                             {f.productType === 'XeMau' ? '🏍️ XE MÁY' : f.productType === 'PhuTung' ? '📦 PHỤ TÙNG' : '⚙️ DỊCH VỤ SHOWROOM'}
                           </span>
                           {f.productId && (
-                            <span className="text-[10px] text-zinc-400 font-mono font-semibold">Mã: {f.productId}</span>
+                            <span className="text-[10px] text-zinc-400 font-mono font-semibold">Mã SKU: {f.productId}</span>
                           )}
                         </div>
                         <div className="font-extrabold text-xs text-zinc-900 mt-1">
-                          {f.productName || f.xeDangDung || 'Dịch vụ bảo dưỡng & phụ tùng chính hãng'}
+                          {cleanProductTitle}
                         </div>
                       </div>
                     </div>
@@ -467,6 +492,45 @@ export default function FeedbackPage() {
                       {f.loaiDanhGia === 'SanPham' ? 'Đã mua tại đại lý' : 'Dịch vụ tại showroom'}
                     </div>
                   </div>
+
+                  {/* Feedback Content */}
+                  <div className="mt-3 text-xs text-zinc-800 bg-white p-3 rounded-xl border border-zinc-200/60 leading-relaxed font-sans">
+                    {f.noiDung}
+                  </div>
+
+                  {/* ĐG09: Media Gallery (Hình ảnh & Video đính kèm từ khách hàng) */}
+                  {f.hinhAnhDinhKem && f.hinhAnhDinhKem.length > 0 && (
+                    <div className="mt-3 p-3 rounded-xl bg-zinc-50 border border-zinc-200 space-y-2">
+                      <div className="text-[11px] font-bold text-zinc-700 flex items-center gap-1.5 font-mono">
+                        <span>📷</span> MEDIA ĐÍNH KÈM CỦA KHÁCH HÀNG ({f.hinhAnhDinhKem.length}):
+                      </div>
+                      <div className="flex flex-wrap gap-2.5">
+                        {f.hinhAnhDinhKem.map((mediaUrl, mIdx) => {
+                          const isVideo = mediaUrl.includes('data:video') || mediaUrl.endsWith('.mp4') || mediaUrl.endsWith('.webm');
+                          if (isVideo) {
+                            return (
+                              <video
+                                key={mIdx}
+                                src={mediaUrl}
+                                controls
+                                className="w-32 h-24 rounded-xl object-cover border border-zinc-300 bg-black shadow-xs"
+                              />
+                            );
+                          }
+                          return (
+                            <img
+                              key={mIdx}
+                              src={mediaUrl}
+                              alt={`Ảnh đính kèm ${mIdx + 1}`}
+                              onClick={() => setPreviewMedia(mediaUrl)}
+                              className="w-20 h-20 rounded-xl object-cover border border-zinc-300 hover:opacity-90 hover:scale-105 transition cursor-pointer shadow-xs bg-white"
+                              title="Bấm để xem ảnh phóng to"
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Customer Contact Details Bar */}
                   <div className="mt-3 p-3 rounded-xl bg-zinc-50 border border-zinc-200/80 flex flex-wrap items-center justify-between gap-3 text-xs">
@@ -522,7 +586,7 @@ export default function FeedbackPage() {
                         onClick={() => {
                           setEmailFeedback(f);
                           setEmailSubject(`[Motoshop Showroom] Phản hồi đánh giá của Quý khách ${f.hoTen}`);
-                          setEmailBody(`Kính gửi Quý khách ${f.hoTen},\n\nShowroom Motoshop xin chân thành cảm ơn Quý khách đã tin tưởng mua sắm và gửi đánh giá cho sản phẩm "${f.productName || 'xe máy/phụ tùng'}".\n\nNếu Quý khách cần hỗ trợ thêm thông tin hoặc dịch vụ bảo dưỡng, xin vui lòng liên hệ hotline: 1900 6868.\n\nTrân trọng,\nĐội ngũ CSKH Showroom Motoshop.`);
+                          setEmailBody(`Kính gửi Quý khách ${f.hoTen},\n\nShowroom Motoshop xin chân thành cảm ơn Quý khách đã tin tưởng mua sắm và gửi đánh giá cho sản phẩm "${cleanProductTitle}".\n\nNếu Quý khách cần hỗ trợ thêm thông tin hoặc dịch vụ bảo dưỡng, xin vui lòng liên hệ hotline: 1900 6868.\n\nTrân trọng,\nĐội ngũ CSKH Showroom Motoshop.`);
                         }}
                         className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded-lg transition border border-blue-200 flex items-center gap-1 cursor-pointer"
                         title="Soạn và gửi email phản hồi trực tiếp"
@@ -544,9 +608,23 @@ export default function FeedbackPage() {
                     </div>
                   </div>
 
+                  {/* ĐG10: Thông tin nhân viên phụ trách xử lý đánh giá */}
+                  {f.trangThai === 'DaXuLy' && (
+                    <div className="mt-2.5 px-3.5 py-2.5 bg-emerald-50 text-emerald-900 rounded-xl text-xs border border-emerald-200 flex items-center justify-between flex-wrap gap-2 shadow-2xs">
+                      <div className="flex items-center gap-2">
+                        <span className="font-extrabold text-emerald-700">👤 Nhân viên xử lý:</span>
+                        <span className="font-bold">{f.nhanVienXuLy || 'Nguyễn Minh Tuấn (Chuyên viên CSKH)'}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-emerald-700 font-mono text-[11px]">
+                        <span>📅 Ngày xử lý:</span>
+                        <span className="font-bold">{f.ngayXuLy || f.ngayGui}</span>
+                      </div>
+                    </div>
+                  )}
+
                   {f.ghiChuXuLy && (
-                    <div className="mt-2.5 px-3 py-1.5 bg-emerald-50 text-emerald-800 rounded-lg text-xs border border-emerald-200 flex items-center gap-2">
-                      <span className="font-bold">✓ Ghi chú xử lý:</span>
+                    <div className="mt-2.5 px-3 py-1.5 bg-zinc-50 text-zinc-700 rounded-lg text-xs border border-zinc-200 flex items-center gap-2">
+                      <span className="font-bold text-zinc-900">📝 Ghi chú:</span>
                       <span>{f.ghiChuXuLy}</span>
                     </div>
                   )}
@@ -555,17 +633,23 @@ export default function FeedbackPage() {
                     <div className="text-xs" style={{ color: 'var(--color-zinc-400)', fontFamily: 'var(--font-mono)' }}>
                       Mã KH: <strong>{f.customerId}</strong> · Danh mục: {f.loaiDanhGia === 'DichVu' ? 'Dịch vụ' : f.loaiDanhGia === 'SanPham' ? 'Sản phẩm' : 'Bảo hành'}
                     </div>
+                    {/* ĐG13: Nút xác nhận đã xử lý hoạt động ngay lập tức */}
                     {f.trangThai === 'ChoXuLy' && (
-                      <button onClick={() => resolveFeedback(f.id)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-600 transition-colors"
-                        style={{ background: '#dcfce7', color: '#16a34a', border: 'none', cursor: 'pointer' }}>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-                        Đánh dấu đã xử lý
+                      <button
+                        type="button"
+                        onClick={() => resolveFeedback(f.id)}
+                        className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition shadow-xs hover:bg-emerald-200 cursor-pointer"
+                        style={{ background: '#dcfce7', color: '#16a34a', border: '1px solid #bbf7d0' }}
+                        title="Xác nhận đã tiếp nhận và hoàn tất xử lý đánh giá này"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                        Xác nhận đã xử lý
                       </button>
                     )}
                   </div>
                 </div>
-              ))
+              );
+            })
             )}
           </div>
         </div>
@@ -1209,6 +1293,24 @@ export default function FeedbackPage() {
                 <span>➢</span>
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ĐG09: Lightbox modal for previewing enlarged photos */}
+      {previewMedia && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm cursor-pointer"
+          onClick={() => setPreviewMedia(null)}
+        >
+          <div className="relative max-w-4xl max-h-[90vh] p-2" onClick={e => e.stopPropagation()}>
+            <button
+              onClick={() => setPreviewMedia(null)}
+              className="absolute top-4 right-4 bg-zinc-900/90 text-white rounded-full w-8 h-8 flex items-center justify-center font-bold text-sm hover:bg-black cursor-pointer shadow-lg z-10"
+            >
+              ✕
+            </button>
+            <img src={previewMedia} alt="Xem phóng to" className="max-w-full max-h-[85vh] rounded-2xl object-contain shadow-2xl mx-auto border border-white/20" />
           </div>
         </div>
       )}

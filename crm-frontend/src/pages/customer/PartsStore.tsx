@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { mockParts, formatVND, Part, mockProductReviews, ProductReview, Customer, mockOrders } from '../../data/mockData';
+import { mockParts, formatVND, Part, mockProductReviews, ProductReview, Customer, mockOrders, countWords } from '../../data/mockData';
 import { useCart } from '../../contexts/CartContext';
 import { matchVietnameseSearch } from '../../utils/vietnameseSearch';
 import { feedbackApi } from '../../services/api';
@@ -71,17 +71,19 @@ export default function PartsStore({ currentCustomer, onRequireLogin }: Props = 
     return () => clearInterval(timer);
   }, []);
 
-  // Review states (ĐG04, ĐG05)
+  // Review states (ĐG04, ĐG05, ĐG09, ĐG16)
   const [allReviews, setAllReviews] = useState<ProductReview[]>([...mockProductReviews]);
   const [newReviewAuthor, setNewReviewAuthor] = useState(currentCustomer?.hoTen || '');
   const [newReviewPhone, setNewReviewPhone] = useState(currentCustomer?.soDienThoai || '');
   const [newReviewStars, setNewReviewStars] = useState(5);
   const [newReviewContent, setNewReviewContent] = useState('');
+  const [reviewMediaFiles, setReviewMediaFiles] = useState<string[]>([]);
+  const [previewZoomImage, setPreviewZoomImage] = useState<string | null>(null);
   const [reviewSubmitted, setReviewSubmitted] = useState(false);
   const [isEditingReview, setIsEditingReview] = useState(false);
   const [reviewToast, setReviewToast] = useState<string | null>(null);
 
-  // Sync reviews from feedbackApi (ĐG04)
+  // Sync reviews from feedbackApi (ĐG04, ĐG09)
   useEffect(() => {
     const syncReviews = async () => {
       try {
@@ -100,6 +102,7 @@ export default function PartsStore({ currentCustomer, onRequireLogin }: Props = 
             daMua: true,
             editCount: f.editCount || 0,
             productName: f.productName,
+            hinhAnhDinhKem: f.hinhAnhDinhKem || [],
           }));
 
         setAllReviews(prev => {
@@ -245,10 +248,17 @@ export default function PartsStore({ currentCustomer, onRequireLogin }: Props = 
     ) || null;
   }, [currentCustomer, selectedPart, allReviews]);
 
-  // Handle Submit Review (ĐG04: Lưu đồng bộ FE/BE, ĐG05: Giới hạn 1 lần đánh giá và 1 lần sửa)
+  // Handle Submit Review (ĐG04, ĐG05, ĐG09: Media đính kèm, ĐG16: Giới hạn 200 từ)
   const handleAddReview = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedPart || !currentCustomer || !newReviewAuthor.trim() || !newReviewContent.trim()) return;
+
+    // ĐG16: Giới hạn mỗi lần đánh giá không quá 200 từ và cảnh báo chống spam
+    const words = countWords(newReviewContent);
+    if (words > 200) {
+      alert(`Đánh giá không được vượt quá 200 từ (Hiện tại: ${words} từ). Vui lòng rút gọn nội dung để đảm bảo tính xác thực và phòng chống spam!`);
+      return;
+    }
 
     if (existingReview) {
       // ĐG05: Chỉnh sửa đánh giá hiện có (Tối đa 1 lần sửa)
@@ -260,12 +270,14 @@ export default function PartsStore({ currentCustomer, onRequireLogin }: Props = 
       await feedbackApi.update(existingReview.id, {
         diemDanhGia: newReviewStars,
         noiDung: newReviewContent.trim(),
+        hinhAnhDinhKem: reviewMediaFiles,
       });
 
       setAllReviews(prev => prev.map(r => r.id === existingReview.id ? {
         ...r,
         soSao: newReviewStars,
         noiDung: newReviewContent.trim(),
+        hinhAnhDinhKem: reviewMediaFiles,
         editCount: (r.editCount || 0) + 1,
       } : r));
 
@@ -275,7 +287,7 @@ export default function PartsStore({ currentCustomer, onRequireLogin }: Props = 
       return;
     }
 
-    // ĐG04: Gửi đánh giá mới lên Backend và lưu đồng bộ
+    // ĐG04 & ĐG09: Gửi đánh giá mới lên Backend và lưu kèm media ảnh/video
     const res = await feedbackApi.create({
       customerId: currentCustomer.id,
       hoTen: newReviewAuthor.trim(),
@@ -290,6 +302,7 @@ export default function PartsStore({ currentCustomer, onRequireLogin }: Props = 
       productName: selectedPart.tenSanPham,
       productImage: selectedPart.hinhAnh,
       productType: 'PhuTung',
+      hinhAnhDinhKem: reviewMediaFiles,
     });
 
     const newRev: ProductReview = {
@@ -309,12 +322,14 @@ export default function PartsStore({ currentCustomer, onRequireLogin }: Props = 
       productName: selectedPart.tenSanPham,
       productImage: selectedPart.hinhAnh,
       productType: 'PhuTung',
+      hinhAnhDinhKem: reviewMediaFiles,
     };
 
     setAllReviews(prev => [newRev, ...prev]);
     setNewReviewContent('');
+    setReviewMediaFiles([]);
     setReviewSubmitted(true);
-    setReviewToast('✓ Đánh giá đã được lưu và cập nhật đồng bộ trên hệ thống!');
+    setReviewToast('✓ Đánh giá phụ tùng kèm hình ảnh đã được lưu và cập nhật đồng bộ!');
     setTimeout(() => {
       setReviewSubmitted(false);
       setReviewToast(null);
@@ -700,6 +715,35 @@ export default function PartsStore({ currentCustomer, onRequireLogin }: Props = 
 
                           <p className="text-xs text-zinc-700 leading-relaxed">{r.noiDung}</p>
 
+                          {/* ĐG09: Hiển thị hình ảnh & video đính kèm của review phụ tùng */}
+                          {r.hinhAnhDinhKem && r.hinhAnhDinhKem.length > 0 && (
+                            <div className="flex flex-wrap gap-2 pt-1">
+                              {r.hinhAnhDinhKem.map((imgUrl, i) => {
+                                const isVid = imgUrl.includes('data:video') || imgUrl.endsWith('.mp4') || imgUrl.endsWith('.webm');
+                                if (isVid) {
+                                  return (
+                                    <video
+                                      key={i}
+                                      src={imgUrl}
+                                      controls
+                                      className="w-28 h-20 rounded-xl object-cover border border-zinc-200 bg-black shadow-2xs"
+                                    />
+                                  );
+                                }
+                                return (
+                                  <img
+                                    key={i}
+                                    src={imgUrl}
+                                    alt={`Ảnh review phụ tùng ${i + 1}`}
+                                    onClick={() => setPreviewZoomImage(imgUrl)}
+                                    className="w-16 h-16 rounded-xl object-cover border border-zinc-200 cursor-pointer hover:opacity-90 hover:scale-105 transition shadow-2xs bg-white"
+                                    title="Bấm để xem ảnh phóng to"
+                                  />
+                                );
+                              })}
+                            </div>
+                          )}
+
                           {r.phanHoiShowroom && (
                             <div className="mt-2 p-2.5 rounded-xl bg-zinc-50 border-l-2 border-red-600 text-[11px] text-zinc-600">
                               <span className="font-bold text-red-700 block">Phản hồi từ Showroom:</span>
@@ -804,6 +848,7 @@ export default function PartsStore({ currentCustomer, onRequireLogin }: Props = 
                               setIsEditingReview(true);
                               setNewReviewStars(existingReview.soSao);
                               setNewReviewContent(existingReview.noiDung);
+                              setReviewMediaFiles(existingReview.hinhAnhDinhKem || []);
                             }}
                             className="px-4 py-2 bg-zinc-900 hover:bg-black text-white rounded-xl text-xs font-bold transition cursor-pointer shadow-xs flex items-center gap-1.5"
                           >
@@ -893,17 +938,111 @@ export default function PartsStore({ currentCustomer, onRequireLogin }: Props = 
 
                       <div>
                         <label className="block text-[11px] font-semibold text-zinc-600 mb-1">
-                          Chia sẻ chi tiết trải nghiệm sử dụng ({newReviewContent.length}/500)
+                          Chia sẻ chi tiết trải nghiệm sử dụng phụ tùng (Tối đa 200 từ) *
                         </label>
                         <textarea
                           rows={4}
-                          maxLength={500}
                           placeholder="Chia sẻ chất lượng sản phẩm, độ bền, cảm giác sử dụng sau khi lắp đặt vào xe..."
                           required
                           value={newReviewContent}
                           onChange={e => setNewReviewContent(e.target.value)}
-                          className="w-full px-4 py-3 rounded-2xl border border-zinc-300 bg-white text-xs focus:outline-none focus:border-red-600 leading-relaxed"
+                          className={`w-full px-4 py-3 rounded-2xl border bg-white text-xs focus:outline-none leading-relaxed transition ${
+                            countWords(newReviewContent) > 200 ? 'border-red-500 focus:border-red-600' : 'border-zinc-300 focus:border-red-600'
+                          }`}
                         />
+                        {/* ĐG16: Bộ đếm từ và cảnh báo chống spam */}
+                        <div className="flex items-center justify-between text-xs mt-1.5 flex-wrap gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className={`font-mono font-bold ${
+                              countWords(newReviewContent) > 200 ? 'text-red-600' : countWords(newReviewContent) > 0 ? 'text-emerald-700' : 'text-zinc-500'
+                            }`}>
+                              📝 {countWords(newReviewContent)} / 200 từ
+                            </span>
+                            {countWords(newReviewContent) > 200 ? (
+                              <span className="text-red-600 font-bold text-[11px] animate-pulse">
+                                ⚠️ Vượt quá 200 từ! Vui lòng rút gọn nội dung để tránh spam.
+                              </span>
+                            ) : countWords(newReviewContent) > 0 ? (
+                              <span className="text-emerald-600 text-[11px] font-medium">
+                                ✓ Độ dài hợp lệ (tối đa 200 từ)
+                              </span>
+                            ) : null}
+                          </div>
+                          <span className="text-[11px] text-zinc-400 font-mono">
+                            {newReviewContent.length} ký tự
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* ĐG09: Đính kèm hình ảnh hoặc video khi đánh giá phụ tùng */}
+                      <div className="space-y-2 p-3.5 rounded-2xl bg-white border border-zinc-200">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                          <label className="text-[11px] font-bold text-zinc-700 flex items-center gap-1.5 uppercase font-mono">
+                            <span>📷</span> ĐÍNH KÈM HÌNH ẢNH HOẶC VIDEO PHỤ TÙNG ({reviewMediaFiles.length})
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <label className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold rounded-xl border border-red-200 cursor-pointer transition flex items-center gap-1 shadow-2xs">
+                              <span>📁 Chọn tệp từ máy</span>
+                              <input
+                                type="file"
+                                accept="image/*,video/*"
+                                multiple
+                                className="hidden"
+                                onChange={e => {
+                                  const files = Array.from(e.target.files || []);
+                                  files.forEach(file => {
+                                    const reader = new FileReader();
+                                    reader.onload = ev => {
+                                      if (ev.target?.result) {
+                                        setReviewMediaFiles(prev => [...prev, ev.target!.result as string]);
+                                      }
+                                    };
+                                    reader.readAsDataURL(file);
+                                  });
+                                  e.target.value = '';
+                                }}
+                              />
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setReviewMediaFiles(prev => [
+                                  ...prev,
+                                  selectedPart.hinhAnh || 'https://images.unsplash.com/photo-1486006920555-c77dce18193b?w=600&auto=format&fit=crop&q=80'
+                                ]);
+                              }}
+                              className="px-2.5 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-semibold rounded-xl border border-zinc-200 cursor-pointer transition flex items-center gap-1"
+                              title="Thêm nhanh ảnh chụp thực tế phụ tùng"
+                            >
+                              <span>📷 + Ảnh mẫu</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        {reviewMediaFiles.length > 0 && (
+                          <div className="flex flex-wrap gap-2.5 pt-1">
+                            {reviewMediaFiles.map((mUrl, idx) => {
+                              const isVid = mUrl.includes('data:video') || mUrl.endsWith('.mp4');
+                              return (
+                                <div key={idx} className="relative group rounded-xl overflow-hidden border border-zinc-300 w-20 h-20 bg-zinc-900 shadow-2xs">
+                                  {isVid ? (
+                                    <video src={mUrl} className="w-full h-full object-cover" />
+                                  ) : (
+                                    <img src={mUrl} alt={`Upload ${idx}`} className="w-full h-full object-cover" />
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => setReviewMediaFiles(prev => prev.filter((_, i) => i !== idx))}
+                                    className="absolute top-1 right-1 bg-red-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold hover:bg-red-700 transition cursor-pointer shadow"
+                                    title="Xóa tệp đính kèm này"
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
 
                       <div className="flex items-center justify-end gap-2 pt-1">
@@ -918,7 +1057,12 @@ export default function PartsStore({ currentCustomer, onRequireLogin }: Props = 
                         )}
                         <button
                           type="submit"
-                          className="w-full sm:w-auto px-6 py-3 bg-red-700 text-white rounded-xl text-xs font-bold hover:bg-red-800 transition cursor-pointer shadow-md shadow-red-700/20"
+                          disabled={countWords(newReviewContent) > 200 || countWords(newReviewContent) === 0}
+                          className={`w-full sm:w-auto px-6 py-3 rounded-xl text-xs font-bold transition shadow-md ${
+                            countWords(newReviewContent) > 200 || countWords(newReviewContent) === 0
+                              ? 'bg-zinc-300 text-zinc-500 cursor-not-allowed shadow-none'
+                              : 'bg-red-700 text-white hover:bg-red-800 cursor-pointer shadow-red-700/20'
+                          }`}
                         >
                           {isEditingReview ? 'Lưu cập nhật đánh giá' : 'Gửi đánh giá phụ tùng ngay'}
                         </button>
@@ -1451,6 +1595,24 @@ export default function PartsStore({ currentCustomer, onRequireLogin }: Props = 
           )}
         </div>
       </div>
+
+      {/* ĐG09: Lightbox modal for previewing enlarged review photos */}
+      {previewZoomImage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm cursor-pointer"
+          onClick={() => setPreviewZoomImage(null)}
+        >
+          <div className="relative max-w-4xl max-h-[90vh] p-2" onClick={e => e.stopPropagation()}>
+            <button
+              onClick={() => setPreviewZoomImage(null)}
+              className="absolute top-4 right-4 bg-zinc-900/90 text-white rounded-full w-8 h-8 flex items-center justify-center font-bold text-sm hover:bg-black cursor-pointer shadow-lg z-10"
+            >
+              ✕
+            </button>
+            <img src={previewZoomImage} alt="Xem ảnh phóng to" className="max-w-full max-h-[85vh] rounded-2xl object-contain shadow-2xl mx-auto border border-white/20" />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

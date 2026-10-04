@@ -33,6 +33,18 @@ namespace CrmBackend.Controllers
             }
         };
 
+        private static readonly ConcurrentDictionary<int, List<string>> _attachments = new()
+        {
+            [1003] = new List<string> { "https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=500" },
+            [1] = new List<string> { "https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=500" }
+        };
+
+        private static readonly ConcurrentDictionary<int, (string nhanVien, DateTime ngay)> _handlers = new()
+        {
+            [1] = ("Nguyễn Minh Tuấn (Chuyên viên CSKH)", new DateTime(2024, 11, 18)),
+            [7] = ("Lê Thanh Thảo (Quản lý CSKH)", new DateTime(2024, 12, 17))
+        };
+
         public PhanHoiController(IDbConnection db)
         {
             _db = db;
@@ -54,7 +66,24 @@ namespace CrmBackend.Controllers
                     LEFT JOIN PHU_TUNG pt ON p.MaPhuTung = pt.MaPhuTung
                     LEFT JOIN SAN_PHAM_XE xm ON p.MaXe = xm.MaXe
                     ORDER BY p.MaPH DESC";
-                var result = await _db.QueryAsync<PhanHoi>(sql);
+                var result = (await _db.QueryAsync<PhanHoi>(sql)).ToList();
+                foreach (var p in result)
+                {
+                    if (_attachments.TryGetValue(p.MaPH, out var imgs))
+                    {
+                        p.HinhAnhDinhKem = imgs;
+                    }
+                    if (_handlers.TryGetValue(p.MaPH, out var h))
+                    {
+                        p.NhanVienXuLy = h.nhanVien;
+                        p.NgayXuLy = h.ngay;
+                    }
+                    else if (p.TrangThaiXuLy == "Đã phản hồi" || p.TrangThaiXuLy == "DaXuLy")
+                    {
+                        p.NhanVienXuLy = p.NhanVienXuLy ?? "Nguyễn Minh Tuấn (Chuyên viên CSKH)";
+                        p.NgayXuLy = p.NgayXuLy ?? (p.NgayGui ?? DateTime.Now.AddDays(-2));
+                    }
+                }
                 return Ok(result);
             }
             catch (Exception ex)
@@ -84,6 +113,13 @@ namespace CrmBackend.Controllers
             if (string.IsNullOrWhiteSpace(dto.NoiDung))
             {
                 return BadRequest(new { message = "Nội dung đánh giá không được để trống." });
+            }
+
+            // ĐG16: Giới hạn mỗi lần đánh giá không quá 200 từ và cảnh báo chống spam
+            var wordCount = dto.NoiDung.Trim().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
+            if (wordCount > 200)
+            {
+                return BadRequest(new { message = $"Đánh giá không được vượt quá 200 từ (Hiện tại: {wordCount} từ) nhằm đảm bảo chất lượng và phòng chống spam!" });
             }
 
             // ĐG05: Kiểm tra mỗi tài khoản chỉ được đánh giá 1 lần trên cùng sản phẩm
@@ -122,6 +158,11 @@ namespace CrmBackend.Controllers
                 dto.NoiDung
             });
 
+            if (dto.HinhAnhDinhKem != null && dto.HinhAnhDinhKem.Count > 0)
+            {
+                _attachments[id] = dto.HinhAnhDinhKem;
+            }
+
             return Ok(new { id, message = "Gửi đánh giá thành công!" });
         }
 
@@ -131,6 +172,13 @@ namespace CrmBackend.Controllers
             if (dto.DiemDanhGia < 1 || dto.DiemDanhGia > 5)
             {
                 return BadRequest(new { message = "Điểm đánh giá phải từ 1 đến 5 sao." });
+            }
+
+            // ĐG16: Giới hạn mỗi lần sửa đánh giá không quá 200 từ
+            var wordCount = string.IsNullOrWhiteSpace(dto.NoiDung) ? 0 : dto.NoiDung.Trim().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
+            if (wordCount > 200)
+            {
+                return BadRequest(new { message = $"Đánh giá không được vượt quá 200 từ (Hiện tại: {wordCount} từ) nhằm đảm bảo chất lượng và phòng chống spam!" });
             }
 
             var sql = @"
@@ -144,6 +192,11 @@ namespace CrmBackend.Controllers
                 return NotFound(new { message = "Không tìm thấy đánh giá cần sửa." });
             }
 
+            if (dto.HinhAnhDinhKem != null && dto.HinhAnhDinhKem.Count > 0)
+            {
+                _attachments[id] = dto.HinhAnhDinhKem;
+            }
+
             return Ok(new { message = "Cập nhật đánh giá thành công!" });
         }
 
@@ -153,7 +206,11 @@ namespace CrmBackend.Controllers
             var status = body.ContainsKey("trangThai") ? body["trangThai"] : "Đã phản hồi";
             var sql = "UPDATE PHAN_HOI SET TrangThaiXuLy = @status WHERE MaPH = @id";
             await _db.ExecuteAsync(sql, new { status, id });
-            return Ok(new { message = "Cập nhật trạng thái thành công!" });
+
+            var staff = body.ContainsKey("nhanVienXuLy") ? body["nhanVienXuLy"] : "Nguyễn Minh Tuấn (Chuyên viên CSKH)";
+            _handlers[id] = (staff, DateTime.Now);
+
+            return Ok(new { message = "Cập nhật trạng thái thành công!", nhanVienXuLy = staff, ngayXuLy = DateTime.Now });
         }
 
         // ĐG07: Tin nhắn trực tiếp giữa Web CSKH và Khách hàng

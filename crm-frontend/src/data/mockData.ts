@@ -113,15 +113,23 @@ export interface Appointment {
   trangThai: AppointmentStatus; ghiChu: string; tenXe: string; bienSo: string;
 }
 
+export function countWords(text: string): number {
+  if (!text || !text.trim()) return 0;
+  return text.trim().split(/\s+/).filter(Boolean).length;
+}
+
 export interface Feedback {
   id: string; customerId: string; hoTen: string; noiDung: string;
   diemDanhGia: number; ngayGui: string; loaiDanhGia: 'DichVu' | 'SanPham' | 'BaoHanh';
-  trangThai: 'ChoXuLy' | 'DaXuLy'; loaiNhan: 'DanhGia' | 'KhieuNai';
+  trangThai: 'ChoXuLy' | 'DaXuLy'; loaiNhan: 'DanhGia' | 'KhieuNai' | 'DanhGiaMoi';
   soDienThoai?: string;
   email?: string;
   diaChi?: string;
   xeDangDung?: string;
   ghiChuXuLy?: string;
+  nhanVienXuLy?: string;
+  ngayXuLy?: string;
+  hinhAnhDinhKem?: string[];
   productId?: string;
   productName?: string;
   productImage?: string;
@@ -145,6 +153,7 @@ export interface ProductReview {
   productName?: string;
   productImage?: string;
   productType?: 'PhuTung' | 'XeMau';
+  hinhAnhDinhKem?: string[];
 }
 
 export interface SurveyQuestion {
@@ -530,7 +539,7 @@ export const mockFeedbacks: Feedback[] = [
     soDienThoai: '0901234567',
     email: 'nguyenvanan1990@gmail.com',
     diaChi: '12 Lý Thường Kiệt, Q.1, TP.HCM',
-    xeDangDung: 'Honda SH 160i ABS (51K-123.45)',
+    xeDangDung: 'Honda SH 160i ABS',
     noiDung: 'Dịch vụ bảo dưỡng định kỳ rất nhanh chóng, nhân viên kỹ thuật thay nhớt và siết phuộc cẩn thận. Showroom có phòng chờ máy lạnh tiện nghi!',
     diemDanhGia: 5,
     ngayGui: '2024-11-16',
@@ -538,6 +547,11 @@ export const mockFeedbacks: Feedback[] = [
     trangThai: 'DaXuLy',
     loaiNhan: 'DanhGia',
     ghiChuXuLy: 'Đã gọi điện cảm ơn khách hàng và gửi voucher giảm giá 10% lần sau.',
+    nhanVienXuLy: 'Nguyễn Minh Tuấn (Chuyên viên CSKH)',
+    ngayXuLy: '2024-11-17',
+    hinhAnhDinhKem: [
+      'https://images.unsplash.com/photo-1568772585407-9361f9bf3a87?w=600&auto=format&fit=crop&q=80',
+    ],
   },
   {
     id: 'PH002',
@@ -546,13 +560,16 @@ export const mockFeedbacks: Feedback[] = [
     soDienThoai: '0912345678',
     email: 'tranthibich95@gmail.com',
     diaChi: '45 Nguyễn Huệ, Q.1, TP.HCM',
-    xeDangDung: 'Vespa Sprint 125 (51H-678.90)',
+    xeDangDung: 'Vespa Sprint 125',
     noiDung: 'Đơn hàng lốp Michelin giao chậm hơn dự kiến 1 ngày do bên vận chuyển, may là đồ bọc gói kỹ và đúng kích thước chuẩn cho xe Vespa.',
     diemDanhGia: 4,
     ngayGui: '2024-12-04',
     loaiDanhGia: 'SanPham',
     trangThai: 'ChoXuLy',
     loaiNhan: 'KhieuNai',
+    hinhAnhDinhKem: [
+      'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=600&auto=format&fit=crop&q=80',
+    ],
   },
   {
     id: 'PH003',
@@ -561,7 +578,7 @@ export const mockFeedbacks: Feedback[] = [
     soDienThoai: '0934567890',
     email: 'phamduyen98@gmail.com',
     diaChi: '23 CMT8, Q.3, TP.HCM',
-    xeDangDung: 'Honda Lead 125 (59F1-888.88)',
+    xeDangDung: 'Honda Lead 125',
     noiDung: 'Đèn LED Philips và má phanh Brembo mua tại cửa hàng dùng cực thích, bóp phanh êm ru và đi đêm rất an toàn.',
     diemDanhGia: 5,
     ngayGui: '2024-12-05',
@@ -569,6 +586,8 @@ export const mockFeedbacks: Feedback[] = [
     trangThai: 'DaXuLy',
     loaiNhan: 'DanhGia',
     ghiChuXuLy: 'Đã hỗ trợ kiểm tra định kỳ miễn phí cho khách.',
+    nhanVienXuLy: 'Lê Hoàng Nam (Kỹ thuật trưởng)',
+    ngayXuLy: '2024-12-06',
   },
   {
     id: 'PH004',
@@ -577,13 +596,15 @@ export const mockFeedbacks: Feedback[] = [
     soDienThoai: '0945678901',
     email: 'hoangvanem92@gmail.com',
     diaChi: '56 Điện Biên Phủ, Bình Thạnh, TP.HCM',
-    xeDangDung: 'Yamaha Exciter 155 VVA (59S2-345.67)',
+    xeDangDung: 'Yamaha Exciter 155 VVA',
     noiDung: 'Bộ nhông sên dĩa DID vàng lắp vào chạy rất êm, nhân viên kỹ thuật căn xích chuẩn xác. Sẽ tiếp tục ủng hộ showroom!',
     diemDanhGia: 5,
     ngayGui: '2024-12-10',
     loaiDanhGia: 'SanPham',
     trangThai: 'DaXuLy',
     loaiNhan: 'DanhGia',
+    nhanVienXuLy: 'Trần Thu Hà (Tư vấn bán hàng)',
+    ngayXuLy: '2024-12-11',
   },
   {
     id: 'PH005',
@@ -592,13 +613,15 @@ export const mockFeedbacks: Feedback[] = [
     soDienThoai: '0956789012',
     email: 'dangphuongthao96@gmail.com',
     diaChi: '89 Võ Văn Tần, Q.3, TP.HCM',
-    xeDangDung: 'Honda Vision 110 (59V1-999.99)',
+    xeDangDung: 'Honda Vision 110',
     noiDung: 'Tư vấn viên bán hàng giải thích các chương trình ưu đãi rất nhiệt tình, rửa xe sạch sẽ sau khi bảo dưỡng xong. Rất hài lòng!',
     diemDanhGia: 5,
     ngayGui: '2024-12-11',
     loaiDanhGia: 'DichVu',
     trangThai: 'DaXuLy',
     loaiNhan: 'DanhGia',
+    nhanVienXuLy: 'Nguyễn Minh Tuấn (Chuyên viên CSKH)',
+    ngayXuLy: '2024-12-12',
   },
   {
     id: 'PH006',
@@ -607,7 +630,7 @@ export const mockFeedbacks: Feedback[] = [
     soDienThoai: '0967890123',
     email: 'vuminhhai85@gmail.com',
     diaChi: '34 Nguyễn Đình Chiểu, Phú Nhuận, TP.HCM',
-    xeDangDung: 'Honda Air Blade 160 (51X1-456.78)',
+    xeDangDung: 'Honda Air Blade 160',
     noiDung: 'Tôi đặt đơn dây curoa nhưng bấm nhầm số lượng nên đã hủy. Cửa hàng hỗ trợ hoàn tiền và tư vấn lại rất nhanh chóng chu đáo.',
     diemDanhGia: 5,
     ngayGui: '2024-12-14',
@@ -615,6 +638,8 @@ export const mockFeedbacks: Feedback[] = [
     trangThai: 'DaXuLy',
     loaiNhan: 'DanhGia',
     ghiChuXuLy: 'Đã hoàn tiền và gửi mã ưu đãi miễn phí giao hàng.',
+    nhanVienXuLy: 'Trần Thu Hà (Tư vấn bán hàng)',
+    ngayXuLy: '2024-12-15',
   },
   {
     id: 'PH007',
@@ -623,13 +648,15 @@ export const mockFeedbacks: Feedback[] = [
     soDienThoai: '0990123456',
     email: 'lochoang48@gmail.com',
     diaChi: '215 Lê Văn Sỹ, Q.3, TP.HCM',
-    xeDangDung: 'Honda Vario 160 (59U1-678.12)',
+    xeDangDung: 'Honda Vario 160',
     noiDung: 'Showroom rất khang trang, nhiều phụ tùng chính hãng đẹp mắt. Nhân viên lễ tân tiếp đón tận tình, nước uống chu đáo.',
     diemDanhGia: 5,
     ngayGui: '2024-12-16',
     loaiDanhGia: 'DichVu',
     trangThai: 'DaXuLy',
     loaiNhan: 'DanhGia',
+    nhanVienXuLy: 'Nguyễn Minh Tuấn (Chuyên viên CSKH)',
+    ngayXuLy: '2024-12-17',
   },
 ];
 
@@ -647,6 +674,9 @@ export const mockProductReviews: ProductReview[] = [
     daMua: true,
     dongXeDaMua: 'Honda SH 160i ABS 2025 (Đen mờ)',
     phanHoiShowroom: 'Cảm ơn anh Kiệt đã tin tưởng lựa chọn Motoshop. Chúc anh vạn dặm bình an cùng SH 160i!',
+    hinhAnhDinhKem: [
+      'https://images.unsplash.com/photo-1568772585407-9361f9bf3a87?w=600&auto=format&fit=crop&q=80',
+    ],
   },
   {
     id: 'RV002',
@@ -749,6 +779,9 @@ export const mockProductReviews: ProductReview[] = [
     noiDung: 'Hàng chuẩn tem chống giả 100%, quét mã QR ra ngay nguồn gốc Motul Pháp. Thay cho con Exciter 155 máy êm mát rõ rệt sau 500km tour Đà Lạt.',
     daMua: true,
     phanHoiShowroom: 'Motoshop cam kết chỉ bán dầu nhớt Motul chính hãng phân phối ủy quyền tại Việt Nam!',
+    hinhAnhDinhKem: [
+      'https://images.unsplash.com/photo-1486006920555-c77dce18193b?w=600&auto=format&fit=crop&q=80',
+    ],
   },
   {
     id: 'RV102',

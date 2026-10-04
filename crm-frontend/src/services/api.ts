@@ -928,6 +928,9 @@ export const feedbackApi = {
               pImg = pt?.hinhAnh;
             }
 
+            // ĐG11: Không lưu và không hiển thị thông tin biển số xe trong phần đánh giá
+            const cleanedXe = (item.tenXe || mockMatch?.xeDangDung)?.replace(/\s*\([^)]*\)/g, '').trim();
+
             return {
               id,
               customerId: cId,
@@ -935,7 +938,7 @@ export const feedbackApi = {
               soDienThoai: item.soDienThoai || mockMatch?.soDienThoai || '0901234567',
               email: item.email || mockMatch?.email || 'khachhang@motoshop.vn',
               diaChi: item.diaChi || mockMatch?.diaChi || 'TP.HCM',
-              xeDangDung: item.tenXe || mockMatch?.xeDangDung,
+              xeDangDung: cleanedXe,
               noiDung: item.noiDung || '',
               diemDanhGia: item.diemDanhGia || 5,
               ngayGui: item.ngayGui ? item.ngayGui.split('T')[0] : '2024-12-01',
@@ -943,6 +946,11 @@ export const feedbackApi = {
               trangThai: (item.trangThaiXuLy === 'Đã phản hồi' || item.trangThaiXuLy === 'DaXuLy') ? 'DaXuLy' : 'ChoXuLy',
               loaiNhan: (item.diemDanhGia <= 3 || item.noiDung?.toLowerCase().includes('chậm') || item.noiDung?.toLowerCase().includes('lỗi')) ? 'KhieuNai' : 'DanhGia',
               ghiChuXuLy: item.ghiChuXuLy || mockMatch?.ghiChuXuLy,
+              // ĐG10: Thông tin nhân viên phụ trách xử lý
+              nhanVienXuLy: item.nhanVienXuLy || mockMatch?.nhanVienXuLy || ((item.trangThaiXuLy === 'Đã phản hồi' || item.trangThaiXuLy === 'DaXuLy') ? 'Nguyễn Minh Tuấn (Chuyên viên CSKH)' : undefined),
+              ngayXuLy: item.ngayXuLy || mockMatch?.ngayXuLy || ((item.trangThaiXuLy === 'Đã phản hồi' || item.trangThaiXuLy === 'DaXuLy') ? (item.ngayGui ? item.ngayGui.split('T')[0] : '2024-12-05') : undefined),
+              // ĐG09: Đính kèm media ảnh hoặc video
+              hinhAnhDinhKem: item.hinhAnhDinhKem || mockMatch?.hinhAnhDinhKem || [],
               productId: item.maPhuTung ? `PT00${item.maPhuTung}` : item.maXe ? `XM00${item.maXe}` : mockMatch?.productId,
               productName: pName,
               productImage: pImg,
@@ -990,11 +998,12 @@ export const feedbackApi = {
     noiDung: string;
     diemDanhGia: number;
     loaiDanhGia?: 'DichVu' | 'SanPham' | 'BaoHanh';
-    loaiNhan?: 'DanhGia' | 'KhieuNai';
+    loaiNhan?: 'DanhGia' | 'KhieuNai' | 'DanhGiaMoi';
     productId?: string;
     productName?: string;
     productImage?: string;
     productType?: 'PhuTung' | 'XeMau' | 'DichVu';
+    hinhAnhDinhKem?: string[];
   }): Promise<{ success: boolean; feedback: Feedback }> {
     const maKhInt = parseInt(data.customerId.replace(/\D/g, ''), 10) || 1;
     let newMaPH: number | undefined;
@@ -1014,6 +1023,7 @@ export const feedbackApi = {
           noiDung: data.noiDung,
           tenSanPham: data.productName,
           loaiDoiTuong: data.productType,
+          hinhAnhDinhKem: data.hinhAnhDinhKem || [],
         }),
       });
       if (res.ok) {
@@ -1025,6 +1035,10 @@ export const feedbackApi = {
     }
 
     const id = newMaPH ? (newMaPH < 10 ? `PH00${newMaPH}` : `PH0${newMaPH}`) : `PH${Date.now().toString().slice(-4)}`;
+    
+    // ĐG11: Xóa biển số xe khỏi xeDangDung nếu có
+    const cleanedXe = (data.xeDangDung || (data.productType === 'XeMau' ? data.productName : undefined))?.replace(/\s*\([^)]*\)/g, '').trim();
+
     const newFb: Feedback = {
       id,
       customerId: data.customerId,
@@ -1032,7 +1046,7 @@ export const feedbackApi = {
       soDienThoai: data.soDienThoai || '0901234567',
       email: data.email || 'khachhang@motoshop.vn',
       diaChi: data.diaChi || 'TP.HCM',
-      xeDangDung: data.xeDangDung || (data.productType === 'XeMau' ? data.productName : undefined),
+      xeDangDung: cleanedXe,
       noiDung: data.noiDung,
       diemDanhGia: data.diemDanhGia,
       ngayGui: new Date().toISOString().split('T')[0],
@@ -1043,6 +1057,7 @@ export const feedbackApi = {
       productName: data.productName,
       productImage: data.productImage,
       productType: data.productType || 'SanPham' as any,
+      hinhAnhDinhKem: data.hinhAnhDinhKem || [],
       editCount: 0,
     };
 
@@ -1068,7 +1083,7 @@ export const feedbackApi = {
     return { success: true, feedback: newFb };
   },
 
-  async update(id: string, data: { diemDanhGia: number; noiDung: string }): Promise<boolean> {
+  async update(id: string, data: { diemDanhGia: number; noiDung: string; hinhAnhDinhKem?: string[] }): Promise<boolean> {
     const maPH = parseInt(id.replace(/\D/g, ''), 10);
     if (!isNaN(maPH) && maPH > 0) {
       try {
@@ -1078,6 +1093,7 @@ export const feedbackApi = {
           body: JSON.stringify({
             diemDanhGia: data.diemDanhGia,
             noiDung: data.noiDung,
+            hinhAnhDinhKem: data.hinhAnhDinhKem || [],
           }),
         });
       } catch (err) {
@@ -1089,6 +1105,7 @@ export const feedbackApi = {
     if (f) {
       f.diemDanhGia = data.diemDanhGia;
       f.noiDung = data.noiDung;
+      if (data.hinhAnhDinhKem) f.hinhAnhDinhKem = data.hinhAnhDinhKem;
       f.editCount = (f.editCount || 0) + 1;
     }
 
@@ -1100,6 +1117,7 @@ export const feedbackApi = {
         if (match) {
           match.diemDanhGia = data.diemDanhGia;
           match.noiDung = data.noiDung;
+          if (data.hinhAnhDinhKem) match.hinhAnhDinhKem = data.hinhAnhDinhKem;
           match.editCount = (match.editCount || 0) + 1;
         }
         localStorage.setItem(FEEDBACK_STORAGE_KEY, JSON.stringify(list));
@@ -1110,14 +1128,18 @@ export const feedbackApi = {
     return true;
   },
 
-  async resolve(id: string, note?: string): Promise<boolean> {
+  // ĐG10 & ĐG13: Nút đã xử lý cập nhật trạng thái ngay lập tức và lưu thông tin nhân viên xử lý
+  async resolve(id: string, note?: string, staffName?: string): Promise<boolean> {
+    const handler = staffName || 'Nguyễn Minh Tuấn (Chuyên viên CSKH)';
+    const resolvedDate = new Date().toISOString().split('T')[0];
+
     const maPH = parseInt(id.replace(/\D/g, ''), 10);
     if (!isNaN(maPH) && maPH > 0) {
       try {
         await fetchWithTimeout(`${API_BASE_URL}/PhanHoi/${maPH}/trang-thai`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ trangThai: 'Đã phản hồi' }),
+          body: JSON.stringify({ trangThai: 'Đã phản hồi', nhanVienXuLy: handler }),
         });
       } catch {}
     }
@@ -1125,6 +1147,8 @@ export const feedbackApi = {
     const f = mockFeedbacks.find(x => x.id === id);
     if (f) {
       f.trangThai = 'DaXuLy';
+      f.nhanVienXuLy = handler;
+      f.ngayXuLy = resolvedDate;
       if (note) f.ghiChuXuLy = note;
     }
 
@@ -1135,6 +1159,8 @@ export const feedbackApi = {
         const match = list.find(x => x.id === id);
         if (match) {
           match.trangThai = 'DaXuLy';
+          match.nhanVienXuLy = handler;
+          match.ngayXuLy = resolvedDate;
           if (note) match.ghiChuXuLy = note;
         }
         localStorage.setItem(FEEDBACK_STORAGE_KEY, JSON.stringify(list));
