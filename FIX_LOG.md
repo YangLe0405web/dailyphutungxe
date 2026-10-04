@@ -393,23 +393,39 @@ Dưới đây là danh sách toàn bộ các tập tin đã can thiệp. Khi x�
   - Bấm nút Gọi trên một phản hồi -> Modal Gọi điện mở ra với SĐT khách hàng, bấm "Lưu nhật ký" -> Trạng thái phản hồi đổi sang "Đã phản hồi".
   - Bấm nút Email -> Modal Soạn Email mở ra, bấm chọn mẫu "Xử lý khiếu nại" -> Tiêu đề và nội dung tự động điền sẵn, bấm "Gửi email" -> Hiển thị thông báo gửi thành công và đóng popup.
 
-#### 7. ĐG07 – Thêm chức năng nhắn tin Khách hàng trực tiếp trên Web
-* **Mô tả lỗi:** Thiếu kênh trao đổi và nhắn tin trực tiếp giữa khách hàng và nhân viên hỗ trợ chăm sóc khách hàng (CSKH) của showroom trên website.
-* **Kết quả mong đợi:** Bổ sung chức năng Live Chat trực tiếp 24/7 trên web:
-  - Giao diện Khách hàng: Nút chat nổi góc phải màn hình (`💬 Hỗ trợ trực tuyến`), có huy hiệu tin nhắn chưa đọc, mở khung chat trao đổi hai chiều với tư vấn viên.
-  - Giao diện Admin: Nút Nhắn tin trong trang Quản lý phản hồi mở khung chat trực tiếp với khách hàng, gửi tin phản hồi tư vấn phụ tùng/xe máy.
+#### 7. ĐG07 – Thêm chức năng nhắn tin Khách hàng trực tiếp trên Web (Nâng cấp Realtime 2 chiều hoàn chỉnh)
+* **Mô tả lỗi:** Thiếu kênh trao đổi và nhắn tin trực tiếp giữa khách hàng và nhân viên hỗ trợ chăm sóc khách hàng (CSKH) của showroom trên website. Đồng thời, lỗi hai bên không thấy tin nhắn của nhau khi mở ở các tab hoặc trình duyệt khác nhau.
+* **Nguyên nhân cốt lõi phát hiện:**
+  - Sự kiện `CustomEvent` (`crm-chat-update`) chỉ phát tán trong cùng một cửa sổ/tab đơn lẻ, không thể giao tiếp giữa các tab hoặc giữa các trình duyệt khác nhau.
+  - Phía Admin chỉ có thể mở chat khi bấm vào 1 khách hàng cụ thể trong bảng Feedback, không có trung tâm điều khiển Live Chat tổng thể để thấy các cuộc gọi/tin nhắn mới từ khách hàng vãng lai.
+  - Thiếu cơ chế polling định kỳ để kéo tin nhắn mới từ máy chủ backend về giao diện khi không tải lại trang.
+* **Kết quả mong đợi:** Khách hàng và Admin nhắn tin qua lại trực tuyến nhìn thấy tin nhắn của nhau ngay lập tức trong thời gian thực (0s qua BroadcastChannel hoặc tối đa 2s qua Polling), hoạt động ổn định kể cả khi mở ở nhiều tab hoặc trình duyệt khác nhau.
 * **Giải pháp đã thực hiện:**
-  - Backend (`PhanHoiController.cs`):
-    - Bổ sung API `GET /api/PhanHoi/messages?customerId={id}` và `POST /api/PhanHoi/messages` lưu trữ tin nhắn chat.
-  - Frontend (`src/services/api.ts`):
-    - Xây dựng service `chatApi` tích hợp Backend API và đồng bộ qua `localStorage` + Custom Event `crm-chat-update` đảm bảo tin nhắn xuất hiện tức thời giữa các tab trình duyệt.
-  - `CustomerLayout.tsx`:
-    - Tích hợp Floating Live Chat Widget ở góc dưới bên phải: Header CSKH Showroom chuyên nghiệp, danh sách tin nhắn phân biệt khách hàng (đỏ) và tư vấn viên (trắng), các nút câu hỏi gợi ý nhanh và ô nhập tin nhắn gửi nhanh.
-  - `Feedback.tsx`:
-    - Tích hợp Modal Chat CSKH với khách hàng cho Admin: Xem lịch sử chat, các nút trả lời nhanh chuyên nghiệp và ô gửi tin nhắn phản hồi đến khách hàng.
+  - **Đồng bộ đa tầng Realtime:**
+    1. **Tầng 1 (BroadcastChannel):** Sử dụng `new BroadcastChannel('crm_live_chat_channel')` giúp truyền tin nhắn tức thì (0ms) giữa tab Khách hàng và tab Admin trên cùng trình duyệt.
+    2. **Tầng 2 (Storage Event):** Dự phòng lắng nghe sự kiện `storage` khi `localStorage` được ghi nhận tin nhắn mới.
+    3. **Tầng 3 (HTTP Polling 2s):** Cả phía Khách hàng (`CustomerLayout.tsx`), trang Admin Phản hồi (`Feedback.tsx`) và Trung tâm Chat Admin (`AdminLayout.tsx`) đều kích hoạt polling ngầm mỗi 2 giây gọi `GET /api/PhanHoi/messages`, đảm bảo nhận tin nhắn ngay cả khi dùng 2 trình duyệt độc lập (Chrome, Edge, Incognito, điện thoại).
+  - **Backend (`PhanHoiController.cs`):**
+    - Bổ sung cơ chế lưu trữ bền vững tin nhắn chat vào file `chat_history.json` trên máy chủ, không bị mất lịch sử chat khi khởi động lại server.
+    - Cung cấp API `GET /api/PhanHoi/conversations` tổng hợp danh sách các phiên hội thoại của từng khách hàng kèm tin nhắn cuối và thời gian gửi.
+    - API `GET /api/PhanHoi/messages` và `POST /api/PhanHoi/messages` hỗ trợ trao đổi hai chiều theo từng mã khách hàng.
+  - **Giao diện Khách hàng (`CustomerLayout.tsx`):**
+    - Tích hợp Floating Live Chat Widget ở góc dưới bên phải màn hình:
+      * Tự động nhận diện tài khoản đang đăng nhập hoặc khách vãng lai.
+      * Tự động cuộn xuống cuối (`scrollIntoView`) khi có tin nhắn mới.
+      * Huy hiệu đếm số tin nhắn CSKH chưa đọc khi hộp chat đang đóng.
+      * Tự động cập nhật tin nhắn của Admin gửi đến trong thời gian thực.
+  - **Giao diện Quản trị (`AdminLayout.tsx` & `Feedback.tsx`):**
+    - `AdminLayout.tsx`: Bổ sung nút **"💬 Live Chat CSKH"** trên thanh Header trên cùng (cạnh chuông thông báo) với chấm xanh trực tuyến và huy hiệu tin nhắn mới.
+    - Khi bấm mở: Hiển thị **Trung tâm CSKH trực tuyến (Live Chat Console)** 2 cột chuyên nghiệp:
+      * Cột trái: Danh sách toàn bộ khách hàng đang chat, có thanh tìm kiếm, ảnh đại diện, tin nhắn gần nhất và thời gian.
+      * Cột phải: Khung chat chi tiết với khách hàng đang chọn, lịch sử tin nhắn hai bên, nút gợi ý trả lời nhanh và ô soạn tin nhắn gửi đi.
+    - `Feedback.tsx`: Nút "Nhắn tin" trên từng dòng phản hồi cũng được đồng bộ cơ chế Realtime Polling + BroadcastChannel tương tự.
 * **Kết quả test:**
-  - Khách hàng bấm nút chat nổi -> Nhắn "Tư vấn lịch bảo dưỡng xe" -> Tin nhắn xuất hiện ngay trong khung chat.
-  - Admin bấm nút Chat trên bảng phản hồi của khách hàng -> Thấy tin nhắn của khách và gửi lại tin nhắn giải đáp -> Khách hàng nhận được tin phản hồi thời gian thực.
+  - Mở tab 1 (Giao diện Khách hàng) và tab 2 (Giao diện Admin):
+    * Khách hàng gửi tin: *"Chào showroom, tôi muốn hỏi lịch bảo dưỡng xe SH160i"* -> Bên Admin ngay lập tức xuất hiện tin nhắn trong khung chat (0s), có thông báo toast góc màn hình.
+    * Admin bấm trả lời: *"Dạ chào anh An, showroom có lịch trống ngày mai lúc 9h ạ!"* -> Bên Khách hàng lập tức hiện bong bóng tin nhắn của tư vấn viên.
+    * Hai bên trò chuyện qua lại mượt mà, không cần F5 hay tải lại trang.
 
 #### 8. ĐG08 – Lỗi đánh giá không hiển thị rõ sản phẩm
 * **Mô tả lỗi:** Trong danh sách đánh giá của Admin và Khách hàng, các đánh giá không hiển thị rõ khách hàng đang đánh giá sản phẩm hay xe máy nào, khó phân biệt giữa phụ tùng và xe mẫu.

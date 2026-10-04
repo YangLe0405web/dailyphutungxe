@@ -157,6 +157,45 @@ namespace CrmBackend.Controllers
         }
 
         // ĐG07: Tin nhắn trực tiếp giữa Web CSKH và Khách hàng
+        private static readonly object _fileLock = new();
+        private static readonly string _chatFilePath = Path.Combine(AppContext.BaseDirectory, "chat_history.json");
+
+        static PhanHoiController()
+        {
+            try
+            {
+                if (System.IO.File.Exists(_chatFilePath))
+                {
+                    var json = System.IO.File.ReadAllText(_chatFilePath);
+                    var list = System.Text.Json.JsonSerializer.Deserialize<List<ChatMessageDto>>(json);
+                    if (list != null && list.Count > 0)
+                    {
+                        foreach (var m in list)
+                        {
+                            if (!_chatMessages.Any(existing => existing.Id == m.Id))
+                            {
+                                _chatMessages.Add(m);
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+        }
+
+        private static void SaveChatToFile()
+        {
+            try
+            {
+                lock (_fileLock)
+                {
+                    var json = System.Text.Json.JsonSerializer.Serialize(_chatMessages.ToList());
+                    System.IO.File.WriteAllText(_chatFilePath, json);
+                }
+            }
+            catch { }
+        }
+
         [HttpGet("messages")]
         public IActionResult GetMessages([FromQuery] string? customerId)
         {
@@ -168,6 +207,32 @@ namespace CrmBackend.Controllers
             return Ok(list.OrderBy(m => m.SentAt));
         }
 
+        [HttpGet("conversations")]
+        public IActionResult GetConversations()
+        {
+            var grouped = _chatMessages
+                .GroupBy(m => string.IsNullOrWhiteSpace(m.CustomerId) ? "KH001" : m.CustomerId)
+                .Select(g =>
+                {
+                    var lastMsg = g.OrderByDescending(m => m.SentAt).First();
+                    var custName = g.FirstOrDefault(m => m.Sender == "customer" && !string.IsNullOrWhiteSpace(m.SenderName))?.SenderName
+                                   ?? (g.Key == "KH001" ? "Nguyễn Văn An" : g.Key == "KH002" ? "Trần Thị Bích" : $"Khách hàng ({g.Key})");
+                    return new
+                    {
+                        customerId = g.Key,
+                        customerName = custName,
+                        lastMessage = lastMsg.Content,
+                        lastSentAt = lastMsg.SentAt,
+                        totalMessages = g.Count(),
+                        lastSender = lastMsg.Sender
+                    };
+                })
+                .OrderByDescending(c => c.lastSentAt)
+                .ToList();
+
+            return Ok(grouped);
+        }
+
         [HttpPost("messages")]
         public IActionResult SendMessage([FromBody] ChatMessageDto msg)
         {
@@ -176,9 +241,17 @@ namespace CrmBackend.Controllers
                 return BadRequest(new { message = "Nội dung tin nhắn không được để trống." });
             }
 
-            msg.Id = "msg-" + DateTime.Now.Ticks;
+            if (string.IsNullOrWhiteSpace(msg.Id))
+            {
+                msg.Id = "msg-" + DateTime.Now.Ticks;
+            }
+            if (string.IsNullOrWhiteSpace(msg.CustomerId))
+            {
+                msg.CustomerId = "KH001";
+            }
             msg.SentAt = DateTime.Now;
             _chatMessages.Add(msg);
+            SaveChatToFile();
             return Ok(msg);
         }
     }

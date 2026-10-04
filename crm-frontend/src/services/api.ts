@@ -1126,8 +1126,17 @@ export const feedbackApi = {
 // ────────────────────────────────────────────────────────────
 // 8.1. WEB LIVE CHAT API (ĐG07)
 // ────────────────────────────────────────────────────────────
+const chatChannel = typeof window !== 'undefined' && 'BroadcastChannel' in window
+  ? new BroadcastChannel('crm_live_chat_channel')
+  : null;
+
 export const chatApi = {
+  getBroadcastChannel() {
+    return chatChannel;
+  },
+
   async getMessages(customerId?: string): Promise<ChatMessage[]> {
+    let serverMsgs: ChatMessage[] = [];
     try {
       const url = customerId
         ? `${API_BASE_URL}/PhanHoi/messages?customerId=${encodeURIComponent(customerId)}`
@@ -1135,8 +1144,8 @@ export const chatApi = {
       const res = await fetchWithTimeout(url);
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data) && data.length > 0) {
-          return data.map((d: any) => ({
+        if (Array.isArray(data)) {
+          serverMsgs = data.map((d: any) => ({
             id: d.id,
             customerId: d.customerId,
             sender: d.sender,
@@ -1147,38 +1156,54 @@ export const chatApi = {
         }
       }
     } catch (err) {
-      console.warn('[chatApi.getMessages] Fallback to localStorage:', err);
+      console.warn('[chatApi.getMessages] Backend call failed, using local/cached:', err);
     }
 
     const cached = localStorage.getItem(CHAT_STORAGE_KEY);
+    let localMsgs: ChatMessage[] = [];
     if (cached) {
       try {
-        const list: ChatMessage[] = JSON.parse(cached);
-        if (customerId) {
-          return list.filter(m => m.customerId === customerId || m.customerId === 'ALL');
-        }
-        return list;
+        localMsgs = JSON.parse(cached);
       } catch {}
     }
 
-    return [
-      {
-        id: 'msg-sample-1',
-        customerId: 'KH001',
-        sender: 'customer',
-        senderName: 'Nguyễn Văn An',
-        content: 'Chào showroom, em vừa bảo dưỡng xe và thay nhớt Motul hôm qua, dịch vụ rất tốt ạ!',
-        sentAt: 'Hôm nay, 09:15',
-      },
-      {
-        id: 'msg-sample-2',
-        customerId: 'KH001',
-        sender: 'staff',
-        senderName: 'CSKH Showroom Motoshop',
-        content: 'Dạ cảm ơn anh An đã tin tưởng Motoshop! Chúc anh luôn có những hành trình vạn dặm bình an ❤️',
-        sentAt: 'Hôm nay, 09:20',
-      },
-    ];
+    const map = new Map<string, ChatMessage>();
+    // Default seed messages if empty
+    if (serverMsgs.length === 0 && localMsgs.length === 0) {
+      localMsgs = [
+        {
+          id: 'msg-sample-1',
+          customerId: 'KH001',
+          sender: 'customer',
+          senderName: 'Nguyễn Văn An',
+          content: 'Chào showroom, em vừa bảo dưỡng xe và thay nhớt Motul hôm qua, dịch vụ rất tốt ạ!',
+          sentAt: '09:15',
+        },
+        {
+          id: 'msg-sample-2',
+          customerId: 'KH001',
+          sender: 'staff',
+          senderName: 'CSKH Showroom Motoshop',
+          content: 'Dạ cảm ơn anh An đã tin tưởng Motoshop! Chúc anh luôn có những hành trình vạn dặm bình an ❤️',
+          sentAt: '09:20',
+        },
+      ];
+    }
+
+    serverMsgs.forEach(m => map.set(m.id, m));
+    localMsgs.forEach(m => {
+      if (!map.has(m.id)) map.set(m.id, m);
+    });
+
+    const merged = Array.from(map.values());
+    try {
+      localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(merged));
+    } catch {}
+
+    if (customerId) {
+      return merged.filter(m => m.customerId === customerId || m.customerId === 'ALL');
+    }
+    return merged;
   },
 
   async sendMessage(msg: {
@@ -1188,8 +1213,8 @@ export const chatApi = {
     content: string;
   }): Promise<ChatMessage> {
     const newMsg: ChatMessage = {
-      id: 'msg-' + Date.now(),
-      customerId: msg.customerId,
+      id: 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+      customerId: msg.customerId || 'KH001',
       sender: msg.sender,
       senderName: msg.senderName,
       content: msg.content.trim(),
@@ -1197,11 +1222,15 @@ export const chatApi = {
     };
 
     try {
-      await fetchWithTimeout(`${API_BASE_URL}/PhanHoi/messages`, {
+      const res = await fetchWithTimeout(`${API_BASE_URL}/PhanHoi/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newMsg),
       });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.id) newMsg.id = data.id;
+      }
     } catch (err) {
       console.warn('[chatApi.sendMessage] Backend call failed, saved locally:', err);
     }
@@ -1209,12 +1238,67 @@ export const chatApi = {
     try {
       const cached = localStorage.getItem(CHAT_STORAGE_KEY);
       const list: ChatMessage[] = cached ? JSON.parse(cached) : [];
-      list.push(newMsg);
-      localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(list));
+      if (!list.some(m => m.id === newMsg.id)) {
+        list.push(newMsg);
+        localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(list));
+      }
     } catch {}
 
+    // Broadcast across all open tabs/windows
+    if (chatChannel) {
+      try {
+        chatChannel.postMessage(newMsg);
+      } catch {}
+    }
+
+    // Broadcast in current window
     window.dispatchEvent(new CustomEvent('crm-chat-update', { detail: newMsg }));
     return newMsg;
+  },
+
+  async getConversations(): Promise<Array<{
+    customerId: string;
+    customerName: string;
+    lastMessage: string;
+    lastSentAt: string;
+    totalMessages: number;
+    lastSender: string;
+    unreadCount?: number;
+  }>> {
+    try {
+      const res = await fetchWithTimeout(`${API_BASE_URL}/PhanHoi/conversations`);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) return data;
+      }
+    } catch {}
+
+    const allMsgs = await this.getMessages();
+    const map = new Map<string, any>();
+    allMsgs.forEach(m => {
+      const cId = m.customerId || 'KH001';
+      const existing = map.get(cId);
+      if (!existing) {
+        map.set(cId, {
+          customerId: cId,
+          customerName: m.sender === 'customer' ? m.senderName : (cId === 'KH001' ? 'Nguyễn Văn An' : `Khách hàng (${cId})`),
+          lastMessage: m.content,
+          lastSentAt: m.sentAt,
+          totalMessages: 1,
+          lastSender: m.sender,
+        });
+      } else {
+        existing.lastMessage = m.content;
+        existing.lastSentAt = m.sentAt;
+        existing.totalMessages += 1;
+        existing.lastSender = m.sender;
+        if (m.sender === 'customer' && (!existing.customerName || existing.customerName.startsWith('Khách hàng ('))) {
+          existing.customerName = m.senderName;
+        }
+      }
+    });
+
+    return Array.from(map.values());
   },
 };
 

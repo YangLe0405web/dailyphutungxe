@@ -11,6 +11,7 @@ import {
   type NotificationCategory,
   type AdminNotification,
 } from '../services/notifications';
+import { chatApi, type ChatMessage } from '../services/api';
 
 type NavGroup = { group: string; items: { key: string; label: string; icon: ReactNode; allowedRoles?: AdminRole[] }[] };
 
@@ -127,6 +128,119 @@ export default function AdminLayout({
   }, []);
 
   const unreadCount = notifications.filter(n => !n.read).length;
+
+  // Live Chat States (ĐG07)
+  const [chatModalOpen, setChatModalOpen] = useState(false);
+  const [chatConversations, setChatConversations] = useState<Array<{ customerId: string; customerName: string; lastMessage: string; lastSentAt: string; totalMessages: number; lastSender: string }>>([]);
+  const [selectedChatCustId, setSelectedChatCustId] = useState<string>('KH001');
+  const [activeChatMessages, setActiveChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInputText, setChatInputText] = useState('');
+  const [unreadChatTotal, setUnreadChatTotal] = useState(0);
+  const [chatSearchQuery, setChatSearchQuery] = useState('');
+  const adminChatScrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const refreshConversations = async () => {
+      try {
+        const convs = await chatApi.getConversations();
+        setChatConversations(convs);
+        if (convs.length > 0 && !selectedChatCustId) {
+          setSelectedChatCustId(convs[0].customerId);
+        }
+      } catch {}
+    };
+
+    refreshConversations();
+
+    const channel = chatApi.getBroadcastChannel();
+    const handleIncomingChat = (msg: ChatMessage) => {
+      if (!msg) return;
+      refreshConversations();
+      if (msg.customerId === selectedChatCustId) {
+        setActiveChatMessages(prev => {
+          if (!prev.some(m => m.id === msg.id)) return [...prev, msg];
+          return prev;
+        });
+      }
+      if (msg.sender === 'customer' && !chatModalOpen) {
+        setUnreadChatTotal(c => c + 1);
+        setLiveToast({
+          id: 'chat-' + msg.id,
+          type: 'chat_message',
+          category: 'review',
+          title: `💬 Tin nhắn từ ${msg.senderName}`,
+          message: msg.content,
+          time: 'Vừa xong',
+          timestamp: Date.now(),
+          read: false,
+          linkPage: 'feedback',
+        });
+      }
+    };
+
+    if (channel) {
+      channel.onmessage = (e) => {
+        if (e.data) handleIncomingChat(e.data);
+      };
+    }
+
+    const handleCustomChat = (e: any) => {
+      handleIncomingChat(e.detail as ChatMessage);
+    };
+    window.addEventListener('crm-chat-update', handleCustomChat);
+
+    const interval = setInterval(async () => {
+      refreshConversations();
+      if (selectedChatCustId && chatModalOpen) {
+        try {
+          const msgs = await chatApi.getMessages(selectedChatCustId);
+          setActiveChatMessages(prev => {
+            const hasNew = msgs.length !== prev.length || msgs.some(m => !prev.some(p => p.id === m.id));
+            if (hasNew) return msgs;
+            return prev;
+          });
+        } catch {}
+      }
+    }, 2000);
+
+    return () => {
+      window.removeEventListener('crm-chat-update', handleCustomChat);
+      clearInterval(interval);
+    };
+  }, [selectedChatCustId, chatModalOpen]);
+
+  useEffect(() => {
+    if (selectedChatCustId) {
+      chatApi.getMessages(selectedChatCustId).then(setActiveChatMessages);
+    }
+  }, [selectedChatCustId]);
+
+  useEffect(() => {
+    if (chatModalOpen) {
+      adminChatScrollRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [activeChatMessages, chatModalOpen]);
+
+  const handleAdminSendChat = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!chatInputText.trim() || !selectedChatCustId) return;
+
+    const sent = await chatApi.sendMessage({
+      customerId: selectedChatCustId,
+      sender: 'staff',
+      senderName: currentStaff?.hoTen || 'CSKH Showroom Motoshop',
+      content: chatInputText.trim(),
+    });
+
+    setActiveChatMessages(prev => {
+      if (!prev.some(m => m.id === sent.id)) return [...prev, sent];
+      return prev;
+    });
+    setChatInputText('');
+    setTimeout(() => {
+      adminChatScrollRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 50);
+  };
 
   return (
     <div className="flex min-h-screen" style={{ fontFamily: 'var(--font-sans)' }}>
@@ -260,6 +374,31 @@ export default function AdminLayout({
           </div>
 
           <div className="flex items-center gap-3">
+            {/* Live Chat CSKH Support (ĐG07) */}
+            <div className="relative">
+              <button
+                onClick={() => {
+                  setChatModalOpen(!chatModalOpen);
+                  if (!chatModalOpen) setUnreadChatTotal(0);
+                }}
+                className={`relative flex items-center gap-2 px-3 py-2 rounded-xl border transition cursor-pointer text-xs font-bold ${
+                  chatModalOpen
+                    ? 'bg-red-700 text-white border-red-700 shadow-md'
+                    : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-800 border-zinc-200'
+                }`}
+                title="Hỗ trợ trực tuyến & Tin nhắn khách hàng (Live Chat)"
+              >
+                <span className="text-sm">💬</span>
+                <span className="hidden sm:inline font-mono">Live Chat CSKH</span>
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                {unreadChatTotal > 0 && (
+                  <span className="bg-amber-400 text-zinc-950 font-black text-[10px] w-5 h-5 rounded-full flex items-center justify-center animate-bounce">
+                    {unreadChatTotal}
+                  </span>
+                )}
+              </button>
+            </div>
+
             {/* Notification Bell */}
             <div className="relative">
               <button
@@ -631,6 +770,198 @@ export default function AdminLayout({
                 >
                   Bỏ qua
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── LIVE CHAT MODAL CHO ADMIN (ĐG07) ── */}
+      {chatModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-4xl w-full h-[620px] shadow-2xl border border-zinc-200 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="p-4 bg-zinc-950 text-white flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-red-700 text-white flex items-center justify-center text-lg font-bold shadow-md">
+                  💬
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-extrabold text-sm text-white uppercase tracking-wider font-display">
+                      TRUNG TÂM CSKH TRỰC TUYẾN (LIVE CHAT)
+                    </h3>
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-mono font-bold flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                      Đang kết nối Realtime
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-zinc-400 font-mono">
+                    Hỗ trợ trao đổi hai chiều tức thời giữa Nhân viên Showroom & Khách hàng
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => setChatModalOpen(false)}
+                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center text-xs font-bold transition cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Content: 2 Columns */}
+            <div className="flex-1 flex overflow-hidden">
+              {/* Left Column: Conversation List */}
+              <div className="w-80 border-r border-zinc-200 bg-zinc-50 flex flex-col shrink-0">
+                <div className="p-3 border-b border-zinc-200 bg-white">
+                  <input
+                    type="text"
+                    placeholder="Tìm theo tên hoặc mã KH..."
+                    value={chatSearchQuery}
+                    onChange={e => setChatSearchQuery(e.target.value)}
+                    className="w-full px-3 py-1.5 rounded-xl border border-zinc-200 text-xs focus:outline-none focus:border-red-600 bg-zinc-50 font-medium"
+                  />
+                </div>
+                <div className="flex-1 overflow-y-auto divide-y divide-zinc-100">
+                  {chatConversations.length === 0 ? (
+                    <div className="text-center py-12 text-zinc-400 text-xs px-4">
+                      Chưa có hội thoại nào. Khi khách nhắn tin sẽ xuất hiện tại đây!
+                    </div>
+                  ) : (
+                    chatConversations
+                      .filter(c => {
+                        if (!chatSearchQuery.trim()) return true;
+                        const q = chatSearchQuery.toLowerCase();
+                        return c.customerName.toLowerCase().includes(q) || c.customerId.toLowerCase().includes(q);
+                      })
+                      .map(conv => {
+                        const isSelected = selectedChatCustId === conv.customerId;
+                        return (
+                          <button
+                            key={conv.customerId}
+                            onClick={() => setSelectedChatCustId(conv.customerId)}
+                            className={`w-full p-3 text-left transition flex items-start gap-3 cursor-pointer ${
+                              isSelected ? 'bg-red-50/80 border-l-4 border-red-700' : 'hover:bg-zinc-100'
+                            }`}
+                          >
+                            <div className="w-9 h-9 rounded-full bg-zinc-800 text-white font-bold flex items-center justify-center text-xs shrink-0 font-mono">
+                              {conv.customerName[0]}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between">
+                                <span className="font-bold text-xs text-zinc-900 truncate">
+                                  {conv.customerName}
+                                </span>
+                                <span className="text-[10px] text-zinc-400 font-mono shrink-0 ml-1">
+                                  {conv.lastSentAt?.slice(11, 16) || conv.lastSentAt}
+                                </span>
+                              </div>
+                              <div className="text-[10px] text-zinc-500 font-mono truncate">
+                                Mã: {conv.customerId}
+                              </div>
+                              <div className="text-[11px] text-zinc-600 truncate mt-0.5">
+                                {conv.lastSender === 'staff' ? 'Bạn: ' : ''}{conv.lastMessage}
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })
+                  )}
+                </div>
+              </div>
+
+              {/* Right Column: Chat Window */}
+              <div className="flex-1 flex flex-col bg-white">
+                {/* Active Chat Header */}
+                <div className="px-5 py-3 border-b border-zinc-200 bg-zinc-50 flex items-center justify-between shrink-0">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-full bg-red-700 text-white font-bold flex items-center justify-center text-xs font-mono shrink-0">
+                      {chatConversations.find(c => c.customerId === selectedChatCustId)?.customerName?.[0] || 'K'}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-sm text-zinc-900">
+                          {chatConversations.find(c => c.customerId === selectedChatCustId)?.customerName || `Khách hàng (${selectedChatCustId})`}
+                        </span>
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                        <span className="text-[10px] text-emerald-600 font-mono font-bold">Trực tuyến</span>
+                      </div>
+                      <div className="text-[11px] text-zinc-500 font-mono">
+                        Mã khách hàng: {selectedChatCustId} · Kênh hỗ trợ kỹ thuật & phụ tùng
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Messages Body */}
+                <div className="flex-1 p-5 overflow-y-auto space-y-3 bg-zinc-50/60">
+                  {activeChatMessages.length === 0 ? (
+                    <div className="text-center py-16 text-zinc-400 text-xs">
+                      Chưa có tin nhắn trong hội thoại này. Gửi lời chào để bắt đầu hỗ trợ!
+                    </div>
+                  ) : (
+                    activeChatMessages.map(m => {
+                      const isStaff = m.sender === 'staff';
+                      return (
+                        <div
+                          key={m.id}
+                          className={`flex flex-col ${isStaff ? 'items-end' : 'items-start'}`}
+                        >
+                          <div className="text-[10px] text-zinc-400 font-mono mb-0.5 px-1">
+                            {m.senderName} · {m.sentAt}
+                          </div>
+                          <div
+                            className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-xs leading-relaxed ${
+                              isStaff
+                                ? 'bg-red-700 text-white rounded-tr-xs shadow-xs'
+                                : 'bg-white text-zinc-900 border border-zinc-200 rounded-tl-xs shadow-2xs'
+                            }`}
+                          >
+                            {m.content}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                  <div ref={adminChatScrollRef} />
+                </div>
+
+                {/* Quick Prompts */}
+                <div className="px-4 py-2 bg-white border-t border-zinc-100 flex items-center gap-1.5 overflow-x-auto text-[11px] shrink-0 scrollbar-none">
+                  {[
+                    'Dạ em chào anh/chị ạ!',
+                    'Showroom Motoshop xin hỗ trợ mình ngay.',
+                    'Dạ phụ tùng chính hãng đang sẵn hàng ạ.',
+                    'Em gửi thông tin bảo dưỡng cho mình nhé!',
+                  ].map(p => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setChatInputText(p)}
+                      className="px-2.5 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-700 shrink-0 transition cursor-pointer"
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Chat Input Bar */}
+                <form onSubmit={handleAdminSendChat} className="p-3 bg-white border-t border-zinc-200 flex items-center gap-2 shrink-0">
+                  <input
+                    type="text"
+                    placeholder="Nhập nội dung tư vấn phản hồi tới khách hàng..."
+                    value={chatInputText}
+                    onChange={e => setChatInputText(e.target.value)}
+                    className="flex-1 px-4 py-2.5 rounded-xl border border-zinc-300 text-xs focus:outline-none focus:border-red-600 font-medium"
+                  />
+                  <button
+                    type="submit"
+                    className="px-5 py-2.5 bg-red-700 hover:bg-red-800 text-white font-bold rounded-xl text-xs transition cursor-pointer shadow-sm flex items-center gap-1.5"
+                  >
+                    <span>Gửi</span>
+                    <span>➢</span>
+                  </button>
+                </form>
               </div>
             </div>
           </div>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   type Feedback,
   type Survey,
@@ -58,6 +58,7 @@ export default function FeedbackPage() {
   const [chatFeedback, setChatFeedback] = useState<Feedback | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
+  const adminChatEndRef = useRef<HTMLDivElement>(null);
 
   const loadData = async () => {
     try {
@@ -78,14 +79,25 @@ export default function FeedbackPage() {
     loadData();
     window.addEventListener('crm-data-refresh', loadData);
 
-    const handleChatUpdate = (e: any) => {
-      const newMsg = e.detail as ChatMessage;
+    const channel = chatApi.getBroadcastChannel();
+    const handleIncomingMessage = (newMsg: ChatMessage) => {
+      if (!newMsg) return;
       setChatMessages(prev => {
         if (!prev.some(m => m.id === newMsg.id)) {
           return [...prev, newMsg];
         }
         return prev;
       });
+    };
+
+    if (channel) {
+      channel.onmessage = (e) => {
+        if (e.data) handleIncomingMessage(e.data);
+      };
+    }
+
+    const handleChatUpdate = (e: any) => {
+      handleIncomingMessage(e.detail as ChatMessage);
     };
     window.addEventListener('crm-chat-update', handleChatUpdate);
 
@@ -94,6 +106,29 @@ export default function FeedbackPage() {
       window.removeEventListener('crm-chat-update', handleChatUpdate);
     };
   }, []);
+
+  // Real-time polling when chat modal is open
+  useEffect(() => {
+    if (!chatFeedback) return;
+    const interval = setInterval(async () => {
+      try {
+        const msgs = await chatApi.getMessages(chatFeedback.customerId);
+        setChatMessages(prev => {
+          const hasNew = msgs.length !== prev.length || msgs.some(m => !prev.some(p => p.id === m.id));
+          if (hasNew) return msgs;
+          return prev;
+        });
+      } catch {}
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [chatFeedback]);
+
+  useEffect(() => {
+    if (chatFeedback) {
+      adminChatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [chatMessages, chatFeedback]);
 
   // Handlers for Call, Email, Chat (ĐG06, ĐG07)
   const handleSaveCallLog = async () => {
@@ -137,8 +172,14 @@ export default function FeedbackPage() {
       content: chatInput.trim(),
     });
 
-    setChatMessages(prev => [...prev, sent]);
+    setChatMessages(prev => {
+      if (!prev.some(m => m.id === sent.id)) return [...prev, sent];
+      return prev;
+    });
     setChatInput('');
+    setTimeout(() => {
+      adminChatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 50);
   };
 
   // Multi-criteria filter logic
@@ -1126,6 +1167,7 @@ export default function FeedbackPage() {
                     );
                   })
               )}
+              <div ref={adminChatEndRef} />
             </div>
 
             {/* Quick replies */}

@@ -48,35 +48,90 @@ export default function CustomerLayout({ children, activePage, onNavigate, onHom
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [unreadChatCount, setUnreadChatCount] = useState(0);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  const getActiveCustomerId = () => {
+    if (currentCustomer?.id) return currentCustomer.id;
+    let gid = localStorage.getItem('crm_guest_chat_id');
+    if (!gid) {
+      gid = 'KH001'; // Default to KH001 for seamless showroom demo
+      localStorage.setItem('crm_guest_chat_id', gid);
+    }
+    return gid;
+  };
 
   useEffect(() => {
-    const custId = currentCustomer?.id || 'KH001';
+    const custId = getActiveCustomerId();
+    const channel = chatApi.getBroadcastChannel();
+
+    // 1. Initial load
     chatApi.getMessages(custId).then(msgs => {
       setChatMessages(msgs);
     });
 
-    const handleChatUpdate = (e: any) => {
-      const msg = e.detail as ChatMessage;
-      setChatMessages(prev => {
-        if (!prev.some(m => m.id === msg.id)) {
-          return [...prev, msg];
+    const handleIncomingMessage = (msg: ChatMessage) => {
+      if (!msg) return;
+      if (msg.customerId === custId || msg.customerId === 'ALL') {
+        setChatMessages(prev => {
+          if (!prev.some(m => m.id === msg.id)) {
+            return [...prev, msg];
+          }
+          return prev;
+        });
+        if (msg.sender === 'staff' && !chatOpen) {
+          setUnreadChatCount(prev => prev + 1);
         }
-        return prev;
-      });
-      if (msg.sender === 'staff' && !chatOpen) {
-        setUnreadChatCount(prev => prev + 1);
       }
     };
 
+    // 2. Cross-tab listener via BroadcastChannel
+    if (channel) {
+      channel.onmessage = (e) => {
+        if (e.data) handleIncomingMessage(e.data);
+      };
+    }
+
+    // 3. Local tab CustomEvent
+    const handleChatUpdate = (e: any) => {
+      handleIncomingMessage(e.detail as ChatMessage);
+    };
     window.addEventListener('crm-chat-update', handleChatUpdate);
-    return () => window.removeEventListener('crm-chat-update', handleChatUpdate);
+
+    // 4. Polling backend every 2 seconds for cross-browser sync
+    const interval = setInterval(async () => {
+      try {
+        const latest = await chatApi.getMessages(custId);
+        setChatMessages(prev => {
+          const hasNew = latest.length !== prev.length || latest.some(m => !prev.some(p => p.id === m.id));
+          if (hasNew) {
+            const newStaff = latest.filter(m => m.sender === 'staff' && !prev.some(p => p.id === m.id));
+            if (newStaff.length > 0 && !chatOpen) {
+              setUnreadChatCount(c => c + newStaff.length);
+            }
+            return latest;
+          }
+          return prev;
+        });
+      } catch {}
+    }, 2000);
+
+    return () => {
+      window.removeEventListener('crm-chat-update', handleChatUpdate);
+      clearInterval(interval);
+    };
   }, [currentCustomer, chatOpen]);
+
+  useEffect(() => {
+    if (chatOpen) {
+      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [chatMessages, chatOpen]);
 
   const handleSendChat = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!chatInput.trim()) return;
 
-    const custId = currentCustomer?.id || 'KH001';
+    const custId = getActiveCustomerId();
     const custName = currentCustomer?.hoTen || 'Khách hàng';
 
     const sent = await chatApi.sendMessage({
@@ -86,8 +141,14 @@ export default function CustomerLayout({ children, activePage, onNavigate, onHom
       content: chatInput.trim(),
     });
 
-    setChatMessages(prev => [...prev, sent]);
+    setChatMessages(prev => {
+      if (!prev.some(m => m.id === sent.id)) return [...prev, sent];
+      return prev;
+    });
     setChatInput('');
+    setTimeout(() => {
+      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 50);
   };
   const [customerNotifs, setCustomerNotifs] = useState<{
     id: string;
@@ -595,6 +656,15 @@ export default function CustomerLayout({ children, activePage, onNavigate, onHom
               </button>
             </div>
 
+            {/* Chat Identity Sub-header */}
+            <div className="px-4 py-1.5 bg-zinc-900 border-b border-zinc-800 text-[10px] text-zinc-300 flex items-center justify-between shrink-0">
+              <span className="flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                <span>Tài khoản: <strong>{currentCustomer ? `${currentCustomer.hoTen} (${currentCustomer.id})` : 'Khách hàng (KH001)'}</strong></span>
+              </span>
+              <span className="font-mono text-zinc-400">Kênh hỗ trợ trực tuyến</span>
+            </div>
+
             {/* Chat Messages Body */}
             <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-zinc-50">
               <div className="text-center py-2">
@@ -630,6 +700,7 @@ export default function CustomerLayout({ children, activePage, onNavigate, onHom
                   );
                 })
               )}
+              <div ref={chatEndRef} />
             </div>
 
             {/* Quick Prompts */}
