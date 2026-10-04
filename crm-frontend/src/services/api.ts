@@ -5,6 +5,7 @@ import {
   type Order,
   type OrderStatus,
   type Appointment,
+  type AppointmentStatus,
   type StaffAccount,
   type Feedback,
   type Survey,
@@ -701,66 +702,171 @@ export const orderApi = {
 // ────────────────────────────────────────────────────────────
 export const appointmentApi = {
   async getAll(): Promise<Appointment[]> {
+    // LH11 & LH12: Persistence qua localStorage
+    let cachedList: Appointment[] = [];
+    try {
+      const cached = localStorage.getItem('crm_appointments_cache');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) cachedList = parsed;
+      }
+    } catch {}
+
+    let apiList: Appointment[] = [];
     try {
       const res = await fetchWithTimeout(`${API_BASE_URL}/LichHen`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      if (!Array.isArray(data) || data.length === 0) return mockAppointments;
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          apiList = data.map((item: any, idx: number) => {
+            const id = item.maLich ? (item.maLich < 10 ? `LH00${item.maLich}` : `LH0${item.maLich}`) : `LH${idx + 1}`;
+            const cId = item.maKH ? (item.maKH < 10 ? `KH00${item.maKH}` : `KH0${item.maKH}`) : 'KH001';
+            const mockMatch = mockAppointments.find(m => m.id === id);
+            const cachedMatch = cachedList.find(c => c.id === id);
 
-      return data.map((item: any, idx: number) => {
-        const id = item.maLich ? (item.maLich < 10 ? `LH00${item.maLich}` : `LH0${item.maLich}`) : `LH${idx + 1}`;
-        const cId = item.maKH ? (item.maKH < 10 ? `KH00${item.maKH}` : `KH0${item.maKH}`) : 'KH001';
-        const mockMatch = mockAppointments.find(m => m.id === id);
+            // LH04: Chuẩn hóa 5 trạng thái
+            let tt: AppointmentStatus = 'ChoXacNhan';
+            const statusStr = cachedMatch?.trangThai || item.trangThai || '';
+            if (statusStr === 'Đã xác nhận' || statusStr === 'DaXacNhan') tt = 'DaXacNhan';
+            else if (statusStr === 'Từ chối' || statusStr === 'TuChoi') tt = 'TuChoi';
+            else if (statusStr === 'Đã hoàn thành' || statusStr === 'DaHoanThanh' || statusStr === 'HoanThanh') tt = 'DaHoanThanh';
+            else if (statusStr === 'Đã hủy' || statusStr === 'DaHuy') tt = 'DaHuy';
+            else tt = 'ChoXacNhan';
 
-        let tt: any = 'ChoDuyet';
-        if (item.trangThai === 'Đã xác nhận' || item.trangThai === 'DaXacNhan') tt = 'DaXacNhan';
-        else if (item.trangThai === 'Đang thực hiện' || item.trangThai === 'DangThucHien') tt = 'DangThucHien';
-        else if (item.trangThai === 'Hoàn thành' || item.trangThai === 'HoanThanh') tt = 'HoanThanh';
-        else if (item.trangThai === 'Đã hủy' || item.trangThai === 'DaHuy') tt = 'DaHuy';
+            let ldv: any = 'BaoDuong';
+            if (item.loaiDichVu?.includes('Sửa') || item.loaiDichVu?.includes('Sua')) ldv = 'SuaChua';
+            else if (item.loaiDichVu?.includes('Lái') || item.loaiDichVu?.includes('Lai')) ldv = 'LaiThu';
 
-        let ldv: any = 'BaoDuong';
-        if (item.loaiDichVu?.includes('Sửa') || item.loaiDichVu?.includes('Sua')) ldv = 'SuaChua';
-        else if (item.loaiDichVu?.includes('Lái') || item.loaiDichVu?.includes('Lai')) ldv = 'LaiThu';
+            let extractedXe = cachedMatch?.tenXe || mockMatch?.tenXe || 'Honda SH 160i ABS';
+            let extractedBs = cachedMatch?.bienSo || mockMatch?.bienSo || '51K-123.45';
+            if (item.ghiChu) {
+              const xeMatch = item.ghiChu.match(/(?:Phương tiện|Xe):\s*([^-\]]+)/i);
+              if (xeMatch && xeMatch[1]) extractedXe = xeMatch[1].trim();
+              const bsMatch = item.ghiChu.match(/BS:\s*([^-\]]+)/i);
+              if (bsMatch && bsMatch[1]) extractedBs = bsMatch[1].trim();
+            }
 
-        let extractedXe = mockMatch?.tenXe || 'Honda SH 160i ABS';
-        let extractedBs = mockMatch?.bienSo || '51K-123.45';
-        if (item.ghiChu) {
-          const xeMatch = item.ghiChu.match(/(?:Phương tiện|Xe):\s*([^-\]]+)/i);
-          if (xeMatch && xeMatch[1]) extractedXe = xeMatch[1].trim();
-          const bsMatch = item.ghiChu.match(/BS:\s*([^-\]]+)/i);
-          if (bsMatch && bsMatch[1]) extractedBs = bsMatch[1].trim();
+            return {
+              id,
+              customerId: cId,
+              hoTenKH: cachedMatch?.hoTenKH || item.tenKhachHang || item.TenKhachHang || item.hoTenKH || mockMatch?.hoTenKH || 'Khách hàng',
+              soDienThoai: cachedMatch?.soDienThoai || item.soDienThoai || mockMatch?.soDienThoai || '0901234567',
+              loaiDichVu: cachedMatch?.loaiDichVu || ldv,
+              ngayHen: cachedMatch?.ngayHen || (item.ngayHen ? item.ngayHen.split('T')[0] : '2026-10-06'),
+              gioHen: cachedMatch?.gioHen || (item.ngayHen && item.ngayHen.includes('T') ? item.ngayHen.split('T')[1].slice(0, 5) : '09:00'),
+              trangThai: tt,
+              ghiChu: cachedMatch?.ghiChu || item.ghiChu || '',
+              tenXe: extractedXe,
+              bienSo: extractedBs,
+              nhanVienPhuTrach: cachedMatch?.nhanVienPhuTrach || mockMatch?.nhanVienPhuTrach || 'Chưa phân công',
+              lyDoTuChoi: cachedMatch?.lyDoTuChoi || mockMatch?.lyDoTuChoi,
+              createdDate: cachedMatch?.createdDate || mockMatch?.createdDate || (item.ngayTao ? item.ngayTao.replace('T', ' ').slice(0, 16) : undefined),
+            };
+          });
         }
-
-        return {
-          id,
-          customerId: cId,
-          hoTenKH: item.tenKhachHang || item.TenKhachHang || item.hoTenKH || item.HoTenKH || mockMatch?.hoTenKH || 'Khách hàng',
-          soDienThoai: item.soDienThoai || mockMatch?.soDienThoai || '0901234567',
-          loaiDichVu: ldv,
-          ngayHen: item.ngayHen ? item.ngayHen.split('T')[0] : '2024-12-20',
-          gioHen: item.ngayHen && item.ngayHen.includes('T') ? item.ngayHen.split('T')[1].slice(0, 5) : '09:00',
-          trangThai: tt,
-          ghiChu: item.ghiChu || '',
-          tenXe: extractedXe,
-          bienSo: extractedBs,
-        };
-      });
+      }
     } catch (err) {
-      console.warn('[appointmentApi.getAll] Failed to fetch from backend, using mockData fallback:', err);
-      return mockAppointments;
+      console.warn('[appointmentApi.getAll] Failed to fetch from backend, using cache/mock:', err);
     }
+
+    // Merge: Kết hợp apiList, cachedList và mockAppointments
+    const mergedMap = new Map<string, Appointment>();
+
+    // 1. Initial mock
+    mockAppointments.forEach(m => mergedMap.set(m.id, { ...m }));
+
+    // 2. Api list
+    apiList.forEach(a => mergedMap.set(a.id, { ...mergedMap.get(a.id), ...a }));
+
+    // 3. Cached list (giữ lại các thay đổi mới nhất của khách và admin)
+    cachedList.forEach(c => mergedMap.set(c.id, { ...mergedMap.get(c.id), ...c }));
+
+    let result = Array.from(mergedMap.values());
+
+    // LH10: Luôn sắp xếp lịch hẹn mới nhất lên đầu danh sách
+    result.sort((a, b) => {
+      const dateA = a.createdDate || `${a.ngayHen} ${a.gioHen}`;
+      const dateB = b.createdDate || `${b.ngayHen} ${b.gioHen}`;
+      return dateB.localeCompare(dateA);
+    });
+
+    localStorage.setItem('crm_appointments_cache', JSON.stringify(result));
+    return result;
   },
 
-  async updateStatus(maLichInt: number, trangThaiText: string) {
+  async updateStatus(apptIdOrNum: string | number, status: AppointmentStatus, lyDoTuChoi?: string) {
+    const apptId = String(apptIdOrNum);
+    const numId = parseInt(apptId.replace(/\D/g, ''), 10);
+    const backendStatus = status === 'DaXacNhan' ? 'Đã xác nhận' :
+      status === 'TuChoi' ? 'Từ chối' :
+      status === 'DaHoanThanh' ? 'Hoàn thành' :
+      status === 'DaHuy' ? 'Đã hủy' : 'Chờ xác nhận';
+
+    // 1. Update in-memory
+    mockAppointments.forEach(a => {
+      if (a.id === apptId || parseInt(a.id.replace(/\D/g, ''), 10) === numId) {
+        a.trangThai = status;
+        if (lyDoTuChoi) a.lyDoTuChoi = lyDoTuChoi;
+      }
+    });
+
+    // 2. Update localStorage cache (LH11, LH12)
     try {
-      await fetchWithTimeout(`${API_BASE_URL}/LichHen/${maLichInt}/trang-thai`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ trangThai: trangThaiText }),
-      });
-    } catch (err) {
-      console.warn('[appointmentApi.updateStatus] Backend call failed, applied locally:', err);
+      const cached = localStorage.getItem('crm_appointments_cache');
+      let list: Appointment[] = cached ? JSON.parse(cached) : [...mockAppointments];
+      const matchIdx = list.findIndex(a => a.id === apptId || parseInt(a.id.replace(/\D/g, ''), 10) === numId);
+      if (matchIdx !== -1) {
+        list[matchIdx].trangThai = status;
+        if (lyDoTuChoi) list[matchIdx].lyDoTuChoi = lyDoTuChoi;
+      } else {
+        const found = mockAppointments.find(a => a.id === apptId);
+        if (found) list.unshift({ ...found, trangThai: status, lyDoTuChoi });
+      }
+      localStorage.setItem('crm_appointments_cache', JSON.stringify(list));
+    } catch {}
+
+    // 3. Patch backend
+    if (!isNaN(numId) && numId > 0) {
+      try {
+        await fetchWithTimeout(`${API_BASE_URL}/LichHen/${numId}/trang-thai`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ trangThai: backendStatus, ghiChu: lyDoTuChoi ? `[LÝ DO TỪ CHỐI]: ${lyDoTuChoi}` : undefined }),
+        });
+      } catch (err) {
+        console.warn('[appointmentApi.updateStatus] Backend call failed, applied locally:', err);
+      }
     }
+
+    window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'appointment', apptId, status } }));
+  },
+
+  async updateDetails(apptId: string, updated: Partial<Appointment>) {
+    const numId = parseInt(apptId.replace(/\D/g, ''), 10);
+
+    // Update in-memory
+    mockAppointments.forEach(a => {
+      if (a.id === apptId || parseInt(a.id.replace(/\D/g, ''), 10) === numId) {
+        Object.assign(a, updated);
+      }
+    });
+
+    // Update localStorage cache
+    try {
+      const cached = localStorage.getItem('crm_appointments_cache');
+      let list: Appointment[] = cached ? JSON.parse(cached) : [...mockAppointments];
+      const matchIdx = list.findIndex(a => a.id === apptId || parseInt(a.id.replace(/\D/g, ''), 10) === numId);
+      if (matchIdx !== -1) {
+        list[matchIdx] = { ...list[matchIdx], ...updated };
+      }
+      localStorage.setItem('crm_appointments_cache', JSON.stringify(list));
+    } catch {}
+
+    window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'appointment_updated', apptId, updated } }));
+  },
+
+  async assignStaff(apptId: string, staffName: string) {
+    await this.updateDetails(apptId, { nhanVienPhuTrach: staffName });
   },
 
   async create(data: {
@@ -773,6 +879,7 @@ export const appointmentApi = {
     tenXe?: string;
     bienSo?: string;
     ghiChu?: string;
+    nhanVienPhuTrach?: string;
   }): Promise<{ success: boolean; appointment: Appointment; maLich?: number }> {
     let maKH = data.customerId ? parseInt(data.customerId.replace(/\D/g, ''), 10) : 1;
     if (isNaN(maKH) || maKH <= 0) maKH = 1;
@@ -808,6 +915,8 @@ export const appointmentApi = {
       console.warn('[appointmentApi.create] Backend failed or offline, fallback to local:', err);
     }
 
+    const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 16);
+
     const newAppt: Appointment = {
       id: apptId,
       customerId: data.customerId || `KH00${maKH}`,
@@ -816,13 +925,23 @@ export const appointmentApi = {
       loaiDichVu: data.loaiDichVu,
       ngayHen: data.ngayHen,
       gioHen: data.gioHen,
-      trangThai: 'ChoDuyet',
+      trangThai: 'ChoXacNhan', // LH04: Mặc định Chờ xác nhận
       ghiChu: data.ghiChu || '',
       tenXe: data.tenXe || 'Honda Wave Alpha 110cc',
       bienSo: data.bienSo || '51K-123.45',
+      nhanVienPhuTrach: data.nhanVienPhuTrach || 'Chưa phân công',
+      createdDate: nowStr, // LH10: Thời gian tạo mới nhất
     };
 
     mockAppointments.unshift(newAppt);
+
+    // Lưu vào cache để không bị mất khi F5 (LH11, LH12)
+    try {
+      const cached = localStorage.getItem('crm_appointments_cache');
+      const list: Appointment[] = cached ? JSON.parse(cached) : [];
+      const updatedCache = [newAppt, ...list.filter(a => a.id !== newAppt.id)];
+      localStorage.setItem('crm_appointments_cache', JSON.stringify(updatedCache));
+    } catch {}
 
     const titleIcon = data.loaiDichVu === 'LaiThu' ? '🏍️ Lịch hẹn lái thử mới' : '📅 Lịch dịch vụ sửa chữa / bảo dưỡng mới';
     addAdminNotification({
@@ -832,6 +951,8 @@ export const appointmentApi = {
       linkPage: 'appointments',
       meta: newAppt,
     });
+
+    window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'appointment_created', appointment: newAppt } }));
 
     return { success: true, appointment: newAppt, maLich: createdMaLich };
   },

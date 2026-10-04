@@ -35,11 +35,15 @@ const orderStatusConfig: Record<OrderStatus, { label: string; color: string; bg:
 };
 
 const apptStatusConfig: Record<AppointmentStatus, { label: string; color: string; bg: string }> = {
-  ChoDuyet: { label: 'Chờ duyệt', color: '#d97706', bg: '#fef3c7' },
+  ChoXacNhan: { label: 'Chờ xác nhận', color: '#d97706', bg: '#fef3c7' },
   DaXacNhan: { label: 'Đã xác nhận', color: '#2563eb', bg: '#dbeafe' },
-  DangThucHien: { label: 'Đang thực hiện', color: 'var(--color-red-700)', bg: 'var(--color-red-100)' },
-  HoanThanh: { label: 'Hoàn thành', color: 'var(--color-success)', bg: 'var(--color-success-bg)' },
-  DaHuy: { label: 'Đã hủy', color: '#dc2626', bg: '#fee2e2' },
+  TuChoi: { label: 'Từ chối', color: '#dc2626', bg: '#fee2e2' },
+  DaHoanThanh: { label: 'Đã hoàn thành', color: 'var(--color-success)', bg: 'var(--color-success-bg)' },
+  DaHuy: { label: 'Đã hủy', color: '#71717a', bg: '#f4f4f5' },
+  // Backward compatibility
+  ChoDuyet: { label: 'Chờ xác nhận', color: '#d97706', bg: '#fef3c7' },
+  DangThucHien: { label: 'Đang thực hiện', color: '#2563eb', bg: '#dbeafe' },
+  HoanThanh: { label: 'Đã hoàn thành', color: 'var(--color-success)', bg: 'var(--color-success-bg)' },
 };
 
 function StatusBadge({ label, color, bg }: { label: string; color: string; bg: string }) {
@@ -763,6 +767,19 @@ export default function CustomerDashboard({ currentCustomer, onNavigateToShowroo
     });
   }, [allAppts, currentCustomer]);
 
+  // LH14: Lịch hẹn sắp tới (hôm nay hoặc ngày mai)
+  const upcomingAppts = useMemo(() => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = tomorrow.toISOString().split('T')[0];
+
+    return myAppts.filter(a =>
+      (a.trangThai === 'ChoXacNhan' || a.trangThai === 'DaXacNhan' || a.trangThai === 'ChoDuyet') &&
+      (a.ngayHen === todayStr || a.ngayHen === tomorrowStr)
+    );
+  }, [myAppts]);
+
   const currentVehicle = myVehicles[activeVehicleIndex] || myVehicles[0];
 
   const daysUntil = (d: string) => Math.ceil((new Date(d).getTime() - Date.now()) / 86400000);
@@ -876,6 +893,31 @@ export default function CustomerDashboard({ currentCustomer, onNavigateToShowroo
       </div>
 
       <div className="max-w-6xl mx-auto px-6 sm:px-8 py-6">
+        {/* LH14: Banner nhắc lịch hẹn dịch vụ sắp tới (hôm nay hoặc ngày mai) */}
+        {upcomingAppts.length > 0 && (
+          <div className="mb-5 p-4 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-between flex-wrap gap-3 shadow-sm animate-in fade-in">
+            <div className="flex items-center gap-3">
+              <span className="text-3xl">⏰</span>
+              <div>
+                <div className="text-xs font-bold text-blue-950 uppercase font-mono tracking-wide">
+                  NHẮC LỊCH HẸN DỊCH VỤ SẮP TỚI
+                </div>
+                <div className="text-xs text-blue-800 mt-0.5">
+                  Bạn có <strong>{upcomingAppts.length} lịch hẹn</strong> ({SVC_LABELS[upcomingAppts[0].loaiDichVu] || upcomingAppts[0].loaiDichVu}) cho xe{' '}
+                  <strong>{upcomingAppts[0].tenXe || 'của bạn'}</strong> vào lúc <strong className="font-mono text-red-700">{upcomingAppts[0].gioHen}</strong> ngày <strong className="font-mono text-blue-900">{upcomingAppts[0].ngayHen}</strong>{' '}
+                  ({upcomingAppts[0].ngayHen === new Date().toISOString().split('T')[0] ? 'Hôm nay' : 'Ngày mai'}).
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={() => setTab(1)}
+              className="px-4 py-2 rounded-xl text-xs font-bold bg-blue-600 text-white hover:bg-blue-700 transition cursor-pointer shadow-sm"
+            >
+              Xem chi tiết lịch hẹn →
+            </button>
+          </div>
+        )}
+
         {/* Survey notification banner if pending */}
         {pendingSurveysCount > 0 && (
           <div className="mb-5 p-4 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-between flex-wrap gap-3 shadow-sm">
@@ -1135,24 +1177,46 @@ export default function CustomerDashboard({ currentCustomer, onNavigateToShowroo
             {myAppts.length === 0 ? (
               <div className="text-center py-12 text-zinc-400 bg-white rounded-2xl border border-zinc-200">Chưa có lịch hẹn nào</div>
             ) : myAppts.map(appt => {
-              const cfg = apptStatusConfig[appt.trangThai];
+              const cfg = apptStatusConfig[appt.trangThai] || { label: appt.trangThai, color: '#71717a', bg: '#f4f4f5' };
               return (
                 <div key={appt.id} className="rounded-2xl p-5" style={{ background: 'white', border: '1px solid var(--color-zinc-200)' }}>
                   <div className="flex items-start justify-between gap-4 flex-wrap">
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
+                    <div className="flex-1 min-w-[280px]">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
                         <span className="font-700" style={{ fontFamily: 'var(--font-display)', fontSize: 18, color: 'var(--color-zinc-900)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-                          {SVC_LABELS[appt.loaiDichVu]}
+                          {SVC_LABELS[appt.loaiDichVu] || appt.loaiDichVu}
+                        </span>
+                        <span className="text-xs font-mono px-2 py-0.5 rounded bg-zinc-100 text-zinc-600 font-bold">
+                          #{appt.id}
                         </span>
                         <StatusBadge {...cfg} />
                       </div>
-                      <div className="text-sm" style={{ color: 'var(--color-zinc-600)' }}>
-                        📅 {appt.ngayHen} lúc {appt.gioHen}
+                      <div className="text-sm font-medium" style={{ color: 'var(--color-zinc-700)' }}>
+                        📅 Ngày: <strong className="font-mono text-zinc-900">{appt.ngayHen}</strong> · Giờ: <strong className="font-mono text-red-700">{appt.gioHen}</strong>
                       </div>
-                      {appt.tenXe && <div className="text-sm mt-1" style={{ color: 'var(--color-zinc-500)' }}>🏍️ {appt.tenXe} · {appt.bienSo}</div>}
+                      {appt.tenXe && (
+                        <div className="text-sm mt-1" style={{ color: 'var(--color-zinc-600)' }}>
+                          🏍️ {appt.tenXe} · Biển số: <strong className="font-mono text-zinc-800">{appt.bienSo || 'Chưa có'}</strong>
+                        </div>
+                      )}
+                      <div className="text-xs mt-1 text-zinc-500 flex items-center gap-1.5">
+                        <span>👨‍🔧 Kỹ thuật viên:</span>
+                        <strong className="text-zinc-800">{appt.nhanVienPhuTrach || 'Đang sắp xếp nhân viên'}</strong>
+                      </div>
+
+                      {/* Hiển thị lý do từ chối nếu có */}
+                      {appt.trangThai === 'TuChoi' && (
+                        <div className="mt-3 text-xs p-3 rounded-xl bg-red-50 text-red-800 border border-red-200">
+                          <div className="font-bold mb-0.5 flex items-center gap-1">
+                            <span>⚠️ Lý do từ chối từ cửa hàng:</span>
+                          </div>
+                          <div>{appt.lyDoTuChoi || 'Cửa hàng hiện tại đã kín lịch hoặc xe không phù hợp.'}</div>
+                        </div>
+                      )}
+
                       {appt.ghiChu && (
-                        <div className="mt-2 text-sm px-3 py-2 rounded-lg" style={{ background: 'var(--color-zinc-50)', color: 'var(--color-zinc-600)', border: '1px solid var(--color-zinc-200)' }}>
-                          💬 "{appt.ghiChu}"
+                        <div className="mt-2.5 text-xs px-3 py-2 rounded-xl" style={{ background: 'var(--color-zinc-50)', color: 'var(--color-zinc-600)', border: '1px solid var(--color-zinc-200)' }}>
+                          💬 <strong className="text-zinc-700">Yêu cầu/Ghi chú:</strong> {appt.ghiChu}
                         </div>
                       )}
                     </div>

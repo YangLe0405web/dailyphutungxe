@@ -1,7 +1,7 @@
 /* ───────────────────────── TYPES ───────────────────────── */
 export type CustomerStatus = 'HoatDong' | 'BiKhoa';
 export type OrderStatus = 'ChoDuyet' | 'DangGiao' | 'HoanThanh' | 'DaHuy';
-export type AppointmentStatus = 'ChoDuyet' | 'DaXacNhan' | 'DangThucHien' | 'HoanThanh' | 'DaHuy';
+export type AppointmentStatus = 'ChoXacNhan' | 'DaXacNhan' | 'TuChoi' | 'DaHoanThanh' | 'DaHuy' | 'ChoDuyet' | 'DangThucHien' | 'HoanThanh';
 export type ServiceType = 'BaoDuong' | 'SuaChua' | 'LaiThu';
 export type AdminRole = 'SuperAdmin' | 'NhanVienBanHang' | 'NhanVienKyThuat';
 
@@ -112,6 +112,9 @@ export interface Appointment {
   id: string; customerId: string; hoTenKH: string; soDienThoai: string;
   loaiDichVu: ServiceType; ngayHen: string; gioHen: string;
   trangThai: AppointmentStatus; ghiChu: string; tenXe: string; bienSo: string;
+  nhanVienPhuTrach?: string; // LH08: Nhân viên phụ trách
+  lyDoTuChoi?: string;       // LH05: Lý do từ chối (bắt buộc)
+  createdDate?: string;      // LH10: Thời gian tạo để sắp xếp mới nhất
 }
 
 export function countWords(text: string): number {
@@ -589,11 +592,11 @@ export const mockOrders: Order[] = [
 
 /* ───────────────────────── APPOINTMENTS (5 CRM TRANSACTIONS) ───────────────────────── */
 export const mockAppointments: Appointment[] = [
-  { id: 'LH001', customerId: 'KH001', hoTenKH: 'Nguyễn Văn An', soDienThoai: '0901234567', loaiDichVu: 'BaoDuong', ngayHen: '2024-12-20', gioHen: '09:00', trangThai: 'DaXacNhan', ghiChu: 'Xe chạy hơi ồn, cần kiểm tra phuộc và thay nhớt tổng hợp', tenXe: 'Honda SH 160i ABS', bienSo: '51K-123.45' },
-  { id: 'LH002', customerId: 'KH002', hoTenKH: 'Trần Thị Bích', soDienThoai: '0912345678', loaiDichVu: 'SuaChua', ngayHen: '2024-12-21', gioHen: '10:30', trangThai: 'ChoDuyet', ghiChu: 'Phanh trước kêu nhẹ, kiểm tra vệ sinh nồi xe Vespa', tenXe: 'Vespa Sprint 125', bienSo: '51H-678.90' },
-  { id: 'LH003', customerId: 'KH003', hoTenKH: 'Lê Hoàng Cường', soDienThoai: '0923456789', loaiDichVu: 'LaiThu', ngayHen: '2024-12-22', gioHen: '14:00', trangThai: 'DaXacNhan', ghiChu: 'Muốn đăng ký lái thử xe Yamaha Exciter 155 VVA thế hệ mới', tenXe: 'Honda Winner X 150', bienSo: '59G1-234.56' },
-  { id: 'LH004', customerId: 'KH006', hoTenKH: 'Đặng Thị Phương Thảo', soDienThoai: '0956789012', loaiDichVu: 'BaoDuong', ngayHen: '2024-12-18', gioHen: '08:30', trangThai: 'HoanThanh', ghiChu: 'Bảo dưỡng định kỳ 5.000km và rửa xe', tenXe: 'Honda Vision 110', bienSo: '59V1-999.99' },
-  { id: 'LH005', customerId: 'KH009', hoTenKH: 'Đỗ Khoa Nam', soDienThoai: '0989012345', loaiDichVu: 'SuaChua', ngayHen: '2024-12-23', gioHen: '15:00', trangThai: 'DangThucHien', ghiChu: 'Kiểm tra lỗi còi và hệ thống phanh tái sinh xe điện', tenXe: 'VinFast Feliz S', bienSo: '51L1-567.89' },
+  { id: 'LH001', customerId: 'KH001', hoTenKH: 'Nguyễn Văn An', soDienThoai: '0901234567', loaiDichVu: 'BaoDuong', ngayHen: '2026-10-06', gioHen: '09:00', trangThai: 'DaXacNhan', ghiChu: '[GÓI BẢO DƯỠNG]: Gói Chuyên Sâu (Cấp 2) (350.000₫) | Xe chạy hơi ồn, cần kiểm tra phuộc và thay nhớt', tenXe: 'Honda SH 160i ABS', bienSo: '51K-123.45', nhanVienPhuTrach: 'Lê Văn Cường (Kỹ thuật viên)', createdDate: '2026-10-04 10:00' },
+  { id: 'LH002', customerId: 'KH002', hoTenKH: 'Trần Thị Bích', soDienThoai: '0912345678', loaiDichVu: 'SuaChua', ngayHen: '2026-10-06', gioHen: '10:30', trangThai: 'ChoXacNhan', ghiChu: '[TÌNH TRẠNG XE]: Phanh kêu / bó phanh / mất phanh | Phanh trước kêu nhẹ, kiểm tra vệ sinh nồi xe Vespa', tenXe: 'Vespa Sprint 125', bienSo: '51H-678.90', nhanVienPhuTrach: 'Chưa phân công', createdDate: '2026-10-05 08:30' },
+  { id: 'LH003', customerId: 'KH003', hoTenKH: 'Lê Hoàng Cường', soDienThoai: '0923456789', loaiDichVu: 'LaiThu', ngayHen: '2026-10-07', gioHen: '14:00', trangThai: 'DaXacNhan', ghiChu: '[GPLX LÁI THỬ]: Số 790123456789 (Hạng A1) | Đăng ký lái thử xe Yamaha Exciter 155 VVA thế hệ mới', tenXe: 'Yamaha Exciter 155 VVA ABS', bienSo: 'XE-LÁI-THỬ', nhanVienPhuTrach: 'Trần Thị Mai (Tư vấn bán hàng)', createdDate: '2026-10-04 15:20' },
+  { id: 'LH004', customerId: 'KH006', hoTenKH: 'Đặng Thị Phương Thảo', soDienThoai: '0956789012', loaiDichVu: 'BaoDuong', ngayHen: '2026-10-03', gioHen: '08:30', trangThai: 'DaHoanThanh', ghiChu: '[GÓI BẢO DƯỠNG]: Gói Tiêu Chuẩn (Cấp 1) (150.000₫) | Bảo dưỡng định kỳ 5.000km và rửa xe', tenXe: 'Honda Vision 110', bienSo: '59V1-999.99', nhanVienPhuTrach: 'Lê Văn Cường (Kỹ thuật viên)', createdDate: '2026-10-02 09:15' },
+  { id: 'LH005', customerId: 'KH009', hoTenKH: 'Đỗ Khoa Nam', soDienThoai: '0989012345', loaiDichVu: 'SuaChua', ngayHen: '2026-10-08', gioHen: '15:00', trangThai: 'ChoXacNhan', ghiChu: '[TÌNH TRẠNG XE]: Hệ thống điện / đèn / còi không hoạt động | Kiểm tra lỗi còi và hệ thống phanh tái sinh', tenXe: 'VinFast Feliz S', bienSo: '51L1-567.89', nhanVienPhuTrach: 'Chưa phân công', createdDate: '2026-10-05 09:00' },
 ];
 
 /* ───────────────────────── FEEDBACK ───────────────────────── */

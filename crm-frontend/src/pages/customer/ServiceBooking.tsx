@@ -339,6 +339,29 @@ export default function ServiceBooking({ initialVehicleId, currentCustomer, onCu
     setSelectedParts(prev => prev.filter(p => p.part.id !== partId));
   };
 
+  // Media file picker ref
+  const mediaFileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleMediaFilesUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    Array.from(files).forEach(file => {
+      if (file.size > 20 * 1024 * 1024) {
+        alert(`Tệp "${file.name}" vượt quá dung lượng tối đa 20MB!`);
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (typeof reader.result === 'string') {
+          setUploadedMediaList(prev => [...prev, reader.result as string]);
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = '';
+  };
+
   // Thêm media (ảnh/video) mô tả xe sửa
   const handleAddMedia = () => {
     if (newMediaInput.trim()) {
@@ -376,6 +399,15 @@ export default function ServiceBooking({ initialVehicleId, currentCustomer, onCu
 
     if (!date || !time) {
       setErrorMessage('Vui lòng chọn ngày và khung giờ hẹn trước khi xác nhận!');
+      return;
+    }
+
+    // LH15: Kiểm tra định dạng năm bắt buộc đúng 4 chữ số (YYYY)
+    const dateParts = date.split('-');
+    const yearStr = dateParts[0];
+    const currentYear = new Date().getFullYear();
+    if (!yearStr || yearStr.length !== 4 || isNaN(Number(yearStr)) || Number(yearStr) < currentYear || Number(yearStr) > currentYear + 2) {
+      setErrorMessage(`Năm hẹn không hợp lệ! Vui lòng chỉ nhập năm đúng 4 chữ số (YYYY) từ ${currentYear} đến ${currentYear + 2}.`);
       return;
     }
 
@@ -936,41 +968,75 @@ export default function ServiceBooking({ initialVehicleId, currentCustomer, onCu
 
               {/* Đính kèm hình ảnh / video */}
               <div className="p-4 rounded-2xl bg-zinc-50 border border-zinc-200 space-y-3">
-                <label className="block text-xs font-bold text-zinc-800 uppercase">
-                  Đính kèm hình ảnh / Video hiện trường hỏng hóc:
-                </label>
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <label className="block text-xs font-bold text-zinc-800 uppercase">
+                    Đính kèm hình ảnh / Video hiện trường hỏng hóc:
+                  </label>
+                  <span className="text-[11px] text-zinc-500">Hỗ trợ ảnh JPG, PNG hoặc video MP4</span>
+                </div>
+
+                {/* Ẩn input file thật để nút bấm kích hoạt */}
+                <input
+                  type="file"
+                  ref={mediaFileInputRef}
+                  onChange={handleMediaFilesUpload}
+                  accept="image/*,video/*"
+                  multiple
+                  className="hidden"
+                />
+
                 <div className="flex gap-2 flex-wrap items-center">
-                  <input
-                    type="text"
-                    placeholder="Dán link hình ảnh / video hoặc URL minh họa..."
-                    value={newMediaInput}
-                    onChange={e => setNewMediaInput(e.target.value)}
-                    className="flex-1 p-2.5 rounded-xl border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600"
-                  />
                   <button
                     type="button"
-                    onClick={handleAddMedia}
-                    className="px-4 py-2.5 rounded-xl text-xs font-bold bg-zinc-900 text-white hover:bg-zinc-800 transition cursor-pointer"
+                    onClick={() => mediaFileInputRef.current?.click()}
+                    className="px-4 py-2.5 rounded-xl text-xs font-bold bg-red-700 text-white hover:bg-red-800 transition cursor-pointer flex items-center gap-1.5 shadow-sm"
                   >
-                    + Thêm tệp
+                    <span>📁</span>
+                    <span>+ Thêm tệp</span>
                   </button>
+                  <div className="flex-1 flex gap-2 min-w-[220px]">
+                    <input
+                      type="text"
+                      placeholder="Hoặc dán URL hình ảnh/video..."
+                      value={newMediaInput}
+                      onChange={e => setNewMediaInput(e.target.value)}
+                      className="flex-1 p-2.5 rounded-xl border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddMedia}
+                      className="px-3.5 py-2.5 rounded-xl text-xs font-bold bg-zinc-900 text-white hover:bg-zinc-800 transition cursor-pointer"
+                    >
+                      Thêm link
+                    </button>
+                  </div>
                 </div>
 
                 {/* Danh sách ảnh/video preview */}
                 {uploadedMediaList.length > 0 && (
-                  <div className="flex gap-2 flex-wrap pt-2">
-                    {uploadedMediaList.map((mediaUrl, idx) => (
-                      <div key={idx} className="relative group w-20 h-20 rounded-xl overflow-hidden border border-zinc-300 bg-white shadow-2xs">
-                        <img src={mediaUrl} alt={`Evidence ${idx}`} className="w-full h-full object-cover" />
-                        <button
-                          type="button"
-                          onClick={() => setUploadedMediaList(prev => prev.filter((_, i) => i !== idx))}
-                          className="absolute inset-0 bg-red-600/80 text-white text-xs font-bold flex items-center justify-center opacity-0 group-hover:opacity-100 transition"
-                        >
-                          ✕ Xóa
-                        </button>
-                      </div>
-                    ))}
+                  <div className="flex gap-2.5 flex-wrap pt-2">
+                    {uploadedMediaList.map((mediaUrl, idx) => {
+                      const isVideo = mediaUrl.startsWith('data:video') || mediaUrl.includes('.mp4');
+                      return (
+                        <div key={idx} className="relative group w-20 h-20 rounded-xl overflow-hidden border border-zinc-300 bg-white shadow-2xs">
+                          {isVideo ? (
+                            <div className="w-full h-full bg-zinc-900 flex flex-col items-center justify-center text-white text-[10px]">
+                              <span className="text-base">🎬</span>
+                              <span>Video</span>
+                            </div>
+                          ) : (
+                            <img src={mediaUrl} alt={`Evidence ${idx}`} className="w-full h-full object-cover" />
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setUploadedMediaList(prev => prev.filter((_, i) => i !== idx))}
+                            className="absolute inset-0 bg-red-700/80 text-white text-xs font-bold flex items-center justify-center opacity-0 group-hover:opacity-100 transition cursor-pointer"
+                          >
+                            ✕ Xóa
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
