@@ -244,7 +244,7 @@ export default function App() {
           />
         )}
         {adminPage === 'customers' && <CustomersPage />}
-        {adminPage === 'feedback' && <FeedbackPage />}
+        {adminPage === 'feedback' && <FeedbackPage currentStaff={currentStaff} />}
         {adminPage === 'reports' && <ReportsPage />}
         {adminPage === 'parts' && <PartsPage />}
         {adminPage === 'vehicles' && <VehiclesPage />}

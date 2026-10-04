@@ -3,7 +3,9 @@ import {
   type Feedback,
   type Survey,
   type SurveyResponse,
-  type Customer
+  type Customer,
+  type StaffAccount,
+  mockStaffAccounts
 } from '../../data/mockData';
 import { customerApi, feedbackApi, surveyApi, chatApi, formatCustomerId, type ChatMessage } from '../../services/api';
 
@@ -19,8 +21,65 @@ function Stars({ r }: { r: number }) {
   );
 }
 
-export default function FeedbackPage() {
+interface FeedbackPageProps {
+  currentStaff?: StaffAccount | null;
+}
+
+export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
   const [activeMainTab, setActiveMainTab] = useState<'feedback' | 'survey'>('feedback');
+  
+  // ĐG10: Đồng bộ tài khoản nhân viên đang thao tác để xử lý đánh giá
+  const [activeStaff, setActiveStaff] = useState<StaffAccount | null>(() => {
+    if (currentStaff) return currentStaff;
+    try {
+      const saved = localStorage.getItem('crm_current_staff');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return mockStaffAccounts[0];
+  });
+
+  useEffect(() => {
+    if (currentStaff) {
+      setActiveStaff(currentStaff);
+    } else {
+      try {
+        const saved = localStorage.getItem('crm_current_staff');
+        if (saved) setActiveStaff(JSON.parse(saved));
+      } catch {}
+    }
+  }, [currentStaff]);
+
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'crm_current_staff' && e.newValue) {
+        try {
+          setActiveStaff(JSON.parse(e.newValue));
+        } catch {}
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
+  const getStaffHandlingName = (): string => {
+    const staff = activeStaff || currentStaff;
+    if (staff?.hoTen) {
+      const title = staff.chucVu || (staff.vaiTro === 'SuperAdmin' ? 'Quản lý Hệ thống' : 'Chuyên viên Bán hàng & CSKH');
+      return `${staff.hoTen} (${title})`;
+    }
+    try {
+      const saved = localStorage.getItem('crm_current_staff');
+      if (saved) {
+        const s = JSON.parse(saved);
+        if (s?.hoTen) {
+          const title = s.chucVu || (s.vaiTro === 'SuperAdmin' ? 'Quản lý Hệ thống' : 'Chuyên viên Bán hàng & CSKH');
+          return `${s.hoTen} (${title})`;
+        }
+      }
+    } catch {}
+    const def = mockStaffAccounts[0];
+    return `${def.hoTen} (${def.chucVu})`;
+  };
   
   // Feedback state & multi-criteria filters
   const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
@@ -137,30 +196,46 @@ export default function FeedbackPage() {
   // Handlers for Call, Email, Chat (ĐG06, ĐG07)
   const handleSaveCallLog = async () => {
     if (!callFeedback) return;
+    const staffName = getStaffHandlingName();
+    const today = new Date().toISOString().split('T')[0];
     const statusText = callStatus === 'DaNgheMay' ? 'Đã trao đổi qua điện thoại' : callStatus === 'HenGoiLai' ? 'Hẹn gọi lại sau' : 'Khách không bắt máy';
     const noteText = `[Cuộc gọi - ${statusText}] ${callNotes.trim() || 'Nhân viên CSKH đã liên hệ hỗ trợ khách hàng.'}`;
 
-    await feedbackApi.resolve(callFeedback.id, noteText);
-    setFeedbacks(prev => prev.map(f => f.id === callFeedback.id ? { ...f, trangThai: 'DaXuLy', ghiChuXuLy: noteText } : f));
-    setToast(`✓ Đã lưu lịch sử cuộc gọi với khách hàng ${callFeedback.hoTen}!`);
+    await feedbackApi.resolve(callFeedback.id, noteText, staffName);
+    setFeedbacks(prev => prev.map(f => f.id === callFeedback.id ? {
+      ...f,
+      trangThai: 'DaXuLy',
+      ghiChuXuLy: noteText,
+      nhanVienXuLy: staffName,
+      ngayXuLy: today,
+    } : f));
+    setToast(`✓ Đã lưu lịch sử cuộc gọi với khách hàng ${callFeedback.hoTen}! Nhân viên xử lý: ${staffName}`);
     setTimeout(() => setToast(null), 3500);
     setCallFeedback(null);
   };
 
   const handleSendEmail = async () => {
     if (!emailFeedback) return;
+    const staffName = getStaffHandlingName();
+    const today = new Date().toISOString().split('T')[0];
     setSendingEmail(true);
     const noteText = `[Email đã gửi - ${emailSubject}] Nội dung: ${emailBody.slice(0, 80)}...`;
 
-    await feedbackApi.resolve(emailFeedback.id, noteText);
-    setFeedbacks(prev => prev.map(f => f.id === emailFeedback.id ? { ...f, trangThai: 'DaXuLy', ghiChuXuLy: noteText } : f));
+    await feedbackApi.resolve(emailFeedback.id, noteText, staffName);
+    setFeedbacks(prev => prev.map(f => f.id === emailFeedback.id ? {
+      ...f,
+      trangThai: 'DaXuLy',
+      ghiChuXuLy: noteText,
+      nhanVienXuLy: staffName,
+      ngayXuLy: today,
+    } : f));
 
     // Launch email client
     const mailtoUrl = `mailto:${encodeURIComponent(emailFeedback.email || 'khachhang@motoshop.vn')}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
     window.open(mailtoUrl, '_blank');
 
     setSendingEmail(false);
-    setToast(`✓ Đã gửi email phản hồi thành công tới ${emailFeedback.email || 'khách hàng'}!`);
+    setToast(`✓ Đã gửi email phản hồi thành công tới ${emailFeedback.email || 'khách hàng'}! Nhân viên xử lý: ${staffName}`);
     setTimeout(() => setToast(null), 3500);
     setEmailFeedback(null);
   };
@@ -172,7 +247,7 @@ export default function FeedbackPage() {
     const sent = await chatApi.sendMessage({
       customerId: formatCustomerId(chatFeedback.customerId),
       sender: 'staff',
-      senderName: 'CSKH Showroom Motoshop',
+      senderName: activeStaff?.hoTen || 'CSKH Showroom Motoshop',
       content: chatInput.trim(),
     });
 
@@ -219,9 +294,9 @@ export default function FeedbackPage() {
     return true;
   });
 
-  // ĐG10 & ĐG13: Nút đã xử lý hoạt động ngay lập tức và lưu thông tin nhân viên xử lý
+  // ĐG10 & ĐG13: Nút đã xử lý hoạt động ngay lập tức và lưu thông tin nhân viên xử lý theo tài khoản đăng nhập
   async function resolveFeedback(id: string) {
-    const staffName = 'Nguyễn Minh Tuấn (Chuyên viên CSKH)';
+    const staffName = getStaffHandlingName();
     const today = new Date().toISOString().split('T')[0];
     await feedbackApi.resolve(id, 'Đã xác nhận và hoàn tất xử lý đánh giá của khách hàng.', staffName);
     setFeedbacks(fs => fs.map(f => f.id === id ? {
@@ -305,20 +380,29 @@ export default function FeedbackPage() {
           </p>
         </div>
 
-        {/* Top Main Navigation Tabs */}
-        <div className="flex p-1 bg-zinc-200 rounded-xl">
-          <button
-            onClick={() => setActiveMainTab('feedback')}
-            className={`px-4 py-2 rounded-lg text-xs font-bold transition ${activeMainTab === 'feedback' ? 'bg-white text-zinc-900 shadow' : 'text-zinc-600'}`}
-          >
-            💬 Phản hồi & Đánh giá mới ({pending > 0 ? `${pending} mới` : '0'})
-          </button>
-          <button
-            onClick={() => setActiveMainTab('survey')}
-            className={`px-4 py-2 rounded-lg text-xs font-bold transition ${activeMainTab === 'survey' ? 'bg-white text-zinc-900 shadow' : 'text-zinc-600'}`}
-          >
-            📝 Quản lý & Tạo Khảo sát
-          </button>
+        {/* Top Main Navigation Tabs & Current Staff Badge */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-zinc-900 text-white text-xs border border-zinc-800 shadow-xs">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span className="text-zinc-400 font-mono text-[11px]">Nhân viên đang xử lý:</span>
+            <span className="font-bold text-red-400">{activeStaff?.hoTen || 'Trần Văn Quản Lý'}</span>
+            <span className="text-zinc-400 text-[11px]">({activeStaff?.chucVu || 'Giám đốc Showroom'})</span>
+          </div>
+
+          <div className="flex p-1 bg-zinc-200 rounded-xl">
+            <button
+              onClick={() => setActiveMainTab('feedback')}
+              className={`px-4 py-2 rounded-lg text-xs font-bold transition ${activeMainTab === 'feedback' ? 'bg-white text-zinc-900 shadow' : 'text-zinc-600'}`}
+            >
+              💬 Phản hồi & Đánh giá mới ({pending > 0 ? `${pending} mới` : '0'})
+            </button>
+            <button
+              onClick={() => setActiveMainTab('survey')}
+              className={`px-4 py-2 rounded-lg text-xs font-bold transition ${activeMainTab === 'survey' ? 'bg-white text-zinc-900 shadow' : 'text-zinc-600'}`}
+            >
+              📝 Quản lý & Tạo Khảo sát
+            </button>
+          </div>
         </div>
       </div>
 
@@ -613,7 +697,7 @@ export default function FeedbackPage() {
                     <div className="mt-2.5 px-3.5 py-2.5 bg-emerald-50 text-emerald-900 rounded-xl text-xs border border-emerald-200 flex items-center justify-between flex-wrap gap-2 shadow-2xs">
                       <div className="flex items-center gap-2">
                         <span className="font-extrabold text-emerald-700">👤 Nhân viên xử lý:</span>
-                        <span className="font-bold">{f.nhanVienXuLy || 'Nguyễn Minh Tuấn (Chuyên viên CSKH)'}</span>
+                        <span className="font-bold">{f.nhanVienXuLy || getStaffHandlingName()}</span>
                       </div>
                       <div className="flex items-center gap-1.5 text-emerald-700 font-mono text-[11px]">
                         <span>📅 Ngày xử lý:</span>
@@ -640,7 +724,7 @@ export default function FeedbackPage() {
                         onClick={() => resolveFeedback(f.id)}
                         className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition shadow-xs hover:bg-emerald-200 cursor-pointer"
                         style={{ background: '#dcfce7', color: '#16a34a', border: '1px solid #bbf7d0' }}
-                        title="Xác nhận đã tiếp nhận và hoàn tất xử lý đánh giá này"
+                        title={`Xác nhận đã tiếp nhận và hoàn tất xử lý bởi: ${getStaffHandlingName()}`}
                       >
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
                         Xác nhận đã xử lý

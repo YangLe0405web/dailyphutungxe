@@ -547,7 +547,7 @@ export const mockFeedbacks: Feedback[] = [
     trangThai: 'DaXuLy',
     loaiNhan: 'DanhGia',
     ghiChuXuLy: 'Đã gọi điện cảm ơn khách hàng và gửi voucher giảm giá 10% lần sau.',
-    nhanVienXuLy: 'Nguyễn Minh Tuấn (Chuyên viên CSKH)',
+    nhanVienXuLy: 'Trần Văn Quản Lý (Giám đốc Showroom)',
     ngayXuLy: '2024-11-17',
     hinhAnhDinhKem: [
       'https://images.unsplash.com/photo-1568772585407-9361f9bf3a87?w=600&auto=format&fit=crop&q=80',
@@ -586,7 +586,7 @@ export const mockFeedbacks: Feedback[] = [
     trangThai: 'DaXuLy',
     loaiNhan: 'DanhGia',
     ghiChuXuLy: 'Đã hỗ trợ kiểm tra định kỳ miễn phí cho khách.',
-    nhanVienXuLy: 'Lê Hoàng Nam (Kỹ thuật trưởng)',
+    nhanVienXuLy: 'Lê Hoàng Nam (Kỹ thuật viên Sửa chữa máy)',
     ngayXuLy: '2024-12-06',
   },
   {
@@ -603,7 +603,7 @@ export const mockFeedbacks: Feedback[] = [
     loaiDanhGia: 'SanPham',
     trangThai: 'DaXuLy',
     loaiNhan: 'DanhGia',
-    nhanVienXuLy: 'Trần Thu Hà (Tư vấn bán hàng)',
+    nhanVienXuLy: 'Lê Thị Thu Hà (Chuyên viên Bán hàng & CSKH)',
     ngayXuLy: '2024-12-11',
   },
   {
@@ -620,7 +620,7 @@ export const mockFeedbacks: Feedback[] = [
     loaiDanhGia: 'DichVu',
     trangThai: 'DaXuLy',
     loaiNhan: 'DanhGia',
-    nhanVienXuLy: 'Nguyễn Minh Tuấn (Chuyên viên CSKH)',
+    nhanVienXuLy: 'Trần Minh Hoàng (Chuyên viên Tư vấn Bán hàng)',
     ngayXuLy: '2024-12-12',
   },
   {
@@ -638,7 +638,7 @@ export const mockFeedbacks: Feedback[] = [
     trangThai: 'DaXuLy',
     loaiNhan: 'DanhGia',
     ghiChuXuLy: 'Đã hoàn tiền và gửi mã ưu đãi miễn phí giao hàng.',
-    nhanVienXuLy: 'Trần Thu Hà (Tư vấn bán hàng)',
+    nhanVienXuLy: 'Nguyễn Thị Ánh (Chuyên viên Tư vấn Bán hàng)',
     ngayXuLy: '2024-12-15',
   },
   {
@@ -655,7 +655,7 @@ export const mockFeedbacks: Feedback[] = [
     loaiDanhGia: 'DichVu',
     trangThai: 'DaXuLy',
     loaiNhan: 'DanhGia',
-    nhanVienXuLy: 'Nguyễn Minh Tuấn (Chuyên viên CSKH)',
+    nhanVienXuLy: 'Trần Văn Quản Lý (Giám đốc Showroom)',
     ngayXuLy: '2024-12-17',
   },
 ];

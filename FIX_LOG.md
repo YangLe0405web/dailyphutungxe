@@ -598,3 +598,33 @@ Dưới đây là danh sách toàn bộ các tập tin đã can thiệp. Khi x�
   - Nhập dưới 200 từ: Bộ đếm nhảy số chính xác, gửi đánh giá thành công.
   - Nhập 205 từ trên giao diện: Bộ đếm đổi sang màu đỏ thẫm, hiện cảnh báo spam, nút bấm gửi bị vô hiệu hóa.
   - Gửi request trực tiếp 205 từ vào backend: Backend phản hồi lỗi 400 và chặn lưu vào CSDL.
+
+#### Bổ sung hoàn thiện ĐG10 – Đồng bộ tên nhân viên xử lý đánh giá theo đúng tài khoản đăng nhập
+* **Mô tả lỗi:**
+  - Tên nhân viên xử lý đánh giá trước đây bị gán tĩnh là `"Nguyễn Minh Tuấn (Chuyên viên CSKH)"` (nhân viên không tồn tại trong danh sách tài khoản nhân sự).
+  - Khi nhân viên đăng nhập bằng các tài khoản khác nhau (ví dụ: `admin@motoshop.vn` - Trần Văn Quản Lý, `anhnguyen@motoshop.vn` - Nguyễn Thị Ánh, `hoangtran@motoshop.vn` - Trần Minh Hoàng, `nguyen.thanh67@gmail.com` - Nguyễn Văn Thành, v.v.), khi bấm "Xác nhận đã xử lý" hoặc ghi nhận cuộc gọi/email, hệ thống vẫn ghi nhận tên cứng cũ thay vì tên của tài khoản nhân viên đang thao tác.
+* **Kết quả mong đợi:** Tên nhân viên xử lý đánh giá phải lấy chính xác và tự động theo thông tin của tài khoản nhân viên đang đăng nhập trên hệ thống CRM.
+* **Giải pháp đã thực hiện:**
+  - **1. Truyền và đồng bộ ngữ cảnh tài khoản nhân sự (`App.tsx` & `Feedback.tsx`):**
+    - Truyền prop `currentStaff={currentStaff}` từ `App.tsx` vào `FeedbackPage`.
+    - Xây dựng state `activeStaff` và hàm helper `getStaffHandlingName()` trong `Feedback.tsx`:
+      * Ưu tiên lấy từ `currentStaff` prop.
+      * Tự động đồng bộ và fallback sang `localStorage.getItem('crm_current_staff')` và lắng nghe sự kiện `storage` khi đổi tài khoản trên trình duyệt.
+      * Định dạng chuẩn chỉnh: `[Họ tên nhân viên] ([Chức vụ])`.
+  - **2. Đồng bộ các thao tác xử lý đánh giá:**
+    - Hàm `resolveFeedback(id)`: Lấy trực tiếp `staffName = getStaffHandlingName()`, gửi lên backend qua API `PATCH /api/PhanHoi/{id}/trang-thai` và cập nhật state hiển thị ngay lập tức.
+    - Hàm `handleSaveCallLog()`: Lưu cuộc gọi và tự động gán tên nhân viên đang thực hiện cuộc gọi.
+    - Hàm `handleSendEmail()`: Gửi email phản hồi và tự động gán tên nhân viên phụ trách gửi email.
+  - **3. Hiển thị thông tin trực quan trên giao diện Admin:**
+    - Thêm huy hiệu nhận diện trên Header trang Quản lý phản hồi: `👤 Nhân viên đang xử lý: [Tên nhân viên] ([Chức vụ])` có chấm xanh trực tuyến.
+    - Thẻ phản hồi đã xử lý hiển thị chính xác tên nhân viên đã xử lý theo đúng tài khoản.
+    - Nút "Xác nhận đã xử lý" hiển thị tooltip rõ ràng: `Xác nhận đã tiếp nhận và hoàn tất xử lý bởi: [Tên nhân viên]`.
+  - **4. Backend (`PhanHoiController.cs`) & API (`api.ts`):**
+    - API `PATCH /api/PhanHoi/{id}/trang-thai` nhận giá trị `nhanVienXuLy` gửi từ client và lưu trữ bền vững.
+    - Làm sạch và đồng bộ lại toàn bộ dữ liệu mẫu trong `mockData.ts` và backend, liên kết chuẩn 100% với các tài khoản trong `mockStaffAccounts` (`ST000`, `ST001`, `ST002`, `ST003`, `ST008`...).
+* **Kết quả test:**
+  - Đăng nhập bằng tài khoản `anhnguyen@motoshop.vn` (Nguyễn Thị Ánh - Chuyên viên Tư vấn Bán hàng):
+    * Bấm "Xác nhận đã xử lý" trên phản hồi -> Thẻ phản hồi lập tức hiển thị: `👤 Nhân viên xử lý: Nguyễn Thị Ánh (Chuyên viên Tư vấn Bán hàng)`.
+  - Đăng nhập bằng tài khoản `admin@motoshop.vn` (Trần Văn Quản Lý - Giám đốc Showroom):
+    * Bấm "Xác nhận đã xử lý" -> Thẻ phản hồi hiển thị: `👤 Nhân viên xử lý: Trần Văn Quản Lý (Giám đốc Showroom)`.
+  - Toàn bộ lịch sử cuộc gọi và gửi email cũng đồng bộ chính xác theo tài khoản nhân viên đang thao tác.

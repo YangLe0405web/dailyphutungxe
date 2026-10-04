@@ -41,8 +41,8 @@ namespace CrmBackend.Controllers
 
         private static readonly ConcurrentDictionary<int, (string nhanVien, DateTime ngay)> _handlers = new()
         {
-            [1] = ("Nguyễn Minh Tuấn (Chuyên viên CSKH)", new DateTime(2024, 11, 18)),
-            [7] = ("Lê Thanh Thảo (Quản lý CSKH)", new DateTime(2024, 12, 17))
+            [1] = ("Trần Văn Quản Lý (Giám đốc Showroom)", new DateTime(2024, 11, 18)),
+            [7] = ("Lê Thị Thu Hà (Chuyên viên Bán hàng & CSKH)", new DateTime(2024, 12, 17))
         };
 
         public PhanHoiController(IDbConnection db)
@@ -80,7 +80,7 @@ namespace CrmBackend.Controllers
                     }
                     else if (p.TrangThaiXuLy == "Đã phản hồi" || p.TrangThaiXuLy == "DaXuLy")
                     {
-                        p.NhanVienXuLy = p.NhanVienXuLy ?? "Nguyễn Minh Tuấn (Chuyên viên CSKH)";
+                        p.NhanVienXuLy = p.NhanVienXuLy ?? "Trần Văn Quản Lý (Giám đốc Showroom)";
                         p.NgayXuLy = p.NgayXuLy ?? (p.NgayGui ?? DateTime.Now.AddDays(-2));
                     }
                 }
@@ -207,7 +207,9 @@ namespace CrmBackend.Controllers
             var sql = "UPDATE PHAN_HOI SET TrangThaiXuLy = @status WHERE MaPH = @id";
             await _db.ExecuteAsync(sql, new { status, id });
 
-            var staff = body.ContainsKey("nhanVienXuLy") ? body["nhanVienXuLy"] : "Nguyễn Minh Tuấn (Chuyên viên CSKH)";
+            var staff = body.ContainsKey("nhanVienXuLy") && !string.IsNullOrWhiteSpace(body["nhanVienXuLy"]) 
+                ? body["nhanVienXuLy"] 
+                : "Trần Văn Quản Lý (Giám đốc Showroom)";
             _handlers[id] = (staff, DateTime.Now);
 
             return Ok(new { message = "Cập nhật trạng thái thành công!", nhanVienXuLy = staff, ngayXuLy = DateTime.Now });

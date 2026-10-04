@@ -903,6 +903,21 @@ export interface ChatMessage {
   sentAt: string;
 }
 
+export function getCurrentStaffAccountDisplay(): string {
+  try {
+    const saved = localStorage.getItem('crm_current_staff');
+    if (saved) {
+      const staff = JSON.parse(saved);
+      if (staff?.hoTen) {
+        const title = staff.chucVu || (staff.vaiTro === 'SuperAdmin' ? 'Quản lý Hệ thống' : 'Chuyên viên Tư vấn & CSKH');
+        return `${staff.hoTen} (${title})`;
+      }
+    }
+  } catch {}
+  const fallback = mockStaffAccounts[0];
+  return `${fallback.hoTen} (${fallback.chucVu})`;
+}
+
 export const feedbackApi = {
   async getAll(): Promise<Feedback[]> {
     try {
@@ -946,8 +961,8 @@ export const feedbackApi = {
               trangThai: (item.trangThaiXuLy === 'Đã phản hồi' || item.trangThaiXuLy === 'DaXuLy') ? 'DaXuLy' : 'ChoXuLy',
               loaiNhan: (item.diemDanhGia <= 3 || item.noiDung?.toLowerCase().includes('chậm') || item.noiDung?.toLowerCase().includes('lỗi')) ? 'KhieuNai' : 'DanhGia',
               ghiChuXuLy: item.ghiChuXuLy || mockMatch?.ghiChuXuLy,
-              // ĐG10: Thông tin nhân viên phụ trách xử lý
-              nhanVienXuLy: item.nhanVienXuLy || mockMatch?.nhanVienXuLy || ((item.trangThaiXuLy === 'Đã phản hồi' || item.trangThaiXuLy === 'DaXuLy') ? 'Nguyễn Minh Tuấn (Chuyên viên CSKH)' : undefined),
+              // ĐG10: Thông tin nhân viên phụ trách xử lý (đồng bộ theo tài khoản nhân viên đang thao tác)
+              nhanVienXuLy: item.nhanVienXuLy || mockMatch?.nhanVienXuLy || ((item.trangThaiXuLy === 'Đã phản hồi' || item.trangThaiXuLy === 'DaXuLy') ? getCurrentStaffAccountDisplay() : undefined),
               ngayXuLy: item.ngayXuLy || mockMatch?.ngayXuLy || ((item.trangThaiXuLy === 'Đã phản hồi' || item.trangThaiXuLy === 'DaXuLy') ? (item.ngayGui ? item.ngayGui.split('T')[0] : '2024-12-05') : undefined),
               // ĐG09: Đính kèm media ảnh hoặc video
               hinhAnhDinhKem: item.hinhAnhDinhKem || mockMatch?.hinhAnhDinhKem || [],
@@ -1130,7 +1145,7 @@ export const feedbackApi = {
 
   // ĐG10 & ĐG13: Nút đã xử lý cập nhật trạng thái ngay lập tức và lưu thông tin nhân viên xử lý
   async resolve(id: string, note?: string, staffName?: string): Promise<boolean> {
-    const handler = staffName || 'Nguyễn Minh Tuấn (Chuyên viên CSKH)';
+    const handler = staffName || getCurrentStaffAccountDisplay();
     const resolvedDate = new Date().toISOString().split('T')[0];
 
     const maPH = parseInt(id.replace(/\D/g, ''), 10);
