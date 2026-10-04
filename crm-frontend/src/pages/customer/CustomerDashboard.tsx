@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   mockCustomers,
   mockVehicles,
@@ -14,8 +14,10 @@ import {
   type Vehicle,
   type Customer,
   type Survey,
+  type Order,
+  type Appointment,
 } from '../../data/mockData';
-import { customerApi, vehicleApi, feedbackApi, surveyApi } from '../../services/api';
+import { customerApi, vehicleApi, feedbackApi, surveyApi, orderApi, appointmentApi } from '../../services/api';
 import ImageUploader from '../../components/shared/ImageUploader';
 
 interface CustomerDashboardProps {
@@ -648,14 +650,42 @@ export default function CustomerDashboard({ currentCustomer, onNavigateToShowroo
 
   const [showEditProfile, setShowEditProfile] = useState(false);
 
+  const [allOrders, setAllOrders] = useState<Order[]>(mockOrders);
+  const [allAppts, setAllAppts] = useState<Appointment[]>(mockAppointments);
+
+  const loadCustomerData = () => {
+    if (!currentCustomer) return;
+    orderApi.getAll().then(data => {
+      if (data && data.length > 0) setAllOrders(data);
+    });
+    appointmentApi.getAll().then(data => {
+      if (data && data.length > 0) setAllAppts(data);
+    });
+    vehicleApi.getAll().then(data => {
+      if (data) {
+        const cIdNum = parseInt(currentCustomer.id.replace(/\D/g, ''), 10);
+        const vList = data.filter(v => {
+          if (v.customerId === currentCustomer.id) return true;
+          const vNum = parseInt(v.customerId.replace(/\D/g, ''), 10);
+          return !isNaN(cIdNum) && !isNaN(vNum) && cIdNum === vNum;
+        });
+        setMyVehicles(vList);
+      }
+    });
+  };
+
   useEffect(() => {
-    if (currentCustomer) {
-      setMyVehicles(mockVehicles.filter(v => v.customerId === currentCustomer.id));
-      setActiveVehicleIndex(0);
-    } else {
-      setMyVehicles([]);
-    }
-  }, [currentCustomer]);
+    loadCustomerData();
+    const handleRefresh = (e: any) => {
+      loadCustomerData();
+    };
+    window.addEventListener('crm-data-refresh', handleRefresh);
+    window.addEventListener('crm-admin-notification', handleRefresh);
+    return () => {
+      window.removeEventListener('crm-data-refresh', handleRefresh);
+      window.removeEventListener('crm-admin-notification', handleRefresh);
+    };
+  }, [currentCustomer?.id]);
 
   // Unauthenticated Guest Prompt Screen
   if (!currentCustomer) {
@@ -699,8 +729,38 @@ export default function CustomerDashboard({ currentCustomer, onNavigateToShowroo
          !surveyApi.getResponses().some(r => r.surveyId === s.id && r.customerId === currentCustomer.id)
   ).length;
 
-  const myOrders = mockOrders.filter(o => o.customerId === currentCustomer.id);
-  const myAppts = mockAppointments.filter(a => a.customerId === currentCustomer.id);
+  // Real-time reactive customer orders (ĐH01: Khách hàng thấy tất cả đơn của họ)
+  const myOrders = useMemo(() => {
+    if (!currentCustomer) return [];
+    const custNum = parseInt(currentCustomer.id.replace(/\D/g, ''), 10);
+    const custPhone = currentCustomer.soDienThoai ? currentCustomer.soDienThoai.replace(/\D/g, '') : '';
+    const custName = currentCustomer.hoTen ? currentCustomer.hoTen.trim().toLowerCase() : '';
+
+    return allOrders.filter(o => {
+      if (o.customerId === currentCustomer.id) return true;
+      const orderCustNum = parseInt(o.customerId.replace(/\D/g, ''), 10);
+      if (!isNaN(custNum) && !isNaN(orderCustNum) && custNum === orderCustNum) return true;
+      if (custPhone && (o as any).soDienThoai && (o as any).soDienThoai.replace(/\D/g, '') === custPhone) return true;
+      if (custName && o.hoTenKH && o.hoTenKH.trim().toLowerCase() === custName) return true;
+      return false;
+    });
+  }, [allOrders, currentCustomer]);
+
+  const myAppts = useMemo(() => {
+    if (!currentCustomer) return [];
+    const custNum = parseInt(currentCustomer.id.replace(/\D/g, ''), 10);
+    const custPhone = currentCustomer.soDienThoai ? currentCustomer.soDienThoai.replace(/\D/g, '') : '';
+    const custName = currentCustomer.hoTen ? currentCustomer.hoTen.trim().toLowerCase() : '';
+
+    return allAppts.filter(a => {
+      if (a.customerId === currentCustomer.id) return true;
+      const aCustNum = parseInt(a.customerId.replace(/\D/g, ''), 10);
+      if (!isNaN(custNum) && !isNaN(aCustNum) && custNum === aCustNum) return true;
+      if (custPhone && a.soDienThoai && a.soDienThoai.replace(/\D/g, '') === custPhone) return true;
+      if (custName && a.hoTenKH && a.hoTenKH.trim().toLowerCase() === custName) return true;
+      return false;
+    });
+  }, [allAppts, currentCustomer]);
 
   const currentVehicle = myVehicles[activeVehicleIndex] || myVehicles[0];
 
@@ -708,15 +768,15 @@ export default function CustomerDashboard({ currentCustomer, onNavigateToShowroo
   const warrantyDays = currentVehicle ? daysUntil(currentVehicle.hanBaoHanh) : 0;
 
   const tabs = [
-    { label: 'Đơn mua hàng', icon: '📦' },
-    { label: 'Lịch hẹn', icon: '📅' },
+    { label: `Đơn mua hàng (${myOrders.length})`, icon: '📦' },
+    { label: `Lịch hẹn (${myAppts.length})`, icon: '📅' },
     { label: `Khảo sát (${pendingSurveysCount > 0 ? `${pendingSurveysCount} mới` : '0'})`, icon: '⭐' },
   ];
 
-  const handleRegisterVehicle = () => {
+  // TC13: Khách hàng đăng ký xe mới -> Trạng thái 'ChoDuyet' chờ cửa hàng kiểm tra và duyệt
+  const handleRegisterVehicle = async () => {
     if (!regForm.tenXe.trim() || !regForm.bienSo.trim()) return;
-    const newV: Vehicle = {
-      id: `XE${Date.now().toString().slice(-4)}`,
+    const newV = await vehicleApi.registerVehicle({
       customerId: currentCustomer.id,
       tenXe: regForm.tenXe.trim(),
       bienSo: regForm.bienSo.trim(),
@@ -725,10 +785,11 @@ export default function CustomerDashboard({ currentCustomer, onNavigateToShowroo
       mauSac: regForm.mauSac.trim() || 'Đen bóng',
       trangThaiBaoHanh: 'ConHan',
       soKhung: regForm.soKhung.trim() || `RLH${Date.now().toString().slice(-8)}`,
-    };
-    mockVehicles.push(newV);
-    setMyVehicles(prev => [...prev, newV]);
-    setActiveVehicleIndex(myVehicles.length);
+      trangThaiDuyet: 'ChoDuyet',
+    });
+
+    setMyVehicles(prev => [newV, ...prev]);
+    setActiveVehicleIndex(0);
     setShowAddVehicleModal(false);
     setRegForm({ tenXe: '', bienSo: '', soKhung: '', mauSac: '', namSanXuat: '2025' });
   };
@@ -839,9 +900,10 @@ export default function CustomerDashboard({ currentCustomer, onNavigateToShowroo
               <button
                 key={v.id}
                 onClick={() => setActiveVehicleIndex(idx)}
-                className={`px-3 py-1 rounded-lg text-xs font-bold transition ${activeVehicleIndex === idx ? 'bg-zinc-900 text-white' : 'bg-zinc-200 text-zinc-700'}`}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${activeVehicleIndex === idx ? 'bg-zinc-900 text-white' : 'bg-zinc-200 text-zinc-700'}`}
               >
-                {v.tenXe} ({v.bienSo})
+                {v.trangThaiDuyet === 'ChoDuyet' && <span>⏳</span>}
+                <span>{v.tenXe} ({v.bienSo})</span>
               </button>
             ))}
           </div>
@@ -863,6 +925,13 @@ export default function CustomerDashboard({ currentCustomer, onNavigateToShowroo
                     <span style={{ fontFamily: 'var(--font-mono)', fontSize: 14, color: 'var(--color-zinc-400)', letterSpacing: '0.1em' }}>{currentVehicle.bienSo}</span>
                     <span style={{ fontSize: 13, color: 'var(--color-zinc-500)' }}>{currentVehicle.mauSac} · {currentVehicle.namSanXuat}</span>
                   </div>
+
+                  {/* TC13: Badge hiển thị trạng thái chờ duyệt của xe mới đăng ký */}
+                  {currentVehicle.trangThaiDuyet === 'ChoDuyet' && (
+                    <div className="mt-3.5 inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-400/20 text-amber-300 border border-amber-400/40">
+                      <span>⏳ Chờ cửa hàng kiểm tra & duyệt thông tin xe</span>
+                    </div>
+                  )}
                 </div>
                 {/* Digital warranty card */}
                 <div className="rounded-xl p-4 min-w-48" style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', backdropFilter: 'blur(8px)' }}>
@@ -999,14 +1068,47 @@ export default function CustomerDashboard({ currentCustomer, onNavigateToShowroo
             ) : myOrders.map(order => {
               const cfg = orderStatusConfig[order.trangThai];
               return (
-                <div key={order.id} className="rounded-2xl overflow-hidden" style={{ background: 'white', border: '1px solid var(--color-zinc-200)' }}>
+                <div key={order.id} className="rounded-2xl overflow-hidden shadow-2xs" style={{ background: 'white', border: '1px solid var(--color-zinc-200)' }}>
                   <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: 'var(--color-zinc-100)' }}>
                     <div>
-                      <div className="font-600 text-sm" style={{ color: 'var(--color-zinc-900)' }}>Đơn hàng #{order.id}</div>
-                      <div className="text-xs mt-0.5" style={{ color: 'var(--color-zinc-500)', fontFamily: 'var(--font-mono)' }}>{order.ngayDat}</div>
+                      <div className="font-700 text-sm" style={{ color: 'var(--color-zinc-900)' }}>Đơn hàng #{order.id}</div>
+                      <div className="text-xs mt-0.5" style={{ color: 'var(--color-zinc-500)', fontFamily: 'var(--font-mono)' }}>Ngày đặt: {order.ngayDat}</div>
                     </div>
                     <StatusBadge {...cfg} />
                   </div>
+
+                  {/* ĐH01: Tình trạng thực tế đơn hàng cho khách hàng */}
+                  {order.trangThai === 'DangGiao' && (
+                    <div className="mx-5 my-3 p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center gap-3 text-xs text-blue-900 font-semibold">
+                      <span className="text-2xl animate-pulse">🚚</span>
+                      <div>
+                        <div className="font-bold text-blue-950">ĐƠN HÀNG ĐANG GIAO ĐẾN BẠN</div>
+                        <div className="text-[11px] text-blue-700 font-normal">Đang vận chuyển đến: {order.diaChiGiao}</div>
+                      </div>
+                    </div>
+                  )}
+
+                  {order.trangThai === 'HoanThanh' && (
+                    <div className="mx-5 my-3 p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2.5 text-xs text-emerald-900 font-semibold">
+                      <span className="text-xl">✅</span>
+                      <div>Đơn hàng đã giao thành công và hoàn tất! Cảm ơn bạn đã mua hàng.</div>
+                    </div>
+                  )}
+
+                  {order.trangThai === 'ChoDuyet' && (
+                    <div className="mx-5 my-3 p-2.5 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-2.5 text-xs text-amber-900 font-semibold">
+                      <span className="text-xl">⏳</span>
+                      <div>Đơn hàng đang chờ quản trị viên xác nhận và đóng gói sản phẩm.</div>
+                    </div>
+                  )}
+
+                  {order.trangThai === 'DaHuy' && (
+                    <div className="mx-5 my-3 p-2.5 bg-red-50 border border-red-200 rounded-xl flex items-center gap-2.5 text-xs text-red-900 font-semibold">
+                      <span className="text-xl">✕</span>
+                      <div>Đơn hàng đã được hủy.</div>
+                    </div>
+                  )}
+
                   <div className="px-5 py-3">
                     {order.items.map((item, i) => (
                       <div key={i} className="flex justify-between text-sm py-1.5" style={{ borderBottom: i < order.items.length - 1 ? '1px solid var(--color-zinc-100)' : 'none' }}>

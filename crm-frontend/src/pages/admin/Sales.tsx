@@ -48,6 +48,12 @@ export default function SalesPage({ activeTab: controlledTab, onTabChange }: Sal
   const [orders, setOrders] = useState<Order[]>(mockOrders);
   const [appointments, setAppointments] = useState<Appointment[]>(mockAppointments);
 
+  // Filter state for Orders (ĐH02)
+  const [orderSearch, setOrderSearch] = useState('');
+  const [orderStatusFilter, setOrderStatusFilter] = useState<'ALL' | OrderStatus>('ALL');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+
   // Load live orders and appointments from Backend API
   useEffect(() => {
     let isMounted = true;
@@ -64,7 +70,7 @@ export default function SalesPage({ activeTab: controlledTab, onTabChange }: Sal
 
     const handleRefresh = (e: any) => {
       const type = e.detail?.type;
-      if (!type || type === 'order_created' || type === 'appointment_booked') {
+      if (!type || type === 'order' || type === 'order_created' || type === 'appointment_booked') {
         fetchSalesData();
       }
     };
@@ -81,9 +87,11 @@ export default function SalesPage({ activeTab: controlledTab, onTabChange }: Sal
 
   function updateOrderStatus(id: string, status: OrderStatus) {
     const numId = parseInt(id.replace(/\D/g, ''), 10);
+    const label = orderStatuses.find(s => s.key === status)?.label || status;
     if (!isNaN(numId)) {
-      const label = orderStatuses.find(s => s.key === status)?.label || status;
       orderApi.updateStatus(numId, label);
+    } else {
+      orderApi.updateStatus(id, label);
     }
     setOrders(os => os.map(o => o.id === id ? { ...o, trangThai: status } : o));
   }
@@ -97,6 +105,62 @@ export default function SalesPage({ activeTab: controlledTab, onTabChange }: Sal
     setAppointments(as => as.map(a => a.id === id ? { ...a, trangThai: status } : a));
   }
 
+  // Quick date presets for ĐH02
+  const setQuickDate = (preset: 'today' | '7days' | '30days' | 'all') => {
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+
+    if (preset === 'today') {
+      setFromDate(todayStr);
+      setToDate(todayStr);
+    } else if (preset === '7days') {
+      const past = new Date();
+      past.setDate(past.getDate() - 7);
+      setFromDate(past.toISOString().split('T')[0]);
+      setToDate(todayStr);
+    } else if (preset === '30days') {
+      const past = new Date();
+      past.setDate(past.getDate() - 30);
+      setFromDate(past.toISOString().split('T')[0]);
+      setToDate(todayStr);
+    } else {
+      setFromDate('');
+      setToDate('');
+    }
+  };
+
+  const resetOrderFilters = () => {
+    setOrderSearch('');
+    setOrderStatusFilter('ALL');
+    setFromDate('');
+    setToDate('');
+  };
+
+  // Filtered orders list - handles same-day correctly (ĐH02)
+  const filteredOrders = orders.filter(o => {
+    // Search
+    if (orderSearch.trim()) {
+      const q = orderSearch.toLowerCase();
+      const matchId = o.id.toLowerCase().includes(q);
+      const matchName = o.hoTenKH.toLowerCase().includes(q);
+      const matchAddr = o.diaChiGiao.toLowerCase().includes(q);
+      const matchItem = o.items.some(it => it.tenSanPham.toLowerCase().includes(q));
+      if (!matchId && !matchName && !matchAddr && !matchItem) return false;
+    }
+    // Status
+    if (orderStatusFilter !== 'ALL' && o.trangThai !== orderStatusFilter) {
+      return false;
+    }
+    // Date from/to - handles fromDate === toDate without issue
+    if (fromDate && o.ngayDat < fromDate) {
+      return false;
+    }
+    if (toDate && o.ngayDat > toDate) {
+      return false;
+    }
+    return true;
+  });
+
   const statusCfgWithColor = orderStatuses;
 
   return (
@@ -106,7 +170,7 @@ export default function SalesPage({ activeTab: controlledTab, onTabChange }: Sal
           {activeTab === 'orders' ? 'QUẢN LÝ ĐƠN HÀNG' : 'LỊCH HẸN DỊCH VỤ'}
         </div>
         <p className="text-sm mt-1" style={{ color: 'var(--color-zinc-500)' }}>
-          {activeTab === 'orders' ? 'Theo dõi, tra cứu và cập nhật trạng thái các đơn đặt hàng phụ tùng' : 'Quản lý lịch hẹn bảo dưỡng, sửa chữa và đăng ký lái thử xe của khách hàng'}
+          {activeTab === 'orders' ? 'Theo dõi, tra cứu, lọc ngày và cập nhật trạng thái các đơn đặt hàng phụ tùng' : 'Quản lý lịch hẹn bảo dưỡng, sửa chữa và đăng ký lái thử xe của khách hàng'}
         </p>
       </div>
 
@@ -128,22 +192,140 @@ export default function SalesPage({ activeTab: controlledTab, onTabChange }: Sal
       </div>
 
       {activeTab === 'orders' && (
-        <div className="rounded-2xl overflow-hidden" style={{ background: 'white', border: '1px solid var(--color-zinc-200)' }}>
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr style={{ background: 'var(--color-zinc-50)' }}>
-                  <th style={thSt}>Mã đơn</th>
-                  <th style={thSt}>Khách hàng</th>
-                  <th style={thSt}>Ngày đặt</th>
-                  <th style={thSt}>Sản phẩm</th>
-                  <th style={thSt}>Tổng tiền</th>
-                  <th style={thSt}>Trạng thái</th>
-                  <th style={{ ...thSt, textAlign: 'center' }}>Cập nhật</th>
-                </tr>
-              </thead>
-              <tbody>
-                {orders.map(o => (
+        <div className="space-y-4">
+          {/* Filter Bar (ĐH02) */}
+          <div className="p-4 rounded-2xl bg-white border border-zinc-200 shadow-2xs space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
+              {/* Search */}
+              <div className="md:col-span-4 relative">
+                <input
+                  type="text"
+                  placeholder="🔍 Tìm mã đơn, khách hàng, phụ tùng..."
+                  value={orderSearch}
+                  onChange={e => setOrderSearch(e.target.value)}
+                  className="w-full px-3.5 py-2 text-xs rounded-xl border border-zinc-300 focus:outline-none focus:border-red-600"
+                />
+              </div>
+
+              {/* Status */}
+              <div className="md:col-span-3">
+                <select
+                  value={orderStatusFilter}
+                  onChange={e => setOrderStatusFilter(e.target.value as any)}
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-zinc-300 bg-white focus:outline-none focus:border-red-600"
+                >
+                  <option value="ALL">Tất cả trạng thái</option>
+                  {orderStatuses.map(s => (
+                    <option key={s.key} value={s.key}>{s.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* From Date */}
+              <div className="md:col-span-2.5 flex items-center gap-1.5">
+                <span className="text-[11px] text-zinc-500 shrink-0 font-medium">Từ:</span>
+                <input
+                  type="date"
+                  value={fromDate}
+                  onChange={e => setFromDate(e.target.value)}
+                  className="w-full px-2.5 py-2 text-xs rounded-xl border border-zinc-300 bg-white focus:outline-none focus:border-red-600 font-mono"
+                />
+              </div>
+
+              {/* To Date */}
+              <div className="md:col-span-2.5 flex items-center gap-1.5">
+                <span className="text-[11px] text-zinc-500 shrink-0 font-medium">Đến:</span>
+                <input
+                  type="date"
+                  value={toDate}
+                  onChange={e => setToDate(e.target.value)}
+                  className="w-full px-2.5 py-2 text-xs rounded-xl border border-zinc-300 bg-white focus:outline-none focus:border-red-600 font-mono"
+                />
+              </div>
+            </div>
+
+            {/* Quick date presets & status info */}
+            <div className="flex items-center justify-between flex-wrap gap-2 pt-2 border-t border-zinc-100 text-xs">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-zinc-500 font-medium text-[11px]">Lọc nhanh:</span>
+                <button
+                  type="button"
+                  onClick={() => setQuickDate('today')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
+                    fromDate && toDate && fromDate === toDate && fromDate === new Date().toISOString().split('T')[0]
+                      ? 'bg-red-700 text-white'
+                      : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
+                  }`}
+                >
+                  Hôm nay
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setQuickDate('7days')}
+                  className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-zinc-100 text-zinc-700 hover:bg-zinc-200 transition"
+                >
+                  7 ngày qua
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setQuickDate('30days')}
+                  className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-zinc-100 text-zinc-700 hover:bg-zinc-200 transition"
+                >
+                  30 ngày qua
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setQuickDate('all')}
+                  className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-zinc-100 text-zinc-700 hover:bg-zinc-200 transition"
+                >
+                  Tất cả thời gian
+                </button>
+
+                {(orderSearch || orderStatusFilter !== 'ALL' || fromDate || toDate) && (
+                  <button
+                    type="button"
+                    onClick={resetOrderFilters}
+                    className="ml-2 text-red-700 font-bold hover:underline cursor-pointer flex items-center gap-1"
+                  >
+                    ✕ Đặt lại
+                  </button>
+                )}
+              </div>
+
+              <div className="text-[11px] font-mono text-zinc-500">
+                Hiển thị <strong className="text-zinc-800">{filteredOrders.length}</strong> / {orders.length} đơn hàng
+                {fromDate && toDate && fromDate === toDate && (
+                  <span className="ml-2 px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold">
+                    Lọc trong ngày: {fromDate}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Table */}
+          <div className="rounded-2xl overflow-hidden" style={{ background: 'white', border: '1px solid var(--color-zinc-200)' }}>
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr style={{ background: 'var(--color-zinc-50)' }}>
+                    <th style={thSt}>Mã đơn</th>
+                    <th style={thSt}>Khách hàng</th>
+                    <th style={thSt}>Ngày đặt</th>
+                    <th style={thSt}>Sản phẩm</th>
+                    <th style={thSt}>Tổng tiền</th>
+                    <th style={thSt}>Trạng thái</th>
+                    <th style={{ ...thSt, textAlign: 'center' }}>Cập nhật</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredOrders.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="text-center py-10 text-zinc-400 text-sm">
+                        Không tìm thấy đơn hàng nào phù hợp với bộ lọc ngày hoặc từ khóa.
+                      </td>
+                    </tr>
+                  ) : filteredOrders.map(o => (
                   <tr key={o.id}
                     onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-zinc-50)')}
                     onMouseLeave={e => (e.currentTarget.style.background = 'white')}
@@ -177,7 +359,8 @@ export default function SalesPage({ activeTab: controlledTab, onTabChange }: Sal
             </table>
           </div>
         </div>
-      )}
+      </div>
+    )}
 
       {activeTab === 'appointments' && (
         <div className="rounded-2xl overflow-hidden" style={{ background: 'white', border: '1px solid var(--color-zinc-200)' }}>

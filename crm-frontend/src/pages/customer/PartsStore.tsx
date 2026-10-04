@@ -185,6 +185,21 @@ export default function PartsStore({ currentCustomer, onRequireLogin }: Props = 
     return list;
   }, [cat, selectedBrand, search, sort, priceRange]);
 
+  // TC12: Phân trang 20 sản phẩm/trang
+  const ITEMS_PER_PAGE = 20;
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // Reset to page 1 whenever filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [cat, selectedBrand, search, sort, priceRange]);
+
+  const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE) || 1;
+  const paginatedParts = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filtered.slice(start, start + ITEMS_PER_PAGE);
+  }, [filtered, currentPage]);
+
   // Flash Sale Items (TC06): Items with promotion discount
   const flashSaleItems = useMemo(() => {
     return mockParts.filter(p => p.giaKhuyenMai !== null).slice(0, 4);
@@ -1446,15 +1461,18 @@ export default function PartsStore({ currentCustomer, onRequireLogin }: Props = 
           )}
         </div>
 
-        {/* ── TC04: PRODUCT GRID LISTING ── */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
+        {/* ── TC04 & TC12: PRODUCT GRID LISTING WITH 20 ITEMS/PAGE PAGINATION ── */}
+        <div id="parts-listing-anchor" className="space-y-4">
+          <div className="flex items-center justify-between flex-wrap gap-2">
             <h2 className="text-xl font-extrabold text-zinc-950 uppercase tracking-tight font-display">
               TẤT CẢ PHỤ TÙNG & PHỤ KIỆN
             </h2>
-            <span className="text-xs text-zinc-500 font-mono">
-              Trang 1 ({filtered.length} kết quả)
-            </span>
+            <div className="flex items-center gap-2 text-xs text-zinc-500 font-mono">
+              <span className="px-2.5 py-1 rounded-lg bg-zinc-100 text-zinc-800 font-bold">
+                Trang {currentPage} / {totalPages}
+              </span>
+              <span>({filtered.length} sản phẩm)</span>
+            </div>
           </div>
 
           {filtered.length === 0 ? (
@@ -1477,8 +1495,9 @@ export default function PartsStore({ currentCustomer, onRequireLogin }: Props = 
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
-              {filtered.map(p => {
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+                {paginatedParts.map(p => {
                 const price = p.giaKhuyenMai ?? p.giaGoc;
                 const hasDiscount = p.giaKhuyenMai !== null;
                 const discountPct = hasDiscount
@@ -1592,7 +1611,93 @@ export default function PartsStore({ currentCustomer, onRequireLogin }: Props = 
                 );
               })}
             </div>
-          )}
+
+            {/* TC12: Phân trang 20 sản phẩm/trang controls */}
+            {totalPages > 1 && (
+              <div className="pt-6 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-zinc-200">
+                <div className="text-xs text-zinc-500 font-mono">
+                  Hiển thị từ {((currentPage - 1) * ITEMS_PER_PAGE) + 1} đến {Math.min(currentPage * ITEMS_PER_PAGE, filtered.length)} trên tổng số {filtered.length} sản phẩm (20 sản phẩm/trang)
+                </div>
+
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {/* First */}
+                  <button
+                    disabled={currentPage === 1}
+                    onClick={() => {
+                      setCurrentPage(1);
+                      document.getElementById('parts-listing-anchor')?.scrollIntoView({ behavior: 'smooth' });
+                    }}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                      currentPage === 1 ? 'opacity-40 cursor-not-allowed bg-zinc-100 text-zinc-400' : 'bg-white hover:bg-zinc-100 text-zinc-700 border border-zinc-200 cursor-pointer shadow-2xs'
+                    }`}
+                  >
+                    « Đầu
+                  </button>
+
+                  {/* Prev */}
+                  <button
+                    disabled={currentPage === 1}
+                    onClick={() => {
+                      setCurrentPage(p => Math.max(1, p - 1));
+                      document.getElementById('parts-listing-anchor')?.scrollIntoView({ behavior: 'smooth' });
+                    }}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                      currentPage === 1 ? 'opacity-40 cursor-not-allowed bg-zinc-100 text-zinc-400' : 'bg-white hover:bg-zinc-100 text-zinc-700 border border-zinc-200 cursor-pointer shadow-2xs'
+                    }`}
+                  >
+                    ‹ Trước
+                  </button>
+
+                  {/* Page numbers */}
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(pageNum => (
+                    <button
+                      key={pageNum}
+                      onClick={() => {
+                        setCurrentPage(pageNum);
+                        document.getElementById('parts-listing-anchor')?.scrollIntoView({ behavior: 'smooth' });
+                      }}
+                      className={`w-8 h-8 rounded-xl text-xs font-mono font-bold transition flex items-center justify-center cursor-pointer ${
+                        currentPage === pageNum
+                          ? 'bg-red-700 text-white shadow-md'
+                          : 'bg-white hover:bg-zinc-100 text-zinc-700 border border-zinc-200'
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  ))}
+
+                  {/* Next */}
+                  <button
+                    disabled={currentPage === totalPages}
+                    onClick={() => {
+                      setCurrentPage(p => Math.min(totalPages, p + 1));
+                      document.getElementById('parts-listing-anchor')?.scrollIntoView({ behavior: 'smooth' });
+                    }}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                      currentPage === totalPages ? 'opacity-40 cursor-not-allowed bg-zinc-100 text-zinc-400' : 'bg-white hover:bg-zinc-100 text-zinc-700 border border-zinc-200 cursor-pointer shadow-2xs'
+                    }`}
+                  >
+                    Sau ›
+                  </button>
+
+                  {/* Last */}
+                  <button
+                    disabled={currentPage === totalPages}
+                    onClick={() => {
+                      setCurrentPage(totalPages);
+                      document.getElementById('parts-listing-anchor')?.scrollIntoView({ behavior: 'smooth' });
+                    }}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                      currentPage === totalPages ? 'opacity-40 cursor-not-allowed bg-zinc-100 text-zinc-400' : 'bg-white hover:bg-zinc-100 text-zinc-700 border border-zinc-200 cursor-pointer shadow-2xs'
+                    }`}
+                  >
+                    Cuối »
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
         </div>
       </div>
 

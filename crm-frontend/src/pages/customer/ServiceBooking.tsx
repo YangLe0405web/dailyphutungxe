@@ -62,8 +62,29 @@ export default function ServiceBooking({ initialVehicleId, currentCustomer, onCu
 
   const today = new Date().toISOString().split('T')[0];
 
+  // LH02: Reset sạch form khi người dùng muốn đặt thêm lịch hẹn khác
+  const handleResetForm = () => {
+    setDate('');
+    setTime('');
+    setForm(prev => ({
+      ...prev,
+      tenXe: 'Honda Wave Alpha 110cc',
+      bienSo: '51K-12345',
+      ghiChu: '',
+    }));
+    setSubmitted(false);
+  };
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+
+    // LH01: Ngăn chặn người dùng đặt lịch khi chưa đăng nhập
+    if (!currentCustomer) {
+      alert('Vui lòng đăng nhập tài khoản trước khi thực hiện đặt lịch dịch vụ hoặc lái thử!');
+      window.dispatchEvent(new CustomEvent('crm-open-login'));
+      return;
+    }
+
     if (!date || !time || isSubmitting) return;
 
     setIsSubmitting(true);
@@ -72,31 +93,11 @@ export default function ServiceBooking({ initialVehicleId, currentCustomer, onCu
       ? (selectedVehicleObj ? selectedVehicleObj.tenXe : 'Xe lái thử mẫu')
       : form.tenXe;
 
-    let finalCustomerId = currentCustomer?.id;
-    let finalHoTen = form.hoTen.trim() || currentCustomer?.hoTen || 'Khách hàng';
-    let finalSdt = form.soDienThoai.trim() || currentCustomer?.soDienThoai || '0901234567';
+    const finalCustomerId = currentCustomer.id;
+    const finalHoTen = form.hoTen.trim() || currentCustomer.hoTen;
+    const finalSdt = form.soDienThoai.trim() || currentCustomer.soDienThoai;
 
     try {
-      // Nếu khách chưa đăng nhập, tự động tạo khách hàng mới trong CSDL
-      if (!currentCustomer && finalHoTen && finalSdt) {
-        try {
-          const custRes = await customerApi.create({
-            hoTen: finalHoTen,
-            soDienThoai: finalSdt,
-            email: `${finalSdt.replace(/\D/g, '')}@motoshop.vn`,
-            diaChi: 'TP. Hồ Chí Minh',
-            tenDangNhap: finalSdt.replace(/\D/g, ''),
-            matKhau: '123456',
-          });
-          if (custRes.customer) {
-            finalCustomerId = custRes.customer.id;
-            onCustomerChange?.(custRes.customer);
-          }
-        } catch (err) {
-          console.warn('Không thể tự tạo tài khoản khách:', err);
-        }
-      }
-
       await appointmentApi.create({
         customerId: finalCustomerId,
         hoTenKH: finalHoTen,
@@ -128,7 +129,7 @@ export default function ServiceBooking({ initialVehicleId, currentCustomer, onCu
             ĐẶT LỊCH THÀNH CÔNG!
           </div>
           <div className="mt-3 mb-6 text-sm leading-relaxed" style={{ color: 'var(--color-zinc-500)' }}>
-            Chúng tôi đã nhận lịch hẹn của bạn.<br />
+            Lịch hẹn của bạn đã được lưu vào hệ thống.<br />
             Kỹ thuật viên sẽ xác nhận qua SĐT trong vòng 30 phút.
           </div>
           <div className="rounded-xl p-4 mb-6" style={{ background: 'var(--color-zinc-50)', border: '1px solid var(--color-zinc-200)' }}>
@@ -141,9 +142,9 @@ export default function ServiceBooking({ initialVehicleId, currentCustomer, onCu
               <span style={{ color: 'var(--color-red-700)', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{date} lúc {time}</span>
             </div>
           </div>
-          <button onClick={() => setSubmitted(false)}
-            className="w-full py-3 rounded-xl font-700 text-white"
-            style={{ background: 'var(--color-zinc-950)', border: 'none', cursor: 'pointer', fontFamily: 'var(--font-display)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+          <button onClick={handleResetForm}
+            className="w-full py-3 rounded-xl font-700 text-white hover:bg-zinc-800 transition cursor-pointer"
+            style={{ background: 'var(--color-zinc-950)', border: 'none', fontFamily: 'var(--font-display)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
             ĐẶT LỊCH KHÁC
           </button>
         </div>
@@ -171,6 +172,26 @@ export default function ServiceBooking({ initialVehicleId, currentCustomer, onCu
       </div>
 
       <form onSubmit={handleSubmit} className="max-w-4xl mx-auto px-6 sm:px-8 py-8 flex flex-col gap-6">
+        {/* LH01: Cảnh báo chưa đăng nhập */}
+        {!currentCustomer && (
+          <div className="p-4 rounded-2xl bg-amber-50 border-2 border-amber-300 flex items-center justify-between flex-wrap gap-3 shadow-xs">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">⚠️</span>
+              <div>
+                <div className="text-xs font-bold text-amber-950 uppercase font-mono">BẠN CHƯA ĐĂNG NHẬP TÀI KHOẢN</div>
+                <div className="text-xs text-amber-800">Quy định: Vui lòng đăng nhập để hệ thống lưu lịch hẹn và quản lý thông tin phương tiện.</div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent('crm-open-login'))}
+              className="px-4 py-2 bg-red-700 text-white rounded-xl text-xs font-bold hover:bg-red-800 transition cursor-pointer shadow-sm"
+            >
+              ĐĂNG NHẬP NGAY
+            </button>
+          </div>
+        )}
+
         {/* Step 1: Service type */}
         <div className="rounded-2xl p-6" style={{ background: 'white', border: '1px solid var(--color-zinc-200)' }}>
           <div className="flex items-center gap-2 mb-1">
@@ -316,15 +337,29 @@ export default function ServiceBooking({ initialVehicleId, currentCustomer, onCu
           </div>
         </div>
 
-        <button type="submit" disabled={!date || !time}
-          className="w-full py-4 rounded-xl font-800 text-white transition-all"
-          style={{
-            background: date && time ? 'var(--color-red-700)' : 'var(--color-zinc-300)',
-            border: 'none', cursor: date && time ? 'pointer' : 'not-allowed',
-            fontFamily: 'var(--font-display)', fontSize: 20, letterSpacing: '0.08em', textTransform: 'uppercase',
-          }}>
-          XÁC NHẬN ĐẶT LỊCH →
-        </button>
+        {!currentCustomer ? (
+          <button
+            type="button"
+            onClick={() => {
+              alert('Vui lòng đăng nhập tài khoản trước khi thực hiện đặt lịch!');
+              window.dispatchEvent(new CustomEvent('crm-open-login'));
+            }}
+            className="w-full py-4 rounded-xl font-800 text-white bg-amber-600 hover:bg-amber-700 transition cursor-pointer shadow-md uppercase"
+            style={{ fontFamily: 'var(--font-display)', fontSize: 18, letterSpacing: '0.06em' }}
+          >
+            🔒 VUI LÒNG ĐĂNG NHẬP ĐỂ ĐẶT LỊCH HẸN
+          </button>
+        ) : (
+          <button type="submit" disabled={!date || !time || isSubmitting}
+            className="w-full py-4 rounded-xl font-800 text-white transition-all shadow-md"
+            style={{
+              background: date && time && !isSubmitting ? 'var(--color-red-700)' : 'var(--color-zinc-300)',
+              border: 'none', cursor: date && time && !isSubmitting ? 'pointer' : 'not-allowed',
+              fontFamily: 'var(--font-display)', fontSize: 20, letterSpacing: '0.08em', textTransform: 'uppercase',
+            }}>
+            {isSubmitting ? 'ĐANG XỬ LÝ LỊCH HẸN...' : 'XÁC NHẬN ĐẶT LỊCH →'}
+          </button>
+        )}
       </form>
     </div>
   );

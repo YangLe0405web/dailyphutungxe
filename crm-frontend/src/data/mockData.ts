@@ -88,6 +88,7 @@ export interface Vehicle {
   id: string; customerId: string; tenXe: string; bienSo: string;
   namSanXuat: number; hanBaoHanh: string; mauSac: string;
   trangThaiBaoHanh: 'ConHan' | 'HetHan'; soKhung: string; hinhAnh?: string;
+  trangThaiDuyet?: 'ChoDuyet' | 'DaDuyet' | 'TuChoi';
 }
 
 export interface Part {

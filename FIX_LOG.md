@@ -753,3 +753,55 @@ Dưới đây là danh sách toàn bộ các tập tin đã can thiệp. Khi x�
   - Khảo sát quá hạn (ví dụ KS004) -> Tự động chuyển sang "Đã kết thúc" màu xám.
   - Khảo sát tương lai (ví dụ KS003) -> Tự động hiển thị "Sắp diễn ra" màu vàng cam.
   - Khảo sát hiện hành (KS001, KS002) -> Hiển thị "Đang diễn ra" màu xanh lá, cho phép nộp câu trả lời bình thường.
+
+
+### Nhóm chức năng: PHỤ TÙNG, ĐẶT LỊCH, XE KHÁCH HÀNG, ĐƠN HÀNG, XE MẪU (TC12, LH01, LH02, TC13, ĐH01, ĐH02, XM01)
+- **Thời gian hoàn thành:** 05/10/2026 00:45
+- **Trạng thái:** ĐÃ FIX & ĐÃ KIỂM THỬ THÀNH CÔNG 100% (TypeScript: 0 lỗi)
+
+#### 1. TC12 – Phân trang 20 sản phẩm/trang tại Cửa hàng phụ tùng
+* **Mô tả yêu cầu:** Danh sách sản phẩm phụ tùng tại trang Cửa hàng cần được phân trang với mỗi trang tối đa 20 sản phẩm.
+* **Giải pháp đã thực hiện:**
+  - `PartsStore.tsx`: Khai báo hằng số `ITEMS_PER_PAGE = 20`, state `currentPage` tự động reset về trang 1 mỗi khi thay đổi bộ lọc hoặc từ khóa tìm kiếm.
+  - Cắt mảng `paginatedParts = filtered.slice((currentPage - 1) * 20, currentPage * 20)`.
+  - Bổ sung thanh điều hướng phân trang đầy đủ tính năng: nút "« Đầu", "‹ Trước", danh sách số trang có highlight trang hiện tại, "Sau ›", "Cuối »" và tự động cuộn lên đầu danh sách sản phẩm.
+
+#### 2. LH01 – Quy tắc ngăn người dùng đặt lịch khi chưa đăng nhập
+* **Mô tả lỗi:** Khách chưa đăng nhập tài khoản vẫn có thể gửi form đặt lịch hẹn hoặc tự động tạo tài khoản ngầm.
+* **Giải pháp đã thực hiện:**
+  - `ServiceBooking.tsx`: Kiểm tra `if (!currentCustomer)`.
+  - Hiển thị banner cảnh báo nổi bật màu vàng hổ phách: *"BẠN CHƯA ĐĂNG NHẬP TÀI KHOẢN - Quy định: Vui lòng đăng nhập để hệ thống lưu lịch hẹn và quản lý thông tin phương tiện"*.
+  - Nút submit chuyển thành nút kêu gọi *"🔒 VUI LÒNG ĐĂNG NHẬP ĐỂ ĐẶT LỊCH HẸN"*, bấm vào sẽ kích hoạt popup đăng nhập toàn cục (`crm-open-login`).
+  - Hàm `handleSubmit` chặn và cảnh báo nếu chưa đăng nhập.
+
+#### 3. LH02 – Lưu lịch hẹn vào BE và reset sạch form khi đặt lịch khác
+* **Mô tả yêu cầu:** Lịch hẹn phải được lưu vào CSDL Backend; khi bấm "ĐẶT LỊCH KHÁC" từ màn hình thành công, form phải được làm mới hoàn toàn.
+* **Giải pháp đã thực hiện:**
+  - `ServiceBooking.tsx`: Gọi `appointmentApi.create(...)` gửi dữ liệu lên API Backend, lưu vào bộ nhớ cache và cập nhật trạng thái.
+  - Xây dựng hàm `handleResetForm()`: reset `date = ''`, `time = ''`, `form.ghiChu = ''`, `form.tenXe = ''`, `form.bienSo = ''`, `submitted = false`.
+
+#### 4. TC13 – Đăng ký xe mới chuyển trạng thái Chờ duyệt
+* **Mô tả yêu cầu:** Khách hàng tự đăng ký phương tiện của mình -> chuyển sang trạng thái `ChoDuyet` chờ cửa hàng kiểm tra và xác thực.
+* **Giải pháp đã thực hiện:**
+  - `mockData.ts`: Bổ sung `trangThaiDuyet?: 'ChoDuyet' | 'DaDuyet' | 'TuChoi'` vào interface `Vehicle`.
+  - `api.ts`: Bổ sung `vehicleApi.registerVehicle()` gán `trangThaiDuyet = 'ChoDuyet'`, lưu vào `crm_customer_vehicles` và gửi thông báo cho Admin qua Trung tâm thông báo.
+  - `CustomerDashboard.tsx`: Hiển thị huy hiệu `⏳ Chờ cửa hàng kiểm tra & duyệt thông tin xe` trên thẻ xe và icon đồng hồ cát trên danh sách chọn xe.
+
+#### 5. ĐH01 – Thay đổi tình hình đơn hàng phía Admin và Khách hàng thấy tất cả đơn của mình theo thời gian thực
+* **Mô tả yêu cầu:** Admin có thể thay đổi trạng thái đơn hàng (từ Đang giao sang Hoàn thành/Đã giao...); khách hàng phải thấy tất cả đơn hàng thuộc về mình theo thời gian thực.
+* **Giải pháp đã thực hiện:**
+  - `Sales.tsx`: Cho phép Admin cập nhật mọi trạng thái đơn hàng (`ChoDuyet`, `DangGiao`, `HoanThanh`, `DaHuy`), đồng bộ xuống Backend `PUT /api/DonHang/trang-thai/{maDon}`, lưu cache và phát sự kiện `crm-data-refresh`.
+  - `CustomerDashboard.tsx`: Chuyển `myOrders` sang dạng reactive tải từ `orderApi.getAll()`, lắng nghe `crm-data-refresh`. Lọc chính xác mọi đơn theo `customerId`, mã số KH, số điện thoại hoặc họ tên.
+  - Hiển thị banner tiến trình giao nhận thực tế: thông báo xe tải đang vận chuyển khi trạng thái là `DangGiao`, hoàn thành khi `HoanThanh`, chờ xác nhận khi `ChoDuyet`.
+
+#### 6. ĐH02 – Sửa lỗi lọc đơn hàng admin khi cùng khoảng thời gian (cùng 1 ngày)
+* **Mô tả lỗi:** Khi lọc đơn hàng với Từ ngày = Đến ngày (cùng 1 ngày), hệ thống bị lỗi so sánh giờ dẫn đến không hiển thị đơn hàng trong ngày đó.
+* **Giải pháp đã thực hiện:**
+  - `DonHangController.cs`: Cập nhật câu lệnh SQL dùng `CAST(d.NgayDat AS DATE) >= CAST(@FromDate AS DATE) AND CAST(d.NgayDat AS DATE) <= CAST(@ToDate AS DATE)`.
+  - `Sales.tsx`: Bổ sung thanh lọc ngày có hỗ trợ Từ ngày, Đến ngày, các nút bấm lọc nhanh ("Hôm nay", "7 ngày qua", "30 ngày qua", "Tất cả") và xử lý so sánh chuỗi chuẩn ISO `YYYY-MM-DD` không bị lệch múi giờ.
+
+#### 7. XM01 – Quản lý xe mẫu showroom (Sửa/Xóa bền vững kèm thông báo Toast)
+* **Mô tả yêu cầu:** Admin sửa hoặc xóa xe mẫu showroom cập nhật thành công bền vững, có hiển thị Toast thông báo trực quan.
+* **Giải pháp đã thực hiện:**
+  - `api.ts` & `Vehicles.tsx`: Khởi tạo và đồng bộ mảng `initialVehicles` vào `localStorage` (`crm_catalog_vehicles`), gọi API Backend đồng thời cập nhật bộ nhớ cục bộ khi thêm/sửa/xóa.
+  - `Vehicles.tsx`: Bổ sung Toast notification nổi góc trên bên phải khi thêm mới, chỉnh sửa hoặc xóa mẫu xe.

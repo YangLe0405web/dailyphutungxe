@@ -179,12 +179,19 @@ export default function VehiclesPage() {
   const [editVehicle, setEditVehicle] = useState<Vehicle | null>(null);
   const [form, setForm] = useState<Partial<Vehicle>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3500);
+  };
 
   const loadVehicles = () => {
     catalogVehicleApi.getAll().then(data => {
       if (data && data.length > 0) {
         setVehicles(data);
       } else {
+        localStorage.setItem('crm_catalog_vehicles', JSON.stringify(initialVehicles));
         setVehicles(initialVehicles);
       }
     });
@@ -257,6 +264,7 @@ export default function VehiclesPage() {
       setVehicles(prev =>
         prev.map(v => (v.id === editVehicle.id ? { ...v, ...form } as Vehicle : v))
       );
+      showToast(`✓ Đã cập nhật thành công xe ${form.tenXe!.trim()}!`);
     } else {
       const res = await catalogVehicleApi.create({
         tenXe: form.tenXe!.trim(),
@@ -269,6 +277,7 @@ export default function VehiclesPage() {
         coTheLaiThu: !!form.coTheLaiThu,
       });
       setVehicles(prev => [res.vehicle, ...prev]);
+      showToast(`✓ Đã thêm mẫu xe mới ${res.vehicle.tenXe} thành công!`);
     }
     setShowModal(false);
     setEditVehicle(null);
@@ -283,14 +292,26 @@ export default function VehiclesPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (window.confirm('Bạn có chắc chắn muốn xóa mẫu xe này?')) {
+    const vMatch = vehicles.find(v => v.id === id);
+    const vehicleName = vMatch ? vMatch.tenXe : 'mẫu xe';
+    if (window.confirm(`Bạn có chắc chắn muốn xóa ${vehicleName} khỏi danh mục xe mẫu?`)) {
       await catalogVehicleApi.delete(id);
       setVehicles(prev => prev.filter(v => v.id !== id));
+      showToast(`✓ Đã xóa thành công ${vehicleName}!`);
     }
   };
 
   return (
-    <div className="p-6 lg:p-8">
+    <div className="p-6 lg:p-8 relative">
+      {/* XM01: Toast Notification */}
+      {toast && (
+        <div className="fixed top-6 right-6 z-50 p-4 rounded-2xl bg-zinc-950 text-white shadow-2xl border border-zinc-800 flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-300">
+          <span className="text-xl">{toast.type === 'success' ? '✅' : '⚠️'}</span>
+          <span className="text-xs font-semibold">{toast.message}</span>
+          <button onClick={() => setToast(null)} className="ml-2 text-zinc-400 hover:text-white cursor-pointer font-bold">✕</button>
+        </div>
+      )}
+
       <div className="flex items-center justify-between mb-4">
         <div>
           <h1 className="text-2xl font-bold uppercase" style={{ fontFamily: 'var(--font-display)' }}>QUẢN LÝ XE MẪU SHOWROOM</h1>

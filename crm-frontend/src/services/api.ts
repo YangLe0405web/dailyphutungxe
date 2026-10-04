@@ -3,6 +3,7 @@ import {
   type Vehicle,
   type Part,
   type Order,
+  type OrderStatus,
   type Appointment,
   type StaffAccount,
   type Feedback,
@@ -312,34 +313,98 @@ export const customerApi = {
 // ────────────────────────────────────────────────────────────
 export const vehicleApi = {
   async getAll(): Promise<Vehicle[]> {
+    let list: Vehicle[] = [];
     try {
       const res = await fetchWithTimeout(`${API_BASE_URL}/XeKhachHang`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      if (!Array.isArray(data) || data.length === 0) return mockVehicles;
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          list = data.map((item: any) => {
+            const cId = item.maKH ? (item.maKH < 10 ? `KH00${item.maKH}` : `KH0${item.maKH}`) : 'KH001';
+            const vId = item.maXeSoHuu ? (item.maXeSoHuu < 10 ? `XE00${item.maXeSoHuu}` : `XE0${item.maXeSoHuu}`) : 'XE001';
+            const hanBH = item.hanBaoHanh ? item.hanBaoHanh.split('T')[0] : '2026-01-01';
+            const isConHan = new Date(hanBH) > new Date();
 
-      return data.map((item: any) => {
-        const cId = item.maKH ? (item.maKH < 10 ? `KH00${item.maKH}` : `KH0${item.maKH}`) : 'KH001';
-        const vId = item.maXeSoHuu ? (item.maXeSoHuu < 10 ? `XE00${item.maXeSoHuu}` : `XE0${item.maXeSoHuu}`) : 'XE001';
-        const hanBH = item.hanBaoHanh ? item.hanBaoHanh.split('T')[0] : '2026-01-01';
-        const isConHan = new Date(hanBH) > new Date();
-
-        return {
-          id: vId,
-          customerId: cId,
-          tenXe: item.tenXe || 'Honda SH 160i ABS',
-          bienSo: item.bienSoXe || '51K-123.45',
-          namSanXuat: item.ngayMua ? new Date(item.ngayMua).getFullYear() : 2023,
-          hanBaoHanh: hanBH,
-          mauSac: 'Đen mờ',
-          trangThaiBaoHanh: isConHan ? 'ConHan' : 'HetHan',
-          soKhung: item.soKhung || 'RLHKD160CB1234567',
-        };
-      });
+            return {
+              id: vId,
+              customerId: cId,
+              tenXe: item.tenXe || 'Honda SH 160i ABS',
+              bienSo: item.bienSoXe || '51K-123.45',
+              namSanXuat: item.ngayMua ? new Date(item.ngayMua).getFullYear() : 2023,
+              hanBaoHanh: hanBH,
+              mauSac: 'Đen mờ',
+              trangThaiBaoHanh: isConHan ? 'ConHan' : 'HetHan',
+              soKhung: item.soKhung || 'RLHKD160CB1234567',
+              trangThaiDuyet: 'DaDuyet' as const,
+            };
+          });
+        }
+      }
     } catch (err) {
       console.warn('[vehicleApi.getAll] Failed to fetch from backend, using mockData fallback:', err);
-      return mockVehicles;
     }
+
+    // Merge with mockVehicles and localStorage cache
+    let cachedVehicles: Vehicle[] = [];
+    try {
+      const cached = localStorage.getItem('crm_customer_vehicles');
+      if (cached) cachedVehicles = JSON.parse(cached);
+    } catch {}
+
+    const vMap = new Map<string, Vehicle>();
+    mockVehicles.forEach(v => vMap.set(v.id, v));
+    list.forEach(v => vMap.set(v.id, { ...vMap.get(v.id), ...v }));
+    cachedVehicles.forEach(v => vMap.set(v.id, { ...vMap.get(v.id), ...v }));
+
+    return Array.from(vMap.values());
+  },
+
+  async registerVehicle(data: Omit<Vehicle, 'id'>): Promise<Vehicle> {
+    const newId = `XE${Date.now().toString().slice(-4)}`;
+    const newVehicle: Vehicle = {
+      ...data,
+      id: newId,
+      trangThaiDuyet: 'ChoDuyet',
+    };
+
+    try {
+      const cached = localStorage.getItem('crm_customer_vehicles');
+      const list: Vehicle[] = cached ? JSON.parse(cached) : [];
+      list.unshift(newVehicle);
+      localStorage.setItem('crm_customer_vehicles', JSON.stringify(list));
+    } catch {}
+
+    mockVehicles.unshift(newVehicle);
+
+    addAdminNotification({
+      type: 'vehicle_registered',
+      title: '🏍️ Đăng ký xe mới chờ duyệt',
+      message: `Khách hàng vừa đăng ký xe: ${newVehicle.tenXe} (${newVehicle.bienSo}). Trạng thái: Chờ duyệt.`,
+      linkPage: 'customers',
+    });
+
+    window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'vehicle_registered', vehicle: newVehicle } }));
+    return newVehicle;
+  },
+
+  async approveVehicle(id: string): Promise<boolean> {
+    try {
+      const cached = localStorage.getItem('crm_customer_vehicles');
+      if (cached) {
+        const list: Vehicle[] = JSON.parse(cached);
+        const match = list.find(v => v.id === id);
+        if (match) {
+          match.trangThaiDuyet = 'DaDuyet';
+          localStorage.setItem('crm_customer_vehicles', JSON.stringify(list));
+        }
+      }
+    } catch {}
+
+    const vMatch = mockVehicles.find(v => v.id === id);
+    if (vMatch) vMatch.trangThaiDuyet = 'DaDuyet';
+
+    window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'vehicle_approved', vehicleId: id } }));
+    return true;
   },
 
   async renewWarranty(
@@ -419,50 +484,131 @@ export const partApi = {
 // 4. ĐƠN HÀNG API (ORDERS)
 // ────────────────────────────────────────────────────────────
 export const orderApi = {
-  async getAll(): Promise<Order[]> {
+  async getAll(params?: { fromDate?: string; toDate?: string; maKH?: number; trangThai?: string }): Promise<Order[]> {
+    let list: Order[] = [];
     try {
-      const res = await fetchWithTimeout(`${API_BASE_URL}/DonHang`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      if (!Array.isArray(data) || data.length === 0) return mockOrders;
+      const qs = new URLSearchParams();
+      if (params?.fromDate) qs.append('fromDate', params.fromDate);
+      if (params?.toDate) qs.append('toDate', params.toDate);
+      if (params?.maKH) qs.append('maKH', String(params.maKH));
+      if (params?.trangThai) qs.append('trangThai', params.trangThai);
+      const url = `${API_BASE_URL}/DonHang${qs.toString() ? `?${qs.toString()}` : ''}`;
 
-      return data.map((item: any, idx: number) => {
-        const id = item.maDon ? (item.maDon < 10 ? `DH00${item.maDon}` : `DH0${item.maDon}`) : `DH${idx + 1}`;
-        const cId = item.maKH ? (item.maKH < 10 ? `KH00${item.maKH}` : `KH0${item.maKH}`) : 'KH001';
-        const mockMatch = mockOrders.find(m => m.id === id);
+      const res = await fetchWithTimeout(url);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          list = data.map((item: any, idx: number) => {
+            const id = item.maDon ? (item.maDon < 10 ? `DH00${item.maDon}` : `DH0${item.maDon}`) : `DH${idx + 1}`;
+            const cId = item.maKH ? (item.maKH < 10 ? `KH00${item.maKH}` : `KH0${item.maKH}`) : 'KH001';
+            const mockMatch = mockOrders.find(m => m.id === id);
 
-        let tt: any = 'ChoDuyet';
-        if (item.trangThai === 'Hoàn thành' || item.trangThai === 'HoanThanh') tt = 'HoanThanh';
-        else if (item.trangThai === 'Đang giao' || item.trangThai === 'DangGiao') tt = 'DangGiao';
-        else if (item.trangThai === 'Đã hủy' || item.trangThai === 'DaHuy') tt = 'DaHuy';
+            let tt: OrderStatus = 'ChoDuyet';
+            if (item.trangThai === 'Hoàn thành' || item.trangThai === 'HoanThanh') tt = 'HoanThanh';
+            else if (item.trangThai === 'Đang giao' || item.trangThai === 'DangGiao') tt = 'DangGiao';
+            else if (item.trangThai === 'Đã hủy' || item.trangThai === 'DaHuy') tt = 'DaHuy';
 
-        return {
-          id,
-          customerId: cId,
-          hoTenKH: item.tenKhachHang || mockMatch?.hoTenKH || 'Khách hàng',
-          ngayDat: item.ngayDat ? item.ngayDat.split('T')[0] : '2024-12-01',
-          trangThai: tt,
-          tongTien: item.tongTien || mockMatch?.tongTien || 0,
-          diaChiGiao: mockMatch?.diaChiGiao || 'TP.HCM',
-          items: mockMatch?.items || [{ tenSanPham: 'Phụ tùng chính hãng', soLuong: 1, donGia: item.tongTien || 0 }],
-        };
-      });
+            return {
+              id,
+              customerId: cId,
+              hoTenKH: item.tenKhachHang || mockMatch?.hoTenKH || 'Khách hàng',
+              ngayDat: item.ngayDat ? item.ngayDat.split('T')[0] : '2024-12-01',
+              trangThai: tt,
+              tongTien: item.tongTien || mockMatch?.tongTien || 0,
+              diaChiGiao: mockMatch?.diaChiGiao || 'TP.HCM',
+              items: mockMatch?.items || [{ tenSanPham: 'Phụ tùng chính hãng', soLuong: 1, donGia: item.tongTien || 0 }],
+            };
+          });
+        }
+      }
     } catch (err) {
-      console.warn('[orderApi.getAll] Failed to fetch from backend, using mockData fallback:', err);
-      return mockOrders;
+      console.warn('[orderApi.getAll] Failed to fetch from backend, using fallback:', err);
     }
+
+    // Merge with cached and mockOrders so local/new orders are never lost
+    let cachedOrders: Order[] = [];
+    try {
+      const cachedStr = localStorage.getItem('crm_orders_cache');
+      if (cachedStr) cachedOrders = JSON.parse(cachedStr);
+    } catch {}
+
+    const combinedMap = new Map<string, Order>();
+    mockOrders.forEach(o => combinedMap.set(o.id, o));
+    cachedOrders.forEach(o => combinedMap.set(o.id, { ...combinedMap.get(o.id), ...o }));
+    list.forEach(o => combinedMap.set(o.id, { ...combinedMap.get(o.id), ...o }));
+
+    let merged = Array.from(combinedMap.values());
+    try {
+      localStorage.setItem('crm_orders_cache', JSON.stringify(merged));
+    } catch {}
+
+    // Apply filtering if params provided
+    if (params?.fromDate) {
+      merged = merged.filter(o => o.ngayDat >= params.fromDate!);
+    }
+    if (params?.toDate) {
+      merged = merged.filter(o => o.ngayDat <= params.toDate!);
+    }
+    if (params?.maKH) {
+      merged = merged.filter(o => parseInt(o.customerId.replace(/\D/g, ''), 10) === params.maKH);
+    }
+    if (params?.trangThai) {
+      merged = merged.filter(o => o.trangThai === params.trangThai);
+    }
+
+    return merged;
   },
 
-  async updateStatus(maDonInt: number, trangThaiText: string) {
-    try {
-      await fetchWithTimeout(`${API_BASE_URL}/DonHang/${maDonInt}/trang-thai`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ trangThai: trangThaiText }),
-      });
-    } catch (err) {
-      console.warn('[orderApi.updateStatus] Backend call failed, applied locally:', err);
+  async updateStatus(orderIdOrNum: string | number, trangThai: OrderStatus | string) {
+    const orderIdStr = String(orderIdOrNum);
+    const numId = parseInt(orderIdStr.replace(/\D/g, ''), 10);
+
+    let statusKey: OrderStatus = 'ChoDuyet';
+    let statusText = 'Chờ xác nhận';
+    if (trangThai === 'HoanThanh' || trangThai === 'Hoàn thành') {
+      statusKey = 'HoanThanh'; statusText = 'Hoàn thành';
+    } else if (trangThai === 'DangGiao' || trangThai === 'Đang giao') {
+      statusKey = 'DangGiao'; statusText = 'Đang giao';
+    } else if (trangThai === 'DaHuy' || trangThai === 'Đã hủy') {
+      statusKey = 'DaHuy'; statusText = 'Đã hủy';
+    } else {
+      statusKey = 'ChoDuyet'; statusText = 'Chờ xác nhận';
     }
+
+    if (!isNaN(numId) && numId > 0) {
+      try {
+        await fetchWithTimeout(`${API_BASE_URL}/DonHang/trang-thai/${numId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ trangThai: statusText }),
+        });
+      } catch (err) {
+        console.warn('[orderApi.updateStatus] Backend call failed, applied locally:', err);
+      }
+    }
+
+    // Update in-memory mockOrders
+    mockOrders.forEach(o => {
+      if (o.id === orderIdStr || parseInt(o.id.replace(/\D/g, ''), 10) === numId) {
+        o.trangThai = statusKey;
+      }
+    });
+
+    // Update localStorage cache
+    try {
+      const cached = localStorage.getItem('crm_orders_cache');
+      let list: Order[] = cached ? JSON.parse(cached) : [...mockOrders];
+      const matchIdx = list.findIndex(o => o.id === orderIdStr || parseInt(o.id.replace(/\D/g, ''), 10) === numId);
+      if (matchIdx !== -1) {
+        list[matchIdx].trangThai = statusKey;
+      } else {
+        const found = mockOrders.find(o => o.id === orderIdStr);
+        if (found) list.unshift({ ...found, trangThai: statusKey });
+      }
+      localStorage.setItem('crm_orders_cache', JSON.stringify(list));
+    } catch {}
+
+    window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'order', orderId: orderIdStr, status: statusKey } }));
   },
 
   async create(data: {
@@ -530,6 +676,13 @@ export const orderApi = {
     };
 
     mockOrders.unshift(newOrder);
+    try {
+      const cached = localStorage.getItem('crm_orders_cache');
+      const list: Order[] = cached ? JSON.parse(cached) : [...mockOrders];
+      if (!list.some(o => o.id === newOrder.id)) list.unshift(newOrder);
+      localStorage.setItem('crm_orders_cache', JSON.stringify(list));
+    } catch {}
+    window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'order', orderId: newOrder.id } }));
 
     addAdminNotification({
       type: 'order_created',
@@ -850,14 +1003,14 @@ export const catalogVehicleApi = {
 
     try {
       const cached = localStorage.getItem(VEHICLE_STORAGE_KEY);
-      if (cached) {
-        const list: CatalogVehicle[] = JSON.parse(cached);
-        const idx = list.findIndex(v => v.id === id);
-        if (idx !== -1) {
-          list[idx] = { ...list[idx], ...data };
-          localStorage.setItem(VEHICLE_STORAGE_KEY, JSON.stringify(list));
-        }
+      let list: CatalogVehicle[] = cached ? JSON.parse(cached) : [];
+      const idx = list.findIndex(v => v.id === id);
+      if (idx !== -1) {
+        list[idx] = { ...list[idx], ...data };
+      } else {
+        list.push({ id, ...data } as CatalogVehicle);
       }
+      localStorage.setItem(VEHICLE_STORAGE_KEY, JSON.stringify(list));
     } catch {}
 
     window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'vehicle_catalog' } }));

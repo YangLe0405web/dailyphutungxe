@@ -16,18 +16,22 @@ namespace CrmBackend.Controllers
             _db = db;
         }
 
-        // GET: api/DonHang -> Lấy danh sách đơn hàng kèm tên khách
+        // GET: api/DonHang -> Lấy danh sách đơn hàng kèm tên khách (hỗ trợ lọc ngày)
         [HttpGet]
-        public async Task<IActionResult> GetAll()
+        public async Task<IActionResult> GetAll([FromQuery] DateTime? fromDate, [FromQuery] DateTime? toDate, [FromQuery] int? maKH, [FromQuery] string? trangThai)
         {
             var sql = @"
                 SELECT d.MaDon, d.MaKH, d.NgayDat, d.TongTien, d.TrangThai, 
                        k.HoTen AS TenKhachHang, k.SoDienThoai
                 FROM DON_HANG d
                 JOIN KHACH_HANG k ON d.MaKH = k.MaKH
+                WHERE (@FromDate IS NULL OR CAST(d.NgayDat AS DATE) >= CAST(@FromDate AS DATE))
+                  AND (@ToDate IS NULL OR CAST(d.NgayDat AS DATE) <= CAST(@ToDate AS DATE))
+                  AND (@MaKH IS NULL OR d.MaKH = @MaKH)
+                  AND (@TrangThai IS NULL OR d.TrangThai = @TrangThai)
                 ORDER BY d.NgayDat DESC";
 
-            var result = await _db.QueryAsync<DonHang>(sql);
+            var result = await _db.QueryAsync<DonHang>(sql, new { FromDate = fromDate, ToDate = toDate, MaKH = maKH, TrangThai = trangThai });
             return Ok(result);
         }
 
@@ -121,8 +125,11 @@ namespace CrmBackend.Controllers
             return Ok(new { message = "Đã duyệt đơn hàng thành công!" });
         }
 
-        // PUT: api/DonHang/trang-thai/1 -> Cập nhật trạng thái linh hoạt
+        // PUT/PATCH: api/DonHang/trang-thai/1 hoặc api/DonHang/1/trang-thai -> Cập nhật trạng thái linh hoạt
         [HttpPut("trang-thai/{maDon}")]
+        [HttpPatch("trang-thai/{maDon}")]
+        [HttpPut("{maDon}/trang-thai")]
+        [HttpPatch("{maDon}/trang-thai")]
         public async Task<IActionResult> UpdateTrangThai(int maDon, [FromBody] DonHangUpdateStatusDto dto)
         {
             var sql = @"UPDATE DON_HANG SET TrangThai = @TrangThai WHERE MaDon = @MaDon";
