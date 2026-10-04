@@ -202,24 +202,49 @@ namespace CrmBackend.Controllers
             var list = _chatMessages.ToList();
             if (!string.IsNullOrWhiteSpace(customerId))
             {
-                list = list.Where(m => m.CustomerId == customerId || m.CustomerId == "ALL").ToList();
+                var cleanId = customerId.Trim();
+                list = list.Where(m => string.Equals(m.CustomerId?.Trim(), cleanId, StringComparison.OrdinalIgnoreCase)).ToList();
             }
             return Ok(list.OrderBy(m => m.SentAt));
         }
 
         [HttpGet("conversations")]
-        public IActionResult GetConversations()
+        public async Task<IActionResult> GetConversations()
         {
-            var grouped = _chatMessages
-                .GroupBy(m => string.IsNullOrWhiteSpace(m.CustomerId) ? "KH001" : m.CustomerId)
+            Dictionary<int, string> dbCustomers = new();
+            try
+            {
+                var rows = await _db.QueryAsync<(int MaKH, string HoTen)>("SELECT MaKH, HoTen FROM KHACH_HANG");
+                dbCustomers = rows.ToDictionary(r => r.MaKH, r => r.HoTen);
+            }
+            catch { }
+
+            var list = _chatMessages.ToList();
+            var grouped = list
+                .Where(m => !string.IsNullOrWhiteSpace(m.CustomerId))
+                .GroupBy(m => m.CustomerId.Trim().ToUpperInvariant())
                 .Select(g =>
                 {
                     var lastMsg = g.OrderByDescending(m => m.SentAt).First();
-                    var custName = g.FirstOrDefault(m => m.Sender == "customer" && !string.IsNullOrWhiteSpace(m.SenderName))?.SenderName
-                                   ?? (g.Key == "KH001" ? "Nguyễn Văn An" : g.Key == "KH002" ? "Trần Thị Bích" : $"Khách hàng ({g.Key})");
+                    var rawId = g.Key;
+                    string custName = "";
+
+                    // Try to match from database by extracting numeric ID
+                    var numPart = System.Text.RegularExpressions.Regex.Match(rawId, @"\d+").Value;
+                    if (int.TryParse(numPart, out var maKh) && dbCustomers.TryGetValue(maKh, out var dbName))
+                    {
+                        custName = dbName;
+                    }
+
+                    if (string.IsNullOrWhiteSpace(custName))
+                    {
+                        custName = g.FirstOrDefault(m => m.Sender == "customer" && !string.IsNullOrWhiteSpace(m.SenderName))?.SenderName
+                                       ?? (rawId == "KH001" ? "Nguyễn Văn An" : rawId == "KH002" ? "Trần Thị Bích" : $"Khách hàng ({rawId})");
+                    }
+
                     return new
                     {
-                        customerId = g.Key,
+                        customerId = rawId,
                         customerName = custName,
                         lastMessage = lastMsg.Content,
                         lastSentAt = lastMsg.SentAt,
@@ -247,8 +272,9 @@ namespace CrmBackend.Controllers
             }
             if (string.IsNullOrWhiteSpace(msg.CustomerId))
             {
-                msg.CustomerId = "KH001";
+                return BadRequest(new { message = "Mã khách hàng (CustomerId) không được để trống." });
             }
+            msg.CustomerId = msg.CustomerId.Trim().ToUpperInvariant();
             msg.SentAt = DateTime.Now;
             _chatMessages.Add(msg);
             SaveChatToFile();

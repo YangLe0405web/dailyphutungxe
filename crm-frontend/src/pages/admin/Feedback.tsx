@@ -5,7 +5,7 @@ import {
   type SurveyResponse,
   type Customer
 } from '../../data/mockData';
-import { customerApi, feedbackApi, surveyApi, chatApi, type ChatMessage } from '../../services/api';
+import { customerApi, feedbackApi, surveyApi, chatApi, formatCustomerId, type ChatMessage } from '../../services/api';
 
 function Stars({ r }: { r: number }) {
   return (
@@ -82,12 +82,14 @@ export default function FeedbackPage() {
     const channel = chatApi.getBroadcastChannel();
     const handleIncomingMessage = (newMsg: ChatMessage) => {
       if (!newMsg) return;
-      setChatMessages(prev => {
-        if (!prev.some(m => m.id === newMsg.id)) {
-          return [...prev, newMsg];
-        }
-        return prev;
-      });
+      if (chatFeedback && formatCustomerId(newMsg.customerId) === formatCustomerId(chatFeedback.customerId)) {
+        setChatMessages(prev => {
+          if (!prev.some(m => m.id === newMsg.id)) {
+            return [...prev, newMsg];
+          }
+          return prev;
+        });
+      }
     };
 
     if (channel) {
@@ -105,14 +107,15 @@ export default function FeedbackPage() {
       window.removeEventListener('crm-data-refresh', loadData);
       window.removeEventListener('crm-chat-update', handleChatUpdate);
     };
-  }, []);
+  }, [chatFeedback]);
 
   // Real-time polling when chat modal is open
   useEffect(() => {
     if (!chatFeedback) return;
+    const cleanId = formatCustomerId(chatFeedback.customerId);
     const interval = setInterval(async () => {
       try {
-        const msgs = await chatApi.getMessages(chatFeedback.customerId);
+        const msgs = await chatApi.getMessages(cleanId);
         setChatMessages(prev => {
           const hasNew = msgs.length !== prev.length || msgs.some(m => !prev.some(p => p.id === m.id));
           if (hasNew) return msgs;
@@ -166,7 +169,7 @@ export default function FeedbackPage() {
     if (!chatFeedback || !chatInput.trim()) return;
 
     const sent = await chatApi.sendMessage({
-      customerId: chatFeedback.customerId,
+      customerId: formatCustomerId(chatFeedback.customerId),
       sender: 'staff',
       senderName: 'CSKH Showroom Motoshop',
       content: chatInput.trim(),

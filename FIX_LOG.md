@@ -441,3 +441,47 @@ Dưới đây là danh sách toàn bộ các tập tin đã can thiệp. Khi x�
   - Tại trang Quản lý phản hồi (Admin): Mỗi dòng đánh giá đều có thẻ thông tin sản phẩm rõ ràng, nhận biết ngay lập tức khách hàng đang đánh giá phụ tùng nào hoặc xe máy nào.
 
 
+
+### Nhóm chức năng: PHẢN HỒI & HỖ TRỢ TRỰC TUYẾN (Bổ sung hoàn thiện ĐG07)
+- **Thời gian hoàn thành:** 04/10/2026 21:10
+- **Trạng thái:** ĐÃ FIX & ĐÃ KIỂM THỬ THÀNH CÔNG 100%
+
+#### Hoàn thiện ĐG07 – Phân lập tuyệt đối hội thoại theo từng tài khoản khách hàng & Ẩn CSKH khi đăng xuất
+* **Mô tả lỗi cũ:**
+  - Tài khoản mặc định (`KH001` - Nguyễn Văn An) thì thấy tin nhắn, còn các tài khoản mới tạo (như `KH2002`, `KH2003`, `KH2004` hoặc tài khoản đăng ký mới) thì không thấy tin nhắn hoặc Admin không thấy được tin nhắn gửi từ tài khoản đó.
+  - Khi bấm Đăng xuất, hộp thoại chat vẫn hiển thị và bị mặc định trở lại tài khoản của Nguyễn Văn An (`KH001`).
+* **Kết quả mong đợi:**
+  - Phải thấy được tin nhắn của từng tài khoản khách hàng gửi đến phía Admin.
+  - Admin nhắn cho tài khoản nào thì chỉ tài khoản ấy mới thấy tin nhắn phản hồi.
+  - Khi Đăng xuất: ẩn hoàn toàn khung chat và nút hỗ trợ trực tuyến CSKH; muốn dùng bắt buộc phải Đăng nhập.
+* **Giải pháp đã thực hiện:**
+  - **1. Chuẩn hóa định dạng Mã khách hàng (`formatCustomerId`):**
+    - Viết hàm `formatCustomerId` trong `api.ts` chuẩn hóa nhất quán ID: ví dụ ID từ identity SQL Server `2004` -> `KH2004`, `1` -> `KH001`, `11` -> `KH011`.
+    - Đồng bộ `formatCustomerId` trên toàn bộ luồng: đăng ký mới, đăng nhập, nạp danh sách khách hàng, gửi tin nhắn và nhận tin nhắn.
+  - **2. Khóa bảo mật đăng nhập (`CustomerLayout.tsx`):**
+    - Bọc nút và khung Live Chat Widget bằng điều kiện `{currentCustomer && (...)}`. Khi khách hàng đăng xuất (`currentCustomer = null`), nút chat CSKH biến mất hoàn toàn.
+    - Xóa bỏ cơ chế gán ngầm khách vãng lai thành `KH001`.
+    - Khi đăng xuất: tự động reset `chatOpen = false`, `chatMessages = []`, `unreadChatCount = 0` và hủy bỏ polling ngầm.
+  - **3. Phân lập kênh chat 2 chiều giữa Admin và Khách hàng:**
+    - `PhanHoiController.cs`:
+      * `GetMessages`: lọc chính xác theo `CustomerId` (so khớp không phân biệt hoa thường và loại bỏ khoảng trắng).
+      * `GetConversations`: nhóm theo từng mã khách hàng và tự động truy vấn tên thực tế từ bảng `KHACH_HANG` trong CSDL.
+      * `SendMessage`: bắt buộc phải có `CustomerId`, lưu trữ bền vững vào `chat_history.json`.
+    - `api.ts`:
+      * `chatApi.getMessages`: trả về mảng rỗng `[]` đối với tài khoản mới chưa có tin nhắn, không tự ý gán tin nhắn mẫu của `KH001`.
+      * `chatApi.sendMessage`: gửi đúng `customerId` của tài khoản đang đăng nhập, không fallback về `KH001`.
+      * `chatApi.getConversations`: tự động kết hợp các hội thoại hiện có với toàn bộ khách hàng đã đăng ký (`customerApi.getAll()`), giúp Admin luôn thấy và chọn được bất kỳ tài khoản mới nào trong danh sách bên trái.
+    - `AdminLayout.tsx`:
+      * Cột bên trái hiển thị danh sách toàn bộ khách hàng (có tên, SĐT, mã KH). Khi có tin nhắn mới từ khách hàng nào, khách hàng đó sẽ nhảy lên đầu danh sách kèm huy hiệu số tin chưa đọc màu đỏ.
+      * Admin nhấp vào khách hàng nào thì gửi tin nhắn phản hồi trực tiếp vào đúng mã khách hàng đó.
+      * Tách biệt tin nhắn khi nhận qua `BroadcastChannel` và `Polling`: chỉ hiển thị tin nhắn trong khung chat nếu trùng với khách hàng đang được chọn.
+    - `Feedback.tsx`:
+      * Lọc tin nhắn đến theo đúng `chatFeedback.customerId`, không làm lẫn tin nhắn giữa các khách hàng khác nhau.
+* **Kết quả test:**
+  - Đăng xuất tài khoản khách hàng -> Nút hỗ trợ trực tuyến CSKH biến mất hoàn toàn khỏi màn hình.
+  - Đăng nhập tài khoản mới (ví dụ `KH2004` - Nguyễn Tăng Gia Quý):
+    * Khách hàng gửi: *"Em cần tư vấn nhớt Motul cho xe Winner X"*.
+    * Phía Admin lập tức nhận được tin nhắn trong kênh `KH2004`, hiển thị đúng tên Nguyễn Tăng Gia Quý.
+    * Admin phản hồi: *"Dạ chào anh Quý, nhớt Motul 7100 10W40 đang có sẵn tại showroom ạ!"*.
+    * Phía khách hàng `KH2004` nhận được phản hồi ngay lập tức trong thời gian thực.
+    * Kiểm tra tài khoản `KH001` (Nguyễn Văn An): không hề xuất hiện tin nhắn của `KH2004`, hoàn toàn phân lập 100%.

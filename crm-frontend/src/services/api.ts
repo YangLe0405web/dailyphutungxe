@@ -38,6 +38,29 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}, timeout 
   }
 }
 
+/**
+ * Normalize and format customer ID consistently across frontend and backend
+ * e.g., 1 -> KH001, 11 -> KH011, 2004 -> KH2004, "KH02004" -> "KH2004", "kh001" -> "KH001"
+ */
+export function formatCustomerId(maKH: number | string | undefined | null): string {
+  if (!maKH) return 'KH001';
+  const str = String(maKH).trim();
+  if (!str) return 'KH001';
+  if (/^KH\d+$/i.test(str)) {
+    const num = parseInt(str.slice(2), 10);
+    if (!isNaN(num)) {
+      return num < 10 ? `KH00${num}` : num < 100 ? `KH0${num}` : `KH${num}`;
+    }
+    return str.toUpperCase();
+  }
+  const digits = str.replace(/\D/g, '');
+  const num = parseInt(digits, 10);
+  if (!isNaN(num)) {
+    return num < 10 ? `KH00${num}` : num < 100 ? `KH0${num}` : `KH${num}`;
+  }
+  return str.toUpperCase();
+}
+
 // ────────────────────────────────────────────────────────────
 // 1. KHÁCH HÀNG API (CUSTOMERS)
 // ────────────────────────────────────────────────────────────
@@ -50,7 +73,7 @@ export const customerApi = {
       if (!Array.isArray(data) || data.length === 0) return mockCustomers;
 
       return data.map((item: any, idx: number) => {
-        const id = item.maKH ? (item.maKH < 10 ? `KH00${item.maKH}` : `KH0${item.maKH}`) : `KH${idx + 1}`;
+        const id = item.maKH ? formatCustomerId(item.maKH) : `KH${idx + 1}`;
         const mockMatch = mockCustomers.find(m => m.id === id || m.soDienThoai === item.soDienThoai);
         return {
           id,
@@ -151,7 +174,7 @@ export const customerApi = {
     const resData = await res.json();
     createdMaKH = resData.maKH || resData.MaKH;
     if (createdMaKH) {
-      customerId = createdMaKH < 10 ? `KH00${createdMaKH}` : `KH0${createdMaKH}`;
+      customerId = formatCustomerId(createdMaKH);
     }
 
     const newCustomer: Customer = {
@@ -215,7 +238,7 @@ export const customerApi = {
 
     const data = await res.json();
     const raw = data.customer;
-    const cId = raw.maKH ? (raw.maKH < 10 ? `KH00${raw.maKH}` : `KH0${raw.maKH}`) : 'KH001';
+    const cId = raw.maKH ? formatCustomerId(raw.maKH) : 'KH001';
 
     const customer: Customer = {
       id: cId,
@@ -1136,10 +1159,11 @@ export const chatApi = {
   },
 
   async getMessages(customerId?: string): Promise<ChatMessage[]> {
+    const cleanId = customerId ? formatCustomerId(customerId) : undefined;
     let serverMsgs: ChatMessage[] = [];
     try {
-      const url = customerId
-        ? `${API_BASE_URL}/PhanHoi/messages?customerId=${encodeURIComponent(customerId)}`
+      const url = cleanId
+        ? `${API_BASE_URL}/PhanHoi/messages?customerId=${encodeURIComponent(cleanId)}`
         : `${API_BASE_URL}/PhanHoi/messages`;
       const res = await fetchWithTimeout(url);
       if (res.ok) {
@@ -1147,11 +1171,11 @@ export const chatApi = {
         if (Array.isArray(data)) {
           serverMsgs = data.map((d: any) => ({
             id: d.id,
-            customerId: d.customerId,
+            customerId: formatCustomerId(d.customerId),
             sender: d.sender,
             senderName: d.senderName,
             content: d.content,
-            sentAt: d.sentAt ? d.sentAt.replace('T', ' ').slice(0, 16) : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            sentAt: d.sentAt ? (typeof d.sentAt === 'string' && d.sentAt.includes('T') ? d.sentAt.replace('T', ' ').slice(0, 16) : String(d.sentAt)) : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           }));
         }
       }
@@ -1163,13 +1187,19 @@ export const chatApi = {
     let localMsgs: ChatMessage[] = [];
     if (cached) {
       try {
-        localMsgs = JSON.parse(cached);
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) {
+          localMsgs = parsed.map((m: any) => ({
+            ...m,
+            customerId: formatCustomerId(m.customerId),
+          }));
+        }
       } catch {}
     }
 
     const map = new Map<string, ChatMessage>();
-    // Default seed messages if empty
-    if (serverMsgs.length === 0 && localMsgs.length === 0) {
+    // Default seed messages ONLY when whole system is empty and asking for KH001 or all
+    if (serverMsgs.length === 0 && localMsgs.length === 0 && (!cleanId || cleanId === 'KH001')) {
       localMsgs = [
         {
           id: 'msg-sample-1',
@@ -1200,8 +1230,8 @@ export const chatApi = {
       localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(merged));
     } catch {}
 
-    if (customerId) {
-      return merged.filter(m => m.customerId === customerId || m.customerId === 'ALL');
+    if (cleanId) {
+      return merged.filter(m => formatCustomerId(m.customerId) === cleanId);
     }
     return merged;
   },
@@ -1212,9 +1242,10 @@ export const chatApi = {
     senderName: string;
     content: string;
   }): Promise<ChatMessage> {
+    const targetCustId = formatCustomerId(msg.customerId);
     const newMsg: ChatMessage = {
       id: 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
-      customerId: msg.customerId || 'KH001',
+      customerId: targetCustId,
       sender: msg.sender,
       senderName: msg.senderName,
       content: msg.content.trim(),
@@ -1264,41 +1295,88 @@ export const chatApi = {
     totalMessages: number;
     lastSender: string;
     unreadCount?: number;
+    phone?: string;
   }>> {
+    let rawConvs: any[] = [];
     try {
       const res = await fetchWithTimeout(`${API_BASE_URL}/PhanHoi/conversations`);
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data) && data.length > 0) return data;
+        if (Array.isArray(data)) rawConvs = data;
       }
     } catch {}
 
     const allMsgs = await this.getMessages();
     const map = new Map<string, any>();
+
+    // Seed from backend conversations
+    rawConvs.forEach(c => {
+      const cId = formatCustomerId(c.customerId);
+      map.set(cId, {
+        customerId: cId,
+        customerName: c.customerName || `Khách hàng (${cId})`,
+        lastMessage: c.lastMessage || '',
+        lastSentAt: c.lastSentAt ? (typeof c.lastSentAt === 'string' && c.lastSentAt.includes('T') ? c.lastSentAt.replace('T', ' ').slice(0, 16) : String(c.lastSentAt)) : '',
+        totalMessages: c.totalMessages || 0,
+        lastSender: c.lastSender || '',
+      });
+    });
+
+    // Merge with local/recent messages
     allMsgs.forEach(m => {
-      const cId = m.customerId || 'KH001';
+      const cId = formatCustomerId(m.customerId);
       const existing = map.get(cId);
       if (!existing) {
         map.set(cId, {
           customerId: cId,
-          customerName: m.sender === 'customer' ? m.senderName : (cId === 'KH001' ? 'Nguyễn Văn An' : `Khách hàng (${cId})`),
+          customerName: m.sender === 'customer' ? m.senderName : `Khách hàng (${cId})`,
           lastMessage: m.content,
           lastSentAt: m.sentAt,
           totalMessages: 1,
           lastSender: m.sender,
         });
       } else {
-        existing.lastMessage = m.content;
-        existing.lastSentAt = m.sentAt;
-        existing.totalMessages += 1;
-        existing.lastSender = m.sender;
+        existing.totalMessages = Math.max(existing.totalMessages, 1);
+        if (!existing.lastMessage) existing.lastMessage = m.content;
+        if (!existing.lastSentAt) existing.lastSentAt = m.sentAt;
         if (m.sender === 'customer' && (!existing.customerName || existing.customerName.startsWith('Khách hàng ('))) {
           existing.customerName = m.senderName;
         }
       }
     });
 
-    return Array.from(map.values());
+    // Merge with all registered customers so newly created accounts appear in Admin Live Chat console
+    try {
+      const allCustomers = await customerApi.getAll();
+      allCustomers.forEach(cust => {
+        const cId = formatCustomerId(cust.id);
+        const existing = map.get(cId);
+        if (!existing) {
+          map.set(cId, {
+            customerId: cId,
+            customerName: cust.hoTen,
+            phone: cust.soDienThoai,
+            lastMessage: 'Chưa có tin nhắn',
+            lastSentAt: '',
+            totalMessages: 0,
+            lastSender: '',
+          });
+        } else {
+          existing.customerName = cust.hoTen;
+          existing.phone = cust.soDienThoai;
+        }
+      });
+    } catch {}
+
+    const list = Array.from(map.values());
+    return list.sort((a, b) => {
+      if (a.totalMessages > 0 && b.totalMessages === 0) return -1;
+      if (a.totalMessages === 0 && b.totalMessages > 0) return 1;
+      if (a.lastSentAt && b.lastSentAt) {
+        return b.lastSentAt.localeCompare(a.lastSentAt);
+      }
+      return a.customerId.localeCompare(b.customerId);
+    });
   },
 };
 

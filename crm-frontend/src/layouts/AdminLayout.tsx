@@ -11,7 +11,7 @@ import {
   type NotificationCategory,
   type AdminNotification,
 } from '../services/notifications';
-import { chatApi, type ChatMessage } from '../services/api';
+import { chatApi, formatCustomerId, type ChatMessage } from '../services/api';
 
 type NavGroup = { group: string; items: { key: string; label: string; icon: ReactNode; allowedRoles?: AdminRole[] }[] };
 
@@ -131,50 +131,63 @@ export default function AdminLayout({
 
   // Live Chat States (ĐG07)
   const [chatModalOpen, setChatModalOpen] = useState(false);
-  const [chatConversations, setChatConversations] = useState<Array<{ customerId: string; customerName: string; lastMessage: string; lastSentAt: string; totalMessages: number; lastSender: string }>>([]);
+  const [chatConversations, setChatConversations] = useState<Array<{ customerId: string; customerName: string; lastMessage: string; lastSentAt: string; totalMessages: number; lastSender: string; phone?: string }>>([]);
   const [selectedChatCustId, setSelectedChatCustId] = useState<string>('KH001');
   const [activeChatMessages, setActiveChatMessages] = useState<ChatMessage[]>([]);
   const [chatInputText, setChatInputText] = useState('');
   const [unreadChatTotal, setUnreadChatTotal] = useState(0);
+  const [unreadByCustomer, setUnreadByCustomer] = useState<Record<string, number>>({});
   const [chatSearchQuery, setChatSearchQuery] = useState('');
   const adminChatScrollRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const refreshConversations = async () => {
-      try {
-        const convs = await chatApi.getConversations();
-        setChatConversations(convs);
-        if (convs.length > 0 && !selectedChatCustId) {
-          setSelectedChatCustId(convs[0].customerId);
-        }
-      } catch {}
-    };
+  const refreshConversations = async () => {
+    try {
+      const convs = await chatApi.getConversations();
+      setChatConversations(convs);
+      if (convs.length > 0 && !selectedChatCustId) {
+        setSelectedChatCustId(convs[0].customerId);
+      }
+    } catch {}
+  };
 
+  useEffect(() => {
     refreshConversations();
 
     const channel = chatApi.getBroadcastChannel();
     const handleIncomingChat = (msg: ChatMessage) => {
       if (!msg) return;
       refreshConversations();
-      if (msg.customerId === selectedChatCustId) {
+
+      const msgCustId = formatCustomerId(msg.customerId);
+      const curSelected = formatCustomerId(selectedChatCustId);
+
+      if (msgCustId === curSelected) {
         setActiveChatMessages(prev => {
           if (!prev.some(m => m.id === msg.id)) return [...prev, msg];
           return prev;
         });
+        setTimeout(() => adminChatScrollRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
       }
-      if (msg.sender === 'customer' && !chatModalOpen) {
-        setUnreadChatTotal(c => c + 1);
-        setLiveToast({
-          id: 'chat-' + msg.id,
-          type: 'chat_message',
-          category: 'review',
-          title: `💬 Tin nhắn từ ${msg.senderName}`,
-          message: msg.content,
-          time: 'Vừa xong',
-          timestamp: Date.now(),
-          read: false,
-          linkPage: 'feedback',
-        });
+
+      if (msg.sender === 'customer') {
+        if (!chatModalOpen || msgCustId !== curSelected) {
+          setUnreadByCustomer(prev => ({
+            ...prev,
+            [msgCustId]: (prev[msgCustId] || 0) + 1,
+          }));
+          setUnreadChatTotal(c => c + 1);
+          setLiveToast({
+            id: 'chat-' + msg.id,
+            type: 'chat_message',
+            category: 'review',
+            title: `💬 Tin nhắn từ ${msg.senderName}`,
+            message: msg.content,
+            time: 'Vừa xong',
+            timestamp: Date.now(),
+            read: false,
+            linkPage: 'feedback',
+          });
+        }
       }
     };
 
@@ -193,7 +206,8 @@ export default function AdminLayout({
       refreshConversations();
       if (selectedChatCustId && chatModalOpen) {
         try {
-          const msgs = await chatApi.getMessages(selectedChatCustId);
+          const cleanId = formatCustomerId(selectedChatCustId);
+          const msgs = await chatApi.getMessages(cleanId);
           setActiveChatMessages(prev => {
             const hasNew = msgs.length !== prev.length || msgs.some(m => !prev.some(p => p.id === m.id));
             if (hasNew) return msgs;
@@ -211,7 +225,8 @@ export default function AdminLayout({
 
   useEffect(() => {
     if (selectedChatCustId) {
-      chatApi.getMessages(selectedChatCustId).then(setActiveChatMessages);
+      const cleanId = formatCustomerId(selectedChatCustId);
+      chatApi.getMessages(cleanId).then(setActiveChatMessages);
     }
   }, [selectedChatCustId]);
 
@@ -221,12 +236,28 @@ export default function AdminLayout({
     }
   }, [activeChatMessages, chatModalOpen]);
 
+  const handleSelectCustomer = (cId: string) => {
+    const cleanId = formatCustomerId(cId);
+    setSelectedChatCustId(cleanId);
+    setUnreadByCustomer(prev => {
+      const count = prev[cleanId] || 0;
+      if (count > 0) {
+        setUnreadChatTotal(t => Math.max(0, t - count));
+      }
+      const updated = { ...prev };
+      delete updated[cleanId];
+      return updated;
+    });
+    chatApi.getMessages(cleanId).then(setActiveChatMessages);
+  };
+
   const handleAdminSendChat = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!chatInputText.trim() || !selectedChatCustId) return;
 
+    const targetCustId = formatCustomerId(selectedChatCustId);
     const sent = await chatApi.sendMessage({
-      customerId: selectedChatCustId,
+      customerId: targetCustId,
       sender: 'staff',
       senderName: currentStaff?.hoTen || 'CSKH Showroom Motoshop',
       content: chatInputText.trim(),
@@ -835,29 +866,40 @@ export default function AdminLayout({
                         return c.customerName.toLowerCase().includes(q) || c.customerId.toLowerCase().includes(q);
                       })
                       .map(conv => {
-                        const isSelected = selectedChatCustId === conv.customerId;
+                        const cleanConvId = formatCustomerId(conv.customerId);
+                        const isSelected = formatCustomerId(selectedChatCustId) === cleanConvId;
+                        const unreadCount = unreadByCustomer[cleanConvId] || 0;
                         return (
                           <button
                             key={conv.customerId}
-                            onClick={() => setSelectedChatCustId(conv.customerId)}
+                            onClick={() => handleSelectCustomer(conv.customerId)}
                             className={`w-full p-3 text-left transition flex items-start gap-3 cursor-pointer ${
                               isSelected ? 'bg-red-50/80 border-l-4 border-red-700' : 'hover:bg-zinc-100'
                             }`}
                           >
-                            <div className="w-9 h-9 rounded-full bg-zinc-800 text-white font-bold flex items-center justify-center text-xs shrink-0 font-mono">
-                              {conv.customerName[0]}
+                            <div className="relative shrink-0">
+                              <div className="w-9 h-9 rounded-full bg-zinc-800 text-white font-bold flex items-center justify-center text-xs font-mono">
+                                {conv.customerName[0] || 'K'}
+                              </div>
+                              {unreadCount > 0 && (
+                                <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center animate-pulse">
+                                  {unreadCount}
+                                </span>
+                              )}
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center justify-between">
-                                <span className="font-bold text-xs text-zinc-900 truncate">
+                                <span className={`font-bold text-xs truncate ${unreadCount > 0 ? 'text-red-700 font-extrabold' : 'text-zinc-900'}`}>
                                   {conv.customerName}
                                 </span>
-                                <span className="text-[10px] text-zinc-400 font-mono shrink-0 ml-1">
-                                  {conv.lastSentAt?.slice(11, 16) || conv.lastSentAt}
-                                </span>
+                                {conv.lastSentAt ? (
+                                  <span className="text-[10px] text-zinc-400 font-mono shrink-0 ml-1">
+                                    {conv.lastSentAt?.slice(11, 16) || conv.lastSentAt}
+                                  </span>
+                                ) : null}
                               </div>
                               <div className="text-[10px] text-zinc-500 font-mono truncate">
-                                Mã: {conv.customerId}
+                                Mã: {conv.customerId} {conv.phone ? `· ${conv.phone}` : ''}
                               </div>
                               <div className="text-[11px] text-zinc-600 truncate mt-0.5">
                                 {conv.lastSender === 'staff' ? 'Bạn: ' : ''}{conv.lastMessage}
@@ -876,18 +918,18 @@ export default function AdminLayout({
                 <div className="px-5 py-3 border-b border-zinc-200 bg-zinc-50 flex items-center justify-between shrink-0">
                   <div className="flex items-center gap-3">
                     <div className="w-9 h-9 rounded-full bg-red-700 text-white font-bold flex items-center justify-center text-xs font-mono shrink-0">
-                      {chatConversations.find(c => c.customerId === selectedChatCustId)?.customerName?.[0] || 'K'}
+                      {chatConversations.find(c => formatCustomerId(c.customerId) === formatCustomerId(selectedChatCustId))?.customerName?.[0] || 'K'}
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="font-bold text-sm text-zinc-900">
-                          {chatConversations.find(c => c.customerId === selectedChatCustId)?.customerName || `Khách hàng (${selectedChatCustId})`}
+                          {chatConversations.find(c => formatCustomerId(c.customerId) === formatCustomerId(selectedChatCustId))?.customerName || `Khách hàng (${selectedChatCustId})`}
                         </span>
                         <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
                         <span className="text-[10px] text-emerald-600 font-mono font-bold">Trực tuyến</span>
                       </div>
                       <div className="text-[11px] text-zinc-500 font-mono">
-                        Mã khách hàng: {selectedChatCustId} · Kênh hỗ trợ kỹ thuật & phụ tùng
+                        Mã khách hàng: {formatCustomerId(selectedChatCustId)} · Kênh hỗ trợ kỹ thuật & phụ tùng
                       </div>
                     </div>
                   </div>
