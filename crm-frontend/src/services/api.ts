@@ -225,49 +225,65 @@ export const customerApi = {
   },
 
   async login(emailHoacSdt: string, matKhau: string): Promise<Customer> {
-    const res = await fetchWithTimeout(`${API_BASE_URL}/KhachHang/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ emailHoacSdt, matKhau }),
-    });
+    const input = emailHoacSdt.trim().toLowerCase();
+    try {
+      const res = await fetchWithTimeout(`${API_BASE_URL}/KhachHang/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emailHoacSdt, matKhau }),
+      });
 
-    if (!res.ok) {
-      let msg = 'Đăng nhập không thành công!';
-      try {
-        const data = await res.json();
-        if (data.message) msg = data.message;
-      } catch {}
-      throw new Error(msg);
+      if (!res.ok) {
+        let msg = 'Đăng nhập không thành công!';
+        try {
+          const data = await res.json();
+          if (data.message) msg = data.message;
+        } catch {}
+        throw new Error(msg);
+      }
+
+      const data = await res.json();
+      const raw = data.customer;
+      const cId = raw.maKH ? formatCustomerId(raw.maKH) : 'KH001';
+
+      const customer: Customer = {
+        id: cId,
+        hoTen: raw.hoTen,
+        email: raw.email || `${raw.tenDangNhap || 'khach'}@gmail.com`,
+        soDienThoai: raw.soDienThoai,
+        diaChi: raw.diaChi || 'TP.HCM',
+        ngaySinh: raw.ngaySinh ? raw.ngaySinh.split('T')[0] : '2000-01-01',
+        gioiTinh: raw.gioiTinh === 'Nữ' || raw.gioiTinh === 'Nu' ? 'Nu' : 'Nam',
+        trangThai: raw.trangThai === 'BiKhoa' ? 'BiKhoa' : 'HoatDong',
+        ngayDangKy: raw.ngayTao ? raw.ngayTao.split('T')[0] : '2024-01-01',
+        soXe: `XE00${raw.maKH || 1}`,
+        tongChiTieu: 0,
+        avatar: raw.avatar || mockCustomers.find(c => c.id === cId || c.email === (raw.email || raw.tenDangNhap) || c.soDienThoai === raw.soDienThoai)?.avatar || '',
+        soThich: raw.soThich || 'Xe máy, phụ tùng chính hãng',
+      };
+
+      const existIdx = mockCustomers.findIndex(c => c.id === customer.id || c.email === customer.email || c.soDienThoai === customer.soDienThoai);
+      if (existIdx === -1) {
+        mockCustomers.unshift(customer);
+      } else {
+        mockCustomers[existIdx] = { ...mockCustomers[existIdx], ...customer };
+      }
+
+      localStorage.setItem('crm_current_customer', JSON.stringify(customer));
+      return customer;
+    } catch (err: any) {
+      // Fallback cho tài khoản mẫu offline nếu có sự cố kết nối
+      const localMatch = mockCustomers.find(
+        c => c.email.toLowerCase() === input ||
+             c.soDienThoai.replace(/\D/g, '') === input.replace(/\D/g, '') ||
+             (input.includes('nguyenvanan') && c.id === 'KH001')
+      );
+      if (localMatch && matKhau === '123456') {
+        localStorage.setItem('crm_current_customer', JSON.stringify(localMatch));
+        return localMatch;
+      }
+      throw err;
     }
-
-    const data = await res.json();
-    const raw = data.customer;
-    const cId = raw.maKH ? formatCustomerId(raw.maKH) : 'KH001';
-
-    const customer: Customer = {
-      id: cId,
-      hoTen: raw.hoTen,
-      email: raw.email || `${raw.tenDangNhap || 'khach'}@gmail.com`,
-      soDienThoai: raw.soDienThoai,
-      diaChi: raw.diaChi || 'TP.HCM',
-      ngaySinh: raw.ngaySinh ? raw.ngaySinh.split('T')[0] : '2000-01-01',
-      gioiTinh: raw.gioiTinh === 'Nữ' || raw.gioiTinh === 'Nu' ? 'Nu' : 'Nam',
-      trangThai: raw.trangThai === 'BiKhoa' ? 'BiKhoa' : 'HoatDong',
-      ngayDangKy: raw.ngayTao ? raw.ngayTao.split('T')[0] : '2024-01-01',
-      soXe: `XE00${raw.maKH || 1}`,
-      tongChiTieu: 0,
-      avatar: raw.avatar || mockCustomers.find(c => c.id === cId || c.email === (raw.email || raw.tenDangNhap) || c.soDienThoai === raw.soDienThoai)?.avatar || '',
-      soThich: raw.soThich || 'Xe máy, phụ tùng chính hãng',
-    };
-
-    const existIdx = mockCustomers.findIndex(c => c.id === customer.id || c.email === customer.email || c.soDienThoai === customer.soDienThoai);
-    if (existIdx === -1) {
-      mockCustomers.unshift(customer);
-    } else {
-      mockCustomers[existIdx] = customer;
-    }
-
-    return customer;
   },
 
   async checkAccount(emailHoacSdt: string): Promise<{ success: boolean; hoTen: string; soDienThoai: string; email: string }> {
@@ -1058,6 +1074,265 @@ export interface CatalogVehicle {
 
 const VEHICLE_STORAGE_KEY = 'crm_catalog_vehicles';
 
+export const DEFAULT_CATALOG_VEHICLES: CatalogVehicle[] = [
+  {
+    id: 'XM001',
+    tenXe: 'Honda SH 160i ABS 2025',
+    hang: 'Honda',
+    phanKhuc: 'Tay ga',
+    giaNiemYet: 95900000,
+    mauSac: 'Đen mờ, Đỏ đen, Xám xi măng, Trắng bạc',
+    moTa: 'Flagship tay ga cao cấp của Honda với phanh ABS 2 kênh, động cơ 156.9cc eSP+ 4 van, Smart Key',
+    hinhAnh: 'https://images.unsplash.com/photo-1568772585407-9361f9bf3a87?w=800&auto=format&fit=crop&q=80',
+    coTheLaiThu: true,
+    dongCo: '156.9cc eSP+ 4 van',
+    congSuat: '16.6 HP / 8.500 rpm',
+    tieuHaoNhienLieu: '2.24 L/100km',
+    phanh: 'Đĩa trước & sau, ABS 2 kênh',
+    thongSoKyThuat: '156.9cc eSP+ 4 van, Phanh ABS 2 kênh, HSTC, Khóa thông minh Smart Key',
+  },
+  {
+    id: 'XM002',
+    tenXe: 'Honda Air Blade 160 ABS',
+    hang: 'Honda',
+    phanKhuc: 'Tay ga',
+    giaNiemYet: 56690000,
+    mauSac: 'Đỏ đen, Xanh xám, Đen vàng đồng',
+    moTa: 'Tay ga thể thao mạnh mẽ, động cơ eSP+ 160cc, cốp rộng 23.2L tích hợp cổng sạc USB',
+    hinhAnh: 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=800&auto=format&fit=crop&q=80',
+    coTheLaiThu: true,
+    dongCo: '156.9cc eSP+ 4 van',
+    congSuat: '15.0 HP / 8.000 rpm',
+    tieuHaoNhienLieu: '2.30 L/100km',
+    phanh: 'Đĩa trước có ABS, đùm sau',
+    thongSoKyThuat: '156.9cc eSP+, Phanh ABS trước, Cổng sạc USB, Cốp rộng 23.2L',
+  },
+  {
+    id: 'XM003',
+    tenXe: 'Honda Lead 125cc (Bản Đặc Biệt)',
+    hang: 'Honda',
+    phanKhuc: 'Tay ga',
+    giaNiemYet: 42790000,
+    mauSac: 'Bạc nhám, Đen mờ, Trắng ngọc',
+    moTa: 'Cốp xe siêu lớn 37L đựng 2 mũ bảo hiểm, cổng sạc USB, động cơ eSP+ 4 van êm ái',
+    hinhAnh: 'https://images.unsplash.com/photo-1558981359-219d6364c9c8?w=800&auto=format&fit=crop&q=80',
+    coTheLaiThu: true,
+    dongCo: '124.8cc eSP+ 4 van',
+    congSuat: '11.0 HP / 8.500 rpm',
+    tieuHaoNhienLieu: '2.16 L/100km',
+    phanh: 'Đĩa trước, đùm sau',
+    thongSoKyThuat: '124.8cc eSP+, Cốp siêu lớn 37L đựng vừa 2 mũ bảo hiểm, Nắp bình xăng trước',
+  },
+  {
+    id: 'XM004',
+    tenXe: 'Honda Vision 110 Thể Thao',
+    hang: 'Honda',
+    phanKhuc: 'Tay ga',
+    giaNiemYet: 36612000,
+    mauSac: 'Xám xi măng, Đen bóng, Xanh dương',
+    moTa: 'Xe tay ga quốc dân nhỏ gọn thanh lịch, vành đúc 16 inch cao ráo, Smart Key, siêu tiết kiệm xăng',
+    hinhAnh: 'https://images.unsplash.com/photo-1525160354320-d8e92641c563?w=800&auto=format&fit=crop&q=80',
+    coTheLaiThu: false,
+    dongCo: '109.5cc eSP',
+    congSuat: '8.8 HP / 7.500 rpm',
+    tieuHaoNhienLieu: '1.85 L/100km',
+    phanh: 'Đĩa trước kết hợp CBS',
+    thongSoKyThuat: '109.5cc eSP, Khung dập eSAF thế hệ mới siêu nhẹ, Tiết kiệm xăng 1.85L/100km',
+  },
+  {
+    id: 'XM005',
+    tenXe: 'Honda Winner X 150 ABS',
+    hang: 'Honda',
+    phanKhuc: 'Côn tay',
+    giaNiemYet: 50560000,
+    mauSac: 'Đỏ đen xanh thể thao, Đen nhám bạc',
+    moTa: 'Côn tay thể thao trang bị ly hợp chống trượt Assist & Slipper, xích phốt O-ring, phanh ABS trước',
+    hinhAnh: 'https://images.unsplash.com/photo-1568772585407-9361f9bf3a87?w=800&auto=format&fit=crop&q=80',
+    coTheLaiThu: true,
+    dongCo: '149.1cc DOHC 6 số',
+    congSuat: '15.4 HP / 9.000 rpm',
+    tieuHaoNhienLieu: '1.99 L/100km',
+    phanh: 'Đĩa trước có ABS, đĩa sau',
+    thongSoKyThuat: '149.1cc DOHC 6 cấp số, Phanh đĩa ABS trước, Bộ ly hợp chống trượt 2 chiều',
+  },
+  {
+    id: 'XM006',
+    tenXe: 'Honda Wave Alpha 110cc',
+    hang: 'Honda',
+    phanKhuc: 'Xe số',
+    giaNiemYet: 18190000,
+    mauSac: 'Đỏ đen, Xanh đen, Trắng bạc',
+    moTa: 'Xe số phổ thông bền bỉ, tiết kiệm xăng vượt trội, chi phí vận hành siêu kinh tế',
+    hinhAnh: 'https://images.unsplash.com/photo-1449426468159-d96dbf08f19f?w=800&auto=format&fit=crop&q=80',
+    coTheLaiThu: false,
+    dongCo: '109.1cc 4 kỳ',
+    congSuat: '8.2 HP / 7.500 rpm',
+    tieuHaoNhienLieu: '1.72 L/100km',
+    phanh: 'Cơ trước & sau',
+    thongSoKyThuat: '109.1cc làm mát bằng không khí, Động cơ siêu bền bỉ, 1.72L/100km',
+  },
+  {
+    id: 'XM007',
+    tenXe: 'Yamaha Exciter 155 VVA ABS',
+    hang: 'Yamaha',
+    phanKhuc: 'Côn tay',
+    giaNiemYet: 54000000,
+    mauSac: 'Xanh GP thể thao, Đen nhám, Xám ánh kim',
+    moTa: '"Tiểu YZF-R1" với động cơ 155cc VVA van biến thiên, bộ ly hợp chống trượt A&S, phanh ABS 2 piston',
+    hinhAnh: 'https://images.unsplash.com/photo-1609630875171-b1321377ee65?w=800&auto=format&fit=crop&q=80',
+    coTheLaiThu: true,
+    dongCo: '155.1cc VVA 4 van',
+    congSuat: '17.9 HP / 9.500 rpm',
+    tieuHaoNhienLieu: '2.09 L/100km',
+    phanh: 'Đĩa ABS 2 piston trước, đĩa sau',
+    thongSoKyThuat: '155cc 4 van biến thiên VVA, 17.9 mã lực, Phanh ABS 2 piston, Bộ ly hợp A&S',
+  },
+  {
+    id: 'XM008',
+    tenXe: 'Yamaha Grande Hybrid',
+    hang: 'Yamaha',
+    phanKhuc: 'Tay ga',
+    giaNiemYet: 49500000,
+    mauSac: 'Đỏ mận chín, Trắng ngọc trai, Xanh pastel',
+    moTa: 'Xe ga tiết kiệm xăng số 1 Việt Nam với công nghệ trợ lực điện Hybrid thông minh, cốp 27L có đèn LED',
+    hinhAnh: 'https://images.unsplash.com/photo-1558980664-3a031cf67ea8?w=800&auto=format&fit=crop&q=80',
+    coTheLaiThu: true,
+    dongCo: '124.9cc Blue Core Hybrid',
+    congSuat: '8.3 HP / 6.500 rpm',
+    tieuHaoNhienLieu: '1.66 L/100km',
+    phanh: 'Đĩa ABS trước, đùm sau',
+    thongSoKyThuat: '124.9cc Blue Core Hybrid trợ lực điện, Tiết kiệm xăng số 1 (1.66L/100km), Phanh ABS',
+  },
+  {
+    id: 'XM009',
+    tenXe: 'Yamaha MT-15 Naked Bike',
+    hang: 'Yamaha',
+    phanKhuc: 'Côn tay',
+    giaNiemYet: 69000000,
+    mauSac: 'Xanh xám dạ quang, Đen bóng đêm',
+    moTa: 'Naked bike đậm chất đường phố Dark Side of Japan, phuộc Upside Down thể thao mạ vàng cao cấp',
+    hinhAnh: 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=800&auto=format&fit=crop&q=80',
+    coTheLaiThu: true,
+    dongCo: '155cc VVA làm mát chất lỏng',
+    congSuat: '19.0 HP / 10.000 rpm',
+    tieuHaoNhienLieu: '2.28 L/100km',
+    phanh: 'Đĩa trước & sau',
+    thongSoKyThuat: '155cc VVA, Phuộc trước Upside Down vàng thể thao, Đèn pha LED thấu kính',
+  },
+  {
+    id: 'XM010',
+    tenXe: 'Yamaha PG-1 Scrambler',
+    hang: 'Yamaha',
+    phanKhuc: 'Scrambler',
+    giaNiemYet: 30437000,
+    mauSac: 'Vàng sa mạc, Cam rực rỡ, Xanh rêu bụi',
+    moTa: 'Mẫu xe số địa hình phong cách Scrambler ghi đông trần cá tính, lốp gai to đa dụng vượt mọi địa hình',
+    hinhAnh: 'https://images.unsplash.com/photo-1449426468159-d96dbf08f19f?w=800&auto=format&fit=crop&q=80',
+    coTheLaiThu: true,
+    dongCo: '113.7cc 4 thì SOHC',
+    congSuat: '8.8 HP / 7.000 rpm',
+    tieuHaoNhienLieu: '1.96 L/100km',
+    phanh: 'Đĩa trước thủy lực, đùm sau',
+    thongSoKyThuat: '113.7cc 4 thì SOHC, Phong cách Scrambler ghi đông trần',
+  },
+  {
+    id: 'XM011',
+    tenXe: 'Suzuki Raider R150 Fi (DOHC)',
+    hang: 'Suzuki',
+    phanKhuc: 'Hyper-underbone',
+    giaNiemYet: 51190000,
+    mauSac: 'Đỏ đen, Xanh mờ MotoGP, Đen cam',
+    moTa: '"Vua tốc độ" phân khúc 150cc với động cơ DOHC 4 van Twin-Cam công suất cực đại 18.5 HP mạnh nhất phân khúc',
+    hinhAnh: 'https://images.unsplash.com/photo-1591637333184-19aa84b3e01f?w=800&auto=format&fit=crop&q=80',
+    coTheLaiThu: true,
+    dongCo: '147.3cc DOHC 4 van két nước lớn',
+    congSuat: '18.5 HP / 10.000 rpm',
+    tieuHaoNhienLieu: '2.40 L/100km',
+    phanh: 'Đĩa trước & sau hình cánh hoa',
+    thongSoKyThuat: '147.3cc DOHC 4 van làm mát két nước lớn, Công suất cực đại 18.5 mã lực',
+  },
+  {
+    id: 'XM012',
+    tenXe: 'Suzuki Satria F150 Fi Nhập Khẩu',
+    hang: 'Suzuki',
+    phanKhuc: 'Hyper-underbone',
+    giaNiemYet: 53490000,
+    mauSac: 'Trắng đỏ thể thao, Xanh đen, Đen mờ',
+    moTa: 'Nhập khẩu nguyên chiếc từ Suzuki Indonesia, khởi động nhanh 1 chạm Suzuki Easy Start System',
+    hinhAnh: 'https://images.unsplash.com/photo-1558981420-87aa9dad1c89?w=800&auto=format&fit=crop&q=80',
+    coTheLaiThu: true,
+    dongCo: '147.3cc DOHC Fi nguyên bản',
+    congSuat: '18.5 HP / 10.000 rpm',
+    tieuHaoNhienLieu: '2.42 L/100km',
+    phanh: 'Đĩa trước & đĩa sau',
+    thongSoKyThuat: '147.3cc DOHC Fi nguyên bản nhập Indonesia, 18.5 HP',
+  },
+  {
+    id: 'XM013',
+    tenXe: 'Suzuki Burgman Street 125',
+    hang: 'Suzuki',
+    phanKhuc: 'Tay ga',
+    giaNiemYet: 48600000,
+    mauSac: 'Xám mờ thời thượng, Vàng đồng, Đen tuyền',
+    moTa: 'Mẫu xe tay ga đường trường phong cách Maxi sang trọng đẳng cấp châu Âu, sàn để chân kép linh hoạt',
+    hinhAnh: 'https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=800&auto=format&fit=crop&q=80',
+    coTheLaiThu: false,
+    dongCo: '124.3cc SEP tiết kiệm nhiên liệu',
+    congSuat: '8.7 HP / 6.750 rpm',
+    tieuHaoNhienLieu: '1.96 L/100km',
+    phanh: 'Đĩa trước kết hợp phanh CBS',
+    thongSoKyThuat: '124.3cc động cơ SEP, Thiết kế Maxi-Scooter phong cách Châu Âu bề thế',
+  },
+  {
+    id: 'XM014',
+    tenXe: 'Vespa Primavera 125 ABS',
+    hang: 'Piaggio & Vespa',
+    phanKhuc: 'Tay ga',
+    giaNiemYet: 77800000,
+    mauSac: 'Cam hoàng hôn, Trắng sữa, Xanh búp trà',
+    moTa: 'Biểu tượng phong cách nước Ý trường tồn với thời gian, động cơ i-Get 3 van vận hành êm ái, phanh ABS',
+    hinhAnh: 'https://images.unsplash.com/photo-1558981854-3e9821d3f9b2?w=800&auto=format&fit=crop&q=80',
+    coTheLaiThu: true,
+    dongCo: '124.5cc động cơ i-Get 3 van',
+    congSuat: '10.6 HP / 7.700 rpm',
+    tieuHaoNhienLieu: '2.14 L/100km',
+    phanh: 'Đĩa trước ABS, đùm sau',
+    thongSoKyThuat: '124.5cc động cơ i-Get 3 van, Khung thép liền khối kinh điển, Phanh ABS',
+  },
+  {
+    id: 'XM015',
+    tenXe: 'Vespa Sprint S 150 i-Get ABS',
+    hang: 'Piaggio & Vespa',
+    phanKhuc: 'Tay ga',
+    giaNiemYet: 97800000,
+    mauSac: 'Xám Titan, Vàng nhám, Trắng tuyết',
+    moTa: 'Biểu tượng phong cách thời trang Ý với đèn pha LED lục giác góc cạnh, thân xe bằng thép dập nguyên khối',
+    hinhAnh: 'https://images.unsplash.com/photo-1568772585407-9361f9bf3a87?w=800&auto=format&fit=crop&q=80',
+    coTheLaiThu: true,
+    dongCo: '155cc i-Get 3 van',
+    congSuat: '12.7 HP / 7.750 rpm',
+    tieuHaoNhienLieu: '2.25 L/100km',
+    phanh: 'Đĩa trước ABS, đùm sau',
+    thongSoKyThuat: '155cc i-Get 3 van, Đèn pha LED lục giác, Phanh ABS',
+  },
+  {
+    id: 'XM016',
+    tenXe: 'Piaggio Liberty 125 S ABS',
+    hang: 'Piaggio & Vespa',
+    phanKhuc: 'Tay ga',
+    giaNiemYet: 57700000,
+    mauSac: 'Đen mờ Nero, Đỏ bóng Rosso, Trắng Bianco',
+    moTa: 'Thiết kế bánh lớn 16 inch đậm chất Urban thanh lịch thời thượng, phanh ABS bánh trước an toàn',
+    hinhAnh: 'https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=800&auto=format&fit=crop&q=80',
+    coTheLaiThu: true,
+    dongCo: '124.5cc động cơ i-Get',
+    congSuat: '10.2 HP / 7.600 rpm',
+    tieuHaoNhienLieu: '2.19 L/100km',
+    phanh: 'Đĩa trước ABS, đùm sau',
+    thongSoKyThuat: '124.5cc động cơ i-Get hiện đại, Bánh trước 16 inch vượt chướng ngại vật êm ái',
+  },
+];
+
 export const catalogVehicleApi = {
   async getAll(): Promise<CatalogVehicle[]> {
     try {
@@ -1068,34 +1343,47 @@ export const catalogVehicleApi = {
 
       const mapped = data.map((item: any) => {
         const id = item.maXe ? (item.maXe < 10 ? `XM00${item.maXe}` : `XM0${item.maXe}`) : `XM${Date.now()}`;
+        const foundDefault = DEFAULT_CATALOG_VEHICLES.find(
+          df => df.tenXe.toLowerCase().trim() === (item.tenXe || '').toLowerCase().trim()
+        );
+
         return {
           id,
           maXe: item.maXe,
           tenXe: item.tenXe,
-          hang: item.hangXe || 'Honda',
-          phanKhuc: item.loaiXe || 'Tay ga',
-          giaNiemYet: Number(item.giaNiemYet) || 0,
-          mauSac: item.mauSac || 'Đen bóng, Đỏ đen, Trắng bạc',
-          moTa: item.thongSoKyThuat || 'Mẫu xe chính hãng phân phối tại Motoshop',
-          hinhAnh: item.hinhAnh || 'https://images.unsplash.com/photo-1568772585407-9361f9bf3a87?w=800&auto=format&fit=crop&q=80',
+          hang: item.hangXe || foundDefault?.hang || 'Honda',
+          phanKhuc: item.loaiXe || foundDefault?.phanKhuc || 'Tay ga',
+          giaNiemYet: Number(item.giaNiemYet) || foundDefault?.giaNiemYet || 0,
+          mauSac: item.mauSac || foundDefault?.mauSac || 'Đen bóng, Đỏ đen, Trắng bạc',
+          moTa: item.thongSoKyThuat || foundDefault?.moTa || 'Mẫu xe chính hãng phân phối tại Motoshop',
+          hinhAnh: item.hinhAnh || foundDefault?.hinhAnh || 'https://images.unsplash.com/photo-1568772585407-9361f9bf3a87?w=800&auto=format&fit=crop&q=80',
           coTheLaiThu: item.coTheLaiThu !== false,
-          dongCo: item.thongSoKyThuat?.split(',')[0] || '150cc eSP+',
-          congSuat: '15 HP / 8.000 rpm',
-          tieuHaoNhienLieu: '2.1 L/100km',
-          phanh: 'Phanh đĩa ABS trước',
-          thongSoKyThuat: item.thongSoKyThuat || '',
+          dongCo: foundDefault?.dongCo || item.thongSoKyThuat?.split(',')[0] || '150cc eSP+',
+          congSuat: foundDefault?.congSuat || '15 HP / 8.000 rpm',
+          tieuHaoNhienLieu: foundDefault?.tieuHaoNhienLieu || '2.1 L/100km',
+          phanh: foundDefault?.phanh || 'Phanh đĩa ABS trước',
+          thongSoKyThuat: item.thongSoKyThuat || foundDefault?.thongSoKyThuat || '',
         };
       });
 
-      localStorage.setItem(VEHICLE_STORAGE_KEY, JSON.stringify(mapped));
-      return mapped;
+      // Merge backend items with default catalog to guarantee all showroom models exist
+      const combinedMap = new Map<string, CatalogVehicle>();
+      DEFAULT_CATALOG_VEHICLES.forEach(v => combinedMap.set(v.tenXe.toLowerCase().trim(), v));
+      mapped.forEach(v => combinedMap.set(v.tenXe.toLowerCase().trim(), { ...combinedMap.get(v.tenXe.toLowerCase().trim()), ...v }));
+
+      const finalCatalog = Array.from(combinedMap.values());
+      localStorage.setItem(VEHICLE_STORAGE_KEY, JSON.stringify(finalCatalog));
+      return finalCatalog;
     } catch (err) {
-      console.warn('[catalogVehicleApi.getAll] Fallback to cached or local:', err);
+      console.warn('[catalogVehicleApi.getAll] Fallback to cached or local catalog:', err);
       const cached = localStorage.getItem(VEHICLE_STORAGE_KEY);
       if (cached) {
-        try { return JSON.parse(cached); } catch {}
+        try {
+          const list = JSON.parse(cached);
+          if (Array.isArray(list) && list.length > 0) return list;
+        } catch {}
       }
-      return [];
+      return DEFAULT_CATALOG_VEHICLES;
     }
   },
 

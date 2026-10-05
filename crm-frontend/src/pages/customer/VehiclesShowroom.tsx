@@ -288,28 +288,33 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
     const loadVehicles = () => {
       catalogVehicleApi.getAll().then(data => {
         if (data && data.length > 0) {
-          const merged: ShowroomVehicle[] = data.map(d => {
-            const found = showroomVehicles.find(
-              sv => sv.id === d.id || sv.tenXe.toLowerCase().trim() === d.tenXe.toLowerCase().trim()
-            );
-            return {
+          const map = new Map<string, ShowroomVehicle>();
+          showroomVehicles.forEach(sv => map.set(sv.tenXe.toLowerCase().trim(), sv));
+
+          data.forEach(d => {
+            const key = d.tenXe.toLowerCase().trim();
+            const found = map.get(key);
+            const item: ShowroomVehicle = {
               id: d.id,
               tenXe: d.tenXe,
-              hang: (d.hang as any) || 'Honda',
-              phanKhuc: (d.phanKhuc as any) || 'Tay ga',
-              giaNiemYet: d.giaNiemYet,
-              mauSac: d.mauSac,
-              moTa: d.moTa,
-              hinhAnh: d.hinhAnh,
-              coTheLaiThu: d.coTheLaiThu,
+              hang: (d.hang as any) || found?.hang || 'Honda',
+              phanKhuc: (d.phanKhuc as any) || found?.phanKhuc || 'Tay ga',
+              giaNiemYet: d.giaNiemYet || found?.giaNiemYet || 0,
+              mauSac: d.mauSac || found?.mauSac || 'Tiêu chuẩn',
+              moTa: d.moTa || found?.moTa || '',
+              hinhAnh: d.hinhAnh || found?.hinhAnh || 'https://images.unsplash.com/photo-1568772585407-9361f9bf3a87?w=800&auto=format&fit=crop&q=80',
+              coTheLaiThu: d.coTheLaiThu !== undefined ? d.coTheLaiThu : (found ? found.coTheLaiThu : true),
               dongCo: d.dongCo || found?.dongCo || '150cc eSP+',
               congSuat: d.congSuat || found?.congSuat || '15.0 HP / 8.000 rpm',
               tieuHaoNhienLieu: d.tieuHaoNhienLieu || found?.tieuHaoNhienLieu || '2.2 L/100km',
               phanh: d.phanh || found?.phanh || 'Phanh đĩa ABS trước',
               xuatXu: found?.xuatXu || (d.hang === 'Piaggio & Vespa' ? 'Nhập khẩu (Ý)' : 'Việt Nam'),
             };
+            map.set(key, item);
           });
-          setVehicles(merged);
+          setVehicles(Array.from(map.values()));
+        } else {
+          setVehicles(showroomVehicles);
         }
       });
     };
