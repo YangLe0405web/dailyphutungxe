@@ -1155,18 +1155,54 @@ function CustomerAuthModal({
                   </button>
                 </div>
 
-                <div className="mt-4 pt-3 border-t border-zinc-100 flex items-center justify-between text-xs">
-                  <span className="text-zinc-500">Thử tài khoản mẫu có sẵn xe:</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setLoginInput('0901234567');
-                      setLoginPass('123456');
-                    }}
-                    className="text-red-700 font-bold hover:underline"
-                  >
-                    Điền nhanh Nguyễn Văn An
-                  </button>
+                <div className="mt-4 pt-3 border-t border-zinc-100 text-xs">
+                  <div className="text-zinc-500 mb-1.5 font-medium">Thử nhanh các tài khoản mẫu có sẵn xe:</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLoginInput('0901234567');
+                        setLoginPass('123456');
+                      }}
+                      className="px-2 py-1 rounded bg-zinc-100 hover:bg-red-50 text-red-700 font-semibold border border-zinc-200 transition"
+                      title="Honda SH 160i ABS"
+                    >
+                      Nguyễn Văn An
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLoginInput('0912345678');
+                        setLoginPass('123456');
+                      }}
+                      className="px-2 py-1 rounded bg-zinc-100 hover:bg-red-50 text-red-700 font-semibold border border-zinc-200 transition"
+                      title="Vespa Sprint 125 (VIP)"
+                    >
+                      Trần Thị Bích
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLoginInput('0923456789');
+                        setLoginPass('123456');
+                      }}
+                      className="px-2 py-1 rounded bg-zinc-100 hover:bg-red-50 text-red-700 font-semibold border border-zinc-200 transition"
+                      title="Honda Winner X 150"
+                    >
+                      Lê Hoàng Cường
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLoginInput('0934567890');
+                        setLoginPass('123456');
+                      }}
+                      className="px-2 py-1 rounded bg-zinc-100 hover:bg-red-50 text-red-700 font-semibold border border-zinc-200 transition"
+                      title="Honda Lead 125"
+                    >
+                      Phạm Thị Duyên
+                    </button>
+                  </div>
                 </div>
               </form>
             )}

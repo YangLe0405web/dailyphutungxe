@@ -72,29 +72,48 @@ export const customerApi = {
   async getAll(): Promise<Customer[]> {
     try {
       const res = await fetchWithTimeout(`${API_BASE_URL}/KhachHang`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      if (!Array.isArray(data) || data.length === 0) return mockCustomers;
+      let backendCustomers: Customer[] = [];
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          backendCustomers = data.map((item: any, idx: number) => {
+            const rawId = item.maKH ? formatCustomerId(item.maKH) : `KH${idx + 1}`;
+            const mockMatch = mockCustomers.find(
+              m => m.id === rawId || m.soDienThoai === item.soDienThoai || m.email.toLowerCase() === (item.email || '').toLowerCase()
+            );
+            const id = mockMatch ? mockMatch.id : rawId;
+            return {
+              id,
+              hoTen: item.hoTen || mockMatch?.hoTen || 'Khách hàng',
+              email: item.email || mockMatch?.email || `${item.tenDangNhap || 'khach'}@gmail.com`,
+              soDienThoai: item.soDienThoai || mockMatch?.soDienThoai || '',
+              diaChi: item.diaChi || mockMatch?.diaChi || 'TP.HCM',
+              ngaySinh: item.ngaySinh ? item.ngaySinh.split('T')[0] : (mockMatch?.ngaySinh || '1995-01-01'),
+              gioiTinh: item.gioiTinh === 'Nữ' || item.gioiTinh === 'Nu' ? 'Nu' : 'Nam',
+              trangThai: item.trangThai === 'BiKhoa' ? 'BiKhoa' : 'HoatDong',
+              ngayDangKy: item.ngayTao ? item.ngayTao.split('T')[0] : (mockMatch?.ngayDangKy || '2023-01-10'),
+              soXe: mockMatch?.soXe || `XE00${item.maKH || 1}`,
+              tongChiTieu: mockMatch?.tongChiTieu ?? 0,
+              avatar: mockMatch?.avatar || `/images/KH/kh${item.maKH || 1}.jpg`,
+              soThich: item.soThich || mockMatch?.soThich || 'Xe tay ga cao cấp',
+            };
+          });
+        }
+      }
 
-      return data.map((item: any, idx: number) => {
-        const id = item.maKH ? formatCustomerId(item.maKH) : `KH${idx + 1}`;
-        const mockMatch = mockCustomers.find(m => m.id === id || m.soDienThoai === item.soDienThoai);
-        return {
-          id,
-          hoTen: item.hoTen,
-          email: item.email || mockMatch?.email || `${item.tenDangNhap || 'khach'}@gmail.com`,
-          soDienThoai: item.soDienThoai,
-          diaChi: item.diaChi || 'TP.HCM',
-          ngaySinh: item.ngaySinh ? item.ngaySinh.split('T')[0] : '1995-01-01',
-          gioiTinh: item.gioiTinh === 'Nữ' || item.gioiTinh === 'Nu' ? 'Nu' : 'Nam',
-          trangThai: item.trangThai === 'BiKhoa' ? 'BiKhoa' : 'HoatDong',
-          ngayDangKy: item.ngayTao ? item.ngayTao.split('T')[0] : '2023-01-10',
-          soXe: mockMatch?.soXe || `XE00${item.maKH || 1}`,
-          tongChiTieu: mockMatch?.tongChiTieu || 0,
-          avatar: mockMatch?.avatar || `/images/KH/kh${item.maKH || 1}.jpg`,
-          soThich: item.soThich || mockMatch?.soThich || 'Xe tay ga cao cấp',
-        };
+      // Merge: Start with all baseline mock customers so none are ever dropped
+      const map = new Map<string, Customer>();
+      mockCustomers.forEach(c => map.set(c.id, c));
+      backendCustomers.forEach(c => {
+        const existing = map.get(c.id);
+        if (existing) {
+          map.set(c.id, { ...existing, ...c, tongChiTieu: existing.tongChiTieu || c.tongChiTieu });
+        } else {
+          map.set(c.id, c);
+        }
       });
+
+      return Array.from(map.values());
     } catch (err) {
       console.warn('[customerApi.getAll] Failed to fetch from backend, using mockData fallback:', err);
       return mockCustomers;
@@ -244,22 +263,26 @@ export const customerApi = {
 
       const data = await res.json();
       const raw = data.customer;
-      const cId = raw.maKH ? formatCustomerId(raw.maKH) : 'KH001';
+      const rawId = raw.maKH ? formatCustomerId(raw.maKH) : 'KH001';
+      const mockMatch = mockCustomers.find(
+        m => m.id === rawId || m.soDienThoai === raw.soDienThoai || m.email.toLowerCase() === (raw.email || '').toLowerCase()
+      );
+      const cId = mockMatch ? mockMatch.id : rawId;
 
       const customer: Customer = {
         id: cId,
-        hoTen: raw.hoTen,
-        email: raw.email || `${raw.tenDangNhap || 'khach'}@gmail.com`,
+        hoTen: raw.hoTen || mockMatch?.hoTen || 'Khách hàng',
+        email: raw.email || mockMatch?.email || `${raw.tenDangNhap || 'khach'}@gmail.com`,
         soDienThoai: raw.soDienThoai,
-        diaChi: raw.diaChi || 'TP.HCM',
-        ngaySinh: raw.ngaySinh ? raw.ngaySinh.split('T')[0] : '2000-01-01',
+        diaChi: raw.diaChi || mockMatch?.diaChi || 'TP.HCM',
+        ngaySinh: raw.ngaySinh ? raw.ngaySinh.split('T')[0] : (mockMatch?.ngaySinh || '2000-01-01'),
         gioiTinh: raw.gioiTinh === 'Nữ' || raw.gioiTinh === 'Nu' ? 'Nu' : 'Nam',
         trangThai: raw.trangThai === 'BiKhoa' ? 'BiKhoa' : 'HoatDong',
-        ngayDangKy: raw.ngayTao ? raw.ngayTao.split('T')[0] : '2024-01-01',
-        soXe: `XE00${raw.maKH || 1}`,
-        tongChiTieu: 0,
-        avatar: raw.avatar || mockCustomers.find(c => c.id === cId || c.email === (raw.email || raw.tenDangNhap) || c.soDienThoai === raw.soDienThoai)?.avatar || '',
-        soThich: raw.soThich || 'Xe máy, phụ tùng chính hãng',
+        ngayDangKy: raw.ngayTao ? raw.ngayTao.split('T')[0] : (mockMatch?.ngayDangKy || '2024-01-01'),
+        soXe: mockMatch?.soXe || `XE00${raw.maKH || 1}`,
+        tongChiTieu: mockMatch?.tongChiTieu ?? 0,
+        avatar: raw.avatar || mockMatch?.avatar || `/images/KH/kh${raw.maKH || 1}.jpg`,
+        soThich: raw.soThich || mockMatch?.soThich || 'Xe máy, phụ tùng chính hãng',
       };
 
       const existIdx = mockCustomers.findIndex(c => c.id === customer.id || c.email === customer.email || c.soDienThoai === customer.soDienThoai);
