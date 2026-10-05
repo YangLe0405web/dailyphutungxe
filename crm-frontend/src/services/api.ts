@@ -361,21 +361,64 @@ export const vehicleApi = {
   },
 
   async registerVehicle(data: Omit<Vehicle, 'id'>): Promise<Vehicle> {
-    const newId = `XE${Date.now().toString().slice(-4)}`;
+    let newId = `XE${Date.now().toString().slice(-4)}`;
+
+    // ĐKX03: Không tự động cấp bảo hiểm điện tử khi đăng ký phương tiện
     const newVehicle: Vehicle = {
       ...data,
       id: newId,
       trangThaiDuyet: 'ChoDuyet',
+      trangThaiBaoHanh: data.trangThaiBaoHanh || 'ChuaCo',
+      hanBaoHanh: data.hanBaoHanh || 'Chưa kích hoạt',
     };
 
+    // ĐKX02: Gửi request lên backend CrmBackend
+    try {
+      const maKH = parseInt(data.customerId.replace(/\D/g, ''), 10) || 1;
+      const res = await fetchWithTimeout(`${API_BASE_URL}/XeKhachHang`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          maKH,
+          bienSoXe: data.bienSo,
+          soKhung: data.soKhung || '',
+          soMay: '',
+          ngayMua: new Date().toISOString(),
+          hanBaoHanh: '1970-01-01T00:00:00Z',
+        }),
+      });
+
+      if (res.ok) {
+        const resData = await res.json();
+        const beId = resData.MaXeSoHuu || resData.maXeSoHuu;
+        if (beId) {
+          newId = beId < 10 ? `XE00${beId}` : `XE0${beId}`;
+          newVehicle.id = newId;
+        }
+      }
+    } catch (err) {
+      console.warn('[vehicleApi.registerVehicle] Backend call failed, using local cache:', err);
+    }
+
+    // ĐKX02: Lưu bền vững vào localStorage
     try {
       const cached = localStorage.getItem('crm_customer_vehicles');
       const list: Vehicle[] = cached ? JSON.parse(cached) : [];
-      list.unshift(newVehicle);
+      const existingIdx = list.findIndex(v => v.bienSo === newVehicle.bienSo || v.id === newVehicle.id);
+      if (existingIdx !== -1) {
+        list[existingIdx] = newVehicle;
+      } else {
+        list.unshift(newVehicle);
+      }
       localStorage.setItem('crm_customer_vehicles', JSON.stringify(list));
     } catch {}
 
-    mockVehicles.unshift(newVehicle);
+    const mockIdx = mockVehicles.findIndex(v => v.bienSo === newVehicle.bienSo || v.id === newVehicle.id);
+    if (mockIdx !== -1) {
+      mockVehicles[mockIdx] = newVehicle;
+    } else {
+      mockVehicles.unshift(newVehicle);
+    }
 
     addAdminNotification({
       type: 'vehicle_registered',

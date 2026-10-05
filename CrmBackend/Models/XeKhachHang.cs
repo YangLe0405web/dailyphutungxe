@@ -7,10 +7,10 @@ namespace CrmBackend.Models
         public int MaKH { get; set; }
         public int MaXe { get; set; }
         public string BienSoXe { get; set; } = "";
-        public string SoKhung { get; set; } = "";
+        public string? SoKhung { get; set; } = "";
         public string? SoMay { get; set; }
         public DateTime NgayMua { get; set; }
-        public DateTime HanBaoHanh { get; set; }
+        public DateTime? HanBaoHanh { get; set; }
 
         // JOIN từ KHACH_HANG
         public string? HoTenKH { get; set; }
@@ -25,12 +25,12 @@ namespace CrmBackend.Models
     public class XeKhachHangCreateDto
     {
         public int MaKH { get; set; }
-        public int MaXe { get; set; }
+        public int? MaXe { get; set; }
         public string BienSoXe { get; set; } = "";
-        public string SoKhung { get; set; } = "";
+        public string? SoKhung { get; set; }
         public string? SoMay { get; set; }
-        public DateTime NgayMua { get; set; }
-        public DateTime HanBaoHanh { get; set; }
+        public DateTime? NgayMua { get; set; }
+        public DateTime? HanBaoHanh { get; set; }
     }
 
     // ── DTO gia hạn bảo hành (PUT) ──

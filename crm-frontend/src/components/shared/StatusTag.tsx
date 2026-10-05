@@ -11,11 +11,20 @@ export function StatusTag({ status }: { status: CustomerStatus }) {
   );
 }
 
-export function WarrantyTag({ status }: { status: 'ConHan' | 'HetHan' }) {
+export function WarrantyTag({ status }: { status: 'ConHan' | 'HetHan' | 'ChuaCo' }) {
+  if (status === 'ChuaCo') {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full text-xs font-600 px-2.5 py-1"
+        style={{ background: '#fef3c7', color: '#b45309', fontFamily: 'var(--font-mono)' }}>
+        <span className="rounded-full" style={{ width: 5, height: 5, background: 'currentColor', display: 'inline-block' }} />
+        ⚠️ Chưa kích hoạt
+      </span>
+    );
+  }
   const valid = status === 'ConHan';
   return (
     <span className="inline-flex items-center gap-1.5 rounded-full text-xs font-600 px-2.5 py-1"
-      style={{ background: valid ? '#fef3c7' : '#fee2e2', color: valid ? '#92400e' : 'var(--color-red-700)', fontFamily: 'var(--font-mono)' }}>
+      style={{ background: valid ? '#dcfce7' : '#fee2e2', color: valid ? '#16a34a' : 'var(--color-red-700)', fontFamily: 'var(--font-mono)' }}>
       {valid ? '✓ Còn hạn' : '✕ Hết hạn'}
     </span>
   );

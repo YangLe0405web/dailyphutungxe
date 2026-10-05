@@ -9,6 +9,10 @@ import {
   computeSurveyStatus,
   formatSurveyDateTime,
   surveyStatusLabels,
+  MOTORBIKE_BRANDS,
+  ENGINE_CAPACITIES,
+  formatVietnameseLicensePlate,
+  isValidLicensePlate,
   type OrderStatus,
   type AppointmentStatus,
   type Vehicle,
@@ -651,7 +655,17 @@ export default function CustomerDashboard({ currentCustomer, onNavigateToShowroo
   const [requestSent, setRequestSent] = useState(false);
 
   const [showAddVehicleModal, setShowAddVehicleModal] = useState(false);
-  const [regForm, setRegForm] = useState({ tenXe: '', bienSo: '', soKhung: '', mauSac: '', namSanXuat: '2025' });
+  const [regForm, setRegForm] = useState({
+    hangXe: 'Honda',
+    dongXe: 'Wave Alpha',
+    customDongXe: '',
+    dongCo: '110cc',
+    bienSo: '',
+    soKhung: '',
+    mauSac: 'Đen bóng',
+    namSanXuat: '2025',
+  });
+  const [regErrors, setRegErrors] = useState<Record<string, string>>({});
 
   const [showEditProfile, setShowEditProfile] = useState(false);
 
@@ -672,7 +686,9 @@ export default function CustomerDashboard({ currentCustomer, onNavigateToShowroo
         const vList = data.filter(v => {
           if (v.customerId === currentCustomer.id) return true;
           const vNum = parseInt(v.customerId.replace(/\D/g, ''), 10);
-          return !isNaN(cIdNum) && !isNaN(vNum) && cIdNum === vNum;
+          if (!isNaN(cIdNum) && !isNaN(vNum) && cIdNum === vNum) return true;
+          if (currentCustomer.soXe && currentCustomer.soXe === v.id) return true;
+          return false;
         });
         setMyVehicles(vList);
       }
@@ -791,25 +807,74 @@ export default function CustomerDashboard({ currentCustomer, onNavigateToShowroo
     { label: `Khảo sát (${pendingSurveysCount > 0 ? `${pendingSurveysCount} mới` : '0'})`, icon: '⭐' },
   ];
 
-  // TC13: Khách hàng đăng ký xe mới -> Trạng thái 'ChoDuyet' chờ cửa hàng kiểm tra và duyệt
+  // DKX01, DKX02, DKX03: Khách hàng đăng ký xe mới chuẩn hóa dữ liệu, không tự cấp bảo hành, lưu trữ bền vững
   const handleRegisterVehicle = async () => {
-    if (!regForm.tenXe.trim() || !regForm.bienSo.trim()) return;
-    const newV = await vehicleApi.registerVehicle({
-      customerId: currentCustomer.id,
-      tenXe: regForm.tenXe.trim(),
-      bienSo: regForm.bienSo.trim(),
-      namSanXuat: Number(regForm.namSanXuat) || 2025,
-      hanBaoHanh: new Date(Date.now() + 3 * 365 * 86400000).toISOString().split('T')[0],
-      mauSac: regForm.mauSac.trim() || 'Đen bóng',
-      trangThaiBaoHanh: 'ConHan',
-      soKhung: regForm.soKhung.trim() || `RLH${Date.now().toString().slice(-8)}`,
-      trangThaiDuyet: 'ChoDuyet',
-    });
+    const errors: Record<string, string> = {};
+    if (!regForm.hangXe) {
+      errors.hangXe = 'Vui lòng chọn hãng xe';
+    }
+    const effectiveDongXe = regForm.dongXe === 'Khác' ? regForm.customDongXe.trim() : regForm.dongXe.trim();
+    if (!effectiveDongXe) {
+      errors.dongXe = 'Vui lòng chọn hoặc nhập tên dòng xe';
+    }
+    if (!regForm.dongCo) {
+      errors.dongCo = 'Vui lòng chọn phân khối / động cơ';
+    }
+    const rawPlate = regForm.bienSo.trim();
+    if (!rawPlate) {
+      errors.bienSo = 'Vui lòng nhập biển số xe (VD: 51K-123.45 hoặc 59F1-234.56)';
+    } else if (!isValidLicensePlate(rawPlate)) {
+      errors.bienSo = 'Biển số không đúng định dạng xe máy Việt Nam (VD: 51K-123.45, 59F1-234.56)';
+    }
 
-    setMyVehicles(prev => [newV, ...prev]);
-    setActiveVehicleIndex(0);
-    setShowAddVehicleModal(false);
-    setRegForm({ tenXe: '', bienSo: '', soKhung: '', mauSac: '', namSanXuat: '2025' });
+    if (Object.keys(errors).length > 0) {
+      setRegErrors(errors);
+      return;
+    }
+    setRegErrors({});
+
+    const formattedPlate = formatVietnameseLicensePlate(rawPlate);
+    const fullVehicleName = `${regForm.hangXe} ${effectiveDongXe} ${regForm.dongCo}`.trim();
+
+    try {
+      const newV = await vehicleApi.registerVehicle({
+        customerId: currentCustomer.id,
+        tenXe: fullVehicleName,
+        bienSo: formattedPlate,
+        namSanXuat: Number(regForm.namSanXuat) || new Date().getFullYear(),
+        hanBaoHanh: 'Chưa kích hoạt',
+        mauSac: regForm.mauSac.trim() || 'Tiêu chuẩn',
+        trangThaiBaoHanh: 'ChuaCo',
+        soKhung: regForm.soKhung.trim() || undefined,
+        trangThaiDuyet: 'ChoDuyet',
+      });
+
+      // DKX02: Cập nhật currentCustomer để F5/reload không bị mất
+      const updatedCust: Customer = {
+        ...currentCustomer,
+        soXe: newV.id,
+      };
+      localStorage.setItem('crm_current_customer', JSON.stringify(updatedCust));
+      onCustomerChange?.(updatedCust);
+
+      setMyVehicles(prev => [newV, ...prev]);
+      setActiveVehicleIndex(0);
+      setShowAddVehicleModal(false);
+      setRegForm({
+        hangXe: 'Honda',
+        dongXe: 'Wave Alpha',
+        customDongXe: '',
+        dongCo: '110cc',
+        bienSo: '',
+        soKhung: '',
+        mauSac: 'Đen bóng',
+        namSanXuat: String(new Date().getFullYear()),
+      });
+      window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'vehicle_registered' } }));
+    } catch (err) {
+      console.error('Lỗi đăng ký xe:', err);
+      setRegErrors({ form: 'Có lỗi xảy ra khi lưu xe vào hệ thống. Vui lòng thử lại!' });
+    }
   };
 
   const handleSaveProfile = async (updated: Customer) => {
@@ -978,39 +1043,58 @@ export default function CustomerDashboard({ currentCustomer, onNavigateToShowroo
                     </div>
                   )}
                 </div>
-                {/* Digital warranty card */}
-                <div className="rounded-xl p-4 min-w-48" style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', backdropFilter: 'blur(8px)' }}>
-                  <div className="text-xs font-600 mb-2" style={{ color: 'var(--color-zinc-500)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                    🔐 BẢO HÀNH ĐIỆN TỬ
-                  </div>
-                  <div className="font-700 text-sm mb-1" style={{ color: warrantyDays > 0 ? '#4ade80' : 'var(--color-red-400)' }}>
-                    {currentVehicle.trangThaiBaoHanh === 'ConHan' ? '✓ Còn hiệu lực' : '✕ Đã hết hạn'}
-                  </div>
-                  <div className="text-xs" style={{ color: 'var(--color-zinc-400)', fontFamily: 'var(--font-mono)' }}>HSD: {currentVehicle.hanBaoHanh}</div>
-                  {warrantyDays > 0 && (
-                    <div className="mt-1 text-xs font-600" style={{ color: warrantyDays < 90 ? '#fbbf24' : '#4ade80' }}>
-                      còn {warrantyDays} ngày
+                  {/* Digital warranty card */}
+                  <div className="rounded-xl p-4 min-w-48" style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', backdropFilter: 'blur(8px)' }}>
+                    <div className="text-xs font-600 mb-2" style={{ color: 'var(--color-zinc-500)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                      🔐 BẢO HÀNH ĐIỆN TỬ
                     </div>
-                  )}
-                  <div className="mt-2 text-xs" style={{ color: 'var(--color-zinc-600)', fontFamily: 'var(--font-mono)', fontSize: 10 }}>
-                    {currentVehicle.soKhung}
+                    {currentVehicle.trangThaiBaoHanh === 'ChuaCo' ? (
+                      <>
+                        <div className="font-700 text-sm mb-1 text-amber-400">
+                          ⚠️ Chưa kích hoạt
+                        </div>
+                        <div className="text-xs text-zinc-400 font-mono">
+                          HSD: Chưa kích hoạt
+                        </div>
+                        <div className="mt-2 text-xs text-zinc-500 font-mono" style={{ fontSize: 10 }}>
+                          {currentVehicle.soKhung ? `Số khung: ${currentVehicle.soKhung}` : 'Chưa nhập số khung'}
+                        </div>
+                        <div className="mt-2.5 text-[11px] text-amber-300/80 bg-amber-500/10 p-2 rounded-lg border border-amber-500/20 leading-relaxed">
+                          Mang xe đến showroom kiểm tra để được kích hoạt bảo hành chính hãng.
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="font-700 text-sm mb-1" style={{ color: warrantyDays > 0 ? '#4ade80' : 'var(--color-red-400)' }}>
+                          {currentVehicle.trangThaiBaoHanh === 'ConHan' ? '✓ Còn hiệu lực' : '✕ Đã hết hạn'}
+                        </div>
+                        <div className="text-xs" style={{ color: 'var(--color-zinc-400)', fontFamily: 'var(--font-mono)' }}>HSD: {currentVehicle.hanBaoHanh}</div>
+                        {warrantyDays > 0 && (
+                          <div className="mt-1 text-xs font-600" style={{ color: warrantyDays < 90 ? '#fbbf24' : '#4ade80' }}>
+                            còn {warrantyDays} ngày
+                          </div>
+                        )}
+                        <div className="mt-2 text-xs" style={{ color: 'var(--color-zinc-600)', fontFamily: 'var(--font-mono)', fontSize: 10 }}>
+                          {currentVehicle.soKhung || 'N/A'}
+                        </div>
+                        {(warrantyDays <= 0 || currentVehicle.trangThaiBaoHanh === 'HetHan') ? (
+                          <button
+                            onClick={() => setShowWarrantyModal(true)}
+                            className="mt-3 w-full py-1.5 rounded-lg text-xs font-700 bg-red-700 text-white hover:bg-red-800 transition"
+                          >
+                            ⚡ Gửi yêu cầu gia hạn
+                          </button>
+                        ) : warrantyDays < 30 ? (
+                          <button
+                            onClick={() => setShowWarrantyModal(true)}
+                            className="mt-3 w-full py-1.5 rounded-lg text-xs font-700 bg-yellow-600 text-white hover:bg-yellow-700 transition"
+                          >
+                            ⚡ Gia hạn bảo hành
+                          </button>
+                        ) : null}
+                      </>
+                    )}
                   </div>
-                  {(warrantyDays <= 0 || currentVehicle.trangThaiBaoHanh === 'HetHan') ? (
-                    <button
-                      onClick={() => setShowWarrantyModal(true)}
-                      className="mt-3 w-full py-1.5 rounded-lg text-xs font-700 bg-red-700 text-white hover:bg-red-800 transition"
-                    >
-                      ⚡ Gửi yêu cầu gia hạn
-                    </button>
-                  ) : warrantyDays < 30 ? (
-                    <button
-                      onClick={() => setShowWarrantyModal(true)}
-                      className="mt-3 w-full py-1.5 rounded-lg text-xs font-700 bg-yellow-600 text-white hover:bg-yellow-700 transition"
-                    >
-                      ⚡ Gia hạn bảo hành
-                    </button>
-                  ) : null}
-                </div>
               </div>
             </div>
             {/* Stats row */}
@@ -1322,54 +1406,180 @@ export default function CustomerDashboard({ currentCustomer, onNavigateToShowroo
         </div>
       )}
 
-      {/* Register Vehicle Modal for Customer */}
+      {/* Register Vehicle Modal for Customer - DKX01, DKX02, DKX03 */}
       {showAddVehicleModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-zinc-200">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="font-extrabold text-base text-zinc-900" style={{ fontFamily: 'var(--font-display)', letterSpacing: '0.04em' }}>
-                ĐĂNG KÝ PHƯƠNG TIỆN CỦA TÔI
-              </h3>
-              <button onClick={() => setShowAddVehicleModal(false)} className="text-zinc-400 hover:text-zinc-600 font-bold text-lg">✕</button>
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-zinc-200 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4 pb-2 border-b border-zinc-100">
+              <div>
+                <h3 className="font-extrabold text-base text-zinc-900" style={{ fontFamily: 'var(--font-display)', letterSpacing: '0.04em' }}>
+                  🏍️ ĐĂNG KÝ PHƯƠNG TIỆN CỦA TÔI
+                </h3>
+                <p className="text-[11px] text-zinc-400">Chuẩn hóa thông tin xe để quản lý hồ sơ và đặt lịch dịch vụ</p>
+              </div>
+              <button onClick={() => setShowAddVehicleModal(false)} className="text-zinc-400 hover:text-zinc-600 font-bold text-lg p-1">✕</button>
             </div>
 
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-semibold mb-1 text-zinc-700">Tên mẫu xe *</label>
-                <input
-                  type="text"
-                  placeholder="VD: Honda Wave Alpha 110cc"
-                  value={regForm.tenXe}
-                  onChange={e => setRegForm({ ...regForm, tenXe: e.target.value })}
-                  className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600"
-                />
+            {regErrors.form && (
+              <div className="mb-4 p-2.5 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 font-semibold flex items-center gap-2">
+                <span>⚠️</span> {regErrors.form}
               </div>
+            )}
+
+            <div className="space-y-4">
+              {/* 1. Hãng xe, Dòng xe, Động cơ */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold mb-1 text-zinc-700">Hãng xe <span className="text-red-600">*</span></label>
+                  <select
+                    value={regForm.hangXe}
+                    onChange={e => {
+                      const newBrand = e.target.value;
+                      const brandData = MOTORBIKE_BRANDS.find(b => b.brand === newBrand);
+                      const defaultModel = brandData && brandData.models.length > 0 ? brandData.models[0] : 'Khác';
+                      setRegForm({
+                        ...regForm,
+                        hangXe: newBrand,
+                        dongXe: defaultModel,
+                        customDongXe: '',
+                      });
+                      if (regErrors.hangXe) setRegErrors({ ...regErrors, hangXe: '' });
+                    }}
+                    className={`w-full p-2.5 rounded-xl border text-xs bg-white focus:outline-none focus:border-red-600 ${
+                      regErrors.hangXe ? 'border-red-500' : 'border-zinc-300'
+                    }`}
+                  >
+                    {MOTORBIKE_BRANDS.map(b => (
+                      <option key={b.brand} value={b.brand}>{b.brand}</option>
+                    ))}
+                  </select>
+                  {regErrors.hangXe && <p className="text-[11px] text-red-600 mt-1 font-semibold">{regErrors.hangXe}</p>}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold mb-1 text-zinc-700">Dòng xe <span className="text-red-600">*</span></label>
+                  <select
+                    value={regForm.dongXe}
+                    onChange={e => {
+                      setRegForm({ ...regForm, dongXe: e.target.value });
+                      if (regErrors.dongXe) setRegErrors({ ...regErrors, dongXe: '' });
+                    }}
+                    className={`w-full p-2.5 rounded-xl border text-xs bg-white focus:outline-none focus:border-red-600 ${
+                      regErrors.dongXe ? 'border-red-500' : 'border-zinc-300'
+                    }`}
+                  >
+                    {((MOTORBIKE_BRANDS.find(b => b.brand === regForm.hangXe)?.models) || []).map(m => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                    <option value="Khác">Khác (tự nhập)...</option>
+                  </select>
+                  {regErrors.dongXe && <p className="text-[11px] text-red-600 mt-1 font-semibold">{regErrors.dongXe}</p>}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold mb-1 text-zinc-700">Động cơ / Phân khối <span className="text-red-600">*</span></label>
+                  <select
+                    value={regForm.dongCo}
+                    onChange={e => {
+                      setRegForm({ ...regForm, dongCo: e.target.value });
+                      if (regErrors.dongCo) setRegErrors({ ...regErrors, dongCo: '' });
+                    }}
+                    className={`w-full p-2.5 rounded-xl border text-xs bg-white focus:outline-none focus:border-red-600 ${
+                      regErrors.dongCo ? 'border-red-500' : 'border-zinc-300'
+                    }`}
+                  >
+                    {ENGINE_CAPACITIES.map(cap => (
+                      <option key={cap} value={cap}>{cap}</option>
+                    ))}
+                  </select>
+                  {regErrors.dongCo && <p className="text-[11px] text-red-600 mt-1 font-semibold">{regErrors.dongCo}</p>}
+                </div>
+              </div>
+
+              {/* Tên dòng xe tùy chỉnh nếu chọn Khác */}
+              {regForm.dongXe === 'Khác' && (
+                <div>
+                  <label className="block text-xs font-semibold mb-1 text-zinc-700">Nhập tên dòng xe cụ thể <span className="text-red-600">*</span></label>
+                  <input
+                    type="text"
+                    placeholder="VD: Future Neo, Click 125i, Dylan..."
+                    value={regForm.customDongXe}
+                    onChange={e => {
+                      setRegForm({ ...regForm, customDongXe: e.target.value });
+                      if (regErrors.dongXe) setRegErrors({ ...regErrors, dongXe: '' });
+                    }}
+                    className={`w-full p-2.5 rounded-xl border text-xs bg-white focus:outline-none focus:border-red-600 ${
+                      regErrors.dongXe ? 'border-red-500' : 'border-zinc-300'
+                    }`}
+                  />
+                  {regErrors.dongXe && <p className="text-[11px] text-red-600 mt-1 font-semibold">{regErrors.dongXe}</p>}
+                </div>
+              )}
+
+              {/* Xem trước tên xe chuẩn hóa */}
+              <div className="p-3 bg-red-50/60 rounded-xl border border-red-200/80 flex items-center justify-between">
+                <div className="text-xs">
+                  <span className="text-zinc-500 font-mono">Tên xe hiển thị: </span>
+                  <strong className="text-zinc-900 font-bold">
+                    {regForm.hangXe} {regForm.dongXe === 'Khác' ? (regForm.customDongXe || '(Chưa nhập tên)') : regForm.dongXe} {regForm.dongCo}
+                  </strong>
+                </div>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-bold">
+                  ✓ Chuẩn hóa
+                </span>
+              </div>
+
+              {/* 2. Biển số xe tự động định dạng */}
               <div>
-                <label className="block text-xs font-semibold mb-1 text-zinc-700">Biển số xe *</label>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="text-xs font-semibold text-zinc-700">Biển số xe <span className="text-red-600">*</span></label>
+                  <span className="text-[10px] text-zinc-400 font-mono">Tự động định dạng: 51K - 123.45</span>
+                </div>
                 <input
                   type="text"
-                  placeholder="VD: 51K-12345"
+                  placeholder="Gõ biển số: 51k12345 hoặc 59F123456"
                   value={regForm.bienSo}
-                  onChange={e => setRegForm({ ...regForm, bienSo: e.target.value })}
-                  className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600"
+                  onChange={e => {
+                    const formatted = formatVietnameseLicensePlate(e.target.value);
+                    setRegForm({ ...regForm, bienSo: formatted });
+                    if (regErrors.bienSo) setRegErrors({ ...regErrors, bienSo: '' });
+                  }}
+                  className={`w-full p-2.5 rounded-xl border text-xs bg-white font-mono uppercase focus:outline-none focus:border-red-600 ${
+                    regErrors.bienSo ? 'border-red-500 bg-red-50/20' : 'border-zinc-300'
+                  }`}
                 />
+                {regErrors.bienSo && (
+                  <p className="text-[11px] text-red-600 mt-1 font-semibold flex items-center gap-1">
+                    <span>⚠️</span> {regErrors.bienSo}
+                  </p>
+                )}
               </div>
+
+              {/* 3. Số khung (VIN) - Không bắt buộc */}
               <div>
-                <label className="block text-xs font-semibold mb-1 text-zinc-700">Số khung (VIN) *</label>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="text-xs font-semibold text-zinc-700">Số khung (VIN)</label>
+                  <span className="text-[10px] text-zinc-400 font-medium">(Không bắt buộc)</span>
+                </div>
                 <input
                   type="text"
-                  placeholder="VD: RLHKC110JA1234567"
+                  placeholder="VD: RLHKC110JA1234567 (nếu có mang theo giấy tờ)"
                   value={regForm.soKhung}
-                  onChange={e => setRegForm({ ...regForm, soKhung: e.target.value })}
-                  className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600"
+                  onChange={e => setRegForm({ ...regForm, soKhung: e.target.value.toUpperCase() })}
+                  className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs bg-white font-mono uppercase focus:outline-none focus:border-red-600"
                 />
+                <p className="text-[10px] text-zinc-400 mt-1 italic">
+                  * Khách hàng có thể để trống. Kỹ thuật viên sẽ kiểm tra số khung thực tế khi tiếp nhận xe tại đại lý.
+                </p>
               </div>
+
+              {/* 4. Màu sắc & Năm sản xuất */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold mb-1 text-zinc-700">Màu sắc</label>
                   <input
                     type="text"
-                    placeholder="VD: Đỏ đen"
+                    placeholder="VD: Đen nhám, Đỏ đen..."
                     value={regForm.mauSac}
                     onChange={e => setRegForm({ ...regForm, mauSac: e.target.value })}
                     className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600"
@@ -1379,25 +1589,37 @@ export default function CustomerDashboard({ currentCustomer, onNavigateToShowroo
                   <label className="block text-xs font-semibold mb-1 text-zinc-700">Năm sản xuất</label>
                   <input
                     type="number"
-                    placeholder="VD: 2025"
+                    min="1990"
+                    max={new Date().getFullYear() + 1}
+                    placeholder="VD: 2024"
                     value={regForm.namSanXuat}
                     onChange={e => setRegForm({ ...regForm, namSanXuat: e.target.value })}
-                    className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600"
+                    className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600 font-mono"
                   />
+                </div>
+              </div>
+
+              {/* Thông tin giải thích quy trình */}
+              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200/80 text-[11px] text-amber-900 flex items-start gap-2 leading-relaxed">
+                <span className="text-base leading-none">ℹ️</span>
+                <div>
+                  <strong>Lưu ý về bảo hành chính hãng:</strong> Xe mới thêm sẽ được lưu vào danh sách xe của bạn để đặt lịch bảo dưỡng ngay. Chính sách bảo hành điện tử sẽ được kỹ thuật viên kích hoạt sau khi kiểm tra xe tại showroom.
                 </div>
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 mt-6">
+            <div className="flex justify-end gap-2 mt-6 pt-3 border-t border-zinc-100">
               <button
+                type="button"
                 onClick={() => setShowAddVehicleModal(false)}
-                className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
+                className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-zinc-100 text-zinc-700 hover:bg-zinc-200 transition"
               >
                 Hủy
               </button>
               <button
+                type="button"
                 onClick={handleRegisterVehicle}
-                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-red-700 text-white hover:bg-red-800 shadow-md"
+                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-red-700 text-white hover:bg-red-800 shadow-md transition cursor-pointer"
               >
                 Xác nhận đăng ký
               </button>

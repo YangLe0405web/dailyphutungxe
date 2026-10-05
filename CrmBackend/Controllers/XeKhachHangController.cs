@@ -74,24 +74,42 @@ namespace CrmBackend.Controllers
         [HttpPost]
         public async Task<IActionResult> Create([FromBody] XeKhachHangCreateDto dto)
         {
+            if (string.IsNullOrWhiteSpace(dto.BienSoXe))
+                return BadRequest(new { message = "Biển số xe không được để trống!" });
+
             // Kiểm tra biển số trùng
             var checkBienSo = "SELECT COUNT(*) FROM XE_KHACH_HANG WHERE BienSoXe = @BienSoXe";
             var bienSoExists = await _db.ExecuteScalarAsync<int>(checkBienSo, new { dto.BienSoXe });
             if (bienSoExists > 0)
                 return BadRequest(new { message = "Biển số xe đã tồn tại!" });
 
-            // Kiểm tra số khung trùng
-            var checkSoKhung = "SELECT COUNT(*) FROM XE_KHACH_HANG WHERE SoKhung = @SoKhung";
-            var soKhungExists = await _db.ExecuteScalarAsync<int>(checkSoKhung, new { dto.SoKhung });
-            if (soKhungExists > 0)
-                return BadRequest(new { message = "Số khung xe đã tồn tại!" });
+            // ĐKX01: Kiểm tra số khung trùng CHỈ KHI khách có nhập số khung
+            if (!string.IsNullOrWhiteSpace(dto.SoKhung))
+            {
+                var checkSoKhung = "SELECT COUNT(*) FROM XE_KHACH_HANG WHERE SoKhung = @SoKhung";
+                var soKhungExists = await _db.ExecuteScalarAsync<int>(checkSoKhung, new { dto.SoKhung });
+                if (soKhungExists > 0)
+                    return BadRequest(new { message = "Số khung xe đã tồn tại!" });
+            }
+
+            var maXe = dto.MaXe.HasValue && dto.MaXe.Value > 0 ? dto.MaXe.Value : 1;
+            var ngayMua = dto.NgayMua ?? DateTime.Now;
+            var hanBaoHanh = dto.HanBaoHanh ?? new DateTime(1970, 1, 1);
 
             var sql = @"
                 INSERT INTO XE_KHACH_HANG (MaKH, MaXe, BienSoXe, SoKhung, SoMay, NgayMua, HanBaoHanh)
                 VALUES (@MaKH, @MaXe, @BienSoXe, @SoKhung, @SoMay, @NgayMua, @HanBaoHanh);
                 SELECT CAST(SCOPE_IDENTITY() AS INT);";
 
-            var id = await _db.ExecuteScalarAsync<int>(sql, dto);
+            var id = await _db.ExecuteScalarAsync<int>(sql, new {
+                dto.MaKH,
+                MaXe = maXe,
+                dto.BienSoXe,
+                SoKhung = dto.SoKhung ?? "",
+                SoMay = dto.SoMay ?? "",
+                NgayMua = ngayMua,
+                HanBaoHanh = hanBaoHanh
+            });
             return CreatedAtAction(nameof(GetById), new { maXeSoHuu = id }, new { MaXeSoHuu = id, message = "Thêm xe thành công!" });
         }
 

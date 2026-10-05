@@ -87,8 +87,153 @@ export interface Customer {
 export interface Vehicle {
   id: string; customerId: string; tenXe: string; bienSo: string;
   namSanXuat: number; hanBaoHanh: string; mauSac: string;
-  trangThaiBaoHanh: 'ConHan' | 'HetHan'; soKhung: string; hinhAnh?: string;
+  trangThaiBaoHanh: 'ConHan' | 'HetHan' | 'ChuaCo'; soKhung?: string; hinhAnh?: string;
   trangThaiDuyet?: 'ChoDuyet' | 'DaDuyet' | 'TuChoi';
+}
+
+/* ───────────────────────── MOTORBIKE CATALOGS (ĐKX01) ───────────────────────── */
+export const MOTORBIKE_BRANDS: { brand: string; models: string[] }[] = [
+  {
+    brand: 'Honda',
+    models: [
+      'Wave Alpha',
+      'Vision',
+      'Air Blade',
+      'SH 125i/160i',
+      'SH Mode',
+      'Lead',
+      'Winner X',
+      'Future',
+      'Wave RSX',
+      'Blade',
+      'Vario',
+      'PCX',
+      'CBR150R',
+      'CB300R',
+    ],
+  },
+  {
+    brand: 'Yamaha',
+    models: [
+      'Exciter',
+      'Grande',
+      'Janus',
+      'NVX',
+      'Sirius',
+      'Jupiter',
+      'Latte',
+      'FreeGo',
+      'XS155R',
+      'MT-15',
+      'YZF-R15',
+    ],
+  },
+  {
+    brand: 'Piaggio',
+    models: [
+      'Vespa Primavera',
+      'Vespa Sprint',
+      'Vespa GTS',
+      'Liberty',
+      'Medley',
+      'Beverly',
+    ],
+  },
+  {
+    brand: 'Suzuki',
+    models: [
+      'Raider R150',
+      'Satria F150',
+      'Burgman Street',
+      'GSX-R150',
+      'GSX-S150',
+      'Address',
+      'Viva',
+    ],
+  },
+  {
+    brand: 'SYM',
+    models: [
+      'Attila',
+      'Galaxy',
+      'Elegant',
+      'Star SR',
+      'Shark',
+      'Passing',
+    ],
+  },
+  {
+    brand: 'VinFast (Xe điện)',
+    models: [
+      'Feliz S',
+      'Klara S',
+      'Evo 200',
+      'Vento S',
+      'Theon S',
+    ],
+  },
+  {
+    brand: 'Khác',
+    models: ['Tự nhập mẫu xe'],
+  },
+];
+
+export const ENGINE_CAPACITIES = [
+  '50cc',
+  '110cc',
+  '125cc',
+  '150cc',
+  '155cc',
+  '160cc',
+  '300cc',
+  '350cc',
+  'Xe điện (Động cơ điện)',
+];
+
+export function formatVietnameseLicensePlate(input: string): string {
+  if (!input) return '';
+  const clean = input.toUpperCase().replace(/[\s\-\.]/g, '');
+
+  const m5SingleLetter = clean.match(/^([0-9]{2}[A-Z])([0-9]{3})([0-9]{2})$/);
+  if (m5SingleLetter) {
+    return `${m5SingleLetter[1]} - ${m5SingleLetter[2]}.${m5SingleLetter[3]}`;
+  }
+
+  const m5DoubleSeries = clean.match(/^([0-9]{2}[A-Z][0-9A-Z])([0-9]{3})([0-9]{2})$/);
+  if (m5DoubleSeries) {
+    return `${m5DoubleSeries[1]} - ${m5DoubleSeries[2]}.${m5DoubleSeries[3]}`;
+  }
+
+  const m4SingleLetter = clean.match(/^([0-9]{2}[A-Z])([0-9]{4})$/);
+  if (m4SingleLetter) {
+    return `${m4SingleLetter[1]} - ${m4SingleLetter[2]}`;
+  }
+
+  const m4DoubleSeries = clean.match(/^([0-9]{2}[A-Z][0-9A-Z])([0-9]{4})$/);
+  if (m4DoubleSeries) {
+    return `${m4DoubleSeries[1]} - ${m4DoubleSeries[2]}`;
+  }
+
+  if (clean.length >= 4) {
+    const mPartial = clean.match(/^([0-9]{2}[A-Z][0-9A-Z]?)(.*)$/);
+    if (mPartial) {
+      const series = mPartial[1];
+      const rest = mPartial[2];
+      if (rest.length > 3) {
+        return `${series} - ${rest.slice(0, 3)}.${rest.slice(3, 5)}`;
+      } else if (rest.length > 0) {
+        return `${series} - ${rest}`;
+      }
+    }
+  }
+
+  return clean;
+}
+
+export function isValidLicensePlate(plate: string): boolean {
+  if (!plate || !plate.trim()) return false;
+  const clean = plate.toUpperCase().replace(/[\s\-\.]/g, '');
+  return /^[0-9]{2}[A-Z][0-9A-Z]?[0-9]{4,5}$/.test(clean);
 }
 
 export interface Part {

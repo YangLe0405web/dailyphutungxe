@@ -1,5 +1,15 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { formatVND, type Customer, type Vehicle, type Part, mockParts } from '../../data/mockData';
+import {
+  formatVND,
+  MOTORBIKE_BRANDS,
+  ENGINE_CAPACITIES,
+  formatVietnameseLicensePlate,
+  isValidLicensePlate,
+  type Customer,
+  type Vehicle,
+  type Part,
+  mockParts,
+} from '../../data/mockData';
 import { appointmentApi, vehicleApi, partApi } from '../../services/api';
 import ImageUploader from '../../components/shared/ImageUploader';
 
@@ -207,12 +217,16 @@ export default function ServiceBooking({ initialVehicleId, currentCustomer, onCu
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>('');
   const [isAddingNewVehicle, setIsAddingNewVehicle] = useState(false);
   const [newVehicleForm, setNewVehicleForm] = useState({
-    tenXe: '',
+    hangXe: 'Honda',
+    dongXe: 'Wave Alpha',
+    customDongXe: '',
+    dongCo: '110cc',
     bienSo: '',
-    namSanXuat: 2024,
+    namSanXuat: new Date().getFullYear(),
     soKhung: '',
     mauSac: 'Đen bóng',
   });
+  const [newVehicleErrors, setNewVehicleErrors] = useState<Record<string, string>>({});
 
   // Tình trạng xe & mô tả & ảnh/video khi sửa chữa
   const [selectedIssues, setSelectedIssues] = useState<string[]>([]);
@@ -433,26 +447,46 @@ export default function ServiceBooking({ initialVehicleId, currentCustomer, onCu
           finalPlate = matched.bienSo;
         }
       } else {
-        if (!newVehicleForm.tenXe.trim() || !newVehicleForm.bienSo.trim()) {
-          setErrorMessage('Vui lòng nhập đầy đủ Tên xe và Biển số xe cần làm dịch vụ!');
+        const vErrors: Record<string, string> = {};
+        if (!newVehicleForm.hangXe) vErrors.hangXe = 'Vui lòng chọn hãng xe';
+        const effectiveDongXe = newVehicleForm.dongXe === 'Khác' ? newVehicleForm.customDongXe.trim() : newVehicleForm.dongXe.trim();
+        if (!effectiveDongXe) vErrors.dongXe = 'Vui lòng chọn hoặc nhập tên dòng xe';
+        if (!newVehicleForm.dongCo) vErrors.dongCo = 'Vui lòng chọn phân khối động cơ';
+        if (!newVehicleForm.bienSo.trim()) {
+          vErrors.bienSo = 'Vui lòng nhập biển số xe';
+        } else if (!isValidLicensePlate(newVehicleForm.bienSo)) {
+          vErrors.bienSo = 'Biển số xe không hợp lệ (VD: 51K-123.45, 59F1-234.56)';
+        }
+
+        if (Object.keys(vErrors).length > 0) {
+          setNewVehicleErrors(vErrors);
+          setErrorMessage('Vui lòng kiểm tra lại thông tin xe mới nhập bên dưới!');
           return;
         }
-        finalVehicleName = newVehicleForm.tenXe.trim();
-        finalPlate = newVehicleForm.bienSo.trim();
+        setNewVehicleErrors({});
 
-        // Tự động lưu xe mới vào tài khoản
+        finalVehicleName = `${newVehicleForm.hangXe} ${effectiveDongXe} ${newVehicleForm.dongCo}`.trim();
+        finalPlate = formatVietnameseLicensePlate(newVehicleForm.bienSo.trim());
+
+        // ĐKX02 & ĐKX03: Tự động lưu xe mới vào tài khoản, trạng thái ChuaCo
         try {
-          await vehicleApi.registerVehicle({
+          const registeredV = await vehicleApi.registerVehicle({
             customerId: currentCustomer.id,
             tenXe: finalVehicleName,
             bienSo: finalPlate,
-            namSanXuat: Number(newVehicleForm.namSanXuat) || 2024,
-            hanBaoHanh: new Date(Date.now() + 3 * 365 * 86400000).toISOString().split('T')[0],
-            mauSac: newVehicleForm.mauSac || 'Đen bóng',
-            trangThaiBaoHanh: 'ConHan',
-            soKhung: newVehicleForm.soKhung || `RLH${Date.now().toString().slice(-8)}`,
+            namSanXuat: Number(newVehicleForm.namSanXuat) || new Date().getFullYear(),
+            hanBaoHanh: 'Chưa kích hoạt',
+            mauSac: newVehicleForm.mauSac || 'Tiêu chuẩn',
+            trangThaiBaoHanh: 'ChuaCo',
+            soKhung: newVehicleForm.soKhung.trim() || undefined,
             trangThaiDuyet: 'ChoDuyet',
           });
+
+          if (currentCustomer) {
+            const updatedCust = { ...currentCustomer, soXe: registeredV.id };
+            localStorage.setItem('crm_current_customer', JSON.stringify(updatedCust));
+            onCustomerChange?.(updatedCust);
+          }
         } catch {}
       }
     }
@@ -526,6 +560,187 @@ export default function ServiceBooking({ initialVehicleId, currentCustomer, onCu
       setIsSubmitting(false);
     }
   };
+
+  // DKX01, DKX02, DKX03: Form chuẩn hóa thông tin xe mới (Hãng, Dòng xe, Động cơ, Biển số tự format, Số khung tuỳ chọn)
+  const renderNewVehicleInputs = (titleText: string) => (
+    <div className="p-5 rounded-2xl bg-zinc-50 border border-zinc-200 space-y-3">
+      <div className="flex items-center justify-between pb-2 border-b border-zinc-200">
+        <span className="text-xs font-bold text-zinc-900 uppercase font-mono">
+          {titleText}
+        </span>
+        {myVehicles.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setIsAddingNewVehicle(false)}
+            className="text-xs text-red-700 hover:text-red-900 font-bold"
+          >
+            ← Chọn xe có sẵn trong tài khoản
+          </button>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div>
+          <label className="block text-xs font-semibold mb-1 text-zinc-700">Hãng xe <span className="text-red-600">*</span></label>
+          <select
+            value={newVehicleForm.hangXe}
+            onChange={e => {
+              const newBrand = e.target.value;
+              const brandData = MOTORBIKE_BRANDS.find(b => b.brand === newBrand);
+              const defaultModel = brandData && brandData.models.length > 0 ? brandData.models[0] : 'Khác';
+              setNewVehicleForm({
+                ...newVehicleForm,
+                hangXe: newBrand,
+                dongXe: defaultModel,
+                customDongXe: '',
+              });
+              if (newVehicleErrors.hangXe) setNewVehicleErrors({ ...newVehicleErrors, hangXe: '' });
+            }}
+            className={`w-full p-2.5 rounded-xl border text-xs bg-white focus:outline-none focus:border-red-600 ${
+              newVehicleErrors.hangXe ? 'border-red-500' : 'border-zinc-300'
+            }`}
+          >
+            {MOTORBIKE_BRANDS.map(b => (
+              <option key={b.brand} value={b.brand}>{b.brand}</option>
+            ))}
+          </select>
+          {newVehicleErrors.hangXe && <p className="text-[11px] text-red-600 mt-1 font-semibold">{newVehicleErrors.hangXe}</p>}
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold mb-1 text-zinc-700">Dòng xe <span className="text-red-600">*</span></label>
+          <select
+            value={newVehicleForm.dongXe}
+            onChange={e => {
+              setNewVehicleForm({ ...newVehicleForm, dongXe: e.target.value });
+              if (newVehicleErrors.dongXe) setNewVehicleErrors({ ...newVehicleErrors, dongXe: '' });
+            }}
+            className={`w-full p-2.5 rounded-xl border text-xs bg-white focus:outline-none focus:border-red-600 ${
+              newVehicleErrors.dongXe ? 'border-red-500' : 'border-zinc-300'
+            }`}
+          >
+            {((MOTORBIKE_BRANDS.find(b => b.brand === newVehicleForm.hangXe)?.models) || []).map(m => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+            <option value="Khác">Khác (tự nhập)...</option>
+          </select>
+          {newVehicleErrors.dongXe && <p className="text-[11px] text-red-600 mt-1 font-semibold">{newVehicleErrors.dongXe}</p>}
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold mb-1 text-zinc-700">Động cơ / Phân khối <span className="text-red-600">*</span></label>
+          <select
+            value={newVehicleForm.dongCo}
+            onChange={e => {
+              setNewVehicleForm({ ...newVehicleForm, dongCo: e.target.value });
+              if (newVehicleErrors.dongCo) setNewVehicleErrors({ ...newVehicleErrors, dongCo: '' });
+            }}
+            className={`w-full p-2.5 rounded-xl border text-xs bg-white focus:outline-none focus:border-red-600 ${
+              newVehicleErrors.dongCo ? 'border-red-500' : 'border-zinc-300'
+            }`}
+          >
+            {ENGINE_CAPACITIES.map(cap => (
+              <option key={cap} value={cap}>{cap}</option>
+            ))}
+          </select>
+          {newVehicleErrors.dongCo && <p className="text-[11px] text-red-600 mt-1 font-semibold">{newVehicleErrors.dongCo}</p>}
+        </div>
+      </div>
+
+      {newVehicleForm.dongXe === 'Khác' && (
+        <div>
+          <label className="block text-xs font-semibold mb-1 text-zinc-700">Nhập tên dòng xe cụ thể <span className="text-red-600">*</span></label>
+          <input
+            type="text"
+            placeholder="VD: Future Neo, Click 125i..."
+            value={newVehicleForm.customDongXe}
+            onChange={e => {
+              setNewVehicleForm({ ...newVehicleForm, customDongXe: e.target.value });
+              if (newVehicleErrors.dongXe) setNewVehicleErrors({ ...newVehicleErrors, dongXe: '' });
+            }}
+            className={`w-full p-2.5 rounded-xl border text-xs bg-white focus:outline-none focus:border-red-600 ${
+              newVehicleErrors.dongXe ? 'border-red-500' : 'border-zinc-300'
+            }`}
+          />
+          {newVehicleErrors.dongXe && <p className="text-[11px] text-red-600 mt-1 font-semibold">{newVehicleErrors.dongXe}</p>}
+        </div>
+      )}
+
+      {/* Xem trước tên xe chuẩn hóa */}
+      <div className="p-2.5 bg-red-50/60 rounded-xl border border-red-200/80 flex items-center justify-between">
+        <div className="text-xs">
+          <span className="text-zinc-500 font-mono">Tên xe: </span>
+          <strong className="text-zinc-900 font-bold">
+            {newVehicleForm.hangXe} {newVehicleForm.dongXe === 'Khác' ? (newVehicleForm.customDongXe || '(Chưa nhập tên)') : newVehicleForm.dongXe} {newVehicleForm.dongCo}
+          </strong>
+        </div>
+        <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-bold">
+          ✓ Chuẩn hóa
+        </span>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <div className="flex justify-between items-center mb-1">
+            <label className="text-xs font-semibold text-zinc-700">Biển số xe <span className="text-red-600">*</span></label>
+            <span className="text-[10px] text-zinc-400 font-mono">VD: 51K - 123.45</span>
+          </div>
+          <input
+            type="text"
+            placeholder="Gõ biển số: 51k12345 hoặc 59F123456"
+            value={newVehicleForm.bienSo}
+            onChange={e => {
+              const formatted = formatVietnameseLicensePlate(e.target.value);
+              setNewVehicleForm({ ...newVehicleForm, bienSo: formatted });
+              if (newVehicleErrors.bienSo) setNewVehicleErrors({ ...newVehicleErrors, bienSo: '' });
+            }}
+            className={`w-full p-2.5 rounded-xl border text-xs bg-white font-mono uppercase focus:outline-none focus:border-red-600 ${
+              newVehicleErrors.bienSo ? 'border-red-500 bg-red-50/20' : 'border-zinc-300'
+            }`}
+          />
+          {newVehicleErrors.bienSo && <p className="text-[11px] text-red-600 mt-1 font-semibold">{newVehicleErrors.bienSo}</p>}
+        </div>
+
+        <div>
+          <div className="flex justify-between items-center mb-1">
+            <label className="text-xs font-semibold text-zinc-700">Số khung (VIN)</label>
+            <span className="text-[10px] text-zinc-400 font-medium">(Không bắt buộc)</span>
+          </div>
+          <input
+            type="text"
+            placeholder="VD: RLHKC110JA1234567 (nếu có)"
+            value={newVehicleForm.soKhung}
+            onChange={e => setNewVehicleForm({ ...newVehicleForm, soKhung: e.target.value.toUpperCase() })}
+            className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs bg-white font-mono uppercase focus:outline-none focus:border-red-600"
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs font-semibold mb-1 text-zinc-700">Màu sắc</label>
+          <input
+            type="text"
+            placeholder="VD: Đen nhám, Đỏ đen..."
+            value={newVehicleForm.mauSac}
+            onChange={e => setNewVehicleForm({ ...newVehicleForm, mauSac: e.target.value })}
+            className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold mb-1 text-zinc-700">Năm sản xuất</label>
+          <input
+            type="number"
+            min="1990"
+            max={new Date().getFullYear() + 1}
+            value={newVehicleForm.namSanXuat}
+            onChange={e => setNewVehicleForm({ ...newVehicleForm, namSanXuat: Number(e.target.value) })}
+            className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600 font-mono"
+          />
+        </div>
+      </div>
+    </div>
+  );
 
   // ── MÀN HÌNH XÁC NHẬN ĐẶT LỊCH THÀNH CÔNG ──
   if (submitted && lastBookedSummary) {
@@ -800,61 +1015,7 @@ export default function ServiceBooking({ initialVehicleId, currentCustomer, onCu
                   </div>
                 </div>
               ) : (
-                /* Form nhập xe mới khi chưa có xe hoặc bấm thêm */
-                <div className="p-5 rounded-2xl bg-zinc-50 border border-zinc-200 space-y-3">
-                  <div className="flex items-center justify-between pb-2 border-b border-zinc-200">
-                    <span className="text-xs font-bold text-zinc-900 uppercase font-mono">THÊM XE MỚI ĐỂ BẢO DƯỠNG</span>
-                    {myVehicles.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setIsAddingNewVehicle(false)}
-                        className="text-xs text-zinc-600 hover:text-zinc-900 font-bold"
-                      >
-                        ← Chọn lại xe trong tài khoản
-                      </button>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-semibold text-zinc-700 mb-1">Tên mẫu xe *</label>
-                      <input
-                        type="text"
-                        placeholder="VD: Honda Wave Alpha 110cc, Vision, SH 160i..."
-                        value={newVehicleForm.tenXe}
-                        onChange={e => setNewVehicleForm({ ...newVehicleForm, tenXe: e.target.value })}
-                        className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-zinc-700 mb-1">Biển số xe *</label>
-                      <input
-                        type="text"
-                        placeholder="VD: 51K-123.45"
-                        value={newVehicleForm.bienSo}
-                        onChange={e => setNewVehicleForm({ ...newVehicleForm, bienSo: e.target.value })}
-                        className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600 font-mono"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-zinc-700 mb-1">Năm sản xuất</label>
-                      <input
-                        type="number"
-                        value={newVehicleForm.namSanXuat}
-                        onChange={e => setNewVehicleForm({ ...newVehicleForm, namSanXuat: Number(e.target.value) })}
-                        className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600 font-mono"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-zinc-700 mb-1">Màu sắc</label>
-                      <input
-                        type="text"
-                        value={newVehicleForm.mauSac}
-                        onChange={e => setNewVehicleForm({ ...newVehicleForm, mauSac: e.target.value })}
-                        className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600"
-                      />
-                    </div>
-                  </div>
-                </div>
+                renderNewVehicleInputs('THÊM XE MỚI ĐỂ BẢO DƯỠNG')
               )}
             </div>
           )}
@@ -897,28 +1058,7 @@ export default function ServiceBooking({ initialVehicleId, currentCustomer, onCu
                   </div>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 bg-zinc-50 rounded-2xl border border-zinc-200">
-                  <div>
-                    <label className="block text-xs font-semibold text-zinc-700 mb-1">Tên mẫu xe gặp sự cố *</label>
-                    <input
-                      type="text"
-                      placeholder="VD: Honda Air Blade 125, Winner X..."
-                      value={newVehicleForm.tenXe}
-                      onChange={e => setNewVehicleForm({ ...newVehicleForm, tenXe: e.target.value })}
-                      className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-zinc-700 mb-1">Biển số xe *</label>
-                    <input
-                      type="text"
-                      placeholder="VD: 59X1-123.45"
-                      value={newVehicleForm.bienSo}
-                      onChange={e => setNewVehicleForm({ ...newVehicleForm, bienSo: e.target.value })}
-                      className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600 font-mono"
-                    />
-                  </div>
-                </div>
+                renderNewVehicleInputs('NHẬP THÔNG TIN XE GẶP SỰ CỐ')
               )}
 
               {/* Tình trạng xe (Checkbox chọn nhiều) */}
@@ -1358,7 +1498,7 @@ export default function ServiceBooking({ initialVehicleId, currentCustomer, onCu
                   {svc === 'LaiThu'
                     ? testDriveVehicles.find(v => v.id === selectedTestDriveId)?.tenXe
                     : isAddingNewVehicle
-                    ? `${newVehicleForm.tenXe || 'Xe mới'} (${newVehicleForm.bienSo || 'Chưa biển'})`
+                    ? `${newVehicleForm.hangXe} ${newVehicleForm.dongXe === 'Khác' ? (newVehicleForm.customDongXe || 'Khác') : newVehicleForm.dongXe} ${newVehicleForm.dongCo} (${newVehicleForm.bienSo || 'Chưa biển'})`
                     : myVehicles.find(v => v.id === selectedVehicleId)?.tenXe || 'Chưa chọn xe'}
                 </span>
               </div>
