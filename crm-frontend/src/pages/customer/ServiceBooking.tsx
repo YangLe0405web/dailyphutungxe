@@ -209,6 +209,13 @@ export default function ServiceBooking({ initialVehicleId, currentCustomer, onCu
         email: currentCustomer.email || '',
         diaChi: currentCustomer.diaChi || 'TP. Hồ Chí Minh',
       });
+    } else {
+      setContactForm({
+        hoTen: '',
+        soDienThoai: '',
+        email: '',
+        diaChi: 'TP. Hồ Chí Minh',
+      });
     }
   }, [currentCustomer]);
 
@@ -274,6 +281,7 @@ export default function ServiceBooking({ initialVehicleId, currentCustomer, onCu
   useEffect(() => {
     if (!currentCustomer) {
       setMyVehicles([]);
+      setSelectedVehicleId('');
       return;
     }
     vehicleApi.getAll().then(data => {
@@ -287,7 +295,9 @@ export default function ServiceBooking({ initialVehicleId, currentCustomer, onCu
         setMyVehicles(filtered);
         if (filtered.length > 0) {
           setSelectedVehicleId(filtered[0].id);
+          setIsAddingNewVehicle(false);
         } else {
+          setSelectedVehicleId('');
           setIsAddingNewVehicle(true);
         }
       }

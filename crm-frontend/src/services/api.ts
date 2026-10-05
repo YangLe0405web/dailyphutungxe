@@ -360,7 +360,10 @@ export const vehicleApi = {
         const data = await res.json();
         if (Array.isArray(data) && data.length > 0) {
           list = data.map((item: any) => {
-            const cId = item.maKH ? (item.maKH < 10 ? `KH00${item.maKH}` : `KH0${item.maKH}`) : 'KH001';
+            let cId = item.maKH ? (item.maKH < 10 ? `KH00${item.maKH}` : `KH0${item.maKH}`) : 'KH001';
+            if (item.maKH === 14) cId = 'KH004';
+            else if (item.maKH === 15) cId = 'KH006';
+            else if (item.maKH === 16) cId = 'KH008';
             const vId = item.maXeSoHuu ? (item.maXeSoHuu < 10 ? `XE00${item.maXeSoHuu}` : `XE0${item.maXeSoHuu}`) : 'XE001';
             const hanBH = item.hanBaoHanh ? item.hanBaoHanh.split('T')[0] : '2026-01-01';
             const isConHan = new Date(hanBH) > new Date();

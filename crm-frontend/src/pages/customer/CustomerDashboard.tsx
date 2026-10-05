@@ -696,8 +696,14 @@ export default function CustomerDashboard({ currentCustomer, onNavigateToShowroo
   };
 
   useEffect(() => {
+    if (!currentCustomer) {
+      setMyVehicles([]);
+      setAllOrders([]);
+      setAllAppts([]);
+      return;
+    }
     loadCustomerData();
-    const handleRefresh = (e: any) => {
+    const handleRefresh = () => {
       loadCustomerData();
     };
     window.addEventListener('crm-data-refresh', handleRefresh);
@@ -706,7 +712,7 @@ export default function CustomerDashboard({ currentCustomer, onNavigateToShowroo
       window.removeEventListener('crm-data-refresh', handleRefresh);
       window.removeEventListener('crm-admin-notification', handleRefresh);
     };
-  }, [currentCustomer?.id]);
+  }, [currentCustomer]);
 
   // Unauthenticated Guest Prompt Screen
   if (!currentCustomer) {

@@ -382,6 +382,9 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
     if (currentCustomer) {
       setNewReviewAuthor(currentCustomer.hoTen);
       setNewReviewPhone(currentCustomer.soDienThoai);
+    } else {
+      setNewReviewAuthor('');
+      setNewReviewPhone('');
     }
   }, [currentCustomer]);
 

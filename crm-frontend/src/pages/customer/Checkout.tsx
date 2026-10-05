@@ -43,6 +43,13 @@ export default function Checkout({ onBack, onSuccess, currentCustomer, onCustome
         soDienThoai: currentCustomer.soDienThoai,
         diaChi: currentCustomer.diaChi || prev.diaChi || 'TP. Hồ Chí Minh',
       }));
+    } else {
+      setForm({
+        hoTen: '',
+        soDienThoai: '',
+        diaChi: '',
+        ghiChu: '',
+      });
     }
   }, [currentCustomer]);
 

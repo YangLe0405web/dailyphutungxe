@@ -214,7 +214,29 @@ export default function App() {
       }
     };
     window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
+
+    const handleCustomerChange = (e: any) => {
+      if (e.detail && 'customer' in e.detail) {
+        setCurrentCustomerState(e.detail.customer);
+      }
+    };
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === 'crm_current_customer') {
+        try {
+          setCurrentCustomerState(e.newValue ? JSON.parse(e.newValue) : null);
+        } catch {
+          setCurrentCustomerState(null);
+        }
+      }
+    };
+    window.addEventListener('crm-customer-change', handleCustomerChange);
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      window.removeEventListener('hashchange', handleHashChange);
+      window.removeEventListener('crm-customer-change', handleCustomerChange);
+      window.removeEventListener('storage', handleStorage);
+    };
   }, []);
 
   if (!mode) return <Landing onSelect={setMode} />;

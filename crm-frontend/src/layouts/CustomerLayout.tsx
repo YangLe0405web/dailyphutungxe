@@ -266,8 +266,13 @@ export default function CustomerLayout({ children, activePage, onNavigate, onHom
                   <span className="font-bold max-w-[120px] truncate">{currentCustomer.hoTen}</span>
                 </div>
                 <button
-                  onClick={() => onCustomerChange?.(null)}
-                  className="px-2.5 py-1.5 rounded-lg text-xs font-600 bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700 transition"
+                  type="button"
+                  onClick={() => {
+                    onCustomerChange?.(null);
+                    window.dispatchEvent(new CustomEvent('crm-customer-change', { detail: { customer: null } }));
+                    window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'customer_logout' } }));
+                  }}
+                  className="px-2.5 py-1.5 rounded-lg text-xs font-600 bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700 transition cursor-pointer"
                   title="Đăng xuất"
                 >
                   Đăng xuất
@@ -607,7 +612,11 @@ export default function CustomerLayout({ children, activePage, onNavigate, onHom
         <CustomerAuthModal
           initialMode={authMode}
           onClose={() => setAuthOpen(false)}
-          onSuccess={(c) => onCustomerChange?.(c)}
+          onSuccess={(c) => {
+            onCustomerChange?.(c);
+            window.dispatchEvent(new CustomEvent('crm-customer-change', { detail: { customer: c } }));
+            window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'customer_login' } }));
+          }}
         />
       )}
 
@@ -885,11 +894,12 @@ function CustomerAuthModal({
 
     try {
       const customer = await customerApi.login(loginInput.trim(), loginPass);
+      // Gọi onSuccess ngay lập tức để cập nhật toàn bộ hệ thống tức thì
+      onSuccess(customer);
       setToast(`🎉 Đăng nhập thành công! Chào mừng trở lại, ${customer.hoTen}`);
       setTimeout(() => {
-        onSuccess(customer);
         onClose();
-      }, 1000);
+      }, 600);
     } catch (err: any) {
       setLoginErr(err?.message || 'Đăng nhập không thành công. Vui lòng kiểm tra lại thông tin!');
     } finally {
@@ -952,11 +962,11 @@ function CustomerAuthModal({
       await customerApi.resetPassword(forgotInput.trim(), newPass);
       // Tự động đăng nhập luôn sau khi đổi mật khẩu
       const customer = await customerApi.login(forgotInput.trim(), newPass);
+      onSuccess(customer);
       setToast(`🎉 Đặt lại mật khẩu thành công! Chào mừng ${customer.hoTen} đã đăng nhập.`);
       setTimeout(() => {
-        onSuccess(customer);
         onClose();
-      }, 1200);
+      }, 600);
     } catch (err: any) {
       setForgotErr(err?.message || 'Đặt lại mật khẩu thất bại!');
     } finally {
@@ -1045,11 +1055,13 @@ function CustomerAuthModal({
         matKhau: form.matKhau,
       });
 
+      // Cập nhật lưu trữ và state khách hàng NGAY LẬP TỨC
+      localStorage.setItem('crm_current_customer', JSON.stringify(res.customer));
+      onSuccess(res.customer);
       setToast(`🎉 Chúc mừng ${res.customer.hoTen}! Tài khoản đã được tạo thành công.`);
       setTimeout(() => {
-        onSuccess(res.customer);
         onClose();
-      }, 1500);
+      }, 700);
     } catch (err: any) {
       // ĐK02: Bắt lỗi nếu trùng sđt / email
       setRegStep('form');

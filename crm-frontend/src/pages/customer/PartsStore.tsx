@@ -131,6 +131,9 @@ export default function PartsStore({ currentCustomer, onRequireLogin }: Props = 
     if (currentCustomer) {
       setNewReviewAuthor(currentCustomer.hoTen);
       setNewReviewPhone(currentCustomer.soDienThoai);
+    } else {
+      setNewReviewAuthor('');
+      setNewReviewPhone('');
     }
   }, [currentCustomer]);
 
