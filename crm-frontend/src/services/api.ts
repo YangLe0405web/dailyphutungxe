@@ -11,6 +11,9 @@ import {
   type Survey,
   type SurveyResponse,
   type SurveyStatus,
+  type InsuranceContract,
+  type InsurancePackage,
+  type InsuranceStatus,
   computeSurveyStatus,
   mockCustomers,
   mockVehicles,
@@ -21,6 +24,8 @@ import {
   mockFeedbacks,
   mockSurveys,
   mockSurveyResponses,
+  mockInsuranceContracts,
+  INSURANCE_PACKAGES,
 } from '../data/mockData';
 import { addAdminNotification } from './notifications';
 
@@ -2171,6 +2176,88 @@ export const surveyApi = {
 
     window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'survey_responses' } }));
     return newResp;
+  },
+};
+
+// ────────────────────────────────────────────────────────────
+// 10. BẢO HIỂM XE API (MOTORBIKE INSURANCE - BHX01 - BHX05)
+// ────────────────────────────────────────────────────────────
+export const INSURANCE_STORAGE_KEY = 'crm_insurance_contracts';
+
+export const insuranceApi = {
+  getPackages(): InsurancePackage[] {
+    return INSURANCE_PACKAGES;
+  },
+
+  getAll(): InsuranceContract[] {
+    try {
+      const cached = localStorage.getItem(INSURANCE_STORAGE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    localStorage.setItem(INSURANCE_STORAGE_KEY, JSON.stringify(mockInsuranceContracts));
+    return mockInsuranceContracts;
+  },
+
+  getByCustomerId(customerId: string): InsuranceContract[] {
+    const all = insuranceApi.getAll();
+    const cIdNum = parseInt(customerId.replace(/\D/g, ''), 10);
+    return all.filter(c => {
+      if (c.customerId === customerId) return true;
+      const cNum = parseInt(c.customerId.replace(/\D/g, ''), 10);
+      return !isNaN(cIdNum) && !isNaN(cNum) && cIdNum === cNum;
+    });
+  },
+
+  create(contract: Omit<InsuranceContract, 'id' | 'soGCN'>): InsuranceContract {
+    const all = insuranceApi.getAll();
+    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+    const newId = `BH${(all.length + 1).toString().padStart(3, '0')}`;
+    const newGCN = `GCN-BV-2026-${randomSuffix}`;
+
+    const newContract: InsuranceContract = {
+      ...contract,
+      id: newId,
+      soGCN: newGCN,
+    };
+
+    all.unshift(newContract);
+    localStorage.setItem(INSURANCE_STORAGE_KEY, JSON.stringify(all));
+
+    // Send admin notification
+    addAdminNotification({
+      type: 'insurance_registered',
+      title: contract.trangThai === 'ChoDuyet' ? '🛡️ Yêu cầu đăng ký bảo hiểm mới' : '🛡️ Đã cấp hợp đồng bảo hiểm xe mới',
+      message: `${contract.hoTenKH} (${contract.bienSo}) - ${contract.tenGoi}. Phí: ${new Intl.NumberFormat('vi-VN').format(contract.phiBaoHiem)}₫.`,
+      linkPage: 'insurance',
+      meta: newContract,
+    });
+
+    window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'insurance_contracts' } }));
+    return newContract;
+  },
+
+  updateStatus(id: string, status: InsuranceStatus, ghiChu?: string): boolean {
+    const all = insuranceApi.getAll();
+    const idx = all.findIndex(c => c.id === id);
+    if (idx === -1) return false;
+
+    all[idx].trangThai = status;
+    if (ghiChu !== undefined) all[idx].ghiChu = ghiChu;
+    localStorage.setItem(INSURANCE_STORAGE_KEY, JSON.stringify(all));
+
+    addAdminNotification({
+      type: 'insurance_updated',
+      title: status === 'HieuLuc' ? '✅ Hợp đồng bảo hiểm đã được phê duyệt' : status === 'TuChoi' ? '❌ Yêu cầu bảo hiểm bị từ chối' : 'ℹ️ Cập nhật trạng thái bảo hiểm',
+      message: `Hợp đồng ${all[idx].soGCN} (${all[idx].bienSo}) đã chuyển sang trạng thái "${status}".`,
+      linkPage: 'insurance',
+      meta: all[idx],
+    });
+
+    window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'insurance_contracts' } }));
+    return true;
   },
 };
 

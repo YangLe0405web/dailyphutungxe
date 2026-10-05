@@ -262,6 +262,116 @@ export interface Appointment {
   createdDate?: string;      // LH10: Thời gian tạo để sắp xếp mới nhất
 }
 
+/* ───────────────────────── MOTORBIKE INSURANCE (BHX01 - BHX05) ───────────────────────── */
+export type InsurancePackageType = 'TNDS_BAT_BUOC' | 'VAT_CHAT_XE' | 'TAI_NAN_NGUOI' | 'TOAN_DIEN';
+export type InsuranceStatus = 'HieuLuc' | 'ChoDuyet' | 'HetHan' | 'TuChoi';
+
+export interface InsurancePackage {
+  id: InsurancePackageType;
+  tenGoi: string;
+  phi1Nam: number;
+  phi2Nam: number;
+  moTa: string;
+  quyenLoi: string[];
+  mucTrachNhiem: string;
+  badge: string;
+  icon: string;
+  color: string;
+}
+
+export interface InsuranceContract {
+  id: string; // Mã HĐ (vd: BH001)
+  soGCN: string; // Số Giấy chứng nhận điện tử (vd: GCN-BV-2026-0812)
+  customerId: string; // KH001
+  hoTenKH: string;
+  soDienThoai: string;
+  email: string;
+  diaChi: string;
+  vehicleId: string; // XE001
+  tenXe: string;
+  bienSo: string;
+  soKhung: string;
+  soMay?: string;
+  packageType: InsurancePackageType;
+  tenGoi: string;
+  thoiHanNam: number; // 1 hoặc 2
+  phiBaoHiem: number;
+  nhaBaoHiem: string; // Bảo Việt, PVI, PTI, MIC...
+  ngayCap: string; // YYYY-MM-DD
+  ngayBatDau: string; // YYYY-MM-DD
+  ngayKetThuc: string; // YYYY-MM-DD
+  trangThai: InsuranceStatus;
+  ghiChu?: string;
+}
+
+export const INSURANCE_PACKAGES: InsurancePackage[] = [
+  {
+    id: 'TNDS_BAT_BUOC',
+    tenGoi: 'Bảo hiểm TNDS Bắt buộc xe máy',
+    phi1Nam: 66000,
+    phi2Nam: 120000,
+    moTa: 'Bảo hiểm bắt buộc theo Nghị định 67/2023/NĐ-CP của Chính phủ khi tham gia giao thông.',
+    quyenLoi: [
+      'Bồi thường thiệt hại về người: Tối đa 150.000.000 đ/người/vụ',
+      'Bồi thường thiệt hại về tài sản: Tối đa 50.000.000 đ/vụ',
+      'Cấp Giấy chứng nhận điện tử có mã QR hợp chuẩn Cảnh sát giao thông',
+    ],
+    mucTrachNhiem: '150.000.000 đ/người/vụ',
+    badge: 'Bắt buộc theo luật',
+    icon: '🛡️',
+    color: '#dc2626',
+  },
+  {
+    id: 'VAT_CHAT_XE',
+    tenGoi: 'Bảo hiểm Vật chất / Thân xe máy',
+    phi1Nam: 450000,
+    phi2Nam: 850000,
+    moTa: 'Bảo vệ toàn diện xe trước rủi ro tai nạn, va quẹt, cháy nổ, thiên tai hoặc mất cắp.',
+    quyenLoi: [
+      'Bồi thường tổn thất do va chạm, chìm rơi, cháy nổ, lật đổ',
+      'Bồi thường mất cắp, mất cướp toàn bộ xe',
+      'Hỗ trợ chi phí cẩu kéo cứu hộ xe đến xưởng sửa chữa chính hãng',
+    ],
+    mucTrachNhiem: '100% giá trị thị trường xe',
+    badge: 'Bảo vệ tài sản',
+    icon: '🏍️',
+    color: '#2563eb',
+  },
+  {
+    id: 'TAI_NAN_NGUOI',
+    tenGoi: 'Bảo hiểm Tai nạn người ngồi trên xe',
+    phi1Nam: 20000,
+    phi2Nam: 38000,
+    moTa: 'Bảo vệ sức khỏe, tính mạng cho cả người lái và người ngồi sau xe khi xảy ra tai nạn.',
+    quyenLoi: [
+      'Bồi thường tai nạn cho người lái xe: Tối đa 50.000.000 đ/người',
+      'Bồi thường tai nạn cho người ngồi sau: Tối đa 50.000.000 đ/người',
+      'Hỗ trợ viện phí, cấp cứu và điều trị phẫu thuật',
+    ],
+    mucTrachNhiem: '50.000.000 đ/người/vụ',
+    badge: 'An tâm di chuyển',
+    icon: '👥',
+    color: '#16a34a',
+  },
+  {
+    id: 'TOAN_DIEN',
+    tenGoi: 'Gói Bảo hiểm Toàn diện 3-trong-1 (VIP)',
+    phi1Nam: 520000,
+    phi2Nam: 980000,
+    moTa: 'Gói combo kết hợp TNDS Bắt buộc + Vật chất xe + Tai nạn 2 người ngồi, chiết khấu đặc biệt 15%.',
+    quyenLoi: [
+      'Đầy đủ quyền lợi TNDS Bắt buộc 150 triệu/vụ',
+      'Bồi thường trọn gói tổn thất vật chất & mất cắp xe',
+      'Bảo hiểm tai nạn lái xe và phụ xe 50 triệu/người',
+      'Được ưu tiên cứu hộ 24/7 và giám định bồi thường tận nơi',
+    ],
+    mucTrachNhiem: 'Toàn diện cao nhất',
+    badge: 'Khuyên dùng · Tiết kiệm 15%',
+    icon: '👑',
+    color: '#7c3aed',
+  },
+];
+
 export function countWords(text: string): number {
   if (!text || !text.trim()) return 0;
   return text.trim().split(/\s+/).filter(Boolean).length;
@@ -742,6 +852,154 @@ export const mockAppointments: Appointment[] = [
   { id: 'LH003', customerId: 'KH003', hoTenKH: 'Lê Hoàng Cường', soDienThoai: '0923456789', loaiDichVu: 'LaiThu', ngayHen: '2026-10-07', gioHen: '14:00', trangThai: 'DaXacNhan', ghiChu: '[GPLX LÁI THỬ]: Số 790123456789 (Hạng A1) | Đăng ký lái thử xe Yamaha Exciter 155 VVA thế hệ mới', tenXe: 'Yamaha Exciter 155 VVA ABS', bienSo: 'XE-LÁI-THỬ', nhanVienPhuTrach: 'Trần Thị Mai (Tư vấn bán hàng)', createdDate: '2026-10-04 15:20' },
   { id: 'LH004', customerId: 'KH006', hoTenKH: 'Đặng Thị Phương Thảo', soDienThoai: '0956789012', loaiDichVu: 'BaoDuong', ngayHen: '2026-10-03', gioHen: '08:30', trangThai: 'DaHoanThanh', ghiChu: '[GÓI BẢO DƯỠNG]: Gói Tiêu Chuẩn (Cấp 1) (150.000₫) | Bảo dưỡng định kỳ 5.000km và rửa xe', tenXe: 'Honda Vision 110', bienSo: '59V1-999.99', nhanVienPhuTrach: 'Lê Văn Cường (Kỹ thuật viên)', createdDate: '2026-10-02 09:15' },
   { id: 'LH005', customerId: 'KH009', hoTenKH: 'Đỗ Khoa Nam', soDienThoai: '0989012345', loaiDichVu: 'SuaChua', ngayHen: '2026-10-08', gioHen: '15:00', trangThai: 'ChoXacNhan', ghiChu: '[TÌNH TRẠNG XE]: Hệ thống điện / đèn / còi không hoạt động | Kiểm tra lỗi còi và hệ thống phanh tái sinh', tenXe: 'VinFast Feliz S', bienSo: '51L1-567.89', nhanVienPhuTrach: 'Chưa phân công', createdDate: '2026-10-05 09:00' },
+];
+
+/* ───────────────────────── MOTORBIKE INSURANCE CONTRACTS (BHX01 - BHX05) ───────────────────────── */
+export const mockInsuranceContracts: InsuranceContract[] = [
+  {
+    id: 'BH001',
+    soGCN: 'GCN-BV-2025-0189',
+    customerId: 'KH001',
+    hoTenKH: 'Nguyễn Văn An',
+    soDienThoai: '0901234567',
+    email: 'nguyenvanan@gmail.com',
+    diaChi: '12 Lê Thường Kiệt, Q.1, TP.HCM',
+    vehicleId: 'XE001',
+    tenXe: 'Honda SH 160i ABS',
+    bienSo: '51K-123.45',
+    soKhung: 'RLHKD160CB1234567',
+    soMay: 'KD160E123456',
+    packageType: 'TOAN_DIEN',
+    tenGoi: 'Gói Bảo hiểm Toàn diện 3-trong-1 (VIP)',
+    thoiHanNam: 1,
+    phiBaoHiem: 520000,
+    nhaBaoHiem: 'Tổng Công ty Bảo hiểm Bảo Việt',
+    ngayCap: '2025-01-10',
+    ngayBatDau: '2025-01-10',
+    ngayKetThuc: '2026-01-10',
+    trangThai: 'HieuLuc',
+    ghiChu: 'Cấp chứng nhận điện tử cho xe tay ga cao cấp Honda SH 160i.',
+  },
+  {
+    id: 'BH002',
+    soGCN: 'GCN-PVI-2025-0452',
+    customerId: 'KH002',
+    hoTenKH: 'Trần Thị Bích',
+    soDienThoai: '0912345678',
+    email: 'tranthibich95@gmail.com',
+    diaChi: '45 Nguyễn Huệ, Q.1, TP.HCM',
+    vehicleId: 'XE002',
+    tenXe: 'Vespa Sprint 125',
+    bienSo: '51H-678.90',
+    soKhung: 'VESP125CB2345678',
+    soMay: 'VM125E123456',
+    packageType: 'VAT_CHAT_XE',
+    tenGoi: 'Bảo hiểm Vật chất / Thân xe máy',
+    thoiHanNam: 2,
+    phiBaoHiem: 850000,
+    nhaBaoHiem: 'Bảo hiểm PVI Sài Gòn',
+    ngayCap: '2024-02-14',
+    ngayBatDau: '2024-02-14',
+    ngayKetThuc: '2026-02-14',
+    trangThai: 'HieuLuc',
+    ghiChu: 'Khách hàng VIP đăng ký gói 2 năm bảo vệ thân vỏ xe Vespa.',
+  },
+  {
+    id: 'BH003',
+    soGCN: 'GCN-PTI-2024-0789',
+    customerId: 'KH003',
+    hoTenKH: 'Lê Hoàng Cường',
+    soDienThoai: '0923456789',
+    email: 'lehoangcuong88@gmail.com',
+    diaChi: '78 Trần Phú, Q.5, TP.HCM',
+    vehicleId: 'XE003',
+    tenXe: 'Honda Winner X 150',
+    bienSo: '59G1-234.56',
+    soKhung: 'RLHKW150CB3456789',
+    soMay: 'WN150E234567',
+    packageType: 'TNDS_BAT_BUOC',
+    tenGoi: 'Bảo hiểm TNDS Bắt buộc xe máy',
+    thoiHanNam: 1,
+    phiBaoHiem: 66000,
+    nhaBaoHiem: 'Bảo hiểm Bưu điện (PTI)',
+    ngayCap: '2024-03-05',
+    ngayBatDau: '2024-03-05',
+    ngayKetThuc: '2025-03-05',
+    trangThai: 'HetHan',
+    ghiChu: 'Hợp đồng TNDS năm trước đã hết hạn. Đang chờ khách hàng tái tục.',
+  },
+  {
+    id: 'BH004',
+    soGCN: 'GCN-MIC-2026-1102',
+    customerId: 'KH004',
+    hoTenKH: 'Phạm Thị Duyên',
+    soDienThoai: '0934567890',
+    email: 'phamduyen98@gmail.com',
+    diaChi: '23 CMT8, Q.3, TP.HCM',
+    vehicleId: 'XE004',
+    tenXe: 'Honda Lead 125',
+    bienSo: '59F1-888.88',
+    soKhung: 'RLHKL125CB4567890',
+    soMay: 'LD125E890123',
+    packageType: 'TNDS_BAT_BUOC',
+    tenGoi: 'Bảo hiểm TNDS Bắt buộc xe máy',
+    thoiHanNam: 1,
+    phiBaoHiem: 66000,
+    nhaBaoHiem: 'Bảo hiểm Quân Đội (MIC)',
+    ngayCap: '2025-04-20',
+    ngayBatDau: '2025-04-20',
+    ngayKetThuc: '2026-04-20',
+    trangThai: 'HieuLuc',
+    ghiChu: 'Cấp bảo hiểm TNDS bắt buộc theo xe Lead 125.',
+  },
+  {
+    id: 'BH005',
+    soGCN: 'GCN-BV-2026-2391',
+    customerId: 'KH005',
+    hoTenKH: 'Hoàng Văn Giang',
+    soDienThoai: '0945678901',
+    email: 'hoangvanem92@gmail.com',
+    diaChi: '56 Điện Biên Phủ, Bình Thạnh, TP.HCM',
+    vehicleId: 'XE005',
+    tenXe: 'Yamaha Exciter 155 VVA',
+    bienSo: '59S2-345.67',
+    soKhung: 'MHYEX155CB5678901',
+    soMay: 'EX155E456789',
+    packageType: 'TAI_NAN_NGUOI',
+    tenGoi: 'Bảo hiểm Tai nạn người ngồi trên xe',
+    thoiHanNam: 2,
+    phiBaoHiem: 38000,
+    nhaBaoHiem: 'Tổng Công ty Bảo hiểm Bảo Việt',
+    ngayCap: '2026-10-04',
+    ngayBatDau: '2026-10-04',
+    ngayKetThuc: '2028-10-04',
+    trangThai: 'ChoDuyet',
+    ghiChu: 'Khách hàng gửi yêu cầu đăng ký bảo hiểm tai nạn lái phụ xe qua Cổng cá nhân.',
+  },
+  {
+    id: 'BH006',
+    soGCN: 'GCN-BV-2026-2392',
+    customerId: 'KH001',
+    hoTenKH: 'Nguyễn Văn An',
+    soDienThoai: '0901234567',
+    email: 'nguyenvanan@gmail.com',
+    diaChi: '12 Lê Thường Kiệt, Q.1, TP.HCM',
+    vehicleId: 'XE001',
+    tenXe: 'Honda SH 160i ABS',
+    bienSo: '51K-123.45',
+    soKhung: 'RLHKD160CB1234567',
+    soMay: 'KD160E123456',
+    packageType: 'TNDS_BAT_BUOC',
+    tenGoi: 'Bảo hiểm TNDS Bắt buộc xe máy',
+    thoiHanNam: 2,
+    phiBaoHiem: 120000,
+    nhaBaoHiem: 'Tổng Công ty Bảo hiểm Bảo Việt',
+    ngayCap: '2026-10-05',
+    ngayBatDau: '2026-10-05',
+    ngayKetThuc: '2028-10-05',
+    trangThai: 'ChoDuyet',
+    ghiChu: 'Yêu cầu gia hạn thêm 2 năm TNDS bắt buộc từ khách hàng.',
+  },
 ];
 
 /* ───────────────────────── FEEDBACK ───────────────────────── */

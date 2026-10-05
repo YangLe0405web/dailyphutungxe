@@ -15,6 +15,7 @@ import PartsPage from './pages/admin/Parts';
 import VehiclesPage from './pages/admin/Vehicles';
 import SuppliersPage from './pages/admin/Suppliers';
 import StaffRolesPage from './pages/admin/StaffRoles';
+import InsurancePage from './pages/admin/Insurance';
 
 // Customer pages
 import PartsStore from './pages/customer/PartsStore';
@@ -25,7 +26,7 @@ import VehiclesShowroom from './pages/customer/VehiclesShowroom';
 import SurveyTaking from './pages/customer/SurveyTaking';
 
 type Mode = 'admin' | 'customer' | null;
-type AdminPage = 'dashboard' | 'sales' | 'appointments' | 'customers' | 'feedback' | 'reports' | 'parts' | 'vehicles' | 'suppliers' | 'staff';
+type AdminPage = 'dashboard' | 'sales' | 'appointments' | 'insurance' | 'customers' | 'feedback' | 'reports' | 'parts' | 'vehicles' | 'suppliers' | 'staff';
 type CustomerPage = 'store' | 'vehicles' | 'booking' | 'dashboard' | 'checkout' | 'survey';
 
 
@@ -266,6 +267,7 @@ export default function App() {
             onTabChange={(tab) => setAdminPage(tab === 'orders' ? 'sales' : 'appointments')}
           />
         )}
+        {adminPage === 'insurance' && <InsurancePage />}
         {adminPage === 'customers' && <CustomersPage />}
         {adminPage === 'feedback' && <FeedbackPage currentStaff={currentStaff} />}
         {adminPage === 'reports' && <ReportsPage />}

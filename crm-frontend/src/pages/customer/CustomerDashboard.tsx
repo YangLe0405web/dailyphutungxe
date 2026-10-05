@@ -13,6 +13,7 @@ import {
   ENGINE_CAPACITIES,
   formatVietnameseLicensePlate,
   isValidLicensePlate,
+  INSURANCE_PACKAGES,
   type OrderStatus,
   type AppointmentStatus,
   type Vehicle,
@@ -20,8 +21,11 @@ import {
   type Survey,
   type Order,
   type Appointment,
+  type InsuranceContract,
+  type InsurancePackageType,
+  type InsuranceStatus,
 } from '../../data/mockData';
-import { customerApi, vehicleApi, feedbackApi, surveyApi, orderApi, appointmentApi } from '../../services/api';
+import { customerApi, vehicleApi, feedbackApi, surveyApi, orderApi, appointmentApi, insuranceApi } from '../../services/api';
 import ImageUploader from '../../components/shared/ImageUploader';
 
 interface CustomerDashboardProps {
@@ -48,6 +52,13 @@ const apptStatusConfig: Record<AppointmentStatus, { label: string; color: string
   ChoDuyet: { label: 'Chờ xác nhận', color: '#d97706', bg: '#fef3c7' },
   DangThucHien: { label: 'Đang thực hiện', color: '#2563eb', bg: '#dbeafe' },
   HoanThanh: { label: 'Đã hoàn thành', color: 'var(--color-success)', bg: 'var(--color-success-bg)' },
+};
+
+const insStatusConfig: Record<InsuranceStatus, { label: string; color: string; bg: string }> = {
+  HieuLuc: { label: 'Còn hiệu lực', color: '#16a34a', bg: '#dcfce7' },
+  ChoDuyet: { label: 'Chờ duyệt hồ sơ', color: '#d97706', bg: '#fef3c7' },
+  HetHan: { label: 'Hết hạn', color: '#71717a', bg: '#f4f4f5' },
+  TuChoi: { label: 'Bị từ chối', color: '#dc2626', bg: '#fee2e2' },
 };
 
 function StatusBadge({ label, color, bg }: { label: string; color: string; bg: string }) {
@@ -646,9 +657,29 @@ function EditProfileModal({ customer, onClose, onSave }: { customer: Customer; o
 }
 
 export default function CustomerDashboard({ currentCustomer, onNavigateToShowroom, onNavigateToSurvey, onCustomerChange }: CustomerDashboardProps) {
-  const [tab, setTab] = useState<0 | 1 | 2>(0);
+  const [tab, setTab] = useState<number>(0);
   const [myVehicles, setMyVehicles] = useState<Vehicle[]>([]);
   const [activeVehicleIndex, setActiveVehicleIndex] = useState(0);
+
+  // Insurance state (BHX02, BHX03, BHX04)
+  const [myInsurances, setMyInsurances] = useState<InsuranceContract[]>([]);
+  const [showInsuranceModal, setShowInsuranceModal] = useState(false);
+  const [viewingInsuranceContract, setViewingInsuranceContract] = useState<InsuranceContract | null>(null);
+  const [insFilterStatus, setInsFilterStatus] = useState<InsuranceStatus | 'All'>('All');
+  const [insForm, setInsForm] = useState({
+    vehicleId: '',
+    customTenXe: '',
+    customBienSo: '',
+    customSoKhung: '',
+    customSoMay: '',
+    goiBaoHiem: 'TNDS_BAT_BUOC' as InsurancePackageType,
+    thoiHanNam: 1,
+    nhaBaoHiem: 'Tổng Công ty Bảo hiểm Bảo Việt',
+    ghiChu: '',
+  });
+  const [insFormErrors, setInsFormErrors] = useState<Record<string, string>>({});
+  const [insSubmitting, setInsSubmitting] = useState(false);
+  const [insSuccessToast, setInsSuccessToast] = useState(false);
 
   const [showWarrantyModal, setShowWarrantyModal] = useState(false);
   const [packageChoice, setPackageChoice] = useState('12');
@@ -680,6 +711,10 @@ export default function CustomerDashboard({ currentCustomer, onNavigateToShowroo
     appointmentApi.getAll().then(data => {
       if (data && data.length > 0) setAllAppts(data);
     });
+    try {
+      const insList = insuranceApi.getByCustomerId(currentCustomer.id);
+      if (insList) setMyInsurances(insList);
+    } catch {}
     vehicleApi.getAll().then(data => {
       if (data) {
         const cIdNum = parseInt(currentCustomer.id.replace(/\D/g, ''), 10);
@@ -700,6 +735,7 @@ export default function CustomerDashboard({ currentCustomer, onNavigateToShowroo
       setMyVehicles([]);
       setAllOrders([]);
       setAllAppts([]);
+      setMyInsurances([]);
       return;
     }
     loadCustomerData();
@@ -809,6 +845,7 @@ export default function CustomerDashboard({ currentCustomer, onNavigateToShowroo
 
   const tabs = [
     { label: `Đơn mua hàng (${myOrders.length})`, icon: '📦' },
+    { label: `Bảo hiểm xe (${myInsurances.length})`, icon: '🛡️' },
     { label: `Lịch hẹn (${myAppts.length})`, icon: '📅' },
     { label: `Khảo sát (${pendingSurveysCount > 0 ? `${pendingSurveysCount} mới` : '0'})`, icon: '⭐' },
   ];
@@ -919,6 +956,126 @@ export default function CustomerDashboard({ currentCustomer, onNavigateToShowroo
     setRequestSent(true);
   };
 
+  const filteredInsurances = useMemo(() => {
+    return myInsurances.filter(c => {
+      if (insFilterStatus !== 'All' && c.trangThai !== insFilterStatus) return false;
+      return true;
+    });
+  }, [myInsurances, insFilterStatus]);
+
+  const handleOpenRegisterInsurance = (veh?: Vehicle) => {
+    const v = veh || currentVehicle;
+    if (v) {
+      setInsForm({
+        vehicleId: v.id,
+        customTenXe: v.tenXe,
+        customBienSo: v.bienSo,
+        customSoKhung: v.soKhung || '',
+        customSoMay: '',
+        goiBaoHiem: 'TNDS_BAT_BUOC',
+        thoiHanNam: 1,
+        nhaBaoHiem: 'Tổng Công ty Bảo hiểm Bảo Việt',
+        ghiChu: '',
+      });
+    } else {
+      setInsForm({
+        vehicleId: 'custom',
+        customTenXe: '',
+        customBienSo: '',
+        customSoKhung: '',
+        customSoMay: '',
+        goiBaoHiem: 'TNDS_BAT_BUOC',
+        thoiHanNam: 1,
+        nhaBaoHiem: 'Tổng Công ty Bảo hiểm Bảo Việt',
+        ghiChu: '',
+      });
+    }
+    setInsFormErrors({});
+    setShowInsuranceModal(true);
+  };
+
+  const handleRegisterInsurance = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentCustomer) return;
+    const errors: Record<string, string> = {};
+
+    let effectiveTenXe = '';
+    let effectiveBienSo = '';
+    let effectiveSoKhung = '';
+    let effectiveSoMay = '';
+
+    if (insForm.vehicleId && insForm.vehicleId !== 'custom') {
+      const foundV = myVehicles.find(v => v.id === insForm.vehicleId);
+      if (foundV) {
+        effectiveTenXe = foundV.tenXe;
+        effectiveBienSo = foundV.bienSo;
+        effectiveSoKhung = foundV.soKhung || '';
+      }
+    } else {
+      if (!insForm.customTenXe.trim()) errors.customTenXe = 'Vui lòng nhập tên xe';
+      if (!insForm.customBienSo.trim()) {
+        errors.customBienSo = 'Vui lòng nhập biển số xe';
+      } else if (!isValidLicensePlate(insForm.customBienSo)) {
+        errors.customBienSo = 'Biển số không hợp lệ (VD: 51K-123.45)';
+      }
+      effectiveTenXe = insForm.customTenXe.trim();
+      effectiveBienSo = formatVietnameseLicensePlate(insForm.customBienSo.trim());
+      effectiveSoKhung = insForm.customSoKhung.trim();
+      effectiveSoMay = insForm.customSoMay.trim();
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setInsFormErrors(errors);
+      return;
+    }
+
+    const pkg = INSURANCE_PACKAGES.find(p => p.id === insForm.goiBaoHiem) || INSURANCE_PACKAGES[0];
+    const fee = insForm.thoiHanNam === 2 ? pkg.phi2Nam : pkg.phi1Nam * insForm.thoiHanNam;
+    const start = new Date();
+    const end = new Date(start);
+    end.setFullYear(end.getFullYear() + insForm.thoiHanNam);
+
+    setInsSubmitting(true);
+    try {
+      const newContract = insuranceApi.create({
+        customerId: currentCustomer.id,
+        vehicleId: insForm.vehicleId !== 'custom' && insForm.vehicleId ? insForm.vehicleId : 'CUSTOM-VEH',
+        hoTenKH: currentCustomer.hoTen,
+        soDienThoai: currentCustomer.soDienThoai,
+        email: currentCustomer.email || 'customer@motoshop.vn',
+        diaChi: currentCustomer.diaChi || 'TP. Hồ Chí Minh',
+        tenXe: effectiveTenXe,
+        bienSo: effectiveBienSo,
+        soKhung: effectiveSoKhung || 'RLHKC' + Date.now().toString().slice(-8),
+        soMay: effectiveSoMay || 'KC' + Date.now().toString().slice(-7),
+        packageType: insForm.goiBaoHiem,
+        tenGoi: pkg.tenGoi,
+        nhaBaoHiem: insForm.nhaBaoHiem,
+        ngayCap: new Date().toISOString().split('T')[0],
+        ngayBatDau: start.toISOString().split('T')[0],
+        ngayKetThuc: end.toISOString().split('T')[0],
+        thoiHanNam: insForm.thoiHanNam,
+        phiBaoHiem: fee,
+        trangThai: 'ChoDuyet',
+        ghiChu: insForm.ghiChu.trim() || undefined,
+      });
+
+      setMyInsurances(prev => [newContract, ...prev]);
+      setShowInsuranceModal(false);
+      setInsSuccessToast(true);
+      setTimeout(() => setInsSuccessToast(false), 5000);
+      setTab(1); // Switch to Insurance tab
+    } catch (err) {
+      console.error('Failed to create insurance contract:', err);
+    } finally {
+      setInsSubmitting(false);
+    }
+  };
+
+  const handlePrintCertificate = () => {
+    window.print();
+  };
+
   return (
     <div style={{ background: 'var(--color-zinc-50)', minHeight: '100vh' }}>
       {/* Header */}
@@ -981,7 +1138,7 @@ export default function CustomerDashboard({ currentCustomer, onNavigateToShowroo
               </div>
             </div>
             <button
-              onClick={() => setTab(1)}
+              onClick={() => setTab(2)}
               className="px-4 py-2 rounded-xl text-xs font-bold bg-blue-600 text-white hover:bg-blue-700 transition cursor-pointer shadow-sm"
             >
               Xem chi tiết lịch hẹn →
@@ -1000,7 +1157,7 @@ export default function CustomerDashboard({ currentCustomer, onNavigateToShowroo
               </div>
             </div>
             <button
-              onClick={() => (onNavigateToSurvey ? onNavigateToSurvey() : setTab(2))}
+              onClick={() => (onNavigateToSurvey ? onNavigateToSurvey() : setTab(3))}
               className="px-4 py-1.5 rounded-xl text-xs font-bold bg-amber-600 text-white hover:bg-amber-700 shadow transition cursor-pointer"
             >
               Làm khảo sát ngay →
@@ -1098,15 +1255,24 @@ export default function CustomerDashboard({ currentCustomer, onNavigateToShowroo
                             ⚡ Gia hạn bảo hành
                           </button>
                         ) : null}
+
+                        <button
+                          type="button"
+                          onClick={() => handleOpenRegisterInsurance(currentVehicle)}
+                          className="mt-2 w-full py-1.5 rounded-lg text-xs font-bold bg-white/10 hover:bg-white/20 text-white border border-white/20 transition flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          <span>🛡️ Đăng ký bảo hiểm xe</span>
+                        </button>
                       </>
                     )}
                   </div>
               </div>
             </div>
             {/* Stats row */}
-            <div className="grid grid-cols-3 divide-x" style={{ borderColor: 'var(--color-zinc-200)' }}>
+            <div className="grid grid-cols-2 sm:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x border-t border-zinc-200" style={{ borderColor: 'var(--color-zinc-200)' }}>
               {[
                 { label: 'Đơn hàng', value: myOrders.length, color: 'var(--color-zinc-900)' },
+                { label: 'Bảo hiểm xe', value: myInsurances.length, color: '#16a34a' },
                 { label: 'Lịch hẹn', value: myAppts.length, color: 'var(--color-zinc-900)' },
                 { label: 'Chi tiêu', value: formatVND(currentCustomer.tongChiTieu), color: 'var(--color-red-700)' },
               ].map((s, i) => (
@@ -1178,7 +1344,7 @@ export default function CustomerDashboard({ currentCustomer, onNavigateToShowroo
         {/* Tabs */}
         <div className="flex gap-1 mb-5 p-1 rounded-xl" style={{ background: 'var(--color-zinc-200)' }}>
           {tabs.map((t, i) => (
-            <button key={i} onClick={() => setTab(i as 0 | 1 | 2)}
+            <button key={i} onClick={() => setTab(i)}
               className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-600 transition-all relative"
               style={{
                 background: tab === i ? 'white' : 'transparent',
@@ -1188,7 +1354,7 @@ export default function CustomerDashboard({ currentCustomer, onNavigateToShowroo
               }}>
               <span>{t.icon}</span>
               <span className="hidden sm:inline">{t.label}</span>
-              {i === 2 && pendingSurveysCount > 0 && (
+              {i === 3 && pendingSurveysCount > 0 && (
                 <span className="w-2 h-2 rounded-full bg-red-600 absolute top-2 right-2 animate-ping" />
               )}
             </button>
@@ -1262,7 +1428,184 @@ export default function CustomerDashboard({ currentCustomer, onNavigateToShowroo
           </div>
         )}
 
+        {/* ── TAB 1: BẢO HIỂM XE (BHX02, BHX03, BHX04) ── */}
         {tab === 1 && (
+          <div className="flex flex-col gap-5">
+            {/* Action Bar & Summary */}
+            <div className="flex items-center justify-between flex-wrap gap-3 bg-white p-4 sm:p-5 rounded-2xl border border-zinc-200 shadow-2xs">
+              <div>
+                <div className="font-bold text-base text-zinc-900" style={{ fontFamily: 'var(--font-display)', letterSpacing: '0.03em' }}>
+                  🛡️ BẢO HIỂM XE MÁY ĐIỆN TỬ
+                </div>
+                <div className="text-xs text-zinc-500 mt-0.5">
+                  Tra cứu hợp đồng, tải Giấy chứng nhận điện tử (GCN) và đăng ký bảo hiểm trực tuyến
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handleOpenRegisterInsurance()}
+                className="px-4 py-2.5 rounded-xl text-xs font-bold bg-red-700 text-white hover:bg-red-800 shadow-md transition flex items-center gap-2 cursor-pointer"
+              >
+                <span>➕ ĐĂNG KÝ BẢO HIỂM MỚI</span>
+              </button>
+            </div>
+
+            {/* Filter Pills */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs font-semibold">
+              <span className="text-zinc-500">Trạng thái:</span>
+              {(['All', 'HieuLuc', 'ChoDuyet', 'HetHan'] as const).map(st => {
+                const count = st === 'All' ? myInsurances.length : myInsurances.filter(c => c.trangThai === st).length;
+                const label = st === 'All' ? 'Tất cả' : insStatusConfig[st].label;
+                const active = insFilterStatus === st;
+                return (
+                  <button
+                    key={st}
+                    onClick={() => setInsFilterStatus(st)}
+                    className={`px-3 py-1.5 rounded-xl transition cursor-pointer font-medium ${
+                      active
+                        ? 'bg-zinc-900 text-white shadow-sm'
+                        : 'bg-white text-zinc-600 hover:bg-zinc-100 border border-zinc-200'
+                    }`}
+                  >
+                    {label} ({count})
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Contracts List (BHX03) */}
+            {filteredInsurances.length === 0 ? (
+              <div className="text-center py-14 bg-white rounded-2xl border border-zinc-200 p-6 flex flex-col items-center">
+                <div className="text-4xl mb-3">🛡️</div>
+                <h4 className="font-bold text-zinc-800 text-sm mb-1">Chưa có hợp đồng bảo hiểm nào</h4>
+                <p className="text-xs text-zinc-500 max-w-md mb-4">
+                  {insFilterStatus !== 'All'
+                    ? 'Không có hợp đồng nào phù hợp với bộ lọc này.'
+                    : 'Bạn chưa đăng ký hợp đồng bảo hiểm xe máy nào. Đăng ký ngay để nhận Giấy chứng nhận điện tử hợp chuẩn lưu hành giao thông.'}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => handleOpenRegisterInsurance()}
+                  className="px-5 py-2.5 rounded-xl text-xs font-bold bg-red-700 text-white hover:bg-red-800 shadow transition"
+                >
+                  + Đăng ký mua bảo hiểm ngay
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {filteredInsurances.map(c => {
+                  const cfg = insStatusConfig[c.trangThai] || { label: c.trangThai, color: '#71717a', bg: '#f4f4f5' };
+                  const daysLeft = Math.ceil((new Date(c.ngayKetThuc).getTime() - Date.now()) / 86400000);
+                  return (
+                    <div
+                      key={c.id}
+                      className="rounded-2xl overflow-hidden bg-white border border-zinc-200 shadow-2xs transition hover:border-zinc-300"
+                    >
+                      {/* Top Bar */}
+                      <div className="p-4 sm:p-5 border-b border-zinc-100 flex items-center justify-between flex-wrap gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-red-50 text-red-700 flex items-center justify-center font-bold text-lg">
+                            🛡️
+                          </div>
+                          <div>
+                            <div className="font-bold text-zinc-900 text-sm sm:text-base flex items-center gap-2">
+                              <span>{c.tenGoi}</span>
+                              <span className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-zinc-100 text-zinc-600 font-bold">
+                                #{c.id}
+                              </span>
+                            </div>
+                            <div className="text-xs text-zinc-500 font-mono mt-0.5">
+                              Số GCN: <strong className="text-zinc-700 font-bold">{c.soGCN}</strong> · Đơn vị: {c.nhaBaoHiem}
+                            </div>
+                          </div>
+                        </div>
+
+                        <StatusBadge {...cfg} />
+                      </div>
+
+                      {/* Content details */}
+                      <div className="p-4 sm:p-5 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs bg-zinc-50/50">
+                        {/* Column 1: Phương tiện */}
+                        <div className="space-y-1.5 p-3 rounded-xl bg-white border border-zinc-200/80">
+                          <div className="text-[10px] font-mono uppercase font-bold text-zinc-400">🏍️ Thông tin xe</div>
+                          <div className="font-bold text-zinc-900 text-sm">{c.tenXe}</div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-extrabold text-red-700 text-xs px-2 py-0.5 rounded bg-red-50 border border-red-200">
+                              {c.bienSo}
+                            </span>
+                          </div>
+                          <div className="text-zinc-500 font-mono text-[11px] truncate">
+                            Số khung: {c.soKhung || 'Chưa cập nhật'}
+                          </div>
+                        </div>
+
+                        {/* Column 2: Thời hạn & Hiệu lực */}
+                        <div className="space-y-1.5 p-3 rounded-xl bg-white border border-zinc-200/80">
+                          <div className="text-[10px] font-mono uppercase font-bold text-zinc-400">📅 Thời hạn bảo hiểm</div>
+                          <div className="font-bold text-zinc-900 text-sm">
+                            {c.thoiHanNam} năm
+                            {c.trangThai === 'HieuLuc' && (
+                              <span className={`ml-2 text-[11px] font-semibold ${daysLeft < 30 ? 'text-amber-600' : 'text-emerald-700'}`}>
+                                (còn {daysLeft} ngày)
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-zinc-600 font-mono text-[11px]">
+                            Từ: <strong>{c.ngayBatDau}</strong>
+                          </div>
+                          <div className="text-zinc-600 font-mono text-[11px]">
+                            Đến: <strong>{c.ngayKetThuc}</strong>
+                          </div>
+                        </div>
+
+                        {/* Column 3: Chi phí & Hành động (BHX04) */}
+                        <div className="space-y-2 p-3 rounded-xl bg-white border border-zinc-200/80 flex flex-col justify-between">
+                          <div>
+                            <div className="text-[10px] font-mono uppercase font-bold text-zinc-400">💰 Phí bảo hiểm</div>
+                            <div className="font-extrabold text-red-700 text-base font-mono">
+                              {formatVND(c.phiBaoHiem)}
+                            </div>
+                            <div className="text-[11px] text-zinc-500">
+                              {c.trangThai === 'HieuLuc' ? '✓ Đã thanh toán' : 'Chờ xác nhận'}
+                            </div>
+                          </div>
+
+                          <div className="pt-2">
+                            {c.trangThai === 'HieuLuc' ? (
+                              <button
+                                type="button"
+                                onClick={() => setViewingInsuranceContract(c)}
+                                className="w-full py-2 px-3 rounded-xl text-xs font-bold bg-zinc-900 text-white hover:bg-zinc-800 transition shadow flex items-center justify-center gap-1.5 cursor-pointer"
+                              >
+                                <span>📄 Xem & In GCN (PDF)</span>
+                              </button>
+                            ) : c.trangThai === 'ChoDuyet' ? (
+                              <div className="text-amber-800 bg-amber-50 p-2 rounded-lg border border-amber-200 text-[11px] text-center font-medium">
+                                ⏳ Đang duyệt hồ sơ cấp GCN
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenRegisterInsurance()}
+                                className="w-full py-2 px-3 rounded-xl text-xs font-bold bg-red-700 text-white hover:bg-red-800 transition shadow flex items-center justify-center gap-1.5 cursor-pointer"
+                              >
+                                <span>🔄 Mua gói bảo hiểm mới</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── TAB 2: LỊCH HẸN DỊCH VỤ ── */}
+        {tab === 2 && (
           <div className="flex flex-col gap-4">
             {myAppts.length === 0 ? (
               <div className="text-center py-12 text-zinc-400 bg-white rounded-2xl border border-zinc-200">Chưa có lịch hẹn nào</div>
@@ -1317,7 +1660,8 @@ export default function CustomerDashboard({ currentCustomer, onNavigateToShowroo
           </div>
         )}
 
-        {tab === 2 && (
+        {/* ── TAB 3: KHẢO SÁT & ĐÁNH GIÁ ── */}
+        {tab === 3 && (
           <div>
             {onNavigateToSurvey && (
               <div className="mb-4 flex justify-end">
@@ -1630,6 +1974,439 @@ export default function CustomerDashboard({ currentCustomer, onNavigateToShowroo
                 Xác nhận đăng ký
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ────────────────────────────────────────────────────────── */}
+      {/* ── MODAL ĐĂNG KÝ BẢO HIỂM XE MỚI (BHX02) ── */}
+      {/* ────────────────────────────────────────────────────────── */}
+      {showInsuranceModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/70 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[92vh] overflow-y-auto shadow-2xl border border-zinc-200 p-6 sm:p-7 space-y-5 animate-in fade-in zoom-in-95">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
+              <div>
+                <h3
+                  className="text-base sm:text-lg font-extrabold text-zinc-900 uppercase flex items-center gap-2"
+                  style={{ fontFamily: 'var(--font-display)', letterSpacing: '0.04em' }}
+                >
+                  <span>🛡️ ĐĂNG KÝ BẢO HIỂM XE MÁY</span>
+                </h3>
+                <p className="text-xs text-zinc-500 mt-0.5">
+                  Bảo hiểm điện tử chuẩn NĐ 67/2023/NĐ-CP · Cấp giấy chứng nhận tức thì
+                </p>
+              </div>
+              <button
+                onClick={() => setShowInsuranceModal(false)}
+                className="w-8 h-8 rounded-full bg-zinc-100 text-zinc-500 hover:text-zinc-900 flex items-center justify-center font-bold text-sm cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleRegisterInsurance} className="space-y-4">
+              {/* 1. Chọn phương tiện */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-zinc-700 mb-1.5 font-mono">
+                  1. CHỌN PHƯƠNG TIỆN BẢO HIỂM <span className="text-red-600">*</span>
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
+                  {myVehicles.map(v => (
+                    <label
+                      key={v.id}
+                      className={`p-3 rounded-xl border text-xs cursor-pointer transition flex items-center gap-2.5 ${
+                        insForm.vehicleId === v.id
+                          ? 'border-red-600 bg-red-50/50 text-red-950 font-semibold'
+                          : 'border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="insVeh"
+                        checked={insForm.vehicleId === v.id}
+                        onChange={() => setInsForm({ ...insForm, vehicleId: v.id })}
+                        className="text-red-600"
+                      />
+                      <div>
+                        <div className="font-bold">{v.tenXe}</div>
+                        <div className="text-[11px] font-mono text-zinc-500">BS: {v.bienSo}</div>
+                      </div>
+                    </label>
+                  ))}
+
+                  <label
+                    className={`p-3 rounded-xl border text-xs cursor-pointer transition flex items-center gap-2.5 ${
+                      insForm.vehicleId === 'custom' || (!insForm.vehicleId && myVehicles.length === 0)
+                        ? 'border-red-600 bg-red-50/50 text-red-950 font-semibold'
+                        : 'border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="insVeh"
+                      checked={insForm.vehicleId === 'custom' || (!insForm.vehicleId && myVehicles.length === 0)}
+                      onChange={() => setInsForm({ ...insForm, vehicleId: 'custom' })}
+                      className="text-red-600"
+                    />
+                    <div>
+                      <div className="font-bold">+ Nhập xe khác</div>
+                      <div className="text-[11px] text-zinc-500">Chưa có trong danh sách sở hữu</div>
+                    </div>
+                  </label>
+                </div>
+
+                {/* Nhập xe tùy chỉnh nếu chọn "custom" */}
+                {(insForm.vehicleId === 'custom' || myVehicles.length === 0) && (
+                  <div className="p-3.5 rounded-xl bg-zinc-50 border border-zinc-200 space-y-2.5 mt-2 animate-in fade-in">
+                    <div className="text-[11px] font-bold text-zinc-700 uppercase font-mono">
+                      Thông tin xe ngoài danh sách:
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-zinc-600 mb-1">Tên xe *</label>
+                        <input
+                          type="text"
+                          placeholder="VD: Honda SH 160i ABS"
+                          value={insForm.customTenXe}
+                          onChange={e => setInsForm({ ...insForm, customTenXe: e.target.value })}
+                          className={`w-full p-2 rounded-lg border text-xs bg-white ${
+                            insFormErrors.customTenXe ? 'border-red-500' : 'border-zinc-300'
+                          }`}
+                        />
+                        {insFormErrors.customTenXe && (
+                          <span className="text-[10px] text-red-600 font-semibold">{insFormErrors.customTenXe}</span>
+                        )}
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-zinc-600 mb-1">Biển số xe *</label>
+                        <input
+                          type="text"
+                          placeholder="VD: 51K-123.45"
+                          value={insForm.customBienSo}
+                          onChange={e => {
+                            const formatted = formatVietnameseLicensePlate(e.target.value);
+                            setInsForm({ ...insForm, customBienSo: formatted });
+                          }}
+                          className={`w-full p-2 rounded-lg border text-xs bg-white font-mono uppercase ${
+                            insFormErrors.customBienSo ? 'border-red-500' : 'border-zinc-300'
+                          }`}
+                        />
+                        {insFormErrors.customBienSo && (
+                          <span className="text-[10px] text-red-600 font-semibold">{insFormErrors.customBienSo}</span>
+                        )}
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-zinc-600 mb-1">Số khung</label>
+                        <input
+                          type="text"
+                          placeholder="Để trống nếu chưa có"
+                          value={insForm.customSoKhung}
+                          onChange={e => setInsForm({ ...insForm, customSoKhung: e.target.value.toUpperCase() })}
+                          className="w-full p-2 rounded-lg border border-zinc-300 text-xs bg-white font-mono uppercase"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-zinc-600 mb-1">Số máy</label>
+                        <input
+                          type="text"
+                          placeholder="Để trống nếu chưa có"
+                          value={insForm.customSoMay}
+                          onChange={e => setInsForm({ ...insForm, customSoMay: e.target.value.toUpperCase() })}
+                          className="w-full p-2 rounded-lg border border-zinc-300 text-xs bg-white font-mono uppercase"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* 2. Chọn Gói bảo hiểm */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-zinc-700 mb-1.5 font-mono">
+                  2. CHỌN GÓI BẢO HIỂM <span className="text-red-600">*</span>
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {INSURANCE_PACKAGES.map(pkg => {
+                    const sel = insForm.goiBaoHiem === pkg.id;
+                    return (
+                      <div
+                        key={pkg.id}
+                        onClick={() => setInsForm({ ...insForm, goiBaoHiem: pkg.id })}
+                        className={`p-3.5 rounded-2xl border text-xs cursor-pointer transition relative flex flex-col justify-between ${
+                          sel
+                            ? 'border-red-600 bg-red-50/40 shadow-xs ring-1 ring-red-600'
+                            : 'border-zinc-200 bg-white hover:border-zinc-300'
+                        }`}
+                      >
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="font-extrabold text-zinc-900">{pkg.tenGoi}</span>
+                            <span className="font-extrabold text-red-700 font-mono text-xs">
+                              {formatVND(pkg.phi1Nam)}/năm
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-zinc-500 leading-relaxed mb-2">{pkg.moTa}</p>
+                        </div>
+                        <div className="text-[10px] text-zinc-600 font-medium pt-2 border-t border-zinc-100 flex items-center justify-between">
+                          <span>Quyền lợi: {pkg.quyenLoi[0]}</span>
+                          <span className={`font-bold ${sel ? 'text-red-700' : 'text-zinc-400'}`}>
+                            {sel ? '✓ Đã chọn' : 'Chọn'}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 3. Thời hạn & Đơn vị bảo hiểm */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-zinc-700 mb-1 font-mono">
+                    3. THỜI HẠN BẢO HIỂM
+                  </label>
+                  <select
+                    value={insForm.thoiHanNam}
+                    onChange={e => setInsForm({ ...insForm, thoiHanNam: Number(e.target.value) })}
+                    className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs bg-white font-medium focus:outline-none focus:border-red-600"
+                  >
+                    <option value={1}>1 năm (Phổ thông)</option>
+                    <option value={2}>2 năm (Tiết kiệm thời gian)</option>
+                    <option value={3}>3 năm (Dài hạn ưu đãi)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-zinc-700 mb-1 font-mono">
+                    4. ĐƠN VỊ BẢO HIỂM
+                  </label>
+                  <select
+                    value={insForm.nhaBaoHiem}
+                    onChange={e => setInsForm({ ...insForm, nhaBaoHiem: e.target.value })}
+                    className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs bg-white font-medium focus:outline-none focus:border-red-600"
+                  >
+                    <option value="Tổng Công ty Bảo hiểm Bảo Việt">Bảo hiểm Bảo Việt (Khuyên dùng)</option>
+                    <option value="Tổng Công ty Cổ phần Bảo hiểm PVI">Bảo hiểm PVI</option>
+                    <option value="Tổng Công ty Cổ phần Bảo hiểm Bưu điện (PTI)">Bảo hiểm Bưu điện PTI</option>
+                    <option value="Tổng Công ty Cổ phần Bảo hiểm Quân đội (MIC)">Bảo hiểm Quân đội MIC</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* 4. Tổng phí tính toán */}
+              {(() => {
+                const selectedPkg = INSURANCE_PACKAGES.find(p => p.id === insForm.goiBaoHiem) || INSURANCE_PACKAGES[0];
+                const totalFee = insForm.thoiHanNam === 2 ? selectedPkg.phi2Nam : selectedPkg.phi1Nam * insForm.thoiHanNam;
+                return (
+                  <div className="p-4 rounded-2xl bg-zinc-900 text-white flex items-center justify-between">
+                    <div>
+                      <div className="text-[11px] font-mono text-zinc-400 uppercase">TỔNG PHÍ BẢO HIỂM DỰ KIẾN:</div>
+                      <div className="text-xs text-zinc-300 mt-0.5">
+                        {selectedPkg.tenGoi} · {insForm.thoiHanNam} năm
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xl sm:text-2xl font-extrabold text-red-400 font-mono">
+                        {formatVND(totalFee)}
+                      </div>
+                      <div className="text-[10px] text-zinc-400">Đã bao gồm VAT & lệ phí cấp GCN</div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-zinc-100">
+                <button
+                  type="button"
+                  onClick={() => setShowInsuranceModal(false)}
+                  className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-zinc-100 text-zinc-700 hover:bg-zinc-200 transition cursor-pointer"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={insSubmitting}
+                  className="px-6 py-2.5 rounded-xl text-xs font-bold bg-red-700 text-white hover:bg-red-800 shadow-md transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                  style={{ fontFamily: 'var(--font-display)', letterSpacing: '0.04em' }}
+                >
+                  <span>{insSubmitting ? 'Đang xử lý...' : 'XÁC NHẬN ĐĂNG KÝ BẢO HIỂM ➔'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ────────────────────────────────────────────────────────── */}
+      {/* ── MODAL XEM CHI TIẾT & TẢI GCN BẢO HIỂM ĐIỆN TỬ (BHX04) ── */}
+      {/* ────────────────────────────────────────────────────────── */}
+      {viewingInsuranceContract && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/80 backdrop-blur-xs print:p-0 print:bg-white print:fixed print:inset-0">
+          <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[92vh] overflow-y-auto shadow-2xl border border-zinc-200 p-6 sm:p-8 space-y-6 print:border-none print:shadow-none print:max-w-none print:p-6">
+            {/* Top Toolbar (Hide during print) */}
+            <div className="flex items-center justify-between border-b border-zinc-100 pb-3 print:hidden">
+              <div className="flex items-center gap-2">
+                <span className="text-red-700 font-mono font-bold text-xs">HỢP ĐỒNG #{viewingInsuranceContract.id}</span>
+                <span className="text-zinc-400 font-mono">|</span>
+                <span className="text-zinc-600 font-mono text-xs font-semibold">{viewingInsuranceContract.soGCN}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handlePrintCertificate}
+                  className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-zinc-900 text-white hover:bg-zinc-800 transition shadow flex items-center gap-1.5 cursor-pointer"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="6 9 6 2 18 2 18 9" />
+                    <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+                    <rect x="6" y="14" width="12" height="8" />
+                  </svg>
+                  <span>IN / TẢI GIẤY CHỨNG NHẬN (PDF)</span>
+                </button>
+                <button
+                  onClick={() => setViewingInsuranceContract(null)}
+                  className="w-8 h-8 rounded-full bg-zinc-100 text-zinc-500 hover:text-zinc-900 flex items-center justify-center font-bold text-sm cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            {/* MẪU GIẤY CHỨNG NHẬN BẢO HIỂM ĐIỆN TỬ CHUẨN */}
+            <div className="border-2 border-red-700/80 rounded-2xl p-6 sm:p-8 relative bg-linear-to-b from-red-50/20 via-white to-red-50/10">
+              {/* Header Quốc hiệu */}
+              <div className="text-center space-y-1 pb-4 border-b border-zinc-200">
+                <div className="text-[11px] font-bold tracking-wider text-zinc-800 uppercase font-sans">
+                  CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM
+                </div>
+                <div className="text-[10px] font-semibold text-zinc-600">Độc lập - Tự do - Hạnh phúc</div>
+                <div className="pt-2">
+                  <div
+                    className="text-lg sm:text-xl font-extrabold text-red-700 uppercase"
+                    style={{ fontFamily: 'var(--font-display)', letterSpacing: '0.04em' }}
+                  >
+                    GIẤY CHỨNG NHẬN BẢO HIỂM XE MÁY ĐIỆN TỬ
+                  </div>
+                  <div className="text-xs text-zinc-500 font-mono mt-0.5">
+                    Số GCN: <strong className="text-zinc-900 font-bold">{viewingInsuranceContract.soGCN}</strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* Thông tin 4 phần chính */}
+              <div className="py-5 space-y-4 text-xs">
+                {/* 1. ĐƠN VỊ BẢO HIỂM */}
+                <div className="p-3 rounded-xl bg-white border border-zinc-200 shadow-2xs flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] font-mono text-zinc-400 uppercase font-bold">Đơn vị phát hành:</span>
+                    <div className="font-extrabold text-zinc-900 text-xs sm:text-sm">{viewingInsuranceContract.nhaBaoHiem}</div>
+                  </div>
+                  <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                    HỢP CHUẨN NĐ 67/2023/NĐ-CP
+                  </span>
+                </div>
+
+                {/* 2. CHỦ XE */}
+                <div className="p-3.5 rounded-xl bg-zinc-50 border border-zinc-200 space-y-1.5">
+                  <div className="text-[11px] font-bold text-zinc-900 uppercase font-mono tracking-wider">
+                    I. THÔNG TIN CHỦ PHƯƠNG TIỆN
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-zinc-700">
+                    <div>
+                      Họ và tên: <strong className="text-zinc-900">{viewingInsuranceContract.hoTenKH}</strong>
+                    </div>
+                    <div>
+                      Số điện thoại: <strong className="text-zinc-900 font-mono">{viewingInsuranceContract.soDienThoai}</strong>
+                    </div>
+                    <div className="sm:col-span-2">
+                      Địa chỉ: <span className="text-zinc-800">{viewingInsuranceContract.diaChi}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. PHƯƠNG TIỆN */}
+                <div className="p-3.5 rounded-xl bg-zinc-50 border border-zinc-200 space-y-1.5">
+                  <div className="text-[11px] font-bold text-zinc-900 uppercase font-mono tracking-wider">
+                    II. THÔNG TIN XE ĐƯỢC BẢO HIỂM
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-zinc-700">
+                    <div>
+                      Dòng xe: <strong className="text-zinc-900">{viewingInsuranceContract.tenXe}</strong>
+                    </div>
+                    <div>
+                      Biển số đăng ký:{' '}
+                      <strong className="text-red-700 font-mono font-extrabold">{viewingInsuranceContract.bienSo}</strong>
+                    </div>
+                    <div>
+                      Số khung: <span className="font-mono text-zinc-900">{viewingInsuranceContract.soKhung}</span>
+                    </div>
+                    <div>
+                      Số máy: <span className="font-mono text-zinc-900">{viewingInsuranceContract.soMay || 'Theo giấy tờ xe'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4. GÓI BẢO HIỂM & THỜI HẠN */}
+                <div className="p-3.5 rounded-xl bg-zinc-50 border border-zinc-200 space-y-2">
+                  <div className="text-[11px] font-bold text-zinc-900 uppercase font-mono tracking-wider">
+                    III. NỘI DUNG VÀ THỜI HẠN BẢO HIỂM
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-zinc-700">
+                    <div>
+                      Gói bảo hiểm: <strong className="text-zinc-900">{viewingInsuranceContract.tenGoi}</strong>
+                    </div>
+                    <div>
+                      Thời hạn bảo hiểm: <strong className="text-zinc-900">{viewingInsuranceContract.thoiHanNam} năm</strong>
+                    </div>
+                    <div>
+                      Từ ngày: <strong className="text-zinc-900 font-mono">{viewingInsuranceContract.ngayBatDau}</strong>
+                    </div>
+                    <div>
+                      Đến ngày: <strong className="text-zinc-900 font-mono">{viewingInsuranceContract.ngayKetThuc}</strong>
+                    </div>
+                    <div className="sm:col-span-2 flex items-center justify-between pt-1 border-t border-zinc-200">
+                      <span className="font-semibold text-zinc-800">Tổng phí bảo hiểm đã thanh toán:</span>
+                      <strong className="text-sm font-extrabold text-red-700 font-mono">
+                        {formatVND(viewingInsuranceContract.phiBaoHiem)}
+                      </strong>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* QR Code & Dấu điện tử xác thực */}
+              <div className="pt-4 border-t border-zinc-200 flex items-center justify-between flex-wrap gap-4 text-center sm:text-left">
+                <div className="flex items-center gap-3">
+                  <div className="w-16 h-16 rounded-xl bg-zinc-900 text-white flex flex-col items-center justify-center p-1 font-mono text-[9px] text-center shadow">
+                    <span className="text-lg">📱</span>
+                    <span>QR CHỨNG NHẬN</span>
+                  </div>
+                  <div className="text-left text-[10px] text-zinc-500">
+                    <div>Quét mã để tra cứu trên Cổng Dịch vụ công</div>
+                    <div className="font-mono font-bold text-zinc-700">Tra cứu: crm.dailyxemay.vn/gcn</div>
+                  </div>
+                </div>
+
+                <div className="text-center sm:text-right">
+                  <div className="text-[10px] text-zinc-500 font-mono">Ngày cấp: {viewingInsuranceContract.ngayCap}</div>
+                  <div className="text-[11px] font-bold text-red-700 mt-1 uppercase font-serif tracking-wider">
+                    [ĐÃ KÝ ĐIỆN TỬ VÀ ĐÓNG DẤU MỘC SỐ]
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast thông báo tạo bảo hiểm thành công */}
+      {insSuccessToast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-zinc-900 text-white px-5 py-3.5 rounded-2xl shadow-2xl border border-zinc-800 flex items-center gap-3 animate-in fade-in slide-in-from-bottom-5">
+          <span className="text-xl">🎉</span>
+          <div className="text-xs">
+            <strong className="font-bold block text-emerald-400">Đăng ký bảo hiểm thành công!</strong>
+            <span className="text-zinc-300">Hồ sơ đã được gửi. Đại lý sẽ liên hệ kích hoạt cấp Giấy chứng nhận điện tử.</span>
           </div>
         </div>
       )}

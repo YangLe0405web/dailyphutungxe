@@ -3,6 +3,8 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import {
   type Customer,
   type Order,
+  type InsuranceContract,
+  INSURANCE_PACKAGES,
   serviceDistribution,
   dailyRevenueData,
   weeklyRevenueData,
@@ -11,7 +13,7 @@ import {
   revenueBySource,
   formatVND
 } from '../../data/mockData';
-import { customerApi, orderApi } from '../../services/api';
+import { customerApi, orderApi, insuranceApi } from '../../services/api';
 
 type PeriodType = 'daily' | 'weekly' | 'monthly' | 'yearly';
 
@@ -28,13 +30,19 @@ export default function ReportsPage() {
   const [period, setPeriod] = useState<PeriodType>('monthly');
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [insContracts, setInsContracts] = useState<InsuranceContract[]>([]);
 
   useEffect(() => {
     const load = async () => {
       try {
-        const [cList, oList] = await Promise.all([customerApi.getAll(), orderApi.getAll()]);
+        const [cList, oList, iList] = await Promise.all([
+          customerApi.getAll(),
+          orderApi.getAll(),
+          insuranceApi.getAll(),
+        ]);
         setCustomers(cList);
         setOrders(oList);
+        setInsContracts(iList);
       } catch (err) {
         console.warn('Reports load error:', err);
       }
@@ -122,6 +130,82 @@ export default function ReportsPage() {
     : yearlyRevenueData;
 
   const currentTotalRevenue = chartData.reduce((sum, d) => sum + d.doanhThu, 0);
+
+  // BHX05: Thống kê & Báo cáo doanh thu Bảo hiểm xe
+  const insuranceMetrics = useMemo(() => {
+    const activeContracts = insContracts.filter(c => c.trangThai === 'HieuLuc');
+    const totalRevenue = activeContracts.reduce((sum, c) => sum + c.phiBaoHiem, 0);
+    const activeCount = activeContracts.length;
+    const pendingCount = insContracts.filter(c => c.trangThai === 'ChoDuyet').length;
+    const avgContractValue = activeCount > 0 ? Math.round(totalRevenue / activeCount) : 0;
+
+    // Phân bổ doanh thu theo gói bảo hiểm (Pie Chart)
+    const packageColors: Record<string, string> = {
+      TNDS_BAT_BUOC: '#dc2626',
+      VAT_CHAT_XE: '#2563eb',
+      TAI_NAN_NGUOI: '#16a34a',
+      TOAN_DIEN: '#d97706',
+    };
+
+    const packageStats = INSURANCE_PACKAGES.map(pkg => {
+      const pkgContracts = activeContracts.filter(c => c.packageType === pkg.id);
+      const rev = pkgContracts.reduce((sum, c) => sum + c.phiBaoHiem, 0);
+      const count = pkgContracts.length;
+      const pct = totalRevenue > 0 ? Math.round((rev / totalRevenue) * 100) : 0;
+      return {
+        key: pkg.id,
+        name: pkg.tenGoi,
+        giaGoc: pkg.phi1Nam,
+        revenue: rev,
+        count,
+        value: pct,
+        fill: packageColors[pkg.id] || '#71717a',
+      };
+    });
+
+    // Doanh thu bảo hiểm theo chu kỳ thời gian (Line Chart)
+    const timelineData = period === 'daily'
+      ? [
+          { label: 'T2', doanhThu: 132000 },
+          { label: 'T3', doanhThu: 450000 },
+          { label: 'T4', doanhThu: 198000 },
+          { label: 'T5', doanhThu: 520000 },
+          { label: 'T6', doanhThu: 264000 },
+          { label: 'T7', doanhThu: 970000 },
+          { label: 'CN', doanhThu: 652000 },
+        ]
+      : period === 'weekly'
+      ? [
+          { label: 'Tuần 1', doanhThu: 1250000 },
+          { label: 'Tuần 2', doanhThu: 1890000 },
+          { label: 'Tuần 3', doanhThu: 1420000 },
+          { label: 'Tuần 4', doanhThu: 2180000 },
+        ]
+      : period === 'monthly'
+      ? [
+          { label: 'Tháng 1', doanhThu: 3500000 },
+          { label: 'Tháng 2', doanhThu: 4200000 },
+          { label: 'Tháng 3', doanhThu: 5800000 },
+          { label: 'Tháng 4', doanhThu: 4900000 },
+          { label: 'Tháng 5', doanhThu: 6800000 },
+          { label: 'Tháng 6', doanhThu: 7500000 },
+          { label: 'Tháng 7', doanhThu: 8200000 },
+        ]
+      : [
+          { label: '2023', doanhThu: 35000000 },
+          { label: '2024', doanhThu: 58000000 },
+          { label: '2025', doanhThu: 79500000 },
+        ];
+
+    return {
+      totalRevenue,
+      activeCount,
+      pendingCount,
+      avgContractValue,
+      packageStats,
+      timelineData,
+    };
+  }, [insContracts, period]);
 
   const periodLabelMap: Record<PeriodType, string> = {
     daily: '7 ngày qua',
@@ -276,6 +360,185 @@ export default function ReportsPage() {
               </PieChart>
             </ResponsiveContainer>
           </div>
+        </div>
+      </div>
+
+      {/* ────────────────────────────────────────────────────────── */}
+      {/* ── BÁO CÁO DOANH THU & HỢP ĐỒNG BẢO HIỂM XE (BHX05) ── */}
+      {/* ────────────────────────────────────────────────────────── */}
+      <div className="rounded-2xl p-6 bg-white border border-zinc-200 shadow-sm space-y-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div>
+            <div
+              style={{
+                fontFamily: 'var(--font-display)',
+                fontWeight: 800,
+                fontSize: 18,
+                color: 'var(--color-zinc-900)',
+                letterSpacing: '0.04em',
+                textTransform: 'uppercase',
+              }}
+            >
+              🛡️ BÁO CÁO DOANH THU & HỢP ĐỒNG BẢO HIỂM XE
+            </div>
+            <p className="text-xs text-zinc-500 mt-1 font-mono">
+              Doanh thu từ phí bảo hiểm TNDS & vật chất xe máy theo {periodLabelMap[period]}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-mono px-3 py-1 rounded-full bg-red-100 text-red-800 font-bold border border-red-200">
+              Tổng {insContracts.length} Hợp đồng
+            </span>
+          </div>
+        </div>
+
+        {/* 4 KPI cards for Insurance */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="p-4 rounded-xl bg-red-50/50 border border-red-200/80">
+            <div className="text-[10px] font-mono uppercase font-bold text-red-800">Doanh thu bảo hiểm</div>
+            <div className="text-xl font-extrabold text-red-700 font-mono mt-1">
+              {formatVND(insuranceMetrics.totalRevenue)}
+            </div>
+            <div className="text-[11px] text-zinc-500 mt-0.5">Hợp đồng đã thu phí</div>
+          </div>
+
+          <div className="p-4 rounded-xl bg-emerald-50/50 border border-emerald-200/80">
+            <div className="text-[10px] font-mono uppercase font-bold text-emerald-800">HĐ còn hiệu lực</div>
+            <div className="text-xl font-extrabold text-emerald-700 font-mono mt-1">
+              {insuranceMetrics.activeCount} <span className="text-xs font-normal text-zinc-500">HĐ</span>
+            </div>
+            <div className="text-[11px] text-zinc-500 mt-0.5">Đã cấp Giấy chứng nhận</div>
+          </div>
+
+          <div className="p-4 rounded-xl bg-amber-50/50 border border-amber-200/80">
+            <div className="text-[10px] font-mono uppercase font-bold text-amber-800">Chờ duyệt cấp GCN</div>
+            <div className="text-xl font-extrabold text-amber-600 font-mono mt-1">
+              {insuranceMetrics.pendingCount} <span className="text-xs font-normal text-zinc-500">HĐ</span>
+            </div>
+            <div className="text-[11px] text-zinc-500 mt-0.5">Khách hàng vừa gửi yêu cầu</div>
+          </div>
+
+          <div className="p-4 rounded-xl bg-blue-50/50 border border-blue-200/80">
+            <div className="text-[10px] font-mono uppercase font-bold text-blue-800">Doanh thu TB / HĐ</div>
+            <div className="text-xl font-extrabold text-blue-700 font-mono mt-1">
+              {formatVND(insuranceMetrics.avgContractValue)}
+            </div>
+            <div className="text-[11px] text-zinc-500 mt-0.5">Giá trị hợp đồng bình quân</div>
+          </div>
+        </div>
+
+        {/* Charts row */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pt-2">
+          {/* Chart 1: Revenue Timeline (2 cols) */}
+          <div className="lg:col-span-2 p-4 rounded-xl border border-zinc-200 bg-zinc-50/40">
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="text-xs font-bold font-mono text-zinc-800 uppercase">
+                1. Xu hướng doanh thu bảo hiểm ({periodLabelMap[period]})
+              </h4>
+              <span className="text-[11px] font-mono text-zinc-500 bg-white px-2 py-0.5 rounded-full border border-zinc-200">
+                Đơn vị: VNĐ
+              </span>
+            </div>
+            <p className="text-[11px] text-zinc-500 mb-4">Dòng tiền phí bảo hiểm thực thu theo chu kỳ</p>
+            <ResponsiveContainer width="100%" height={240}>
+              <LineChart data={insuranceMetrics.timelineData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-zinc-100)" vertical={false} />
+                <XAxis dataKey="label" tick={{ fontSize: 11, fontFamily: 'var(--font-mono)' }} axisLine={false} tickLine={false} />
+                <YAxis
+                  tickFormatter={v => v >= 1000000 ? `${(v / 1000000).toFixed(1)}M` : `${(v / 1000).toFixed(0)}k`}
+                  tick={{ fontSize: 11, fontFamily: 'var(--font-mono)' }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <Tooltip
+                  formatter={v => [formatVND(Number(v)), 'Doanh thu BH']}
+                  contentStyle={{ borderRadius: 10, border: '1px solid var(--color-zinc-200)', fontSize: 12 }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="doanhThu"
+                  name="Doanh thu BH"
+                  stroke="#dc2626"
+                  strokeWidth={2.5}
+                  dot={{ fill: '#dc2626', r: 4 }}
+                  activeDot={{ r: 6 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Chart 2: Package Revenue Breakdown (1 col) */}
+          <div className="p-4 rounded-xl border border-zinc-200 bg-zinc-50/40">
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="text-xs font-bold font-mono text-zinc-800 uppercase">
+                2. Tỷ trọng doanh thu theo gói
+              </h4>
+              <span className="text-[11px] font-mono text-zinc-500 bg-white px-2 py-0.5 rounded-full border border-zinc-200">
+                Đơn vị: %
+              </span>
+            </div>
+            <p className="text-[11px] text-zinc-500 mb-3">Tỷ lệ đóng góp doanh thu của từng gói bảo hiểm</p>
+            <ResponsiveContainer width="100%" height={240}>
+              <PieChart>
+                <Pie
+                  data={insuranceMetrics.packageStats}
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={75}
+                  dataKey="revenue"
+                  labelLine={false}
+                  label={PieLabel}
+                >
+                  {insuranceMetrics.packageStats.map((e, i) => (
+                    <Cell key={i} fill={e.fill} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  formatter={(v, name, item) => [formatVND(Number(v)), item.payload.name]}
+                  contentStyle={{ borderRadius: 10, fontSize: 12 }}
+                />
+                <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Breakdown Table */}
+        <div className="border border-zinc-200 rounded-xl overflow-hidden">
+          <table className="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr className="bg-zinc-950 text-white font-mono uppercase text-[11px]">
+                <th className="p-3">Gói bảo hiểm</th>
+                <th className="p-3 text-right">Phí tiêu chuẩn</th>
+                <th className="p-3 text-center">Số HĐ đã cấp</th>
+                <th className="p-3 text-right">Tổng doanh thu</th>
+                <th className="p-3 text-right">Tỷ trọng (%)</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-200">
+              {insuranceMetrics.packageStats.map(pkg => (
+                <tr key={pkg.key} className="hover:bg-zinc-50 transition">
+                  <td className="p-3 font-semibold text-zinc-900 flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: pkg.fill }} />
+                    <span>{pkg.name}</span>
+                  </td>
+                  <td className="p-3 text-right font-mono text-zinc-700">
+                    {formatVND(pkg.giaGoc)}/năm
+                  </td>
+                  <td className="p-3 text-center font-mono font-bold text-zinc-800">
+                    {pkg.count} HĐ
+                  </td>
+                  <td className="p-3 text-right font-mono font-bold text-red-700">
+                    {formatVND(pkg.revenue)}
+                  </td>
+                  <td className="p-3 text-right font-mono font-bold text-zinc-700">
+                    {pkg.value}%
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
-import { type Order, type Appointment, type Customer, formatVND } from '../../data/mockData';
-import { orderApi, appointmentApi, customerApi } from '../../services/api';
+import { type Order, type Appointment, type Customer, type InsuranceContract, formatVND } from '../../data/mockData';
+import { orderApi, appointmentApi, customerApi, insuranceApi } from '../../services/api';
 import { getAdminNotifications, type AdminNotification } from '../../services/notifications';
 
 export type ActivityType = 'customer' | 'admin' | 'urgent';
@@ -146,19 +146,22 @@ export default function DashboardPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [appts, setAppts] = useState<Appointment[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [insContracts, setInsContracts] = useState<InsuranceContract[]>([]);
   const [notifications, setNotifications] = useState<AdminNotification[]>([]);
   const [localAdminActivities, setLocalAdminActivities] = useState<ActivityEvent[]>([]);
 
   const loadData = async () => {
     try {
-      const [ordList, apptList, custList] = await Promise.all([
+      const [ordList, apptList, custList, insList] = await Promise.all([
         orderApi.getAll(),
         appointmentApi.getAll(),
         customerApi.getAll(),
+        insuranceApi.getAll(),
       ]);
       setOrders(ordList);
       setAppts(apptList);
       setCustomers(custList);
+      setInsContracts(insList);
       setNotifications(getAdminNotifications());
     } catch (err) {
       console.warn('Dashboard load error:', err);
@@ -173,7 +176,10 @@ export default function DashboardPage() {
 
   const pendingOrders = orders.filter(o => o.trangThai === 'ChoDuyet');
   const pendingAppts = appts.filter(a => a.trangThai === 'ChoDuyet');
-  const totalRevenue = orders.filter(o => o.trangThai !== 'DaHuy').reduce((sum, o) => sum + (o.tongTien || 0), 0);
+  const pendingIns = insContracts.filter(c => c.trangThai === 'ChoDuyet');
+  const activeIns = insContracts.filter(c => c.trangThai === 'HieuLuc');
+  const insuranceRevenue = activeIns.reduce((sum, c) => sum + c.phiBaoHiem, 0);
+  const totalRevenue = orders.filter(o => o.trangThai !== 'DaHuy').reduce((sum, o) => sum + (o.tongTien || 0), 0) + insuranceRevenue;
 
   const activities: ActivityEvent[] = useMemo(() => {
     const list: ActivityEvent[] = [...localAdminActivities];
@@ -270,13 +276,30 @@ export default function DashboardPage() {
       }
     });
 
+    insContracts.slice(0, 4).forEach(c => {
+      if (!list.some(x => x.detail?.includes(c.id))) {
+        list.push({
+          id: `ACT-${c.id}`,
+          type: 'customer',
+          actor: c.hoTenKH,
+          actorRole: 'KhachHang',
+          action: 'vừa đăng ký bảo hiểm xe máy trực tuyến',
+          detail: `HĐ #${c.id} (${c.tenGoi} - ${formatVND(c.phiBaoHiem)}) cho xe ${c.tenXe} (${c.bienSo})`,
+          time: c.ngayBatDau,
+          tag: '🛡️ Bảo hiểm',
+          status: c.trangThai === 'ChoDuyet' ? 'pending' : 'success',
+          icon: '🛡️',
+        });
+      }
+    });
+
     // Fill with initial seed activities if sparse
     initialActivities.forEach(ia => {
       if (!list.some(x => x.id === ia.id)) list.push(ia);
     });
 
     return list;
-  }, [notifications, orders, appts, localAdminActivities]);
+  }, [notifications, orders, appts, insContracts, localAdminActivities]);
 
   const filteredEvents = activities.filter(act => {
     if (filter === 'all') return true;
@@ -387,16 +410,16 @@ export default function DashboardPage() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
         <div className="rounded-2xl p-5 bg-white border border-zinc-200 shadow-xs">
           <div className="flex items-center justify-between mb-2">
             <span className="text-2xl">💰</span>
-            <span className="text-[11px] font-mono font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">DOANH THU</span>
+            <span className="text-[11px] font-mono font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">TỔNG DOANH THU</span>
           </div>
-          <div style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 800, color: 'var(--color-red-700)' }}>
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 800, color: 'var(--color-red-700)' }}>
             {formatVND(totalRevenue)}
           </div>
-          <div className="text-xs text-zinc-500 font-medium mt-1">Tổng doanh thu đơn hàng</div>
+          <div className="text-xs text-zinc-500 font-medium mt-1">Đơn hàng & Phí bảo hiểm</div>
         </div>
 
         <div className="rounded-2xl p-5 bg-white border border-zinc-200 shadow-xs">
@@ -404,7 +427,7 @@ export default function DashboardPage() {
             <span className="text-2xl">👥</span>
             <span className="text-[11px] font-mono font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">KHÁCH HÀNG</span>
           </div>
-          <div style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 800, color: '#2563eb' }}>
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: 26, fontWeight: 800, color: '#2563eb' }}>
             {customers.length}
           </div>
           <div className="text-xs text-zinc-500 font-medium mt-1">Khách hàng trong hệ thống CRM</div>
@@ -415,21 +438,34 @@ export default function DashboardPage() {
             <span className="text-2xl">📦</span>
             <span className="text-[11px] font-mono font-bold bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">ĐƠN HÀNG</span>
           </div>
-          <div style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 800, color: '#7c3aed' }}>
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: 26, fontWeight: 800, color: '#7c3aed' }}>
             {orders.length}
           </div>
-          <div className="text-xs text-zinc-500 font-medium mt-1">Tổng đơn mua phụ tùng & phụ kiện</div>
+          <div className="text-xs text-zinc-500 font-medium mt-1">Tổng đơn mua phụ tùng & xe</div>
         </div>
 
         <div className="rounded-2xl p-5 bg-white border border-zinc-200 shadow-xs">
           <div className="flex items-center justify-between mb-2">
+            <span className="text-2xl">🛡️</span>
+            <span className="text-[11px] font-mono font-bold bg-red-100 text-red-800 px-2 py-0.5 rounded-full">BẢO HIỂM XE</span>
+          </div>
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: 26, fontWeight: 800, color: 'var(--color-red-700)' }}>
+            {activeIns.length}
+          </div>
+          <div className="text-xs text-zinc-500 font-medium mt-1">
+            {formatVND(insuranceRevenue)} doanh thu
+          </div>
+        </div>
+
+        <div className="rounded-2xl p-5 bg-white border border-zinc-200 shadow-xs col-span-2 sm:col-span-1">
+          <div className="flex items-center justify-between mb-2">
             <span className="text-2xl">⚠️</span>
             <span className="text-[11px] font-mono font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">CẦN XỬ LÝ</span>
           </div>
-          <div style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 800, color: '#d97706' }}>
-            {pendingOrders.length + pendingAppts.length}
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: 26, fontWeight: 800, color: '#d97706' }}>
+            {pendingOrders.length + pendingAppts.length + pendingIns.length}
           </div>
-          <div className="text-xs text-zinc-500 font-medium mt-1">Đơn ({pendingOrders.length}) & lịch hẹn ({pendingAppts.length}) chờ duyệt</div>
+          <div className="text-xs text-zinc-500 font-medium mt-1">Đơn ({pendingOrders.length}) · Lịch ({pendingAppts.length}) · BH ({pendingIns.length})</div>
         </div>
       </div>
 
