@@ -24,3 +24,9 @@ Thumbs.db
 
 # ── Docker volumes ──
 mssql_data/
+
+# ── Word Docs & Internal Guides ──
+*.docx
+docs/*.docx
+HUONG_DAN_CAI_DAT_VA_CHAY.md
+KE_HOACH_TEST_END_USER.md
