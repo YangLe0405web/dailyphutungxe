@@ -3,6 +3,14 @@ import { useCart } from '../contexts/CartContext';
 import { mockCustomers, type Customer } from '../data/mockData';
 import { customerApi, chatApi, formatCustomerId, type ChatMessage } from '../services/api';
 import { VIETNAM_LOCATIONS } from '../data/vietnamLocations';
+import {
+  type CustomerNotification,
+  getCustomerNotifications,
+  markCustomerNotifAsRead,
+  markAllCustomerNotifsAsRead,
+  deleteCustomerNotification,
+  clearAllCustomerNotifications,
+} from '../services/notifications';
 
 type CustomerPage = 'store' | 'vehicles' | 'booking' | 'dashboard' | 'checkout' | 'survey';
 
@@ -148,57 +156,48 @@ export default function CustomerLayout({ children, activePage, onNavigate, onHom
       chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, 50);
   };
-  const [customerNotifs, setCustomerNotifs] = useState<{
-    id: string;
-    category: string;
-    icon: string;
-    title: string;
-    message: string;
-    time: string;
-    read: boolean;
-    page: CustomerPage;
-  }[]>([
-    {
-      id: 'cn-1',
-      category: 'order',
-      icon: '📦',
-      title: 'Đơn hàng #DH001 đang vận chuyển',
-      message: 'Đơn hàng phụ tùng Nhớt Motul 7100 của bạn đã được bàn giao cho đơn vị vận chuyển hỏa tốc.',
-      time: '15 phút trước',
-      read: false,
-      page: 'dashboard',
-    },
-    {
-      id: 'cn-2',
-      category: 'appointment',
-      icon: '📅',
-      title: 'Nhắc lịch hẹn bảo dưỡng xe',
-      message: 'Lịch bảo dưỡng định kỳ xe Honda SH 160i vào 09:00 ngày mai tại showroom 12 Lý Thường Kiệt.',
-      time: '1 giờ trước',
-      read: false,
-      page: 'booking',
-    },
-    {
-      id: 'cn-3',
-      category: 'review',
-      icon: '⭐',
-      title: 'Mời bạn đánh giá dịch vụ & phụ tùng',
-      message: 'Bạn vừa hoàn thành bảo dưỡng xe. Đánh giá chất lượng dịch vụ ngay để nhận mã giảm giá 10%!',
-      time: '1 ngày trước',
-      read: true,
-      page: 'store',
-    },
-    {
-      id: 'cn-4',
-      category: 'system',
-      icon: '🎁',
-      title: 'Ưu đãi thành viên mới: Giảm 15% phụ tùng',
-      message: 'Mã giảm giá MOTONEW15 đã sẵn sàng trong ví của bạn. Áp dụng cho mọi đơn hàng phụ tùng.',
-      time: '2 ngày trước',
-      read: true,
-      page: 'store',
-    },
-  ]);
+  // Dynamic customer notifications (TC10 - per customer account)
+  const [customerNotifs, setCustomerNotifs] = useState<CustomerNotification[]>([]);
+  
+  // Account dropdown & change password states
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [changePassOpen, setChangePassOpen] = useState(false);
+  const [oldPass, setOldPass] = useState('');
+  const [newPass, setNewPass] = useState('');
+  const [confirmPass, setConfirmPass] = useState('');
+  const [passError, setPassError] = useState<string | null>(null);
+  const [passSuccess, setPassSuccess] = useState<string | null>(null);
+  const [showPassText, setShowPassText] = useState(false);
+  const [isSubmittingPass, setIsSubmittingPass] = useState(false);
+
+  useEffect(() => {
+    const handleOpenChangePass = () => setChangePassOpen(true);
+    window.addEventListener('crm-open-change-password', handleOpenChangePass);
+    return () => window.removeEventListener('crm-open-change-password', handleOpenChangePass);
+  }, []);
+
+  useEffect(() => {
+    if (!currentCustomer) {
+      setCustomerNotifs([]);
+      setCustomerNotifOpen(false);
+      return;
+    }
+
+    const loadNotifs = () => {
+      const list = getCustomerNotifications(currentCustomer.id);
+      setCustomerNotifs(list);
+    };
+
+    loadNotifs();
+
+    const handleNotifUpdate = (e: any) => {
+      if (e.detail?.customerId && e.detail.customerId !== currentCustomer.id) return;
+      loadNotifs();
+    };
+
+    window.addEventListener('crm-customer-notifications-updated', handleNotifUpdate);
+    return () => window.removeEventListener('crm-customer-notifications-updated', handleNotifUpdate);
+  }, [currentCustomer?.id]);
 
   useEffect(() => {
     const handleOpenLogin = () => {
@@ -253,30 +252,283 @@ export default function CustomerLayout({ children, activePage, onNavigate, onHom
           <div className="flex items-center gap-2">
             {currentCustomer ? (
               <div className="flex items-center gap-2">
-                <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-white">
-                  {currentCustomer.avatar ? (
-                    <img src={currentCustomer.avatar} alt={currentCustomer.hoTen} className="w-5 h-5 rounded-full object-cover shrink-0 border border-zinc-700" />
-                  ) : (
-                    <div className="w-5 h-5 rounded-full bg-zinc-800 border border-zinc-700 text-zinc-400 flex items-center justify-center shrink-0">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-                      </svg>
+                {/* Trung tâm thông báo khách hàng (TC10 - Chỉ hiện khi đã đăng nhập) */}
+                <div className="relative">
+                  <button
+                    onClick={() => {
+                      setCustomerNotifOpen(!customerNotifOpen);
+                      setUserMenuOpen(false);
+                    }}
+                    className="relative flex items-center justify-center rounded-lg p-2 transition-all cursor-pointer bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700"
+                    title="Trung tâm thông báo"
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                    </svg>
+                    {customerNotifs.filter(n => !n.read).length > 0 && (
+                      <span className="absolute -top-1 -right-1 flex items-center justify-center rounded-full text-[10px] font-bold text-white bg-red-600 min-w-[17px] h-[17px] px-1 shadow animate-pulse font-mono">
+                        {customerNotifs.filter(n => !n.read).length}
+                      </span>
+                    )}
+                  </button>
+
+                  {/* Popover Trung tâm thông báo khách hàng */}
+                  {customerNotifOpen && (
+                    <div className="absolute right-0 mt-2 w-[90vw] sm:w-[400px] bg-white rounded-3xl shadow-2xl border border-zinc-200 py-3 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                      <div className="flex items-center justify-between px-4 pb-2.5 border-b border-zinc-100">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-xs text-zinc-900 uppercase font-mono tracking-wider">
+                            🔔 THÔNG BÁO CỦA BẠN
+                          </span>
+                          {customerNotifs.filter(n => !n.read).length > 0 && (
+                            <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+                              {customerNotifs.filter(n => !n.read).length} mới
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {customerNotifs.filter(n => !n.read).length > 0 && (
+                            <button
+                              onClick={() => {
+                                markAllCustomerNotifsAsRead(currentCustomer.id);
+                                setCustomerNotifs(getCustomerNotifications(currentCustomer.id));
+                              }}
+                              className="text-[11px] text-red-700 hover:text-red-800 font-bold transition cursor-pointer"
+                            >
+                              Đã đọc tất cả
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Category Filter Chips */}
+                      <div className="relative px-2 py-1.5 border-b border-zinc-100 flex items-center gap-1 bg-zinc-50/50">
+                        <button
+                          type="button"
+                          onClick={() => scrollCustomerNotifTabs('left')}
+                          className="shrink-0 w-5 h-5 flex items-center justify-center rounded-md bg-white border border-zinc-200 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 shadow-2xs transition cursor-pointer"
+                          title="Cuộn sang trái"
+                        >
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="15 18 9 12 15 6" />
+                          </svg>
+                        </button>
+
+                        <div
+                          ref={customerNotifTabsRef}
+                          className="flex-1 flex items-center gap-1.5 overflow-x-auto scroll-smooth py-1 px-1"
+                          style={{
+                            scrollbarWidth: 'thin',
+                            scrollbarColor: '#cbd5e1 transparent',
+                          }}
+                        >
+                          {[
+                            { key: 'all', label: 'Tất cả' },
+                            { key: 'order', label: '📦 Đơn hàng' },
+                            { key: 'appointment', label: '📅 Lịch hẹn' },
+                            { key: 'survey', label: '📋 Khảo sát' },
+                            { key: 'review', label: '⭐ Đánh giá' },
+                            { key: 'system', label: '🎁 Ưu đãi' },
+                          ].map(c => (
+                            <button
+                              key={c.key}
+                              onClick={() => setCustomerNotifCat(c.key as any)}
+                              className={`px-2 py-0.5 rounded-lg text-[11px] font-bold transition shrink-0 cursor-pointer border select-none ${
+                                customerNotifCat === c.key
+                                  ? 'bg-zinc-950 text-white border-zinc-950 shadow-xs'
+                                  : 'bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-100'
+                              }`}
+                            >
+                              {c.label}
+                            </button>
+                          ))}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => scrollCustomerNotifTabs('right')}
+                          className="shrink-0 w-5 h-5 flex items-center justify-center rounded-md bg-white border border-zinc-200 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 shadow-2xs transition cursor-pointer"
+                          title="Cuộn sang phải"
+                        >
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="9 18 15 12 9 6" />
+                          </svg>
+                        </button>
+                      </div>
+
+                      {/* Notifications List */}
+                      <div className="max-h-[320px] overflow-y-auto divide-y divide-zinc-100">
+                        {customerNotifs
+                          .filter(n => customerNotifCat === 'all' || n.category === customerNotifCat)
+                          .length === 0 ? (
+                            <div className="py-8 text-center text-zinc-400">
+                              <span className="text-3xl block mb-2">📭</span>
+                              <p className="text-xs font-semibold">Chưa có thông báo nào</p>
+                              <p className="text-[11px] text-zinc-400 mt-0.5">Các cập nhật đơn hàng & lịch hẹn của bạn sẽ xuất hiện tại đây</p>
+                            </div>
+                          ) : (
+                            customerNotifs
+                              .filter(n => customerNotifCat === 'all' || n.category === customerNotifCat)
+                              .map(n => (
+                                <div
+                                  key={n.id}
+                                  onClick={() => {
+                                    markCustomerNotifAsRead(currentCustomer.id, n.id);
+                                    const hlType = (n.tab === 'vehicles' || (n.title && n.title.includes('Phương tiện')) || (n.title && n.title.includes('Biển số')))
+                                      ? 'vehicle'
+                                      : n.category === 'appointment' ? 'appointment'
+                                      : n.category === 'survey' ? 'survey'
+                                      : 'order';
+                                    sessionStorage.setItem('crm_client_highlight', JSON.stringify({
+                                      type: hlType,
+                                      id: n.targetId,
+                                      notifId: n.id,
+                                    }));
+                                    window.dispatchEvent(new CustomEvent('crm-client-highlight-trigger', {
+                                      detail: {
+                                        type: hlType,
+                                        id: n.targetId,
+                                      }
+                                    }));
+                                    if (n.page === 'booking') {
+                                      onNavigate('booking');
+                                    } else if (n.page === 'store') {
+                                      onNavigate('store');
+                                    } else {
+                                      onNavigate('dashboard');
+                                    }
+                                    setCustomerNotifOpen(false);
+                                  }}
+                                  className={`p-3.5 hover:bg-zinc-50 transition cursor-pointer flex gap-3 ${!n.read ? 'bg-red-50/40 border-l-3 border-red-600' : ''}`}
+                                >
+                                  <span className="text-xl shrink-0 pt-0.5">{n.icon || '🔔'}</span>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center justify-between gap-1">
+                                      <span className={`text-xs truncate ${!n.read ? 'font-extrabold text-zinc-950' : 'font-semibold text-zinc-700'}`}>
+                                        {n.title}
+                                      </span>
+                                      <span className="text-[10px] text-zinc-400 font-mono shrink-0">
+                                        {n.time || ''}
+                                      </span>
+                                    </div>
+                                    <p className="text-[11px] text-zinc-600 line-clamp-2 mt-0.5 leading-snug">{n.message}</p>
+                                    <div className="mt-1 flex items-center justify-between text-[10px] text-red-700 font-bold font-mono">
+                                      <span>Xem chi tiết →</span>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          deleteCustomerNotification(currentCustomer.id, n.id);
+                                          setCustomerNotifs(getCustomerNotifications(currentCustomer.id));
+                                        }}
+                                        className="text-zinc-400 hover:text-zinc-600 cursor-pointer"
+                                        title="Xóa thông báo"
+                                      >
+                                        ✕
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))
+                          )}
+                      </div>
+
+                      <div className="px-4 pt-2 border-t border-zinc-100 flex items-center justify-between">
+                        {customerNotifs.length > 0 && (
+                          <button
+                            onClick={() => {
+                              clearAllCustomerNotifications(currentCustomer.id);
+                              setCustomerNotifs([]);
+                            }}
+                            className="text-[11px] text-zinc-400 hover:text-red-600 transition cursor-pointer"
+                          >
+                            Xóa tất cả
+                          </button>
+                        )}
+                        <button
+                          onClick={() => setCustomerNotifOpen(false)}
+                          className="text-xs font-bold text-zinc-700 hover:text-zinc-900 px-3 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 cursor-pointer ml-auto"
+                        >
+                          Đóng
+                        </button>
+                      </div>
                     </div>
                   )}
-                  <span className="font-bold max-w-[120px] truncate">{currentCustomer.hoTen}</span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    onCustomerChange?.(null);
-                    window.dispatchEvent(new CustomEvent('crm-customer-change', { detail: { customer: null } }));
-                    window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'customer_logout' } }));
-                  }}
-                  className="px-2.5 py-1.5 rounded-lg text-xs font-600 bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700 transition cursor-pointer"
-                  title="Đăng xuất"
-                >
-                  Đăng xuất
-                </button>
+
+                {/* Account Avatar with Dropdown Menu */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUserMenuOpen(!userMenuOpen);
+                      setCustomerNotifOpen(false);
+                    }}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-white hover:border-zinc-700 transition cursor-pointer"
+                  >
+                    {currentCustomer.avatar ? (
+                      <img src={currentCustomer.avatar} alt={currentCustomer.hoTen} className="w-5 h-5 rounded-full object-cover shrink-0 border border-zinc-700" />
+                    ) : (
+                      <div className="w-5 h-5 rounded-full bg-zinc-800 border border-zinc-700 text-zinc-400 flex items-center justify-center shrink-0">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                        </svg>
+                      </div>
+                    )}
+                    <span className="font-bold max-w-[120px] truncate">{currentCustomer.hoTen}</span>
+                    <span className="text-[10px] text-zinc-400">▼</span>
+                  </button>
+
+                  {/* Dropdown Menu */}
+                  {userMenuOpen && (
+                    <div className="absolute right-0 mt-2 w-52 bg-white rounded-2xl shadow-xl border border-zinc-200 py-1.5 z-50 animate-in fade-in slide-in-from-top-1">
+                      <div className="px-3 py-2 border-b border-zinc-100">
+                        <div className="font-bold text-xs text-zinc-900 truncate">{currentCustomer.hoTen}</div>
+                        <div className="text-[11px] text-zinc-500 font-mono truncate">{currentCustomer.email}</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onNavigate('dashboard');
+                          setUserMenuOpen(false);
+                        }}
+                        className="w-full text-left px-3 py-2 text-xs text-zinc-700 hover:bg-zinc-50 font-semibold flex items-center gap-2 cursor-pointer"
+                      >
+                        <span>👤</span> Hồ sơ của tôi
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setChangePassOpen(true);
+                          setUserMenuOpen(false);
+                          setOldPass('');
+                          setNewPass('');
+                          setConfirmPass('');
+                          setPassError(null);
+                          setPassSuccess(null);
+                        }}
+                        className="w-full text-left px-3 py-2 text-xs text-zinc-700 hover:bg-zinc-50 font-semibold flex items-center gap-2 cursor-pointer"
+                      >
+                        <span>🔑</span> Đổi mật khẩu
+                      </button>
+                      <div className="my-1 border-t border-zinc-100" />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          localStorage.removeItem('crm_current_customer');
+                          onCustomerChange?.(null);
+                          window.dispatchEvent(new CustomEvent('crm-customer-change', { detail: { customer: null } }));
+                          window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'customer_logout' } }));
+                          setUserMenuOpen(false);
+                        }}
+                        className="w-full text-left px-3 py-2 text-xs text-red-600 hover:bg-red-50 font-bold flex items-center gap-2 cursor-pointer"
+                      >
+                        <span>🚪</span> Đăng xuất
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             ) : (
               <div className="flex items-center gap-1.5">
@@ -294,142 +546,6 @@ export default function CustomerLayout({ children, activePage, onNavigate, onHom
                 </button>
               </div>
             )}
-
-            {/* Trung tâm thông báo (TC10) */}
-            <div className="relative">
-              <button
-                onClick={() => setCustomerNotifOpen(!customerNotifOpen)}
-                className="relative flex items-center justify-center rounded-lg p-2 transition-all cursor-pointer bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700"
-                title="Trung tâm thông báo"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-                  <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-                </svg>
-                {customerNotifs.filter(n => !n.read).length > 0 && (
-                  <span className="absolute -top-1 -right-1 flex items-center justify-center rounded-full text-[10px] font-bold text-white bg-red-600 min-w-[17px] h-[17px] px-1 shadow animate-pulse font-mono">
-                    {customerNotifs.filter(n => !n.read).length}
-                  </span>
-                )}
-              </button>
-
-              {/* Popover Trung tâm thông báo khách hàng */}
-              {customerNotifOpen && (
-                <div className="absolute right-0 mt-2 w-[90vw] sm:w-[380px] bg-white rounded-3xl shadow-2xl border border-zinc-200 py-3 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
-                  <div className="flex items-center justify-between px-4 pb-2.5 border-b border-zinc-100">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-xs text-zinc-900 uppercase font-mono tracking-wider">
-                        🔔 TRUNG TÂM THÔNG BÁO
-                      </span>
-                      {customerNotifs.filter(n => !n.read).length > 0 && (
-                        <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">
-                          {customerNotifs.filter(n => !n.read).length} mới
-                        </span>
-                      )}
-                    </div>
-                    {customerNotifs.filter(n => !n.read).length > 0 && (
-                      <button
-                        onClick={() => setCustomerNotifs(prev => prev.map(n => ({ ...n, read: true })))}
-                        className="text-[11px] text-red-700 hover:text-red-800 font-bold transition cursor-pointer"
-                      >
-                        Đã đọc tất cả
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Category Filter Chips with Horizontal Scroll Navigation */}
-                  <div className="relative px-2 py-1.5 border-b border-zinc-100 flex items-center gap-1 bg-zinc-50/50">
-                    <button
-                      type="button"
-                      onClick={() => scrollCustomerNotifTabs('left')}
-                      className="shrink-0 w-5 h-5 flex items-center justify-center rounded-md bg-white border border-zinc-200 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 shadow-2xs transition cursor-pointer"
-                      title="Cuộn sang trái"
-                    >
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="15 18 9 12 15 6" />
-                      </svg>
-                    </button>
-
-                    <div
-                      ref={customerNotifTabsRef}
-                      className="flex-1 flex items-center gap-1.5 overflow-x-auto scroll-smooth py-1 px-1"
-                      style={{
-                        scrollbarWidth: 'thin',
-                        scrollbarColor: '#cbd5e1 transparent',
-                      }}
-                    >
-                      {[
-                        { key: 'all', label: 'Tất cả' },
-                        { key: 'order', label: '📦 Đơn hàng' },
-                        { key: 'appointment', label: '📅 Lịch hẹn' },
-                        { key: 'review', label: '⭐ Đánh giá' },
-                        { key: 'system', label: '🎁 Ưu đãi' },
-                      ].map(c => (
-                        <button
-                          key={c.key}
-                          onClick={() => setCustomerNotifCat(c.key as any)}
-                          className={`px-2 py-0.5 rounded-lg text-[11px] font-bold transition shrink-0 cursor-pointer border select-none ${
-                            customerNotifCat === c.key
-                              ? 'bg-zinc-950 text-white border-zinc-950 shadow-xs'
-                              : 'bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-100'
-                          }`}
-                        >
-                          {c.label}
-                        </button>
-                      ))}
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => scrollCustomerNotifTabs('right')}
-                      className="shrink-0 w-5 h-5 flex items-center justify-center rounded-md bg-white border border-zinc-200 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 shadow-2xs transition cursor-pointer"
-                      title="Cuộn sang phải"
-                    >
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="9 18 15 12 9 6" />
-                      </svg>
-                    </button>
-                  </div>
-
-                  {/* List */}
-                  <div className="max-h-[300px] overflow-y-auto divide-y divide-zinc-100">
-                    {customerNotifs
-                      .filter(n => customerNotifCat === 'all' || n.category === customerNotifCat)
-                      .map(n => (
-                        <div
-                          key={n.id}
-                          onClick={() => {
-                            setCustomerNotifs(prev => prev.map(item => item.id === n.id ? { ...item, read: true } : item));
-                            onNavigate(n.page);
-                            setCustomerNotifOpen(false);
-                          }}
-                          className={`p-3 hover:bg-zinc-50 transition cursor-pointer flex gap-3 ${!n.read ? 'bg-red-50/30' : ''}`}
-                        >
-                          <span className="text-lg shrink-0 pt-0.5">{n.icon}</span>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between gap-1">
-                              <span className={`text-xs truncate ${!n.read ? 'font-extrabold text-zinc-900' : 'font-semibold text-zinc-700'}`}>
-                                {n.title}
-                              </span>
-                              <span className="text-[10px] text-zinc-400 font-mono shrink-0">{n.time}</span>
-                            </div>
-                            <p className="text-[11px] text-zinc-600 line-clamp-2 mt-0.5 leading-snug">{n.message}</p>
-                          </div>
-                        </div>
-                      ))}
-                  </div>
-
-                  <div className="px-4 pt-2 border-t border-zinc-100 flex justify-end">
-                    <button
-                      onClick={() => setCustomerNotifOpen(false)}
-                      className="text-xs font-bold text-zinc-700 hover:text-zinc-900 px-3 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 cursor-pointer"
-                    >
-                      Đóng
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
 
             {/* Cart button */}
             <button onClick={() => setCartOpen(true)}
@@ -754,6 +870,173 @@ export default function CustomerLayout({ children, activePage, onNavigate, onHom
           )}
         </div>
       )}
+
+      {/* Modal Đổi Mật Khẩu Khách Hàng */}
+      {changePassOpen && currentCustomer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-zinc-200">
+            <div className="flex justify-between items-center mb-4 pb-3 border-b border-zinc-100">
+              <div className="flex items-center gap-2.5">
+                <span className="w-9 h-9 rounded-xl bg-red-100 text-red-700 flex items-center justify-center font-bold text-lg">
+                  🔑
+                </span>
+                <div>
+                  <h3 className="font-extrabold text-base text-zinc-950 uppercase" style={{ fontFamily: 'var(--font-display)' }}>
+                    ĐỔI MẬT KHẨU TÀI KHOẢN
+                  </h3>
+                  <p className="text-[11px] text-zinc-500 font-mono mt-0.5">{currentCustomer.hoTen} ({currentCustomer.email})</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setChangePassOpen(false)}
+                className="w-8 h-8 rounded-full bg-zinc-100 hover:bg-zinc-200 text-zinc-500 font-bold flex items-center justify-center text-sm cursor-pointer transition"
+              >
+                ✕
+              </button>
+            </div>
+
+            {passError && (
+              <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-semibold flex items-center gap-2">
+                <span>⚠️</span>
+                <span>{passError}</span>
+              </div>
+            )}
+
+            {passSuccess && (
+              <div className="mb-4 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold flex items-center gap-2">
+                <span>✓</span>
+                <span>{passSuccess}</span>
+              </div>
+            )}
+
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setPassError(null);
+                setPassSuccess(null);
+
+                if (!oldPass) {
+                  setPassError('Vui lòng nhập mật khẩu hiện tại!');
+                  return;
+                }
+
+                if (newPass.length < 8) {
+                  setPassError('Mật khẩu mới phải có từ 8 ký tự trở lên!');
+                  return;
+                }
+
+                const hasUpper = /[A-Z]/.test(newPass);
+                const hasLower = /[a-z]/.test(newPass);
+                const hasDigit = /[0-9]/.test(newPass);
+                const hasSpecial = /[^A-Za-z0-9]/.test(newPass);
+                if (!hasUpper || !hasLower || !hasDigit || !hasSpecial) {
+                  setPassError('Mật khẩu mới phải gồm chữ hoa, chữ thường, số và ký tự đặc biệt!');
+                  return;
+                }
+
+                if (newPass !== confirmPass) {
+                  setPassError('Mật khẩu xác nhận không trùng khớp với mật khẩu mới!');
+                  return;
+                }
+
+                setIsSubmittingPass(true);
+                try {
+                  await customerApi.changePasswordWithOld(
+                    currentCustomer.email || currentCustomer.soDienThoai || currentCustomer.id,
+                    oldPass,
+                    newPass
+                  );
+                  setPassSuccess('🎉 Đổi mật khẩu thành công! Thông tin tài khoản đã được cập nhật.');
+                  setTimeout(() => {
+                    setChangePassOpen(false);
+                    setOldPass('');
+                    setNewPass('');
+                    setConfirmPass('');
+                    setPassSuccess(null);
+                  }, 1500);
+                } catch (err: any) {
+                  setPassError(err.message || 'Mật khẩu hiện tại không chính xác!');
+                } finally {
+                  setIsSubmittingPass(false);
+                }
+              }}
+              className="space-y-3.5"
+            >
+              <div>
+                <label className="block text-xs font-bold text-zinc-700 mb-1">
+                  Mật khẩu hiện tại *
+                </label>
+                <input
+                  type={showPassText ? 'text' : 'password'}
+                  required
+                  placeholder="Nhập mật khẩu đang dùng"
+                  value={oldPass}
+                  onChange={e => setOldPass(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-zinc-700 mb-1">
+                  Mật khẩu mới *
+                </label>
+                <input
+                  type={showPassText ? 'text' : 'password'}
+                  required
+                  placeholder="Tối thiểu 8 ký tự, gồm chữ hoa, thường, số, ký tự đặc biệt"
+                  value={newPass}
+                  onChange={e => setNewPass(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-zinc-700 mb-1">
+                  Xác nhận mật khẩu mới *
+                </label>
+                <input
+                  type={showPassText ? 'text' : 'password'}
+                  required
+                  placeholder="Nhập lại chính xác mật khẩu mới"
+                  value={confirmPass}
+                  onChange={e => setConfirmPass(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600 font-mono"
+                />
+              </div>
+
+              <div className="flex items-center justify-between text-xs text-zinc-600 pt-1">
+                <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={showPassText}
+                    onChange={e => setShowPassText(e.target.checked)}
+                    className="rounded text-red-600 focus:ring-red-500"
+                  />
+                  <span>Hiện mật khẩu</span>
+                </label>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-zinc-100 mt-4">
+                <button
+                  type="button"
+                  onClick={() => setChangePassOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold bg-zinc-100 text-zinc-700 hover:bg-zinc-200 transition cursor-pointer"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingPass}
+                  className="px-5 py-2 rounded-xl text-xs font-bold bg-red-700 text-white hover:bg-red-800 shadow transition cursor-pointer disabled:opacity-50"
+                >
+                  {isSubmittingPass ? 'Đang cập nhật...' : 'Cập nhật mật khẩu'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -894,12 +1177,12 @@ function CustomerAuthModal({
 
     try {
       const customer = await customerApi.login(loginInput.trim(), loginPass);
-      // Gọi onSuccess ngay lập tức để cập nhật toàn bộ hệ thống tức thì
+      if (customer.trangThai === 'BiKhoa') {
+        throw new Error('⚠️ Tài khoản của quý khách hiện đang BỊ KHÓA do yêu cầu quản trị hoặc bảo mật. Vui lòng liên hệ Hotline 1900 8888 để được hỗ trợ!');
+      }
+      localStorage.setItem('crm_current_customer', JSON.stringify(customer));
       onSuccess(customer);
-      setToast(`🎉 Đăng nhập thành công! Chào mừng trở lại, ${customer.hoTen}`);
-      setTimeout(() => {
-        onClose();
-      }, 600);
+      onClose();
     } catch (err: any) {
       setLoginErr(err?.message || 'Đăng nhập không thành công. Vui lòng kiểm tra lại thông tin!');
     } finally {
@@ -962,11 +1245,9 @@ function CustomerAuthModal({
       await customerApi.resetPassword(forgotInput.trim(), newPass);
       // Tự động đăng nhập luôn sau khi đổi mật khẩu
       const customer = await customerApi.login(forgotInput.trim(), newPass);
+      localStorage.setItem('crm_current_customer', JSON.stringify(customer));
       onSuccess(customer);
-      setToast(`🎉 Đặt lại mật khẩu thành công! Chào mừng ${customer.hoTen} đã đăng nhập.`);
-      setTimeout(() => {
-        onClose();
-      }, 600);
+      onClose();
     } catch (err: any) {
       setForgotErr(err?.message || 'Đặt lại mật khẩu thất bại!');
     } finally {
@@ -995,9 +1276,22 @@ function CustomerAuthModal({
       return;
     }
 
-    // ĐK04
+    // H01 & ĐK04: Kiểm tra ngày sinh hợp lệ (chặn ngày tương lai & đủ tuổi)
     if (!form.ngaySinh) {
       setRegisterErr('Vui lòng chọn ngày sinh!');
+      return;
+    }
+    const birthDate = new Date(form.ngaySinh);
+    const today = new Date();
+    if (birthDate > today) {
+      setRegisterErr('Ngày sinh không hợp lệ! Không thể chọn ngày trong tương lai.');
+      return;
+    }
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const m = today.getMonth() - birthDate.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) age--;
+    if (age < 16) {
+      setRegisterErr(`Khách hàng phải từ đủ 16 tuổi trở lên (hiện tại ${age} tuổi)!`);
       return;
     }
 
@@ -1058,10 +1352,7 @@ function CustomerAuthModal({
       // Cập nhật lưu trữ và state khách hàng NGAY LẬP TỨC
       localStorage.setItem('crm_current_customer', JSON.stringify(res.customer));
       onSuccess(res.customer);
-      setToast(`🎉 Chúc mừng ${res.customer.hoTen}! Tài khoản đã được tạo thành công.`);
-      setTimeout(() => {
-        onClose();
-      }, 700);
+      onClose();
     } catch (err: any) {
       // ĐK02: Bắt lỗi nếu trùng sđt / email
       setRegStep('form');

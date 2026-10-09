@@ -24,7 +24,9 @@ const nav: NavGroup[] = [
     group: 'Bán hàng',
     items: [
       { key: 'sales', label: 'Quản lý đơn hàng', icon: <I icon="package" />, allowedRoles: ['SuperAdmin', 'NhanVienBanHang'] },
+      { key: 'promotions', label: 'Chương trình khuyến mãi', icon: <I icon="tag" />, allowedRoles: ['SuperAdmin', 'NhanVienBanHang'] },
       { key: 'appointments', label: 'Lịch hẹn dịch vụ', icon: <I icon="calendar" /> },
+      { key: 'warranty', label: 'Yêu cầu bảo hành', icon: <I icon="wrench" /> },
       { key: 'insurance', label: 'Bảo hiểm xe', icon: <I icon="shield-check" />, allowedRoles: ['SuperAdmin', 'NhanVienBanHang'] },
     ],
   },
@@ -274,6 +276,58 @@ export default function AdminLayout({
     }, 50);
   };
 
+  const handleViewNotificationDetail = (n: AdminNotification) => {
+    markNotificationAsRead(n.id);
+    setNotifications(getAdminNotifications());
+    setNotifOpen(false);
+
+    // 1. Phân giải trang đích chuẩn xác
+    let targetPage = n.linkPage || 'sales';
+    if (n.category === 'order' || n.category === 'payment') {
+      targetPage = 'sales';
+    } else if (n.category === 'review' || n.category === 'survey') {
+      targetPage = 'feedback';
+    } else if (n.category === 'customer') {
+      targetPage = 'customers';
+    } else if (n.category === 'inventory') {
+      targetPage = 'parts';
+    } else if (n.type?.includes('appointment') || n.title?.toLowerCase().includes('lịch hẹn')) {
+      targetPage = 'appointments';
+    }
+
+    // 2. Trích xuất targetId và keyword
+    let targetId = '';
+    if (n.meta?.id) targetId = String(n.meta.id);
+    else if (n.meta?.orderId) targetId = String(n.meta.orderId);
+    else if (n.meta?.maDon) targetId = `DH${String(n.meta.maDon).padStart(3, '0')}`;
+    else if (n.meta?.maLich) targetId = `LH${String(n.meta.maLich).padStart(3, '0')}`;
+    else if (n.meta?.customerId) targetId = String(n.meta.customerId);
+    else if (n.meta?.productId) targetId = String(n.meta.productId);
+
+    if (!targetId) {
+      const match = (n.title + ' ' + n.message).match(/#(DH\d+|LH\d+|KH\d+|PT\d+|XM\d+|[A-Za-z0-9_-]+)/i);
+      if (match && match[1]) {
+        targetId = match[1];
+      }
+    }
+
+    const highlightPayload = {
+      page: targetPage,
+      targetId: targetId || '',
+      keyword: targetId || n.title,
+      category: n.category,
+      title: n.title,
+      timestamp: Date.now(),
+    };
+
+    try {
+      sessionStorage.setItem('crm_admin_highlight', JSON.stringify(highlightPayload));
+    } catch {}
+
+    window.dispatchEvent(new CustomEvent('crm-admin-highlight-target', { detail: highlightPayload }));
+    onNavigate(targetPage);
+  };
+
   return (
     <div className="flex min-h-screen" style={{ fontFamily: 'var(--font-sans)' }}>
       {/* ── Sidebar ── */}
@@ -449,23 +503,25 @@ export default function AdminLayout({
                 )}
               </button>
 
-              {/* Dropdown Popover: TRUNG TÂM THÔNG BÁO (TC10) */}
+              {/* Dropdown Popover: TRUNG TÂM THÔNG BÁO (TC10 - Nâng cấp giao diện thoáng đãng, dễ thao tác & liên kết chuẩn) */}
               {notifOpen && (
-                <div className="absolute right-0 mt-2 w-[92vw] sm:w-[480px] md:w-[540px] bg-white rounded-3xl shadow-2xl border border-zinc-200 py-3 z-50 animate-in fade-in slide-in-from-top-2 duration-200 max-h-[90vh] flex flex-col">
+                <div className="absolute right-0 mt-2 w-[94vw] sm:w-[540px] md:w-[600px] bg-white rounded-3xl shadow-2xl border border-zinc-200/90 py-3 z-50 animate-in fade-in slide-in-from-top-2 duration-200 max-h-[92vh] flex flex-col">
                   {/* Header */}
                   <div className="flex items-center justify-between px-5 pb-3 border-b border-zinc-100">
                     <div className="flex items-center gap-2.5">
-                      <span className="text-lg">🔔</span>
+                      <div className="w-9 h-9 rounded-2xl bg-red-100 flex items-center justify-center text-red-700 text-lg shadow-2xs">
+                        🔔
+                      </div>
                       <div>
                         <div className="font-extrabold text-sm text-zinc-950 uppercase tracking-wide" style={{ fontFamily: 'var(--font-display)' }}>
                           TRUNG TÂM THÔNG BÁO
                         </div>
                         <div className="text-[11px] text-zinc-500 font-mono">
-                          Hệ thống quản trị CRM Motoshop
+                          Hệ thống quản trị Showroom & CRM Motoshop
                         </div>
                       </div>
                       {unreadCount > 0 && (
-                        <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700 ml-1">
+                        <span className="text-[11px] font-mono font-bold px-2.5 py-0.5 rounded-full bg-red-600 text-white shadow-2xs ml-1 animate-pulse">
                           {unreadCount} mới
                         </span>
                       )}
@@ -473,18 +529,21 @@ export default function AdminLayout({
                     <div className="flex items-center gap-2">
                       {unreadCount > 0 && (
                         <button
+                          type="button"
                           onClick={() => {
                             markAllAsRead(selectedNotifCategory);
                             setNotifications(getAdminNotifications());
                           }}
-                          className="text-[11px] text-red-700 hover:text-red-800 font-bold transition cursor-pointer px-2 py-1 rounded-lg hover:bg-red-50"
+                          className="text-[11px] text-red-700 hover:text-red-800 font-bold transition cursor-pointer px-2.5 py-1.5 rounded-xl hover:bg-red-50 border border-red-200"
                         >
                           ✓ Đã đọc tất cả
                         </button>
                       )}
                       <button
+                        type="button"
                         onClick={() => setNotifOpen(false)}
-                        className="w-7 h-7 rounded-full bg-zinc-100 hover:bg-zinc-200 flex items-center justify-center text-zinc-500 font-bold text-xs transition cursor-pointer"
+                        className="w-8 h-8 rounded-full bg-zinc-100 hover:bg-zinc-200 flex items-center justify-center text-zinc-500 hover:text-zinc-800 font-bold text-xs transition cursor-pointer"
+                        title="Đóng cửa sổ"
                       >
                         ✕
                       </button>
@@ -492,43 +551,44 @@ export default function AdminLayout({
                   </div>
 
                   {/* Filter Toolbar: Search & Unread toggle */}
-                  <div className="px-4 py-2.5 border-b border-zinc-100 bg-zinc-50/60 flex items-center gap-2.5 flex-wrap">
-                    <div className="relative flex-1 min-w-[180px]">
-                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400 text-xs">🔍</span>
+                  <div className="px-5 py-3 border-b border-zinc-100 bg-zinc-50/70 flex items-center gap-3 flex-wrap">
+                    <div className="relative flex-1 min-w-[200px]">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 text-xs">🔍</span>
                       <input
                         type="text"
                         value={searchNotif}
                         onChange={e => setSearchNotif(e.target.value)}
-                        placeholder="Tìm theo tiêu đề, nội dung..."
-                        className="w-full pl-7 pr-6 py-1.5 rounded-xl border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600"
+                        placeholder="Tìm theo tiêu đề, mã đơn, nội dung..."
+                        className="w-full pl-8 pr-7 py-2 rounded-xl border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600 shadow-2xs"
                       />
                       {searchNotif && (
                         <button
+                          type="button"
                           onClick={() => setSearchNotif('')}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 text-xs cursor-pointer"
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 text-xs cursor-pointer"
                         >
                           ✕
                         </button>
                       )}
                     </div>
 
-                    <label className="flex items-center gap-1.5 cursor-pointer text-[11px] font-semibold text-zinc-700 select-none bg-white px-2.5 py-1.5 rounded-xl border border-zinc-200">
+                    <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-zinc-700 select-none bg-white px-3 py-2 rounded-xl border border-zinc-200 shadow-2xs hover:bg-zinc-50">
                       <input
                         type="checkbox"
                         checked={unreadOnly}
                         onChange={e => setUnreadOnly(e.target.checked)}
-                        className="w-3.5 h-3.5 text-red-700 rounded-sm accent-red-700 cursor-pointer"
+                        className="w-4 h-4 text-red-700 rounded accent-red-700 cursor-pointer"
                       />
                       <span>Chỉ chưa đọc</span>
                     </label>
                   </div>
 
                   {/* Category Filter Chips with Horizontal Navigation (TC10: Phân loại thông báo) */}
-                  <div className="relative px-2 py-1.5 border-b border-zinc-100 flex items-center gap-1 bg-zinc-50/50">
+                  <div className="relative px-3 py-2 border-b border-zinc-100 flex items-center gap-1.5 bg-zinc-50/40">
                     <button
                       type="button"
                       onClick={() => scrollNotifTabs('left')}
-                      className="shrink-0 w-6 h-6 flex items-center justify-center rounded-lg bg-white border border-zinc-200 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 shadow-2xs transition cursor-pointer"
+                      className="shrink-0 w-7 h-7 flex items-center justify-center rounded-xl bg-white border border-zinc-200 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 shadow-2xs transition cursor-pointer"
                       title="Cuộn sang trái"
                     >
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -556,8 +616,9 @@ export default function AdminLayout({
                         return (
                           <button
                             key={cat.key}
+                            type="button"
                             onClick={() => setSelectedNotifCategory(cat.key)}
-                            className={`px-2.5 py-1 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer border select-none ${
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer border select-none ${
                               isSelected
                                 ? 'bg-zinc-950 text-white border-zinc-950 shadow-xs'
                                 : 'bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-100'
@@ -565,11 +626,11 @@ export default function AdminLayout({
                           >
                             <span>{cat.icon}</span>
                             <span>{cat.label}</span>
-                            <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${isSelected ? 'bg-white/20 text-white' : 'bg-zinc-100 text-zinc-600'}`}>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ${isSelected ? 'bg-white/20 text-white' : 'bg-zinc-100 text-zinc-600'}`}>
                               {count}
                             </span>
                             {unreadCat > 0 && !isSelected && (
-                              <span className="w-1.5 h-1.5 rounded-full bg-red-600 shrink-0"></span>
+                              <span className="w-2 h-2 rounded-full bg-red-600 shrink-0 animate-ping"></span>
                             )}
                           </button>
                         );
@@ -579,7 +640,7 @@ export default function AdminLayout({
                     <button
                       type="button"
                       onClick={() => scrollNotifTabs('right')}
-                      className="shrink-0 w-6 h-6 flex items-center justify-center rounded-lg bg-white border border-zinc-200 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 shadow-2xs transition cursor-pointer"
+                      className="shrink-0 w-7 h-7 flex items-center justify-center rounded-xl bg-white border border-zinc-200 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 shadow-2xs transition cursor-pointer"
                       title="Cuộn sang phải"
                     >
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -588,8 +649,8 @@ export default function AdminLayout({
                     </button>
                   </div>
 
-                  {/* Notifications List */}
-                  <div className="max-h-[380px] overflow-y-auto divide-y divide-zinc-100 flex-1">
+                  {/* Notifications List - Dạng Thẻ riêng biệt (Cards), thoáng đãng */}
+                  <div className="max-h-[420px] overflow-y-auto p-3.5 space-y-2.5 bg-zinc-50/50 flex-1">
                     {(() => {
                       const list = notifications.filter(n => {
                         const matchCat = selectedNotifCategory === 'all' || n.category === selectedNotifCategory;
@@ -602,10 +663,10 @@ export default function AdminLayout({
 
                       if (list.length === 0) {
                         return (
-                          <div className="py-12 text-center text-zinc-400 space-y-1">
-                            <div className="text-3xl mb-1">📭</div>
-                            <div className="text-xs font-semibold text-zinc-600">Không có thông báo nào</div>
-                            <p className="text-[11px] text-zinc-400">Không tìm thấy thông báo trong danh mục này</p>
+                          <div className="py-14 text-center text-zinc-400 space-y-2 bg-white rounded-2xl border border-zinc-200/80">
+                            <div className="text-4xl">📭</div>
+                            <div className="text-xs font-bold text-zinc-700">Không có thông báo phù hợp</div>
+                            <p className="text-[11px] text-zinc-400">Không tìm thấy thông báo trong danh mục đã chọn</p>
                           </div>
                         );
                       }
@@ -619,28 +680,39 @@ export default function AdminLayout({
                           bgColor: '#f3f4f6',
                         };
 
+                        const isUnread = !n.read;
+
                         return (
                           <div
                             key={n.id}
-                            className={`p-3.5 hover:bg-zinc-50/80 transition flex gap-3 group relative ${!n.read ? 'bg-red-50/30' : ''}`}
+                            className={`p-4 rounded-2xl border transition-all duration-150 flex gap-3.5 group relative ${
+                              isUnread
+                                ? 'bg-white border-red-200/90 shadow-sm ring-1 ring-red-400/20'
+                                : 'bg-white/90 border-zinc-200/80 hover:border-zinc-300 hover:shadow-2xs'
+                            }`}
                           >
                             <div
-                              className="w-10 h-10 rounded-2xl flex items-center justify-center text-lg shrink-0 shadow-2xs"
+                              className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl shrink-0 shadow-2xs"
                               style={{ background: catMeta.bgColor, border: `1px solid ${catMeta.color}30` }}
                             >
                               {catMeta.icon}
                             </div>
 
-                            <div className="flex-1 min-w-0 space-y-1">
+                            <div className="flex-1 min-w-0 space-y-1.5">
                               <div className="flex items-center justify-between gap-2">
-                                <div className="flex items-center gap-1.5 min-w-0">
+                                <div className="flex items-center gap-2 min-w-0 flex-wrap">
                                   <span
-                                    className="px-2 py-0.5 rounded-md text-[10px] font-extrabold font-mono uppercase"
+                                    className="px-2 py-0.5 rounded-lg text-[10px] font-extrabold font-mono uppercase"
                                     style={{ background: catMeta.bgColor, color: catMeta.color }}
                                   >
                                     {catMeta.label}
                                   </span>
-                                  <span className={`text-xs truncate ${!n.read ? 'font-extrabold text-zinc-950' : 'font-semibold text-zinc-700'}`}>
+                                  {isUnread && (
+                                    <span className="px-1.5 py-0.2 rounded-md bg-red-600 text-white font-mono text-[9px] font-black uppercase">
+                                      MỚI
+                                    </span>
+                                  )}
+                                  <span className={`text-xs truncate ${isUnread ? 'font-extrabold text-zinc-950' : 'font-semibold text-zinc-800'}`}>
                                     {n.title}
                                   </span>
                                 </div>
@@ -649,43 +721,43 @@ export default function AdminLayout({
                                 </span>
                               </div>
 
-                              <p className="text-xs text-zinc-600 line-clamp-2 leading-relaxed">
+                              <p className="text-xs text-zinc-600 leading-relaxed font-normal">
                                 {n.message}
                               </p>
 
-                              <div className="flex items-center justify-between pt-1">
+                              {/* Action Row: Nút Xem chi tiết nổi bật + Đánh dấu đã đọc / Xóa */}
+                              <div className="flex items-center justify-between pt-2 border-t border-zinc-100 flex-wrap gap-2">
                                 <button
-                                  onClick={() => {
-                                    markNotificationAsRead(n.id);
-                                    setNotifications(getAdminNotifications());
-                                    onNavigate(n.linkPage);
-                                    setNotifOpen(false);
-                                  }}
-                                  className="text-[11px] font-mono text-red-700 hover:text-red-800 font-bold cursor-pointer hover:underline flex items-center gap-1"
+                                  type="button"
+                                  onClick={() => handleViewNotificationDetail(n)}
+                                  className="px-3.5 py-1.5 rounded-xl bg-red-700 hover:bg-red-800 text-white font-bold text-xs shadow-xs flex items-center gap-1.5 transition cursor-pointer active:scale-95 group/btn"
                                 >
                                   <span>Xem chi tiết</span>
-                                  <span>→</span>
+                                  <span className="transition-transform group-hover/btn:translate-x-0.5">→</span>
                                 </button>
 
                                 <div className="flex items-center gap-2">
-                                  {!n.read && (
+                                  {isUnread && (
                                     <button
+                                      type="button"
                                       onClick={() => {
                                         markNotificationAsRead(n.id);
                                         setNotifications(getAdminNotifications());
                                       }}
-                                      className="text-[10px] text-zinc-400 hover:text-zinc-700 cursor-pointer"
+                                      className="text-[11px] font-semibold text-zinc-500 hover:text-zinc-900 px-2 py-1 rounded-lg hover:bg-zinc-100 transition cursor-pointer flex items-center gap-1"
                                       title="Đánh dấu đã đọc"
                                     >
-                                      ✓ Đã đọc
+                                      <span>✓</span>
+                                      <span>Đã đọc</span>
                                     </button>
                                   )}
                                   <button
+                                    type="button"
                                     onClick={() => {
                                       deleteNotification(n.id);
                                       setNotifications(getAdminNotifications());
                                     }}
-                                    className="text-[10px] text-zinc-400 hover:text-red-600 cursor-pointer px-1"
+                                    className="w-7 h-7 rounded-lg text-zinc-400 hover:text-red-600 hover:bg-red-50 flex items-center justify-center transition cursor-pointer"
                                     title="Xóa thông báo này"
                                   >
                                     ✕
@@ -700,19 +772,22 @@ export default function AdminLayout({
                   </div>
 
                   {/* Footer */}
-                  <div className="px-5 pt-3 border-t border-zinc-100 flex items-center justify-between text-xs">
+                  <div className="px-5 pt-3 border-t border-zinc-100 flex items-center justify-between text-xs bg-white">
                     <button
+                      type="button"
                       onClick={() => {
                         clearAllNotifications(selectedNotifCategory);
                         setNotifications(getAdminNotifications());
                       }}
-                      className="text-zinc-400 hover:text-red-700 transition cursor-pointer text-[11px]"
+                      className="text-zinc-500 hover:text-red-700 font-semibold transition cursor-pointer text-xs flex items-center gap-1"
                     >
-                      🗑️ Xóa thông báo ({selectedNotifCategory === 'all' ? 'Tất cả' : NOTIFICATION_CATEGORIES.find(c => c.key === selectedNotifCategory)?.label})
+                      <span>🗑️</span>
+                      <span>Xóa danh sách ({selectedNotifCategory === 'all' ? 'Tất cả' : NOTIFICATION_CATEGORIES.find(c => c.key === selectedNotifCategory)?.label})</span>
                     </button>
                     <button
+                      type="button"
                       onClick={() => setNotifOpen(false)}
-                      className="font-bold text-zinc-700 hover:text-zinc-950 px-3 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 transition cursor-pointer"
+                      className="font-bold text-zinc-700 hover:text-zinc-950 px-4 py-1.5 rounded-xl bg-zinc-100 hover:bg-zinc-200 transition cursor-pointer shadow-2xs"
                     >
                       Đóng
                     </button>
@@ -1027,6 +1102,8 @@ function I({ icon }: { icon: string }) {
     truck: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>,
     shield: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,
     'shield-check': <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>,
+    tag: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>,
+    wrench: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>,
   };
   return d[icon] ?? null;
 }

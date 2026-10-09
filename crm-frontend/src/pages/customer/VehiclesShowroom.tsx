@@ -1,6 +1,17 @@
 import { useState, useEffect, useMemo } from 'react';
-import { formatVND, mockProductReviews, ProductReview, mockVehicles, countWords, getCustomerTier, computeSurveyStatus } from '../../data/mockData';
-import { catalogVehicleApi, feedbackApi, surveyApi } from '../../services/api';
+import {
+  formatVND,
+  mockProductReviews,
+  ProductReview,
+  mockVehicles,
+  countWords,
+  getCustomerTier,
+  computeSurveyStatus,
+  type VehicleChecklist,
+  type VehicleOrderDetails,
+  type Vehicle,
+} from '../../data/mockData';
+import { catalogVehicleApi, feedbackApi, surveyApi, orderApi, appointmentApi, vehicleApi, addCustomerNotification } from '../../services/api';
 
 export interface ShowroomVehicle {
   id: string;
@@ -17,6 +28,22 @@ export interface ShowroomVehicle {
   tieuHaoNhienLieu?: string;
   phanh?: string;
   xuatXu?: string;
+  // XM04 & XM05: Bổ sung thông số kỹ thuật và thương mại
+  soLuong?: number;
+  ncc?: string;
+  namSanXuat?: number;
+  vat?: number;
+  loaiDongCo?: string;
+  dungTichXiLanh?: string;
+  tieuThuNhienLieu?: string;
+  khoiLuong?: string;
+  kichThuoc?: string;
+  doCaoYen?: string;
+  dungTichBinhXang?: string;
+  heThongPhanh?: string;
+  kichCoLop?: string;
+  trangThaiHienThi?: 'Hien' | 'An';
+  trangThaiKinhDoanh?: 'DangKinhDoanh' | 'NgungKinhDoanh';
 }
 
 export const showroomVehicles: ShowroomVehicle[] = [
@@ -247,6 +274,892 @@ interface Props {
   currentCustomer?: Customer | null;
   onRequireLogin?: () => void;
   onNavigateToSurvey?: () => void;
+  onNavigateToOrders?: () => void;
+}
+
+// ────────────────────────────────────────────────────────────
+// MODAL MUA XE & ĐẶT CỌC TRỰC TUYẾN (D. BÁN XE WEB)
+// ────────────────────────────────────────────────────────────
+interface BuyVehicleModalProps {
+  vehicle: ShowroomVehicle;
+  currentCustomer?: Customer | null;
+  onClose: () => void;
+  onRequireLogin?: () => void;
+  onNavigateToOrders?: () => void;
+}
+
+function BuyVehicleOnlineModal({
+  vehicle,
+  currentCustomer,
+  onClose,
+  onRequireLogin,
+  onNavigateToOrders,
+}: BuyVehicleModalProps) {
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+
+  // ── Step 1: Màu sắc & Phiên bản ──
+  const colors = useMemo(() => {
+    return vehicle.mauSac.split(',').map(c => c.trim()).filter(Boolean);
+  }, [vehicle.mauSac]);
+  const [selectedColor, setSelectedColor] = useState<string>(colors[0] || 'Tiêu chuẩn');
+
+  const versions = [
+    { id: 'CBS', label: 'Bản Tiêu Chuẩn (CBS)', delta: 0, desc: 'Phanh kết hợp CBS, chìa khóa cơ an toàn' },
+    { id: 'ABS', label: 'Bản Cao Cấp (ABS & Smartkey)', delta: 2500000, desc: 'Phanh ABS trước, Khóa thông minh Smartkey' },
+    { id: 'SPORT', label: 'Bản Thể Thao Đặc Biệt (Full ABS)', delta: 5000000, desc: 'Full ABS 2 kênh, tem Limited thể thao cao cấp độc quyền' },
+  ];
+  const [selectedVersion, setSelectedVersion] = useState(versions[0]);
+
+  // ── Step 2: Ngày & Khung giờ nhận xe ──
+  const tomorrowStr = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().split('T')[0];
+  }, []);
+  const [pickupDate, setPickupDate] = useState<string>(tomorrowStr);
+  const timeSlots = [
+    '08:30 - 09:30',
+    '09:30 - 10:30',
+    '10:30 - 11:30',
+    '14:00 - 15:00',
+    '15:30 - 16:30',
+    '16:30 - 17:30',
+  ];
+  const [pickupTime, setPickupTime] = useState<string>(timeSlots[1]);
+  const [customerName, setCustomerName] = useState(currentCustomer?.hoTen || '');
+  const [customerPhone, setCustomerPhone] = useState(currentCustomer?.soDienThoai || '');
+  const [customerIdCard, setCustomerIdCard] = useState('');
+  const [customerNotes, setCustomerNotes] = useState('Đại lý chuẩn bị sẵn xe kiểm tra PDI trước giờ nhận');
+
+  // ── Step 3: Phương thức thanh toán (Option 1: Đặt cọc 2.000.000đ | Option 2: 100%) ──
+  const [paymentOption, setPaymentOption] = useState<'deposit' | 'full'>('deposit');
+  const depositAmount = 2000000; // 2.000.000đ
+
+  // Tỉnh / Thành đăng ký & Phí biển số
+  const provinces = [
+    { id: 'HCM', name: 'TP. Hồ Chí Minh', taxPercent: 5, plateFee: 4000000, desc: 'Trước bạ 5% + Biển số 4.000.000₫' },
+    { id: 'HN', name: 'TP. Hà Nội', taxPercent: 5, plateFee: 4000000, desc: 'Trước bạ 5% + Biển số 4.000.000₫' },
+    { id: 'DN_CT_HP', name: 'Đà Nẵng / Cần Thơ / Hải Phòng', taxPercent: 2, plateFee: 800000, desc: 'Trước bạ 2% + Biển số 800.000₫' },
+    { id: 'TINH_KHAC', name: 'Các tỉnh thành khác', taxPercent: 2, plateFee: 200000, desc: 'Trước bạ 2% + Biển số 200.000₫' },
+    { id: 'TU_DANG_KY', name: 'Tự làm thủ tục đăng ký biển số', taxPercent: 0, plateFee: 0, desc: 'Miễn phí, quý khách tự nộp thuế & bấm biển' },
+  ];
+  const [selectedProvince, setSelectedProvince] = useState(provinces[0]);
+
+  // Gói bảo hiểm gợi ý
+  const insuranceOptions = [
+    { id: 'NONE', label: 'Không mua bảo hiểm', fee: 0, desc: 'Không mua kèm bảo hiểm' },
+    { id: 'TNDS_1Y', label: 'Bảo hiểm TNDS Bắt Buộc (1 Năm)', fee: 66000, desc: 'Hợp chuẩn lưu hành giao thông đường bộ' },
+    { id: 'TNDS_2Y', label: 'Bảo hiểm TNDS Bắt Buộc (2 Năm)', fee: 132000, desc: 'Tiết kiệm thời gian, bảo vệ liên tục 2 năm' },
+    { id: 'TOAN_DIEN', label: 'Bảo hiểm Toàn Diện (TNDS + Mất cắp + Cháy nổ)', fee: 450000, desc: 'Bảo vệ toàn diện xe trước mọi rủi ro mất mát' },
+  ];
+  const [selectedInsurance, setSelectedInsurance] = useState(insuranceOptions[1]);
+
+  // Cổng thanh toán
+  const [paymentGateway, setPaymentGateway] = useState<'VietQR' | 'Card' | 'EWallet'>('VietQR');
+
+  // Tính toán số tiền
+  const vehiclePrice = vehicle.giaNiemYet + selectedVersion.delta;
+  const taxFee = paymentOption === 'full' ? Math.round((vehiclePrice * selectedProvince.taxPercent) / 100) : 0;
+  const plateFee = paymentOption === 'full' ? selectedProvince.plateFee : 0;
+  const insFee = paymentOption === 'full' ? selectedInsurance.fee : 0;
+  const fullPriceTotal = vehiclePrice + taxFee + plateFee + insFee;
+
+  const payNowAmount = paymentOption === 'deposit' ? depositAmount : fullPriceTotal;
+  const remainingAmount = paymentOption === 'deposit' ? Math.max(0, vehiclePrice - depositAmount) : 0;
+
+  // ── Step 4: Kết quả sau khi thanh toán ──
+  const [submitting, setSubmitting] = useState(false);
+  const [createdOrderId, setCreatedOrderId] = useState('');
+  const [createdAppointmentCode, setCreatedAppointmentCode] = useState('');
+  const [createdQrUrl, setCreatedQrUrl] = useState('');
+  const [copiedCode, setCopiedCode] = useState(false);
+
+  // Sync customer info
+  useEffect(() => {
+    if (currentCustomer) {
+      if (!customerName) setCustomerName(currentCustomer.hoTen);
+      if (!customerPhone) setCustomerPhone(currentCustomer.soDienThoai);
+    }
+  }, [currentCustomer]);
+
+  const handleConfirmOrder = async () => {
+    if (!currentCustomer) {
+      if (onRequireLogin) onRequireLogin();
+      else window.dispatchEvent(new CustomEvent('crm-open-login'));
+      return;
+    }
+
+    if (vehicle.soLuong !== undefined && vehicle.soLuong <= 0) {
+      alert(`Xin lỗi, mẫu xe "${vehicle.tenXe}" hiện đã tạm hết hàng trong kho. Không thể thực hiện đặt cọc!`);
+      return;
+    }
+
+    if (!customerName.trim() || !customerPhone.trim()) {
+      alert('Vui lòng nhập đầy đủ họ tên và số điện thoại người nhận xe!');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const maLichHen = `HEN-XE-${Math.floor(1000 + Math.random() * 9000)}`;
+      const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(
+        `${maLichHen}|${customerPhone}|${vehicle.tenXe}`
+      )}`;
+
+      const defaultChecklist: VehicleChecklist = {
+        xacThucKH: true,
+        thuThapCCCD: !!customerIdCard.trim(),
+        kyHopDong: true,
+        nhapSoKhungVIN: false,
+        dangKyBienSo: paymentOption === 'full' && selectedProvince.id !== 'TU_DANG_KY',
+        thuTienCoc: true,
+        hoSoVay: false,
+        capBaoHiem: selectedInsurance.id !== 'NONE',
+        kiemTraPDI: true,
+        banGiaoXe: false,
+      };
+
+      const vehicleOrderDetails: VehicleOrderDetails = {
+        customerType: 'Individual',
+        idCardTaxNo: customerIdCard.trim() || undefined,
+        customerNotes: customerNotes.trim() || undefined,
+        maXe: vehicle.id,
+        tenXe: vehicle.tenXe,
+        mauSac: selectedColor,
+        phienBan: selectedVersion.label,
+        dongCo: vehicle.dongCo,
+        giaNiemYet: vehiclePrice,
+        phiTruocBa: taxFee,
+        phiDangKyBienSo: plateFee,
+        tinhThanhDangKy: selectedProvince.name,
+        goiBaoHiem: selectedInsurance.label,
+        phiBaoHiem: insFee,
+        khuyenMai: 0,
+        tongGiaTri: fullPriceTotal,
+        soTienDatCoc: depositAmount,
+        ngayDatCoc: new Date().toISOString().split('T')[0],
+        soTienConLai: remainingAmount,
+        phuongThucThanhToan: 'ChuyenKhoan',
+        trangThaiDonHang: 'ChoGiaoXe',
+        hinhThucGiao: 'Showroom',
+        ngayGiaoXe: pickupDate,
+        khungGioGiao: pickupTime,
+        diaChiGiao: 'Showroom Chính Motoshop (Khách đến nhận trực tiếp)',
+        checklist: defaultChecklist,
+      };
+
+      const orderRes = await orderApi.createVehicleOrder({
+        customerId: currentCustomer.id,
+        hoTenKH: customerName,
+        soDienThoai: customerPhone,
+        email: currentCustomer.email,
+        diaChiGiao: 'Showroom Chính Motoshop (Khách đến nhận trực tiếp)',
+        kenhBan: 'Online',
+        trangThaiThanhToan: paymentOption === 'deposit' ? 'DaCoc' : 'DaThanhToan',
+        trangThai: 'ChoGiaoXe',
+        tongTien: payNowAmount,
+        phuongThucThanhToan: 'ChuyenKhoan',
+        ghiChu: `[Khách đặt online]: ${vehicle.tenXe} (${selectedColor}, ${selectedVersion.label}) - ${
+          paymentOption === 'deposit' ? 'Đã cọc 2.000.000₫ online' : 'Đã thanh toán 100% online'
+        }`,
+        maLichHen: maLichHen,
+        qrCodeUrl: qrUrl,
+        thongTinXe: vehicleOrderDetails,
+      });
+
+      if (!orderRes.success) {
+        alert(orderRes.message || 'Không thể tạo đơn hàng mua xe!');
+        setSubmitting(false);
+        return;
+      }
+
+      const apptRes = await appointmentApi.create({
+        customerId: currentCustomer.id,
+        hoTenKH: customerName,
+        soDienThoai: customerPhone,
+        loaiDichVu: 'NhanXe',
+        ngayHen: pickupDate,
+        gioHen: pickupTime.split(' - ')[0] || '09:00',
+        tenXe: vehicle.tenXe,
+        bienSo: paymentOption === 'full' && selectedProvince.id !== 'TU_DANG_KY' ? 'Bấm biển tại Showroom' : 'Chưa có',
+        mauXe: selectedColor,
+        phienBan: selectedVersion.label,
+        soTienCoc: depositAmount,
+        daThanhToan100: paymentOption === 'full',
+        maLichHen: maLichHen,
+        maDonHangXe: orderRes.order?.id,
+        ghiChu: `Khách đến nhận xe theo đơn #${orderRes.order?.id}. ${
+          paymentOption === 'deposit' ? 'Đã cọc 2.000.000₫, thu nốt tiền tại quầy.' : 'Đã thanh toán 100% online.'
+        }`,
+      });
+
+      setCreatedOrderId(orderRes.order?.id || 'DH-XE-001');
+      setCreatedAppointmentCode(maLichHen);
+      setCreatedQrUrl(qrUrl);
+
+      // Tự động gắn xe mới đặt cọc/mua vào tài khoản khách hàng ở trạng thái "Chưa có biển số"
+      try {
+        await vehicleApi.createSoldVehicle({
+          customerId: currentCustomer.id,
+          tenXe: vehicle.tenXe,
+          hangXe: vehicle.hang,
+          bienSo: 'Chưa có biển số',
+          mauSac: selectedColor,
+          namSanXuat: vehicle.namSanXuat || new Date().getFullYear(),
+        });
+      } catch (vehErr) {
+        console.warn('Lỗi tự động gắn xe sau khi đặt mua:', vehErr);
+      }
+
+      // Thông báo chúc mừng và hướng dẫn cập nhật biển số
+      addCustomerNotification({
+        customerId: currentCustomer.id,
+        icon: '🏍️',
+        title: '🎉 Đặt cọc / Mua xe máy thành công',
+        message: `Đơn mua xe ${vehicle.tenXe} (#${orderRes.order?.id}) đã được ghi nhận. Xe đã được gắn vào mục "Phương tiện của tôi" ở trạng thái Chưa có biển số. Vui lòng cập nhật biển số và ảnh cà vẹt xe sau khi hoàn tất thủ tục bàn giao!`,
+        category: 'order',
+        page: 'dashboard',
+        tab: 'vehicles',
+        targetId: orderRes.order?.id,
+      });
+
+      setStep(4);
+    } catch (err) {
+      console.error('Error creating vehicle order:', err);
+      alert('Có lỗi khi tạo đơn hàng bán xe trực tuyến!');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="bg-white rounded-3xl max-w-3xl w-full p-5 sm:p-7 shadow-2xl border border-zinc-200 max-h-[92vh] overflow-y-auto space-y-6">
+        {/* Header Modal */}
+        <div className="flex items-center justify-between pb-3 border-b border-zinc-200">
+          <div className="flex items-center gap-3">
+            <span className="w-10 h-10 rounded-2xl bg-red-100 text-red-700 font-bold flex items-center justify-center text-xl shrink-0">
+              🏍️
+            </span>
+            <div>
+              <h2 className="font-extrabold text-base sm:text-lg text-zinc-950 uppercase" style={{ fontFamily: 'var(--font-display)', letterSpacing: '0.04em' }}>
+                MUA XE & ĐẶT CỌC TRỰC TUYẾN
+              </h2>
+              <div className="text-xs text-zinc-500 font-mono mt-0.5">
+                {vehicle.tenXe} · {vehicle.hang} · Giữ xe ngay trong kho
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-full bg-zinc-100 hover:bg-zinc-200 text-zinc-500 hover:text-zinc-800 flex items-center justify-center font-bold text-sm cursor-pointer transition"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Step Indicator */}
+        <div className="grid grid-cols-4 gap-2 text-center text-xs font-mono font-bold">
+          <div className={`p-2 rounded-xl transition ${step === 1 ? 'bg-red-700 text-white shadow-sm' : step > 1 ? 'bg-emerald-100 text-emerald-800' : 'bg-zinc-100 text-zinc-400'}`}>
+            <span>1. Chọn xe & Bản</span>
+          </div>
+          <div className={`p-2 rounded-xl transition ${step === 2 ? 'bg-red-700 text-white shadow-sm' : step > 2 ? 'bg-emerald-100 text-emerald-800' : 'bg-zinc-100 text-zinc-400'}`}>
+            <span>2. Lịch nhận xe</span>
+          </div>
+          <div className={`p-2 rounded-xl transition ${step === 3 ? 'bg-red-700 text-white shadow-sm' : step > 3 ? 'bg-emerald-100 text-emerald-800' : 'bg-zinc-100 text-zinc-400'}`}>
+            <span>3. Thanh toán</span>
+          </div>
+          <div className={`p-2 rounded-xl transition ${step === 4 ? 'bg-emerald-600 text-white shadow-sm' : 'bg-zinc-100 text-zinc-400'}`}>
+            <span>4. Mã QR nhận xe</span>
+          </div>
+        </div>
+
+        {/* ── STEP 1: CẤU HÌNH XE ── */}
+        {step === 1 && (
+          <div className="space-y-5">
+            {/* Vehicle Hero Card */}
+            <div className="p-4 rounded-2xl bg-zinc-50 border border-zinc-200/80 flex flex-col sm:flex-row items-center gap-4">
+              <div className="w-full sm:w-36 h-28 rounded-xl overflow-hidden bg-zinc-950 shrink-0 border border-zinc-200">
+                <img src={vehicle.hinhAnh} alt={vehicle.tenXe} className="w-full h-full object-cover" />
+              </div>
+              <div className="flex-1 min-w-0 space-y-1 text-center sm:text-left">
+                <span className="text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded bg-red-100 text-red-700">
+                  {vehicle.hang} · {vehicle.phanKhuc}
+                </span>
+                <h3 className="font-extrabold text-base text-zinc-900 truncate" style={{ fontFamily: 'var(--font-display)' }}>
+                  {vehicle.tenXe}
+                </h3>
+                <div className="text-xs text-zinc-500 font-mono">Động cơ: {vehicle.dongCo} · {vehicle.congSuat}</div>
+                <div className="text-base font-extrabold text-red-700 font-mono mt-1">
+                  Giá niêm yết: {formatVND(vehicle.giaNiemYet)}
+                </div>
+              </div>
+            </div>
+
+            {/* Màu sắc */}
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-zinc-800 uppercase font-mono">
+                1. Chọn màu sắc xe yêu thích <span className="text-red-600">*</span>
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {colors.map(col => {
+                  const isSel = selectedColor === col;
+                  return (
+                    <button
+                      key={col}
+                      type="button"
+                      onClick={() => setSelectedColor(col)}
+                      className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer border ${
+                        isSel
+                          ? 'bg-zinc-900 text-white border-zinc-900 shadow-sm'
+                          : 'bg-white text-zinc-700 border-zinc-300 hover:bg-zinc-50'
+                      }`}
+                    >
+                      <span>{isSel ? '✓' : '🎨'}</span>
+                      <span>{col}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Phiên bản */}
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-zinc-800 uppercase font-mono">
+                2. Chọn phiên bản trang bị <span className="text-red-600">*</span>
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {versions.map(ver => {
+                  const isSel = selectedVersion.id === ver.id;
+                  const curPrice = vehicle.giaNiemYet + ver.delta;
+                  return (
+                    <div
+                      key={ver.id}
+                      onClick={() => setSelectedVersion(ver)}
+                      className={`p-3.5 rounded-2xl border-2 transition cursor-pointer flex flex-col justify-between ${
+                        isSel
+                          ? 'border-red-600 bg-red-50/40 shadow-xs'
+                          : 'border-zinc-200 bg-white hover:border-zinc-300'
+                      }`}
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className={`text-xs font-bold ${isSel ? 'text-red-700' : 'text-zinc-900'}`}>{ver.label}</span>
+                          {isSel && <span className="text-xs text-red-600 font-bold">✓</span>}
+                        </div>
+                        <p className="text-[11px] text-zinc-500 leading-relaxed">{ver.desc}</p>
+                      </div>
+                      <div className="mt-3 pt-2 border-t border-zinc-100 flex items-center justify-between text-xs font-mono">
+                        <span className="text-zinc-400">Giá xe:</span>
+                        <strong className="text-red-700 font-bold">{formatVND(curPrice)}</strong>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {vehicle.soLuong !== undefined && vehicle.soLuong <= 0 && (
+              <div className="p-3.5 rounded-xl bg-red-50 border border-red-300 text-xs text-red-700 font-bold flex items-center gap-2">
+                <span className="text-lg">⛔</span>
+                <span>Mẫu xe này hiện đã HẾT HÀNG trong kho (Số lượng = 0). Quý khách không thể thực hiện đặt cọc mua online lúc này!</span>
+              </div>
+            )}
+
+            {/* Action Bottom */}
+            <div className="pt-3 border-t border-zinc-100 flex items-center justify-between flex-wrap gap-3">
+              <div className="text-xs font-mono text-zinc-500">
+                Giá cấu hình đã chọn: <strong className="text-red-700 font-bold text-sm">{formatVND(vehiclePrice)}</strong>
+              </div>
+              <button
+                type="button"
+                disabled={vehicle.soLuong !== undefined && vehicle.soLuong <= 0}
+                onClick={() => setStep(2)}
+                className="px-6 py-2.5 rounded-xl bg-red-700 hover:bg-red-800 text-white font-bold text-xs uppercase tracking-wider transition cursor-pointer shadow-md shadow-red-700/20 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <span>{vehicle.soLuong !== undefined && vehicle.soLuong <= 0 ? '⛔ Hết hàng trong kho' : 'Tiếp tục: Chọn lịch nhận xe'}</span>
+                {!(vehicle.soLuong !== undefined && vehicle.soLuong <= 0) && <span>→</span>}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── STEP 2: LỊCH NHẬN XE TẠI SHOWROOM ── */}
+        {step === 2 && (
+          <div className="space-y-5">
+            {/* Showroom location notice */}
+            <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 flex items-center gap-3 text-xs text-amber-900">
+              <span className="text-2xl shrink-0">📍</span>
+              <div>
+                <strong className="font-bold uppercase font-mono block">Địa điểm nhận bàn giao xe:</strong>
+                <p className="text-[11px] text-amber-800 mt-0.5">
+                  Showroom Chính Motoshop: <strong>123 Lê Văn Sỹ, P.13, Q.3, TP. Hồ Chí Minh</strong>. Hệ thống tự động giữ 01 xe mới nguyên bản trong kho cho quý khách.
+                </p>
+              </div>
+            </div>
+
+            {/* Chọn Ngày & Giờ */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-zinc-800 uppercase font-mono mb-1.5">
+                  1. Chọn ngày đến nhận xe <span className="text-red-600">*</span>
+                </label>
+                <input
+                  type="date"
+                  min={tomorrowStr}
+                  value={pickupDate}
+                  onChange={e => setPickupDate(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs font-mono font-bold bg-white focus:outline-none focus:border-red-600"
+                />
+                <span className="text-[10px] text-zinc-400 font-mono mt-1 block">
+                  * Nhận xe từ ngày mai để showroom kiểm tra PDI hoàn tất.
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-zinc-800 uppercase font-mono mb-1.5">
+                  2. Khung giờ nhận xe mong muốn <span className="text-red-600">*</span>
+                </label>
+                <select
+                  value={pickupTime}
+                  onChange={e => setPickupTime(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs font-mono font-bold bg-white focus:outline-none focus:border-red-600 cursor-pointer"
+                >
+                  {timeSlots.map(t => (
+                    <option key={t} value={t}>
+                      ⏰ {t}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Thông tin người nhận xe */}
+            <div className="space-y-3 pt-2">
+              <label className="block text-xs font-bold text-zinc-800 uppercase font-mono">
+                3. Thông tin người nhận xe chính chủ <span className="text-red-600">*</span>
+              </label>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-[11px] text-zinc-600 font-semibold mb-1">Họ và tên *</label>
+                  <input
+                    type="text"
+                    required
+                    value={customerName}
+                    onChange={e => setCustomerName(e.target.value)}
+                    placeholder="Nguyễn Văn A"
+                    className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs bg-white font-semibold focus:outline-none focus:border-red-600"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] text-zinc-600 font-semibold mb-1">Số điện thoại *</label>
+                  <input
+                    type="tel"
+                    required
+                    value={customerPhone}
+                    onChange={e => setCustomerPhone(e.target.value)}
+                    placeholder="0901234567"
+                    className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs bg-white font-mono font-bold focus:outline-none focus:border-red-600"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] text-zinc-600 font-semibold mb-1">Số CCCD / CMND (để làm cavet)</label>
+                  <input
+                    type="text"
+                    value={customerIdCard}
+                    onChange={e => setCustomerIdCard(e.target.value)}
+                    placeholder="079090123456"
+                    className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs bg-white font-mono focus:outline-none focus:border-red-600"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] text-zinc-600 font-semibold mb-1">Yêu cầu thêm hoặc ghi chú</label>
+                <input
+                  type="text"
+                  value={customerNotes}
+                  onChange={e => setCustomerNotes(e.target.value)}
+                  placeholder="Ghi chú khi chuẩn bị xe..."
+                  className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600"
+                />
+              </div>
+            </div>
+
+            {/* Action Bottom */}
+            <div className="pt-3 border-t border-zinc-100 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setStep(1)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-zinc-600 hover:bg-zinc-100 border border-zinc-300 transition cursor-pointer"
+              >
+                ← Quay lại
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!customerName.trim() || !customerPhone.trim()) {
+                    alert('Vui lòng điền họ tên và số điện thoại người nhận xe!');
+                    return;
+                  }
+                  setStep(3);
+                }}
+                className="px-6 py-2.5 rounded-xl bg-red-700 hover:bg-red-800 text-white font-bold text-xs uppercase tracking-wider transition cursor-pointer shadow-md shadow-red-700/20 flex items-center gap-1.5"
+              >
+                <span>Tiếp tục: Phương thức thanh toán</span>
+                <span>→</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── STEP 3: PHƯƠNG THỨC THANH TOÁN (CỌC HOẶC 100%) ── */}
+        {step === 3 && (
+          <div className="space-y-5">
+            {/* 2 Options Cards */}
+            <div className="space-y-3">
+              <label className="block text-xs font-bold text-zinc-800 uppercase font-mono">
+                1. Chọn hình thức thanh toán trực tuyến <span className="text-red-600">*</span>
+              </label>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Option 1: Đặt cọc 2.000.000đ */}
+                <div
+                  onClick={() => setPaymentOption('deposit')}
+                  className={`p-4 rounded-2xl border-2 transition cursor-pointer flex flex-col justify-between ${
+                    paymentOption === 'deposit'
+                      ? 'border-red-600 bg-red-50/50 shadow-sm'
+                      : 'border-zinc-200 bg-white hover:border-zinc-300'
+                  }`}
+                >
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="font-extrabold text-xs text-zinc-900 uppercase font-mono">
+                        OPTION 1: ĐẶT CỌC GIỮ XE
+                      </span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                        Khuyên dùng
+                      </span>
+                    </div>
+                    <div className="text-xl font-extrabold text-red-700 font-mono">
+                      {formatVND(depositAmount)}
+                    </div>
+                    <p className="text-[11px] text-zinc-600 leading-relaxed">
+                      Đặt cọc giữ ngay 01 xe trong kho showroom. Số tiền còn lại{' '}
+                      <strong className="text-zinc-900 font-mono">{formatVND(remainingAmount)}</strong> sẽ thanh toán tại cửa hàng khi nhận bàn giao xe và kiểm tra PDI.
+                    </p>
+                  </div>
+                  <div className="mt-3 pt-2 border-t border-zinc-200/60 text-[11px] text-emerald-700 font-semibold flex items-center gap-1">
+                    <span>✓</span> Giữ xe 7 ngày · Hoàn cọc nếu xe lỗi
+                  </div>
+                </div>
+
+                {/* Option 2: Thanh toán 100% */}
+                <div
+                  onClick={() => setPaymentOption('full')}
+                  className={`p-4 rounded-2xl border-2 transition cursor-pointer flex flex-col justify-between ${
+                    paymentOption === 'full'
+                      ? 'border-red-600 bg-red-50/50 shadow-sm'
+                      : 'border-zinc-200 bg-white hover:border-zinc-300'
+                  }`}
+                >
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="font-extrabold text-xs text-zinc-900 uppercase font-mono">
+                        OPTION 2: THANH TOÁN TOÀN BỘ (100%)
+                      </span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
+                        Trọn gói lăn bánh
+                      </span>
+                    </div>
+                    <div className="text-xl font-extrabold text-red-700 font-mono">
+                      {formatVND(fullPriceTotal)}
+                    </div>
+                    <p className="text-[11px] text-zinc-600 leading-relaxed">
+                      Thanh toán trọn gói bao gồm giá xe, thuế trước bạ, phí cấp biển số và gói bảo hiểm theo yêu cầu. Đến showroom nhận xe bấm biển ngay!
+                    </p>
+                  </div>
+                  <div className="mt-3 pt-2 border-t border-zinc-200/60 text-[11px] text-blue-700 font-semibold flex items-center gap-1">
+                    <span>✓</span> Tự động tính phí biển số theo tỉnh thành
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Chi tiết Option 2: Tỉnh thành & Bảo hiểm nếu chọn full */}
+            {paymentOption === 'full' && (
+              <div className="p-4 rounded-2xl bg-zinc-50 border border-zinc-200 space-y-4 animate-in fade-in">
+                <div className="font-bold text-xs text-zinc-900 uppercase font-mono flex items-center gap-2">
+                  <span>🏛️</span> TÙY CHỌN ĐĂNG KÝ BIỂN SỐ & GỢI Ý BẢO HIỂM
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-zinc-700 mb-1">
+                      Tỉnh / Thành phố đăng ký biển số:
+                    </label>
+                    <select
+                      value={selectedProvince.id}
+                      onChange={e => {
+                        const found = provinces.find(p => p.id === e.target.value);
+                        if (found) setSelectedProvince(found);
+                      }}
+                      className="w-full p-2.5 rounded-xl border border-zinc-300 bg-white font-medium focus:outline-none focus:border-red-600"
+                    >
+                      {provinces.map(p => (
+                        <option key={p.id} value={p.id}>
+                          {p.name} ({p.desc})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-zinc-700 mb-1">
+                      Gợi ý gói bảo hiểm xe máy:
+                    </label>
+                    <select
+                      value={selectedInsurance.id}
+                      onChange={e => {
+                        const found = insuranceOptions.find(i => i.id === e.target.value);
+                        if (found) setSelectedInsurance(found);
+                      }}
+                      className="w-full p-2.5 rounded-xl border border-zinc-300 bg-white font-medium focus:outline-none focus:border-red-600"
+                    >
+                      {insuranceOptions.map(i => (
+                        <option key={i.id} value={i.id}>
+                          {i.label} - {formatVND(i.fee)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Bảng phân rã chi phí chi tiết */}
+            <div className="p-4 rounded-2xl bg-white border border-zinc-200/90 space-y-2 text-xs">
+              <div className="font-bold text-zinc-900 uppercase font-mono pb-2 border-b border-zinc-100 flex items-center justify-between">
+                <span>Chi tiết số tiền</span>
+                <span className="text-zinc-500 font-normal">Đơn vị: VNĐ</span>
+              </div>
+
+              <div className="flex justify-between py-1 text-zinc-600">
+                <span>Giá xe ({selectedVersion.label}):</span>
+                <strong className="text-zinc-900 font-mono">{formatVND(vehiclePrice)}</strong>
+              </div>
+
+              {paymentOption === 'full' && (
+                <>
+                  <div className="flex justify-between py-1 text-zinc-600">
+                    <span>Phí trước bạ ({selectedProvince.name}):</span>
+                    <strong className="text-zinc-900 font-mono">{formatVND(taxFee)}</strong>
+                  </div>
+                  <div className="flex justify-between py-1 text-zinc-600">
+                    <span>Phí đăng ký biển số:</span>
+                    <strong className="text-zinc-900 font-mono">{formatVND(plateFee)}</strong>
+                  </div>
+                  <div className="flex justify-between py-1 text-zinc-600">
+                    <span>Gói bảo hiểm ({selectedInsurance.label}):</span>
+                    <strong className="text-zinc-900 font-mono">{formatVND(insFee)}</strong>
+                  </div>
+                </>
+              )}
+
+              <div className="pt-2 border-t border-zinc-200 flex items-center justify-between">
+                <div>
+                  <div className="text-[11px] font-bold text-zinc-500 uppercase font-mono">
+                    SỐ TIỀN CẦN THANH TOÁN ONLINE NGAY
+                  </div>
+                  {paymentOption === 'deposit' && (
+                    <div className="text-[10px] text-zinc-400 font-mono">
+                      (Còn lại {formatVND(remainingAmount)} thanh toán khi nhận xe)
+                    </div>
+                  )}
+                </div>
+                <div className="text-2xl font-extrabold text-red-700 font-mono">
+                  {formatVND(payNowAmount)}
+                </div>
+              </div>
+            </div>
+
+            {/* Cổng thanh toán */}
+            <div className="space-y-2 pt-1">
+              <label className="block text-xs font-bold text-zinc-800 uppercase font-mono">
+                2. Chọn cổng thanh toán trực tuyến
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPaymentGateway('VietQR')}
+                  className={`p-3 rounded-xl border text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer ${
+                    paymentGateway === 'VietQR'
+                      ? 'border-red-600 bg-red-50 text-red-700 shadow-2xs'
+                      : 'border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50'
+                  }`}
+                >
+                  <span>📱</span>
+                  <span>Quét mã VietQR</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaymentGateway('Card')}
+                  className={`p-3 rounded-xl border text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer ${
+                    paymentGateway === 'Card'
+                      ? 'border-red-600 bg-red-50 text-red-700 shadow-2xs'
+                      : 'border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50'
+                  }`}
+                >
+                  <span>💳</span>
+                  <span>Thẻ Visa / Master</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaymentGateway('EWallet')}
+                  className={`p-3 rounded-xl border text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer ${
+                    paymentGateway === 'EWallet'
+                      ? 'border-red-600 bg-red-50 text-red-700 shadow-2xs'
+                      : 'border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50'
+                  }`}
+                >
+                  <span>👛</span>
+                  <span>Ví MoMo / VNPay</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Bottom Actions */}
+            <div className="pt-3 border-t border-zinc-100 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setStep(2)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-zinc-600 hover:bg-zinc-100 border border-zinc-300 transition cursor-pointer"
+              >
+                ← Quay lại
+              </button>
+              <button
+                type="button"
+                disabled={submitting || (vehicle.soLuong !== undefined && vehicle.soLuong <= 0)}
+                onClick={handleConfirmOrder}
+                className="px-6 py-2.5 rounded-xl bg-red-700 hover:bg-red-800 text-white font-extrabold text-xs uppercase tracking-wider transition cursor-pointer shadow-md shadow-red-700/30 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <span>{submitting ? '⏳ Đang xử lý...' : vehicle.soLuong !== undefined && vehicle.soLuong <= 0 ? '⛔ Hết hàng trong kho' : '⚡ XÁC NHẬN & THANH TOÁN NGAY'}</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── STEP 4: MÀN HÌNH HOÀN TẤT & MÃ QR NHẬN XE ── */}
+        {step === 4 && (
+          <div className="text-center py-4 space-y-6 animate-in zoom-in-95 duration-300">
+            <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-700 font-extrabold text-3xl flex items-center justify-center mx-auto shadow-inner">
+              ✓
+            </div>
+
+            <div className="space-y-1">
+              <h3 className="text-xl sm:text-2xl font-extrabold text-zinc-950 uppercase" style={{ fontFamily: 'var(--font-display)' }}>
+                ĐẶT MUA XE THÀNH CÔNG!
+              </h3>
+              <p className="text-xs text-zinc-600 max-w-md mx-auto">
+                Hệ thống showroom đã tiếp nhận thông tin và <strong>tự động giữ 01 xe</strong> trong kho cho quý khách.
+              </p>
+            </div>
+
+            {/* Mã Lịch Hẹn & QR Code Box */}
+            <div className="max-w-md mx-auto p-5 rounded-3xl bg-zinc-50 border-2 border-red-200/80 shadow-sm space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-zinc-200">
+                <div className="text-left">
+                  <div className="text-[10px] font-mono uppercase text-zinc-400 font-bold">MÃ LỊCH HẸN NHẬN XE</div>
+                  <div className="text-xl font-extrabold font-mono text-red-700 tracking-wider">
+                    {createdAppointmentCode}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(createdAppointmentCode);
+                    setCopiedCode(true);
+                    setTimeout(() => setCopiedCode(false), 3000);
+                  }}
+                  className="px-3 py-1.5 rounded-xl text-xs font-bold bg-white border border-zinc-300 hover:bg-zinc-100 text-zinc-700 transition cursor-pointer flex items-center gap-1 shadow-2xs"
+                >
+                  <span>{copiedCode ? '✓ Đã sao chép' : '📋 Sao chép mã'}</span>
+                </button>
+              </div>
+
+              {/* QR Code Display */}
+              <div className="flex flex-col items-center justify-center p-3 bg-white rounded-2xl border border-zinc-200 shadow-inner">
+                <img
+                  src={createdQrUrl}
+                  alt={`QR Code ${createdAppointmentCode}`}
+                  className="w-48 h-48 object-contain rounded-xl"
+                />
+                <span className="text-[10px] font-mono text-zinc-400 mt-2">
+                  Quét mã QR tại quầy để mở nhanh đơn hàng & làm thủ tục
+                </span>
+              </div>
+
+              {/* Appointment summary */}
+              <div className="text-left text-xs space-y-1.5 bg-white p-3.5 rounded-2xl border border-zinc-200/80 font-sans">
+                <div className="flex justify-between">
+                  <span className="text-zinc-500">Mã đơn hàng:</span>
+                  <strong className="font-mono text-zinc-900">{createdOrderId}</strong>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-zinc-500">Mẫu xe:</span>
+                  <strong className="text-zinc-900">{vehicle.tenXe} ({selectedColor})</strong>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-zinc-500">Thời gian nhận xe:</span>
+                  <strong className="text-red-700 font-mono">{pickupTime} ngày {pickupDate}</strong>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-zinc-500">Số tiền đã thanh toán:</span>
+                  <strong className="text-emerald-700 font-mono font-bold">{formatVND(payNowAmount)}</strong>
+                </div>
+                {paymentOption === 'deposit' && (
+                  <div className="flex justify-between pt-1 border-t border-zinc-100 text-amber-700">
+                    <span>Còn lại thanh toán tại Showroom:</span>
+                    <strong className="font-mono font-bold">{formatVND(remainingAmount)}</strong>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Instruction Callout */}
+            <p className="text-xs text-zinc-500 max-w-md mx-auto leading-relaxed">
+              💡 <strong>Lưu ý:</strong> Quý khách vui lòng xuất trình <strong>Mã lịch hẹn</strong> hoặc <strong>mã QR</strong> này cho nhân viên khi đến cửa hàng để được hỗ trợ gán số khung, số máy và bàn giao xe nhanh chóng.
+            </p>
+
+            {/* Actions */}
+            <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+              {onNavigateToOrders && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onNavigateToOrders();
+                  }}
+                  className="w-full sm:w-auto px-6 py-3 rounded-2xl bg-zinc-950 hover:bg-black text-white font-bold text-xs uppercase tracking-wider transition cursor-pointer shadow-md flex items-center justify-center gap-2"
+                >
+                  <span>📱 Xem trong Lịch sử đơn hàng & Lịch hẹn</span>
+                  <span>→</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-full sm:w-auto px-6 py-3 rounded-2xl bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-bold text-xs uppercase tracking-wider transition cursor-pointer"
+              >
+                Đóng cửa sổ
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 const brandMeta: Record<string, { label: string; color: string; bg: string; badge: string }> = {
@@ -256,7 +1169,7 @@ const brandMeta: Record<string, { label: string; color: string; bg: string; badg
   'Piaggio & Vespa': { label: 'Piaggio & Vespa', color: '#059669', bg: '#ecfdf5', badge: '🟢 Vespa Ý' },
 };
 
-export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onRequireLogin, onNavigateToSurvey }: Props) {
+export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onRequireLogin, onNavigateToSurvey, onNavigateToOrders }: Props) {
   // TC15: Đếm khảo sát đang chờ làm của khách hàng đăng nhập
   const pendingSurveysCount = useMemo(() => {
     if (!currentCustomer) return 0;
@@ -283,38 +1196,91 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
   const [onlyTestDrive, setOnlyTestDrive] = useState<boolean>(false);
   const [detailVehicle, setDetailVehicle] = useState<ShowroomVehicle | null>(null);
   const [activeModalTab, setActiveModalTab] = useState<'specs' | 'reviews'>('specs');
+  const [buyingVehicle, setBuyingVehicle] = useState<ShowroomVehicle | null>(null);
+  const [customerVehicles, setCustomerVehicles] = useState<Vehicle[]>([]);
+
+  useEffect(() => {
+    if (!currentCustomer) {
+      setCustomerVehicles([]);
+      return;
+    }
+    const loadUserVehicles = () => {
+      vehicleApi.getAll().then(vList => {
+        if (vList) {
+          const cIdNum = parseInt(currentCustomer.id.replace(/\D/g, ''), 10);
+          const filtered = vList.filter(v => {
+            if (v.customerId === currentCustomer.id) return true;
+            const vNum = parseInt(v.customerId.replace(/\D/g, ''), 10);
+            if (!isNaN(cIdNum) && !isNaN(vNum) && cIdNum === vNum) return true;
+            if (currentCustomer.soXe && currentCustomer.soXe === v.id) return true;
+            return false;
+          });
+          setCustomerVehicles(filtered);
+        }
+      });
+    };
+    loadUserVehicles();
+    const handleRefresh = () => loadUserVehicles();
+    window.addEventListener('crm-data-refresh', handleRefresh);
+    return () => window.removeEventListener('crm-data-refresh', handleRefresh);
+  }, [currentCustomer]);
+
+  const handleStartBuyVehicle = (v: ShowroomVehicle) => {
+    if (v.soLuong !== undefined && v.soLuong <= 0) {
+      alert(`Xin lỗi, mẫu xe "${v.tenXe}" hiện đã tạm hết hàng trong kho (Số lượng = 0). Quý khách vui lòng chọn mẫu xe khác hoặc liên hệ hotline để nhận thông báo khi có hàng!`);
+      return;
+    }
+    if (!currentCustomer) {
+      if (onRequireLogin) onRequireLogin();
+      else window.dispatchEvent(new CustomEvent('crm-open-login'));
+      return;
+    }
+    setBuyingVehicle(v);
+  };
 
   useEffect(() => {
     const loadVehicles = () => {
       catalogVehicleApi.getAll().then(data => {
         if (data && data.length > 0) {
-          const map = new Map<string, ShowroomVehicle>();
-          showroomVehicles.forEach(sv => map.set(sv.tenXe.toLowerCase().trim(), sv));
-
-          data.forEach(d => {
-            const key = d.tenXe.toLowerCase().trim();
-            const found = map.get(key);
-            const item: ShowroomVehicle = {
+          // Lọc nghiêm ngặt: Ẩn các xe có trangThaiHienThi === 'An' hoặc trangThaiKinhDoanh === 'NgungKinhDoanh'
+          const visible = data.filter(d => (d.trangThaiHienThi || 'Hien') !== 'An' && d.trangThaiKinhDoanh !== 'NgungKinhDoanh');
+          const mapped: ShowroomVehicle[] = visible.map(d => {
+            const foundFallback = showroomVehicles.find(sv => sv.tenXe.toLowerCase().trim() === d.tenXe.toLowerCase().trim());
+            return {
               id: d.id,
               tenXe: d.tenXe,
-              hang: (d.hang as any) || found?.hang || 'Honda',
-              phanKhuc: (d.phanKhuc as any) || found?.phanKhuc || 'Tay ga',
-              giaNiemYet: d.giaNiemYet || found?.giaNiemYet || 0,
-              mauSac: d.mauSac || found?.mauSac || 'Tiêu chuẩn',
-              moTa: d.moTa || found?.moTa || '',
-              hinhAnh: d.hinhAnh || found?.hinhAnh || 'https://images.unsplash.com/photo-1568772585407-9361f9bf3a87?w=800&auto=format&fit=crop&q=80',
-              coTheLaiThu: d.coTheLaiThu !== undefined ? d.coTheLaiThu : (found ? found.coTheLaiThu : true),
-              dongCo: d.dongCo || found?.dongCo || '150cc eSP+',
-              congSuat: d.congSuat || found?.congSuat || '15.0 HP / 8.000 rpm',
-              tieuHaoNhienLieu: d.tieuHaoNhienLieu || found?.tieuHaoNhienLieu || '2.2 L/100km',
-              phanh: d.phanh || found?.phanh || 'Phanh đĩa ABS trước',
-              xuatXu: found?.xuatXu || (d.hang === 'Piaggio & Vespa' ? 'Nhập khẩu (Ý)' : 'Việt Nam'),
+              hang: (d.hang as any) || foundFallback?.hang || 'Honda',
+              phanKhuc: (d.phanKhuc as any) || foundFallback?.phanKhuc || 'Tay ga',
+              giaNiemYet: d.giaNiemYet || foundFallback?.giaNiemYet || 0,
+              mauSac: d.mauSac || foundFallback?.mauSac || 'Tiêu chuẩn',
+              moTa: d.moTa || foundFallback?.moTa || '',
+              hinhAnh: d.hinhAnh || foundFallback?.hinhAnh || 'https://images.unsplash.com/photo-1568772585407-9361f9bf3a87?w=800&auto=format&fit=crop&q=80',
+              coTheLaiThu: d.coTheLaiThu !== undefined ? d.coTheLaiThu : (foundFallback ? foundFallback.coTheLaiThu : true),
+              dongCo: d.loaiDongCo || d.dongCo || foundFallback?.dongCo || '150cc eSP+',
+              congSuat: d.congSuat || foundFallback?.congSuat || '15.0 HP / 8.000 rpm',
+              tieuHaoNhienLieu: d.tieuThuNhienLieu || d.tieuHaoNhienLieu || foundFallback?.tieuHaoNhienLieu || '2.2 L/100km',
+              phanh: d.heThongPhanh || d.phanh || foundFallback?.phanh || 'Phanh đĩa ABS trước',
+              xuatXu: d.xuatXu || foundFallback?.xuatXu || (d.hang === 'Piaggio & Vespa' ? 'Nhập khẩu (Ý)' : 'Việt Nam'),
+              soLuong: d.soLuong,
+              ncc: d.ncc,
+              namSanXuat: d.namSanXuat || 2025,
+              vat: d.vat ?? 10,
+              loaiDongCo: d.loaiDongCo || d.dongCo || foundFallback?.dongCo,
+              dungTichXiLanh: d.dungTichXiLanh,
+              tieuThuNhienLieu: d.tieuThuNhienLieu || d.tieuHaoNhienLieu || foundFallback?.tieuHaoNhienLieu,
+              khoiLuong: d.khoiLuong,
+              kichThuoc: d.kichThuoc,
+              doCaoYen: d.doCaoYen,
+              dungTichBinhXang: d.dungTichBinhXang,
+              heThongPhanh: d.heThongPhanh || d.phanh || foundFallback?.phanh,
+              kichCoLop: d.kichCoLop,
+              trangThaiHienThi: d.trangThaiHienThi,
+              trangThaiKinhDoanh: d.trangThaiKinhDoanh,
             };
-            map.set(key, item);
           });
-          setVehicles(Array.from(map.values()));
+          setVehicles(mapped);
         } else {
-          setVehicles(showroomVehicles);
+          setVehicles(showroomVehicles.filter(sv => (sv as any).trangThaiHienThi !== 'An'));
         }
       });
     };
@@ -401,6 +1367,11 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
   // Bộ lọc đa tiêu chí (TC02, TC07, TC08: Tiếng Việt không dấu & khoảng trắng thừa)
   const filteredVehicles = vehicles
     .filter(v => {
+      // XM07: Xe bị ẩn trên Web hoặc Ngừng kinh doanh sẽ không xuất hiện trên website
+      if (v.trangThaiHienThi === 'An' || (v as any).trangThaiKinhDoanh === 'NgungKinhDoanh') {
+        return false;
+      }
+
       const matchSearch =
         !search.trim() ||
         matchVietnameseSearch(v.tenXe, search) ||
@@ -549,15 +1520,21 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
       .filter(v => v.id !== detailVehicle.id && (v.hang === detailVehicle.hang || v.phanKhuc === detailVehicle.phanKhuc))
       .slice(0, 4);
 
-    // Check if currentCustomer owns or has purchased detailVehicle (ĐG03)
-    const hasPurchasedVehicle = !currentCustomer ? false : mockVehicles.some(v => {
-      const isMine = v.customerId === currentCustomer.id;
-      if (!isMine) return false;
-      const vName = v.tenXe.toLowerCase().trim();
+    // Check if currentCustomer owns or has purchased detailVehicle (ĐG03 & Quyền sở hữu xe thực tế)
+    const hasPurchasedVehicle = !currentCustomer ? false : (() => {
+      const allMyVehicles = [
+        ...customerVehicles,
+        ...mockVehicles.filter(v => v.customerId === currentCustomer.id)
+      ];
       const detailName = detailVehicle.tenXe.toLowerCase().trim();
-      return vName.includes(detailName) || detailName.includes(vName) ||
-        (detailVehicle.dongCo && vName.includes(detailVehicle.hang.toLowerCase()));
-    });
+      const detailBrand = detailVehicle.hang.toLowerCase().trim();
+
+      return allMyVehicles.some(v => {
+        const vName = v.tenXe.toLowerCase().trim();
+        return vName.includes(detailName) || detailName.includes(vName) ||
+          (vName.split(' ')[0] === detailName.split(' ')[0] && (vName.includes(detailBrand) || detailName.includes(detailBrand)));
+      });
+    })();
 
     return (
       <div className="min-h-screen bg-zinc-50 pb-20">
@@ -746,13 +1723,34 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
                   </div>
                 </div>
 
-                {/* Big Action Buttons (TC03: Auth check) */}
+                {/* Big Action Buttons (D. BÁN XE + TC03: Auth check) */}
                 <div className="pt-4 border-t border-zinc-100 space-y-3">
+                  {/* Primary CTA: Mua xe / Đặt cọc Online */}
+                  {detailVehicle.soLuong !== undefined && detailVehicle.soLuong <= 0 ? (
+                    <button
+                      type="button"
+                      disabled
+                      className="w-full py-4 px-6 rounded-2xl bg-zinc-200 text-zinc-500 font-extrabold text-sm uppercase tracking-wider cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      <span className="text-xl">⛔</span>
+                      <span>XE HIỆN ĐÃ HẾT HÀNG TRONG KHO (SỐ LƯỢNG = 0)</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleStartBuyVehicle(detailVehicle)}
+                      className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-red-600 via-red-700 to-red-800 hover:from-red-700 hover:to-red-900 text-white font-extrabold text-sm uppercase tracking-wider transition-all shadow-lg shadow-red-700/30 cursor-pointer flex items-center justify-center gap-2 group"
+                    >
+                      <span className="text-xl group-hover:scale-110 transition-transform">🛒</span>
+                      <span>ĐẶT MUA XE / CỌC ONLINE (GIỮ XE TRONG KHO)</span>
+                    </button>
+                  )}
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {detailVehicle.coTheLaiThu ? (
                       <button
                         onClick={() => handleBookTestDrive(detailVehicle.id)}
-                        className="py-3.5 px-6 rounded-2xl bg-red-700 hover:bg-red-800 text-white font-bold text-xs uppercase tracking-wider transition-all shadow-md shadow-red-700/30 cursor-pointer flex items-center justify-center gap-2"
+                        className="py-3 px-6 rounded-2xl bg-zinc-900 hover:bg-black text-white font-bold text-xs uppercase tracking-wider transition-all shadow-sm cursor-pointer flex items-center justify-center gap-2"
                       >
                         <span className="text-base">🏍️</span>
                         <span>Đăng ký lái thử ngay</span>
@@ -760,7 +1758,7 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
                     ) : (
                       <button
                         disabled
-                        className="py-3.5 px-6 rounded-2xl bg-zinc-100 text-zinc-400 font-bold text-xs uppercase tracking-wider cursor-not-allowed flex items-center justify-center gap-2"
+                        className="py-3 px-6 rounded-2xl bg-zinc-100 text-zinc-400 font-bold text-xs uppercase tracking-wider cursor-not-allowed flex items-center justify-center gap-2"
                       >
                         <span>Chưa có xe lái thử</span>
                       </button>
@@ -768,7 +1766,7 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
 
                     <a
                       href="tel:19001234"
-                      className="py-3.5 px-6 rounded-2xl font-bold text-xs uppercase tracking-wider transition-all duration-200 cursor-pointer flex items-center justify-center gap-2 border-2 bg-zinc-50 hover:bg-zinc-100 border-zinc-300 text-zinc-800"
+                      className="py-3 px-6 rounded-2xl font-bold text-xs uppercase tracking-wider transition-all duration-200 cursor-pointer flex items-center justify-center gap-2 border-2 bg-zinc-50 hover:bg-zinc-100 border-zinc-300 text-zinc-800"
                     >
                       <span className="text-base">📞</span>
                       <span>Báo giá lăn bánh</span>
@@ -777,7 +1775,7 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
 
                   {!currentCustomer && (
                     <div className="text-center text-[11px] text-zinc-500 font-sans">
-                      🔒 Chưa đăng nhập? Nhấn nút "Đăng ký lái thử ngay" hệ thống sẽ mở form đăng nhập để ghi nhận lịch hẹn của bạn.
+                      🔒 Chưa đăng nhập? Nhấn nút "Đặt mua xe / Cọc Online" hệ thống sẽ mở form đăng nhập để ghi nhận đơn hàng và lịch hẹn của bạn.
                     </div>
                   )}
                 </div>
@@ -835,20 +1833,62 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
                       </div>
                       <div className="flex justify-between p-3 rounded-xl bg-zinc-50 border border-zinc-200/80">
                         <span className="text-zinc-500">Khối động cơ:</span>
-                        <strong className="text-zinc-900 font-mono">{detailVehicle.dongCo}</strong>
+                        <strong className="text-zinc-900 font-mono text-right ml-2">{detailVehicle.loaiDongCo || detailVehicle.dongCo}</strong>
                       </div>
+                      {detailVehicle.dungTichXiLanh && (
+                        <div className="flex justify-between p-3 rounded-xl bg-zinc-50 border border-zinc-200/80">
+                          <span className="text-zinc-500">Dung tích xi-lanh:</span>
+                          <strong className="text-zinc-900 font-mono">{detailVehicle.dungTichXiLanh}</strong>
+                        </div>
+                      )}
                       <div className="flex justify-between p-3 rounded-xl bg-zinc-50 border border-zinc-200/80">
                         <span className="text-zinc-500">Công suất cực đại:</span>
                         <strong className="text-zinc-900 font-mono">{detailVehicle.congSuat}</strong>
                       </div>
                       <div className="flex justify-between p-3 rounded-xl bg-zinc-50 border border-zinc-200/80">
                         <span className="text-zinc-500">Mức tiêu thụ xăng:</span>
-                        <strong className="text-emerald-700 font-mono">{detailVehicle.tieuHaoNhienLieu || '2.2 L/100km'}</strong>
+                        <strong className="text-emerald-700 font-mono">{detailVehicle.tieuThuNhienLieu || detailVehicle.tieuHaoNhienLieu || '2.2 L/100km'}</strong>
                       </div>
+                      {detailVehicle.khoiLuong && (
+                        <div className="flex justify-between p-3 rounded-xl bg-zinc-50 border border-zinc-200/80">
+                          <span className="text-zinc-500">Khối lượng bản thân:</span>
+                          <strong className="text-zinc-900 font-mono">{detailVehicle.khoiLuong}</strong>
+                        </div>
+                      )}
+                      {detailVehicle.kichThuoc && (
+                        <div className="flex justify-between p-3 rounded-xl bg-zinc-50 border border-zinc-200/80">
+                          <span className="text-zinc-500">Kích thước (DxRxC):</span>
+                          <strong className="text-zinc-900 font-mono text-right ml-2">{detailVehicle.kichThuoc}</strong>
+                        </div>
+                      )}
+                      {detailVehicle.doCaoYen && (
+                        <div className="flex justify-between p-3 rounded-xl bg-zinc-50 border border-zinc-200/80">
+                          <span className="text-zinc-500">Độ cao yên:</span>
+                          <strong className="text-zinc-900 font-mono">{detailVehicle.doCaoYen}</strong>
+                        </div>
+                      )}
+                      {detailVehicle.dungTichBinhXang && (
+                        <div className="flex justify-between p-3 rounded-xl bg-zinc-50 border border-zinc-200/80">
+                          <span className="text-zinc-500">Dung tích bình xăng:</span>
+                          <strong className="text-zinc-900 font-mono">{detailVehicle.dungTichBinhXang}</strong>
+                        </div>
+                      )}
                       <div className="flex justify-between p-3 rounded-xl bg-zinc-50 border border-zinc-200/80">
                         <span className="text-zinc-500">Hệ thống phanh:</span>
-                        <strong className="text-zinc-900 font-mono">{detailVehicle.phanh || 'Phanh đĩa ABS'}</strong>
+                        <strong className="text-zinc-900 font-mono text-right ml-2">{detailVehicle.heThongPhanh || detailVehicle.phanh || 'Phanh đĩa ABS'}</strong>
                       </div>
+                      {detailVehicle.kichCoLop && (
+                        <div className="flex justify-between p-3 rounded-xl bg-zinc-50 border border-zinc-200/80">
+                          <span className="text-zinc-500">Kích cỡ lốp:</span>
+                          <strong className="text-zinc-900 font-mono">{detailVehicle.kichCoLop}</strong>
+                        </div>
+                      )}
+                      {detailVehicle.namSanXuat && (
+                        <div className="flex justify-between p-3 rounded-xl bg-zinc-50 border border-zinc-200/80">
+                          <span className="text-zinc-500">Năm sản xuất:</span>
+                          <strong className="text-zinc-900 font-mono">{detailVehicle.namSanXuat}</strong>
+                        </div>
+                      )}
                       <div className="flex justify-between p-3 rounded-xl bg-zinc-50 border border-zinc-200/80">
                         <span className="text-zinc-500">Xuất xứ lắp ráp:</span>
                         <strong className="text-zinc-900 font-mono">{detailVehicle.xuatXu || (detailVehicle.hang === 'Piaggio & Vespa' ? 'Nhập khẩu (Ý)' : 'Việt Nam')}</strong>
@@ -1314,6 +2354,16 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
               </div>
             </div>
           )}
+          {/* Modal Mua xe / Đặt cọc trực tuyến (D. BÁN XE) */}
+          {buyingVehicle && (
+            <BuyVehicleOnlineModal
+              vehicle={buyingVehicle}
+              currentCustomer={currentCustomer}
+              onClose={() => setBuyingVehicle(null)}
+              onRequireLogin={onRequireLogin}
+              onNavigateToOrders={onNavigateToOrders}
+            />
+          )}
         </div>
       </div>
     );
@@ -1573,12 +2623,16 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
                       </span>
                     </div>
 
-                    {/* Test Drive badge */}
-                    {v.coTheLaiThu && (
+                    {/* Test Drive badge or Out of Stock */}
+                    {v.soLuong !== undefined && v.soLuong <= 0 ? (
+                      <span className="absolute top-3 right-3 px-2.5 py-1 rounded-full text-[10px] font-black bg-red-600 text-white shadow-md uppercase tracking-wider">
+                        ⛔ Hết hàng trong kho
+                      </span>
+                    ) : v.coTheLaiThu ? (
                       <span className="absolute top-3 right-3 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500 text-white shadow">
                         ✓ Có xe lái thử
                       </span>
-                    )}
+                    ) : null}
 
                     {/* Price bottom overlay */}
                     <div className="absolute bottom-3 left-3 right-3 flex items-end justify-between">
@@ -1623,32 +2677,54 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
                     </div>
 
                     {/* Actions */}
-                    <div className="pt-2 flex gap-2" onClick={e => e.stopPropagation()}>
-                      <button
-                        onClick={() => {
-                          setDetailVehicle(v);
-                          setActiveModalTab('reviews');
-                          window.scrollTo({ top: 0, behavior: 'smooth' });
-                        }}
-                        className="flex-1 py-2 rounded-xl text-xs font-bold border border-zinc-300 text-zinc-700 hover:bg-zinc-100 transition cursor-pointer flex items-center justify-center gap-1"
-                      >
-                        <span>💬</span> Đánh giá ({vReviews.length || 2})
-                      </button>
-                      {v.coTheLaiThu ? (
+                    <div className="pt-2 flex flex-col gap-2" onClick={e => e.stopPropagation()}>
+                      {v.soLuong !== undefined && v.soLuong <= 0 ? (
                         <button
-                          onClick={() => handleBookTestDrive(v.id)}
-                          className="flex-1 py-2 rounded-xl text-xs font-bold bg-red-700 hover:bg-red-800 text-white transition cursor-pointer shadow-sm flex items-center justify-center gap-1"
+                          type="button"
+                          disabled
+                          className="w-full py-2.5 rounded-xl text-xs font-bold bg-zinc-200 text-zinc-500 cursor-not-allowed flex items-center justify-center gap-1.5 uppercase tracking-wider"
                         >
-                          <span>🏍️</span> Lái thử ngay
+                          <span>⛔</span>
+                          <span>Hết hàng trong kho</span>
                         </button>
                       ) : (
                         <button
-                          disabled
-                          className="flex-1 py-2 rounded-xl text-xs font-medium bg-zinc-100 text-zinc-400 cursor-not-allowed"
+                          type="button"
+                          onClick={() => handleStartBuyVehicle(v)}
+                          className="w-full py-2.5 rounded-xl text-xs font-extrabold bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white transition shadow-sm flex items-center justify-center gap-1.5 cursor-pointer uppercase tracking-wider"
                         >
-                          Chưa có xe mẫu
+                          <span>🛒</span>
+                          <span>Mua xe / Đặt cọc Online</span>
                         </button>
                       )}
+
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => {
+                            setDetailVehicle(v);
+                            setActiveModalTab('reviews');
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                          }}
+                          className="flex-1 py-2 rounded-xl text-xs font-bold border border-zinc-300 text-zinc-700 hover:bg-zinc-100 transition cursor-pointer flex items-center justify-center gap-1"
+                        >
+                          <span>💬</span> Đánh giá ({vReviews.length || 2})
+                        </button>
+                        {v.coTheLaiThu ? (
+                          <button
+                            onClick={() => handleBookTestDrive(v.id)}
+                            className="flex-1 py-2 rounded-xl text-xs font-bold bg-zinc-900 hover:bg-black text-white transition cursor-pointer shadow-xs flex items-center justify-center gap-1"
+                          >
+                            <span>🏍️</span> Lái thử
+                          </button>
+                        ) : (
+                          <button
+                            disabled
+                            className="flex-1 py-2 rounded-xl text-xs font-medium bg-zinc-100 text-zinc-400 cursor-not-allowed"
+                          >
+                            Chưa có xe mẫu
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1674,6 +2750,17 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
             <img src={previewZoomImage} alt="Xem ảnh phóng to" className="max-w-full max-h-[85vh] rounded-2xl object-contain shadow-2xl mx-auto border border-white/20" />
           </div>
         </div>
+      )}
+
+      {/* Modal Mua xe / Đặt cọc trực tuyến (D. BÁN XE) */}
+      {buyingVehicle && (
+        <BuyVehicleOnlineModal
+          vehicle={buyingVehicle}
+          currentCustomer={currentCustomer}
+          onClose={() => setBuyingVehicle(null)}
+          onRequireLogin={onRequireLogin}
+          onNavigateToOrders={onNavigateToOrders}
+        />
       )}
     </div>
   );

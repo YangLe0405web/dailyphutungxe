@@ -11,7 +11,16 @@ export function StatusTag({ status }: { status: CustomerStatus }) {
   );
 }
 
-export function WarrantyTag({ status }: { status: 'ConHan' | 'HetHan' | 'ChuaCo' }) {
+export function WarrantyTag({ status }: { status: 'ConHan' | 'HetHan' | 'ChuaCo' | 'KhongApDung' }) {
+  if (status === 'KhongApDung') {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full text-xs font-600 px-2.5 py-1"
+        style={{ background: '#f4f4f5', color: '#71717a', fontFamily: 'var(--font-mono)' }}>
+        <span className="rounded-full" style={{ width: 5, height: 5, background: 'currentColor', display: 'inline-block' }} />
+        ⚪ Không áp dụng
+      </span>
+    );
+  }
   if (status === 'ChuaCo') {
     return (
       <span className="inline-flex items-center gap-1.5 rounded-full text-xs font-600 px-2.5 py-1"

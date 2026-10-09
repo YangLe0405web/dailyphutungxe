@@ -233,3 +233,154 @@ export function clearAllNotifications(category?: NotificationCategory): void {
   }
   window.dispatchEvent(new CustomEvent('crm-notifications-updated'));
 }
+
+// ────────────────────────────────────────────────────────────
+// CUSTOMER NOTIFICATIONS SYSTEM (Cá nhân hóa theo từng khách hàng)
+// ────────────────────────────────────────────────────────────
+export type CustomerNotifCategory = 'all' | 'order' | 'appointment' | 'review' | 'survey' | 'membership' | 'system';
+
+export interface CustomerNotification {
+  id: string;
+  customerId: string;
+  category: 'order' | 'appointment' | 'review' | 'survey' | 'membership' | 'system';
+  icon: string;
+  title: string;
+  message: string;
+  time: string;
+  timestamp: number;
+  read: boolean;
+  page: 'dashboard' | 'booking' | 'store' | 'showroom' | 'survey';
+  tab?: 'orders' | 'appts' | 'surveys' | 'profile' | 'vehicles' | 'reviews';
+  targetId?: string; // id của đơn hàng, lịch hẹn, bài khảo sát cụ thể
+}
+
+export function getCustomerNotifications(customerId: string): CustomerNotification[] {
+  if (!customerId) return [];
+  const key = `crm_customer_notifs_${customerId}`;
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw) {
+      const parsed: CustomerNotification[] = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {}
+
+  // Khởi tạo thông báo chào mừng ban đầu dành riêng cho tài khoản này
+  const initial: CustomerNotification[] = [
+    {
+      id: `cnotif-${customerId}-1`,
+      customerId,
+      category: 'system',
+      icon: '🎉',
+      title: 'Chào mừng quý khách đến với Showroom DailyXeMay',
+      message: 'Tài khoản của bạn đã được kích hoạt thành công. Khám phá ngay các dòng xe mới và phụ tùng chính hãng!',
+      time: 'Vừa xong',
+      timestamp: Date.now(),
+      read: false,
+      page: 'dashboard',
+      tab: 'profile',
+    },
+    {
+      id: `cnotif-${customerId}-2`,
+      customerId,
+      category: 'membership',
+      icon: '🌱',
+      title: 'Ưu đãi tích điểm thành viên',
+      message: 'Tích lũy chi tiêu thêm để nhanh chóng thăng hạng Thân thiết và nhận chiết khấu 5% khi mua phụ tùng.',
+      time: 'Hôm nay',
+      timestamp: Date.now() - 3600000,
+      read: true,
+      page: 'dashboard',
+      tab: 'profile',
+    },
+  ];
+  saveCustomerNotifications(customerId, initial);
+  return initial;
+}
+
+export function saveCustomerNotifications(customerId: string, list: CustomerNotification[]): void {
+  if (!customerId) return;
+  try {
+    localStorage.setItem(`crm_customer_notifs_${customerId}`, JSON.stringify(list));
+  } catch (e) {
+    console.error('Failed to save customer notifications', e);
+  }
+}
+
+export function addCustomerNotification(
+  item: Omit<CustomerNotification, 'id' | 'timestamp' | 'read' | 'time'> & { icon?: string }
+): CustomerNotification {
+  const current = getCustomerNotifications(item.customerId);
+  const now = new Date();
+  const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')} hôm nay`;
+
+  let icon = item.icon || '🔔';
+  if (!item.icon) {
+    switch (item.category) {
+      case 'order': icon = '📦'; break;
+      case 'appointment': icon = '📅'; break;
+      case 'survey': icon = '📋'; break;
+      case 'review': icon = '⭐'; break;
+      case 'membership': icon = '👑'; break;
+      default: icon = '📢'; break;
+    }
+  }
+
+  const newNotif: CustomerNotification = {
+    ...item,
+    icon,
+    id: `cnotif-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    time: timeStr,
+    timestamp: Date.now(),
+    read: false,
+  };
+
+  const updated = [newNotif, ...current].slice(0, 50);
+  saveCustomerNotifications(item.customerId, updated);
+
+  window.dispatchEvent(new CustomEvent('crm-customer-notification', { detail: newNotif }));
+  window.dispatchEvent(new CustomEvent('crm-customer-notifications-updated', { detail: { customerId: item.customerId } }));
+
+  return newNotif;
+}
+
+export function markCustomerNotifAsRead(customerId: string, id: string): CustomerNotification[] {
+  const current = getCustomerNotifications(customerId);
+  const updated = current.map(n => (n.id === id ? { ...n, read: true } : n));
+  saveCustomerNotifications(customerId, updated);
+  window.dispatchEvent(new CustomEvent('crm-customer-notifications-updated', { detail: { customerId } }));
+  return updated;
+}
+
+export function markAllCustomerNotifsAsRead(customerId: string, category?: string): CustomerNotification[] {
+  const current = getCustomerNotifications(customerId);
+  const updated = current.map(n => {
+    if (!category || category === 'all' || n.category === category) {
+      return { ...n, read: true };
+    }
+    return n;
+  });
+  saveCustomerNotifications(customerId, updated);
+  window.dispatchEvent(new CustomEvent('crm-customer-notifications-updated', { detail: { customerId } }));
+  return updated;
+}
+
+export function deleteCustomerNotification(customerId: string, id: string): CustomerNotification[] {
+  const current = getCustomerNotifications(customerId);
+  const updated = current.filter(n => n.id !== id);
+  saveCustomerNotifications(customerId, updated);
+  window.dispatchEvent(new CustomEvent('crm-customer-notifications-updated', { detail: { customerId } }));
+  return updated;
+}
+
+export function clearAllCustomerNotifications(customerId: string, category?: string): void {
+  if (!category || category === 'all') {
+    saveCustomerNotifications(customerId, []);
+  } else {
+    const current = getCustomerNotifications(customerId);
+    const updated = current.filter(n => n.category !== category);
+    saveCustomerNotifications(customerId, updated);
+  }
+  window.dispatchEvent(new CustomEvent('crm-customer-notifications-updated', { detail: { customerId } }));
+}
+

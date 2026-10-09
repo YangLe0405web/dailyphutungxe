@@ -1,8 +1,8 @@
 import { useState, useMemo, useEffect } from 'react';
-import { mockParts, formatVND, Part, mockProductReviews, ProductReview, Customer, mockOrders, countWords } from '../../data/mockData';
+import { mockParts, formatVND, Part, mockProductReviews, ProductReview, Customer, mockOrders, Order, countWords } from '../../data/mockData';
 import { useCart } from '../../contexts/CartContext';
 import { matchVietnameseSearch } from '../../utils/vietnameseSearch';
-import { feedbackApi } from '../../services/api';
+import { feedbackApi, partApi, promotionApi, orderApi } from '../../services/api';
 
 const categories = ['Tất cả', 'Nhớt', 'Lọc', 'Phanh', 'Bugi', 'Đèn', 'Lốp xe', 'Phụ kiện', 'Trang trí', 'Truyền động', 'Thân máy'];
 
@@ -137,30 +137,85 @@ export default function PartsStore({ currentCustomer, onRequireLogin }: Props = 
     }
   }, [currentCustomer]);
 
-  // Check if currentCustomer has purchased selectedPart (ĐG03)
-  const hasPurchased = useMemo(() => {
-    if (!currentCustomer || !selectedPart) return false;
-    return mockOrders.some(order => {
+  // Đọc danh sách đơn hàng thực tế từ API và mock data
+  const [realOrders, setRealOrders] = useState<Order[]>(mockOrders);
+
+  useEffect(() => {
+    orderApi.getAll().then(data => {
+      if (data && data.length > 0) setRealOrders(data);
+    });
+    const handleRefreshOrders = () => {
+      orderApi.getAll().then(data => {
+        if (data && data.length > 0) setRealOrders(data);
+      });
+    };
+    window.addEventListener('crm-data-refresh', handleRefreshOrders);
+    return () => window.removeEventListener('crm-data-refresh', handleRefreshOrders);
+  }, []);
+
+  // Đếm số đơn hàng Hoàn thành chứa phụ tùng này (ĐG03)
+  const completedPurchaseCount = useMemo(() => {
+    if (!currentCustomer || !selectedPart) return 0;
+    const custPhone = currentCustomer.soDienThoai ? currentCustomer.soDienThoai.replace(/\D/g, '') : '';
+    const custName = currentCustomer.hoTen ? currentCustomer.hoTen.toLowerCase().trim() : '';
+
+    const matchingOrders = realOrders.filter(order => {
+      // Chỉ tính đơn hàng đã giao thành công Hoàn thành
+      if (order.trangThai !== 'HoanThanh' && (order.trangThai as any) !== 'DaHoanThanh') return false;
       const isMyOrder =
         order.customerId === currentCustomer.id ||
-        order.hoTenKH.toLowerCase().trim() === currentCustomer.hoTen.toLowerCase().trim();
+        (custPhone && (order as any).soDienThoai && (order as any).soDienThoai.replace(/\D/g, '') === custPhone) ||
+        (custName && order.hoTenKH && order.hoTenKH.toLowerCase().trim() === custName);
       if (!isMyOrder) return false;
+
       return order.items.some(it =>
         it.tenSanPham.toLowerCase().includes(selectedPart.tenSanPham.toLowerCase()) ||
         selectedPart.tenSanPham.toLowerCase().includes(it.tenSanPham.toLowerCase())
       );
     });
-  }, [currentCustomer, selectedPart]);
+    return matchingOrders.length;
+  }, [currentCustomer, selectedPart, realOrders]);
+
+  const hasPurchased = completedPurchaseCount > 0;
+
+  // Parts list with live promotions (KM01, KM03)
+  const [rawParts, setRawParts] = useState<Part[]>([...mockParts]);
+  const [promoRefreshKey, setPromoRefreshKey] = useState(0);
+
+  useEffect(() => {
+    partApi.getAll().then(data => {
+      if (data && data.length > 0) setRawParts(data);
+    });
+  }, []);
+
+  useEffect(() => {
+    const handleRefresh = () => setPromoRefreshKey(k => k + 1);
+    window.addEventListener('crm-data-refresh', handleRefresh);
+    return () => window.removeEventListener('crm-data-refresh', handleRefresh);
+  }, []);
+
+  // Dynamically compute discounted price based on active promotions & filter out hidden parts (PT12)
+  const partsWithPromo = useMemo(() => {
+    return rawParts
+      .filter(p => p.trangThaiHienThi !== 'An') // PT12: Sản phẩm bị ẩn không hiển thị trên Web
+      .map(p => {
+        const disc = promotionApi.calculateDiscount(p);
+        return {
+          ...p,
+          giaKhuyenMai: disc ? disc.giaKhuyenMai : null,
+        };
+      });
+  }, [rawParts, promoRefreshKey]);
 
   // Extract all unique brands dynamically
   const brands = useMemo(() => {
-    const list = Array.from(new Set(mockParts.map(p => p.thuongHieu))).sort();
+    const list = Array.from(new Set(partsWithPromo.map(p => p.thuongHieu))).sort();
     return ['Tất cả', ...list];
-  }, []);
+  }, [partsWithPromo]);
 
   // Filtered store catalog
   const filtered = useMemo(() => {
-    let list = mockParts.filter(p => {
+    let list = partsWithPromo.filter(p => {
       const q = search.toLowerCase().trim();
       const matchCat = cat === 'Tất cả' || p.danhMuc === cat;
       const matchBrand = selectedBrand === 'Tất cả' || p.thuongHieu === selectedBrand;
@@ -186,7 +241,7 @@ export default function PartsStore({ currentCustomer, onRequireLogin }: Props = 
     if (sort === 'rating') list = [...list].sort((a, b) => b.rating - a.rating);
 
     return list;
-  }, [cat, selectedBrand, search, sort, priceRange]);
+  }, [partsWithPromo, cat, selectedBrand, search, sort, priceRange]);
 
   // TC12: Phân trang 10 sản phẩm/trang
   const ITEMS_PER_PAGE = 10;
@@ -205,25 +260,25 @@ export default function PartsStore({ currentCustomer, onRequireLogin }: Props = 
 
   // Flash Sale Items (TC06): Items with promotion discount
   const flashSaleItems = useMemo(() => {
-    return mockParts.filter(p => p.giaKhuyenMai !== null).slice(0, 4);
-  }, []);
+    return partsWithPromo.filter(p => p.giaKhuyenMai !== null).slice(0, 4);
+  }, [partsWithPromo]);
 
   // Best Seller Items (TC06): Top rated with highest ratings & reviews
   const bestSellers = useMemo(() => {
-    return [...mockParts]
+    return [...partsWithPromo]
       .sort((a, b) => (b.rating * (b.luotDanh || 10)) - (a.rating * (a.luotDanh || 10)))
       .slice(0, 4);
-  }, []);
+  }, [partsWithPromo]);
 
   // Related parts when viewing details
   const relatedParts = useMemo(() => {
     if (!selectedPart) return [];
-    return mockParts
+    return partsWithPromo
       .filter(p => p.id !== selectedPart.id && (p.danhMuc === selectedPart.danhMuc || p.thuongHieu === selectedPart.thuongHieu))
       .slice(0, 4);
-  }, [selectedPart]);
+  }, [selectedPart, partsWithPromo]);
 
-  // Handle Add to cart with TC03 auth check
+  // Handle Add to cart with TC03 auth check & stock validation
   function handleAdd(p: Part, qty = 1, e?: React.MouseEvent) {
     if (e) e.stopPropagation();
     if (!currentCustomer) {
@@ -231,15 +286,18 @@ export default function PartsStore({ currentCustomer, onRequireLogin }: Props = 
       else window.dispatchEvent(new CustomEvent('crm-open-login'));
       return;
     }
-    const existing = items.find(i => i.part.id === p.id);
-    if (existing) {
-      updateQty(p.id, existing.soLuong + qty);
-    } else {
-      add(p);
-      if (qty > 1) updateQty(p.id, qty);
+    // Lấy thông tin tồn kho mới nhất
+    const freshParts = partApi.getAllSync();
+    const freshPart = freshParts.find(item => item.id === p.id) || p;
+    if (freshPart.soLuongTon <= 0) {
+      alert(`⚠️ Sản phẩm "${freshPart.tenSanPham}" hiện đã HẾT HÀNG trong kho (Tồn kho = 0)! Không thể thêm vào giỏ.`);
+      return;
     }
-    setAdded(prev => new Set(prev).add(p.id));
-    setTimeout(() => setAdded(prev => { const n = new Set(prev); n.delete(p.id); return n; }), 1400);
+    const success = add(freshPart, qty);
+    if (success) {
+      setAdded(prev => new Set(prev).add(p.id));
+      setTimeout(() => setAdded(prev => { const n = new Set(prev); n.delete(p.id); return n; }), 1400);
+    }
   }
 
   // Handle Buy Now (TC03)
@@ -249,22 +307,34 @@ export default function PartsStore({ currentCustomer, onRequireLogin }: Props = 
       else window.dispatchEvent(new CustomEvent('crm-open-login'));
       return;
     }
-    handleAdd(p, qty);
-    window.location.hash = '#cart';
+    const freshParts = partApi.getAllSync();
+    const freshPart = freshParts.find(item => item.id === p.id) || p;
+    if (freshPart.soLuongTon <= 0) {
+      alert(`⚠️ Sản phẩm "${freshPart.tenSanPham}" hiện đã HẾT HÀNG trong kho (Tồn kho = 0)! Không thể đặt mua.`);
+      return;
+    }
+    const success = add(freshPart, qty);
+    if (success) {
+      window.location.hash = '#cart';
+    }
   }
 
-  // Check if currentCustomer has already reviewed selectedPart (ĐG05)
-  const existingReview = useMemo(() => {
-    if (!currentCustomer || !selectedPart) return null;
-    return allReviews.find(r =>
+  // Danh sách các đánh giá mà khách hàng đã gửi cho sản phẩm này (ĐG05)
+  const customerReviews = useMemo(() => {
+    if (!currentCustomer || !selectedPart) return [];
+    return allReviews.filter(r =>
       r.targetId === selectedPart.id &&
       (
         r.customerId === currentCustomer.id ||
         (r.soDienThoai && currentCustomer.soDienThoai && r.soDienThoai.replace(/\D/g, '') === currentCustomer.soDienThoai.replace(/\D/g, '')) ||
         r.tenKhachHang.toLowerCase().trim() === currentCustomer.hoTen.toLowerCase().trim()
       )
-    ) || null;
+    );
   }, [currentCustomer, selectedPart, allReviews]);
+
+  // Cho phép đánh giá lại nếu số đơn mua thành công nhiều hơn số bài đánh giá đã gửi
+  const canReviewAgain = completedPurchaseCount > customerReviews.length;
+  const existingReview = customerReviews[0] || null;
 
   // Handle Submit Review (ĐG04, ĐG05, ĐG09: Media đính kèm, ĐG16: Giới hạn 200 từ)
   const handleAddReview = async (e: React.FormEvent) => {
@@ -278,7 +348,7 @@ export default function PartsStore({ currentCustomer, onRequireLogin }: Props = 
       return;
     }
 
-    if (existingReview) {
+    if (isEditingReview && existingReview) {
       // ĐG05: Chỉnh sửa đánh giá hiện có (Tối đa 1 lần sửa)
       if ((existingReview.editCount || 0) >= 1) {
         alert('Bạn đã sử dụng hết lượt chỉnh sửa đánh giá (tối đa 1 lần).');
@@ -305,7 +375,7 @@ export default function PartsStore({ currentCustomer, onRequireLogin }: Props = 
       return;
     }
 
-    // ĐG04 & ĐG09: Gửi đánh giá mới lên Backend và lưu kèm media ảnh/video
+    // ĐG04 & ĐG09: Gửi đánh giá mới (Cho lần mua mới hoặc lần đầu)
     const res = await feedbackApi.create({
       customerId: currentCustomer.id,
       hoTen: newReviewAuthor.trim(),
@@ -328,30 +398,21 @@ export default function PartsStore({ currentCustomer, onRequireLogin }: Props = 
       targetId: selectedPart.id,
       customerId: currentCustomer.id,
       tenKhachHang: newReviewAuthor.trim(),
-      soDienThoai: currentCustomer.soDienThoai
-        ? currentCustomer.soDienThoai.slice(0, 4) + '***' + currentCustomer.soDienThoai.slice(-3)
-        : '091***' + Math.floor(100 + Math.random() * 900),
-      soSao: newReviewStars,
       ngayDanhGia: new Date().toISOString().split('T')[0],
+      soSao: newReviewStars,
       noiDung: newReviewContent.trim(),
       daMua: true,
-      dongXeDaMua: selectedPart.dongXePhuHop ? selectedPart.dongXePhuHop.split(',')[0] : 'Xe máy',
-      editCount: 0,
-      productName: selectedPart.tenSanPham,
-      productImage: selectedPart.hinhAnh,
-      productType: 'PhuTung',
       hinhAnhDinhKem: reviewMediaFiles,
+      editCount: 0,
     };
 
     setAllReviews(prev => [newRev, ...prev]);
     setNewReviewContent('');
+    setNewReviewStars(5);
     setReviewMediaFiles([]);
-    setReviewSubmitted(true);
-    setReviewToast('✓ Đánh giá phụ tùng kèm hình ảnh đã được lưu và cập nhật đồng bộ!');
-    setTimeout(() => {
-      setReviewSubmitted(false);
-      setReviewToast(null);
-    }, 4000);
+    setIsEditingReview(false);
+    setReviewToast('🎉 Cảm ơn bạn! Đánh giá sản phẩm đã được gửi thành công.');
+    setTimeout(() => setReviewToast(null), 4000);
   };
 
   const selectedPartReviews = selectedPart
@@ -521,61 +582,86 @@ export default function PartsStore({ currentCustomer, onRequireLogin }: Props = 
                     </div>
                   )}
 
-                  {/* Quantity selector */}
-                  <div className="flex items-center gap-4 pt-2">
-                    <span className="text-xs font-semibold text-zinc-600">Số lượng:</span>
-                    <div className="flex items-center border border-zinc-300 rounded-xl overflow-hidden bg-white shadow-2xs">
-                      <button
-                        type="button"
-                        onClick={() => setDetailQty(Math.max(1, detailQty - 1))}
-                        className="px-3.5 py-1.5 text-zinc-600 hover:bg-zinc-100 font-bold transition cursor-pointer text-sm"
-                      >
-                        -
-                      </button>
-                      <input
-                        type="number"
-                        min={1}
-                        max={selectedPart.soLuongTon}
-                        value={detailQty}
-                        onChange={e => setDetailQty(Math.max(1, Math.min(selectedPart.soLuongTon, parseInt(e.target.value) || 1)))}
-                        className="w-14 text-center text-xs font-bold font-mono focus:outline-none py-1.5"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setDetailQty(Math.min(selectedPart.soLuongTon, detailQty + 1))}
-                        className="px-3.5 py-1.5 text-zinc-600 hover:bg-zinc-100 font-bold transition cursor-pointer text-sm"
-                      >
-                        +
-                      </button>
+                  {/* Quantity selector & Stock notice */}
+                  {selectedPart.soLuongTon <= 0 ? (
+                    <div className="p-3 bg-red-50 border border-red-200 rounded-2xl flex items-center gap-2 text-xs text-red-700 font-bold">
+                      <span className="text-base">⚠️</span>
+                      <span>SẢN PHẨM HIỆN ĐÃ HẾT HÀNG TRONG KHO (TỒN KHO = 0)</span>
                     </div>
-                    <span className="text-xs text-zinc-500 font-mono">
-                      (Còn <strong className="text-zinc-900">{selectedPart.soLuongTon}</strong> sản phẩm trong kho)
-                    </span>
-                  </div>
+                  ) : (
+                    <div className="flex items-center gap-4 pt-2">
+                      <span className="text-xs font-semibold text-zinc-600">Số lượng:</span>
+                      <div className="flex items-center border border-zinc-300 rounded-xl overflow-hidden bg-white shadow-2xs">
+                        <button
+                          type="button"
+                          onClick={() => setDetailQty(Math.max(1, detailQty - 1))}
+                          className="px-3.5 py-1.5 text-zinc-600 hover:bg-zinc-100 font-bold transition cursor-pointer text-sm"
+                        >
+                          -
+                        </button>
+                        <input
+                          type="number"
+                          min={1}
+                          max={selectedPart.soLuongTon}
+                          value={detailQty}
+                          onChange={e => setDetailQty(Math.max(1, Math.min(selectedPart.soLuongTon, parseInt(e.target.value) || 1)))}
+                          className="w-14 text-center text-xs font-bold font-mono focus:outline-none py-1.5"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setDetailQty(Math.min(selectedPart.soLuongTon, detailQty + 1))}
+                          className="px-3.5 py-1.5 text-zinc-600 hover:bg-zinc-100 font-bold transition cursor-pointer text-sm"
+                        >
+                          +
+                        </button>
+                      </div>
+                      <span className="text-xs text-zinc-500 font-mono">
+                        (Còn <strong className="text-zinc-900">{selectedPart.soLuongTon}</strong> sản phẩm trong kho)
+                      </span>
+                    </div>
+                  )}
                 </div>
 
-                {/* Big Action Buttons (TC03: Auth check) */}
+                {/* Big Action Buttons (TC03: Auth check & Stock check) */}
                 <div className="pt-4 border-t border-zinc-100 space-y-3">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <button
-                      onClick={() => handleAdd(selectedPart, detailQty)}
-                      className={`py-3.5 px-6 rounded-2xl font-bold text-xs uppercase tracking-wider transition-all duration-200 cursor-pointer flex items-center justify-center gap-2 border-2 ${
-                        isAdded
-                          ? 'bg-emerald-600 border-emerald-600 text-white'
-                          : 'bg-red-50 hover:bg-red-100/80 border-red-700 text-red-700'
-                      }`}
-                    >
-                      <span className="text-base">{isAdded ? '✓' : '🛒'}</span>
-                      <span>{isAdded ? 'Đã thêm vào giỏ hàng!' : 'Thêm vào giỏ hàng'}</span>
-                    </button>
+                  {selectedPart.soLuongTon <= 0 ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <button
+                        disabled
+                        className="py-3.5 px-6 rounded-2xl bg-zinc-200 text-zinc-400 font-bold text-xs uppercase tracking-wider cursor-not-allowed flex items-center justify-center gap-2 border border-zinc-300"
+                      >
+                        <span>🚫</span>
+                        <span>Hết hàng</span>
+                      </button>
+                      <button
+                        disabled
+                        className="py-3.5 px-6 rounded-2xl bg-zinc-100 text-zinc-400 font-bold text-xs uppercase tracking-wider cursor-not-allowed flex items-center justify-center gap-2 border border-zinc-200"
+                      >
+                        <span>✕</span> Tạm ngưng đặt hàng
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <button
+                        onClick={() => handleAdd(selectedPart, detailQty)}
+                        className={`py-3.5 px-6 rounded-2xl font-bold text-xs uppercase tracking-wider transition-all duration-200 cursor-pointer flex items-center justify-center gap-2 border-2 ${
+                          isAdded
+                            ? 'bg-emerald-600 border-emerald-600 text-white'
+                            : 'bg-red-50 hover:bg-red-100/80 border-red-700 text-red-700'
+                        }`}
+                      >
+                        <span className="text-base">{isAdded ? '✓' : '🛒'}</span>
+                        <span>{isAdded ? 'Đã thêm vào giỏ hàng!' : 'Thêm vào giỏ hàng'}</span>
+                      </button>
 
-                    <button
-                      onClick={() => handleBuyNow(selectedPart, detailQty)}
-                      className="py-3.5 px-6 rounded-2xl bg-red-700 hover:bg-red-800 text-white font-bold text-xs uppercase tracking-wider transition-all shadow-md shadow-red-700/30 cursor-pointer flex items-center justify-center gap-2"
-                    >
-                      <span>⚡</span> Mua ngay với giá ưu đãi
-                    </button>
-                  </div>
+                      <button
+                        onClick={() => handleBuyNow(selectedPart, detailQty)}
+                        className="py-3.5 px-6 rounded-2xl bg-red-700 hover:bg-red-800 text-white font-bold text-xs uppercase tracking-wider transition-all shadow-md shadow-red-700/30 cursor-pointer flex items-center justify-center gap-2"
+                      >
+                        <span>⚡</span> Mua ngay với giá ưu đãi
+                      </button>
+                    </div>
+                  )}
 
                   {!currentCustomer && (
                     <div className="text-center text-[11px] text-zinc-500 font-sans">
@@ -814,7 +900,7 @@ export default function PartsStore({ currentCustomer, onRequireLogin }: Props = 
                         </button>
                       </div>
                     </div>
-                  ) : existingReview && !isEditingReview ? (
+                  ) : existingReview && !canReviewAgain && !isEditingReview ? (
                     /* ĐG05: Đã đánh giá - Hiển thị đánh giá của khách hàng và nút sửa (tối đa 1 lần) */
                     <div className="p-5 sm:p-6 rounded-3xl bg-zinc-50 border border-zinc-200 space-y-4">
                       <div className="flex items-center justify-between flex-wrap gap-2 pb-3 border-b border-zinc-200">
@@ -890,6 +976,15 @@ export default function PartsStore({ currentCustomer, onRequireLogin }: Props = 
                       {reviewToast && (
                         <div className="p-3.5 rounded-2xl bg-emerald-100 text-emerald-800 text-xs font-bold flex items-center gap-2">
                           <span>✓</span> {reviewToast}
+                        </div>
+                      )}
+
+                      {canReviewAgain && customerReviews.length > 0 && !isEditingReview && (
+                        <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2">
+                          <span className="text-base">🛍️</span>
+                          <div>
+                            <strong>Bạn đã mua lại phụ tùng này!</strong> Bạn đã hoàn thành {completedPurchaseCount} đơn hàng và đã có {customerReviews.length} bài đánh giá. Hãy viết tiếp nhận xét cho lần mua này nhé.
+                          </div>
                         </div>
                       )}
 
@@ -1576,12 +1671,18 @@ export default function PartsStore({ currentCustomer, onRequireLogin }: Props = 
                               </span>
                             )}
                           </div>
-                          <div className="text-[10px] text-emerald-700 font-mono font-semibold">
-                            ✓ Còn {p.soLuongTon} sản phẩm có sẵn
-                          </div>
+                          {p.soLuongTon <= 0 ? (
+                            <div className="text-[10px] text-red-600 font-mono font-bold">
+                              ✕ HẾT HÀNG (Tồn kho: 0)
+                            </div>
+                          ) : (
+                            <div className="text-[10px] text-emerald-700 font-mono font-semibold">
+                              ✓ Còn {p.soLuongTon} sản phẩm có sẵn
+                            </div>
+                          )}
                         </div>
 
-                        {/* Action buttons (TC04 & TC03) */}
+                        {/* Action buttons (TC04 & TC03 & Stock check) */}
                         <div className="grid grid-cols-2 gap-2 pt-1">
                           <button
                             type="button"
@@ -1595,18 +1696,29 @@ export default function PartsStore({ currentCustomer, onRequireLogin }: Props = 
                             Chi tiết
                           </button>
 
-                          <button
-                            type="button"
-                            onClick={(e) => handleAdd(p, 1, e)}
-                            className={`py-2 px-2.5 rounded-xl font-bold text-[11px] transition-all cursor-pointer flex items-center justify-center gap-1 ${
-                              isAdded
-                                ? 'bg-emerald-600 text-white shadow-xs'
-                                : 'bg-red-700 hover:bg-red-800 text-white shadow-xs shadow-red-700/20'
-                            }`}
-                          >
-                            <span>{isAdded ? '✓' : '+'}</span>
-                            <span>{isAdded ? 'Đã thêm' : 'Thêm giỏ'}</span>
-                          </button>
+                          {p.soLuongTon <= 0 ? (
+                            <button
+                              type="button"
+                              disabled
+                              className="py-2 px-2.5 rounded-xl font-bold text-[11px] bg-zinc-100 text-zinc-400 cursor-not-allowed flex items-center justify-center gap-1 border border-zinc-200"
+                            >
+                              <span>🚫</span>
+                              <span>Hết hàng</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={(e) => handleAdd(p, 1, e)}
+                              className={`py-2 px-2.5 rounded-xl font-bold text-[11px] transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                                isAdded
+                                  ? 'bg-emerald-600 text-white shadow-xs'
+                                  : 'bg-red-700 hover:bg-red-800 text-white shadow-xs shadow-red-700/20'
+                              }`}
+                            >
+                              <span>{isAdded ? '✓' : '+'}</span>
+                              <span>{isAdded ? 'Đã thêm' : 'Thêm giỏ'}</span>
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>

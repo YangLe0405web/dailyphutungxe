@@ -23,7 +23,13 @@ namespace CrmBackend.Controllers
             var sql = @"
                 SELECT k.MaKH, k.MaTK, k.HoTen, k.NgaySinh, k.GioiTinh, 
                        k.SoDienThoai, k.Email, k.DiaChi, k.SoThich, k.NgayTao,
-                       t.TenDangNhap, t.TrangThai
+                       t.TenDangNhap, t.TrangThai,
+                       ISNULL((
+                           SELECT SUM(d.TongTien) 
+                           FROM DON_HANG d 
+                           WHERE d.MaKH = k.MaKH 
+                             AND (d.TrangThai IN (N'Hoàn thành', N'HoanThanh', N'DaHoanThanh', N'Đã hoàn thành'))
+                       ), 0) AS TongChiTieu
                 FROM KHACH_HANG k
                 JOIN TAI_KHOAN t ON k.MaTK = t.MaTK
                 ORDER BY k.MaKH";
@@ -39,7 +45,13 @@ namespace CrmBackend.Controllers
             var sql = @"
                 SELECT k.MaKH, k.MaTK, k.HoTen, k.NgaySinh, k.GioiTinh, 
                        k.SoDienThoai, k.Email, k.DiaChi, k.SoThich, k.NgayTao,
-                       t.TenDangNhap, t.TrangThai
+                       t.TenDangNhap, t.TrangThai,
+                       ISNULL((
+                           SELECT SUM(d.TongTien) 
+                           FROM DON_HANG d 
+                           WHERE d.MaKH = k.MaKH 
+                             AND (d.TrangThai IN (N'Hoàn thành', N'HoanThanh', N'DaHoanThanh', N'Đã hoàn thành'))
+                       ), 0) AS TongChiTieu
                 FROM KHACH_HANG k
                 JOIN TAI_KHOAN t ON k.MaTK = t.MaTK
                 WHERE k.MaKH = @MaKH";
@@ -162,18 +174,61 @@ namespace CrmBackend.Controllers
             return Ok(new { message = "Cập nhật thành công!" });
         }
 
-        // ── DELETE: api/KhachHang/5 ── Xóa khách hàng (cascade xóa TAI_KHOAN)
+        // ── DELETE: api/KhachHang/5 ── Xóa khách hàng (cascade xóa các dữ liệu liên quan và TAI_KHOAN)
         [HttpDelete("{maKh}")]
         public async Task<IActionResult> Delete(int maKh)
         {
-            // Xóa TAI_KHOAN → cascade xóa KHACH_HANG
             var sql = @"
-                DELETE FROM TAI_KHOAN 
-                WHERE MaTK = (SELECT MaTK FROM KHACH_HANG WHERE MaKH = @MaKH)";
+                BEGIN TRANSACTION;
+                BEGIN TRY
+                    DECLARE @MaTK INT;
+                    SELECT @MaTK = MaTK FROM KHACH_HANG WHERE MaKH = @MaKH;
 
-            var rows = await _db.ExecuteAsync(sql, new { MaKH = maKh });
-            if (rows == 0) return NotFound(new { message = "Không tìm thấy khách hàng" });
-            return Ok(new { message = "Đã xóa khách hàng!" });
+                    IF @MaTK IS NOT NULL OR EXISTS (SELECT 1 FROM KHACH_HANG WHERE MaKH = @MaKH)
+                    BEGIN
+                        -- 1. Xóa chi tiết đơn hàng và đơn hàng
+                        DELETE FROM CHI_TIET_DON_HANG WHERE MaDon IN (SELECT MaDon FROM DON_HANG WHERE MaKH = @MaKH);
+                        DELETE FROM DON_HANG WHERE MaKH = @MaKH;
+
+                        -- 2. Xóa lịch hẹn
+                        DELETE FROM LICH_HEN WHERE MaKH = @MaKH;
+
+                        -- 3. Xóa phản hồi
+                        DELETE FROM PHAN_HOI WHERE MaKH = @MaKH;
+
+                        -- 4. Xóa kết quả khảo sát
+                        DELETE FROM KET_QUA_KHAO_SAT WHERE MaKH = @MaKH;
+
+                        -- 5. Xóa xe sở hữu
+                        DELETE FROM XE_KHACH_HANG WHERE MaKH = @MaKH;
+
+                        -- 6. Xóa khách hàng
+                        DELETE FROM KHACH_HANG WHERE MaKH = @MaKH;
+
+                        -- 7. Xóa tài khoản
+                        IF @MaTK IS NOT NULL
+                        BEGIN
+                            DELETE FROM TAI_KHOAN WHERE MaTK = @MaTK;
+                        END
+                    END
+
+                    COMMIT TRANSACTION;
+                    SELECT 1;
+                END TRY
+                BEGIN CATCH
+                    ROLLBACK TRANSACTION;
+                    THROW;
+                END CATCH;";
+
+            try
+            {
+                await _db.ExecuteAsync(sql, new { MaKH = maKh });
+                return Ok(new { message = "Đã xóa khách hàng và toàn bộ dữ liệu liên quan thành công!" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Lỗi khi xóa khách hàng: " + ex.Message });
+            }
         }
 
         // ── PUT: api/KhachHang/khoa/5 ── Khóa / Mở khóa tài khoản
@@ -327,6 +382,49 @@ namespace CrmBackend.Controllers
                 return NotFound(new { message = "Không tìm thấy tài khoản để đặt lại mật khẩu!" });
 
             return Ok(new { success = true, message = "Đặt lại mật khẩu thành công!" });
+        }
+
+        // ── POST: api/KhachHang/doi-mat-khau ── Đổi mật khẩu khách hàng (xác thực mật khẩu cũ)
+        [HttpPost("doi-mat-khau")]
+        public async Task<IActionResult> DoiMatKhau([FromBody] KhachHangDoiMatKhauDto dto)
+        {
+            if (string.IsNullOrWhiteSpace(dto.EmailHoacSdt) || string.IsNullOrWhiteSpace(dto.MatKhauCu) || string.IsNullOrWhiteSpace(dto.MatKhauMoi))
+            {
+                return BadRequest(new { message = "Vui lòng nhập đầy đủ mật khẩu cũ và mật khẩu mới!" });
+            }
+
+            var password = dto.MatKhauMoi;
+            if (password.Length < 8 ||
+                !password.Any(char.IsUpper) ||
+                !password.Any(char.IsLower) ||
+                !password.Any(char.IsDigit) ||
+                !password.Any(ch => !char.IsLetterOrDigit(ch)))
+            {
+                return BadRequest(new { message = "Mật khẩu mới phải từ 8 ký tự trở lên, bao gồm chữ hoa, chữ thường, số và ký tự đặc biệt!" });
+            }
+
+            var input = dto.EmailHoacSdt.Trim();
+            var checkSql = @"
+                SELECT t.MaTK, t.MatKhau 
+                FROM TAI_KHOAN t
+                LEFT JOIN KHACH_HANG k ON t.MaTK = k.MaTK
+                WHERE LOWER(k.Email) = LOWER(@Input) OR k.SoDienThoai = @Input OR LOWER(t.TenDangNhap) = LOWER(@Input)";
+
+            var tk = await _db.QueryFirstOrDefaultAsync<dynamic>(checkSql, new { Input = input });
+            if (tk == null)
+            {
+                return NotFound(new { message = "Không tìm thấy tài khoản!" });
+            }
+
+            if ((string)tk.MatKhau != dto.MatKhauCu)
+            {
+                return BadRequest(new { message = "Mật khẩu hiện tại không chính xác!" });
+            }
+
+            var updateSql = "UPDATE TAI_KHOAN SET MatKhau = @MatKhauMoi WHERE MaTK = @MaTK";
+            await _db.ExecuteAsync(updateSql, new { MatKhauMoi = password, MaTK = (int)tk.MaTK });
+
+            return Ok(new { success = true, message = "Đổi mật khẩu thành công!" });
         }
     }
 }

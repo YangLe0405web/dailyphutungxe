@@ -65,6 +65,32 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
+  // Đón nhận highlight từ thông báo Admin để chuyển đúng tab Khảo sát hoặc Đánh giá
+  useEffect(() => {
+    const handleHighlight = (payload?: any) => {
+      let data = payload;
+      if (!data) {
+        try {
+          const raw = sessionStorage.getItem('crm_admin_highlight');
+          if (raw) data = JSON.parse(raw);
+        } catch {}
+      }
+      if (!data || data.page !== 'feedback') return;
+
+      if (data.category === 'survey' || (data.targetId && data.targetId.startsWith('KS'))) {
+        setActiveMainTab('survey');
+      } else {
+        setActiveMainTab('feedback');
+      }
+      sessionStorage.removeItem('crm_admin_highlight');
+    };
+
+    handleHighlight();
+    const onEvent = (e: any) => handleHighlight(e.detail);
+    window.addEventListener('crm-admin-highlight-target', onEvent);
+    return () => window.removeEventListener('crm-admin-highlight-target', onEvent);
+  }, []);
+
   const getStaffHandlingName = (): string => {
     const staff = activeStaff || currentStaff;
     if (staff?.hoTen) {

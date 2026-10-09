@@ -10,7 +10,7 @@ import {
   type Part,
   mockParts,
 } from '../../data/mockData';
-import { appointmentApi, vehicleApi, partApi } from '../../services/api';
+import { appointmentApi, vehicleApi, partApi, addCustomerNotification } from '../../services/api';
 import ImageUploader from '../../components/shared/ImageUploader';
 
 type ServiceType = 'BaoDuong' | 'SuaChua' | 'LaiThu';
@@ -542,7 +542,7 @@ export default function ServiceBooking({ initialVehicleId, currentCustomer, onCu
 
     setIsSubmitting(true);
     try {
-      await appointmentApi.create({
+      const createdAppt = await appointmentApi.create({
         customerId: currentCustomer.id,
         hoTenKH: contactForm.hoTen.trim() || currentCustomer.hoTen,
         soDienThoai: contactForm.soDienThoai.trim() || currentCustomer.soDienThoai,
@@ -552,6 +552,17 @@ export default function ServiceBooking({ initialVehicleId, currentCustomer, onCu
         tenXe: finalVehicleName,
         bienSo: finalPlate,
         ghiChu: compiledGhiChu,
+      });
+
+      addCustomerNotification({
+        customerId: currentCustomer.id,
+        icon: '📅',
+        title: '📅 Đặt lịch hẹn dịch vụ thành công',
+        message: `Lịch hẹn ${svc === 'BaoDuong' ? 'Bảo dưỡng định kỳ' : svc === 'LaiThu' ? 'Lái thử xe' : 'Sửa chữa'} cho xe ${finalVehicleName} lúc ${time} ngày ${date} đã được gửi thành công. Showroom sẽ sớm liên hệ xác nhận!`,
+        category: 'appointment',
+        page: 'dashboard',
+        tab: 'appts',
+        targetId: (createdAppt as any)?.id,
       });
 
       setLastBookedSummary({
@@ -565,6 +576,14 @@ export default function ServiceBooking({ initialVehicleId, currentCustomer, onCu
       });
       setSubmitted(true);
     } catch (err: any) {
+      addCustomerNotification({
+        customerId: currentCustomer.id,
+        icon: '⚠️',
+        title: '⚠️ Đặt lịch hẹn không thành công',
+        message: err?.message || 'Có lỗi xảy ra khi gửi lịch hẹn. Vui lòng kiểm tra lại thông tin!',
+        category: 'appointment',
+        page: 'booking',
+      });
       setErrorMessage(err?.message || 'Có lỗi xảy ra khi gửi lịch hẹn. Vui lòng thử lại!');
     } finally {
       setIsSubmitting(false);

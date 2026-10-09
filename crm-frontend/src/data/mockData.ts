@@ -1,8 +1,11 @@
 /* ───────────────────────── TYPES ───────────────────────── */
 export type CustomerStatus = 'HoatDong' | 'BiKhoa';
-export type OrderStatus = 'ChoDuyet' | 'DangGiao' | 'HoanThanh' | 'DaHuy';
+export type OrderStatus = 'ChoDuyet' | 'DaXacNhan' | 'DangGiao' | 'HoanThanh' | 'DaHuy' | 'ChoGiaoXe';
+export type PaymentStatus = 'ChuaThanhToan' | 'DaCoc' | 'DaThanhToan';
+export type OrderChannel = 'TaiQuay' | 'Online';
+export type OrderType = 'PhuTung' | 'Xe';
 export type AppointmentStatus = 'ChoXacNhan' | 'DaXacNhan' | 'TuChoi' | 'DaHoanThanh' | 'DaHuy' | 'ChoDuyet' | 'DangThucHien' | 'HoanThanh';
-export type ServiceType = 'BaoDuong' | 'SuaChua' | 'LaiThu';
+export type ServiceType = 'BaoDuong' | 'SuaChua' | 'LaiThu' | 'NhanXe' | 'BaoHanh';
 export type AdminRole = 'SuperAdmin' | 'NhanVienBanHang' | 'NhanVienKyThuat';
 
 export interface StaffAccount {
@@ -15,7 +18,54 @@ export interface StaffAccount {
   trangThai: 'HoatDong' | 'BiKhoa';
   avatar?: string;
   ngayThamGia: string;
+  // NV01: Bổ sung các thông tin nhân sự đầy đủ
+  gioiTinh?: 'Nam' | 'Nu' | 'Khac';
+  ngaySinh?: string;
+  diaChi?: string;
+  cccd?: string;
+  loaiNhanVien?: 'Full-time' | 'Part-time';
+  luongCoBan?: number;
+  nganHang?: string;
+  soTaiKhoan?: string;
+  matKhau?: string; // Mật khẩu đăng nhập
 }
+
+export const PRESET_CUSTOMER_AVATARS = [
+  '/images/KH/kh1.jpg',
+  '/images/KH/kh2.jpg',
+  '/images/KH/kh3.jpg',
+  '/images/KH/kh4.jpg',
+  '/images/KH/kh5.jpg',
+  '/images/KH/kh6.jpg',
+  '/images/KH/kh7.jpg',
+  '/images/KH/kh8.jpg',
+];
+
+export const STANDARD_STAFF_TITLES = [
+  'Quản lý Showroom',
+  'Chuyên viên Tư vấn & CSKH',
+  'Chuyên viên Bán xe & Trả góp',
+  'Chuyên viên Marketing & CRM',
+  'Kế toán Bán hàng & Thu ngân',
+  'Thủ kho & Quản lý phụ tùng',
+  'Kỹ thuật viên Trưởng xưởng',
+  'Kỹ thuật viên Sửa chữa máy',
+  'Kỹ thuật viên Bảo dưỡng định kỳ',
+  'Kỹ thuật viên Điện & Phụ tùng xe',
+] as const;
+
+export const POPULAR_BANKS = [
+  'Vietcombank',
+  'MB Bank',
+  'Techcombank',
+  'BIDV',
+  'Agribank',
+  'ACB',
+  'VPBank',
+  'TPBank',
+  'Sacombank',
+  'VIB',
+] as const;
 
 export type CustomerTierType = 'VIP' | 'ThanThiet' | 'Moi';
 
@@ -82,13 +132,20 @@ export interface Customer {
   diaChi: string; ngaySinh: string; gioiTinh: 'Nam' | 'Nu';
   trangThai: CustomerStatus; ngayDangKy: string; soXe: string;
   tongChiTieu: number; avatar?: string; soThich?: string;
+  matKhau?: string; // Mật khẩu tài khoản
 }
 
 export interface Vehicle {
   id: string; customerId: string; tenXe: string; bienSo: string;
   namSanXuat: number; hanBaoHanh: string; mauSac: string;
-  trangThaiBaoHanh: 'ConHan' | 'HetHan' | 'ChuaCo'; soKhung?: string; hinhAnh?: string;
+  trangThaiBaoHanh: 'ConHan' | 'HetHan' | 'ChuaCo' | 'KhongApDung'; soKhung?: string; hinhAnh?: string;
   trangThaiDuyet?: 'ChoDuyet' | 'DaDuyet' | 'TuChoi';
+  nguonGoc?: 'CuaHang' | 'NgoaiHeThong'; // Mua tại cửa hàng vs Xe mua ngoài hệ thống
+  ngayMua?: string;
+  soMay?: string;
+  anhCaVet?: string; // Ảnh chụp giấy tờ / Cà vẹt xe
+  bienSoChoDuyet?: string; // Biển số khách cập nhật đang chờ phê duyệt
+  trangThaiDuyetBienSo?: 'ChoCapNhat' | 'ChoDuyet' | 'DaDuyet'; // Trạng thái quy trình biển số
 }
 
 /* ───────────────────────── MOTORBIKE CATALOGS (ĐKX01) ───────────────────────── */
@@ -241,42 +298,131 @@ export interface Part {
   giaKhuyenMai: number | null; soLuongTon: number; danhMuc: string;
   moTa: string; hinhAnh: string; rating: number; luotDanh: number;
   dongXePhuHop?: string; xuatXu?: string; baoHanh?: string;
+  nhaCungCap?: string; // PT06: Nhà cung cấp phụ tùng
+  trangThaiHienThi?: 'Hien' | 'An'; // PT12: Ẩn/Hiện trên Web
 }
 
 export interface CartItem {
   part: Part; soLuong: number;
 }
 
+export interface VehicleChecklist {
+  xacThucKH: boolean;
+  thuThapCCCD: boolean;
+  kyHopDong: boolean;
+  nhapSoKhungVIN: boolean;
+  dangKyBienSo: boolean;
+  thuTienCoc: boolean;
+  hoSoVay: boolean;
+  capBaoHiem: boolean;
+  kiemTraPDI: boolean;
+  banGiaoXe: boolean;
+}
+
+export interface VehicleOrderDetails {
+  customerType: 'Individual' | 'Business';
+  idCardTaxNo?: string; // CCCD / Mã số thuế
+  customerNotes?: string;
+  maXe?: string;
+  tenXe: string;
+  mauSac: string;
+  phienBan?: string;
+  dongCo?: string;
+  soKhungVIN?: string;
+  soMay?: string;
+  giaNiemYet: number;
+  phiTruocBa: number;
+  phiDangKyBienSo: number;
+  tinhThanhDangKy?: string;
+  goiBaoHiem?: string;
+  phiBaoHiem: number;
+  khuyenMai: number;
+  tongGiaTri: number;
+  soTienDatCoc: number;
+  ngayDatCoc?: string;
+  soTienConLai: number;
+  phuongThucThanhToan: 'TienMat' | 'ChuyenKhoan' | 'TraGop';
+  taiKhoanNhan?: string;
+  trangThaiDonHang?: string;
+  hinhThucGiao: 'Showroom' | 'HomeDelivery';
+  ngayGiaoXe: string;
+  khungGioGiao?: string;
+  diaChiGiao?: string;
+  checklist: VehicleChecklist;
+}
+
 export interface Order {
-  id: string; customerId: string; hoTenKH: string; ngayDat: string;
-  trangThai: OrderStatus; tongTien: number; diaChiGiao: string;
-  items: { tenSanPham: string; soLuong: number; donGia: number }[];
+  id: string;
+  customerId: string;
+  hoTenKH: string;
+  soDienThoai?: string;
+  email?: string;
+  ngayDat: string;
+  trangThai: OrderStatus;
+  trangThaiThanhToan?: PaymentStatus;
+  kenhBan?: OrderChannel;
+  loaiDon?: OrderType;
+  tongTien: number;
+  diaChiGiao: string;
+  items: { tenSanPham: string; soLuong: number; donGia: number; maPhuTung?: number }[];
+  maNV?: string;
+  tenNV?: string;
+  phuongThucThanhToan?: 'TienMat' | 'ChuyenKhoan' | 'TraGop';
+  thongTinXe?: VehicleOrderDetails;
+  ghiChu?: string;
+  lyDoHuy?: string;
+  maLichHen?: string;
+  qrCodeUrl?: string;
 }
 
 export interface Appointment {
-  id: string; customerId: string; hoTenKH: string; soDienThoai: string;
-  loaiDichVu: ServiceType; ngayHen: string; gioHen: string;
-  trangThai: AppointmentStatus; ghiChu: string; tenXe: string; bienSo: string;
+  id: string;
+  customerId: string;
+  hoTenKH: string;
+  soDienThoai: string;
+  loaiDichVu: ServiceType;
+  ngayHen: string;
+  gioHen: string;
+  trangThai: AppointmentStatus;
+  ghiChu: string;
+  tenXe: string;
+  bienSo: string;
   nhanVienPhuTrach?: string; // LH08: Nhân viên phụ trách
   lyDoTuChoi?: string;       // LH05: Lý do từ chối (bắt buộc)
   createdDate?: string;      // LH10: Thời gian tạo để sắp xếp mới nhất
+  maLichHen?: string;        // Mã lịch hẹn đón tiếp (vd: HEN-XE-8492)
+  maDonHangXe?: string;      // Mã đơn hàng bán xe liên kết
+  mauXe?: string;
+  phienBan?: string;
+  soTienCoc?: number;
+  daThanhToan100?: boolean;
+  soKhungVIN?: string;
+  soMay?: string;
 }
 
 /* ───────────────────────── MOTORBIKE INSURANCE (BHX01 - BHX05) ───────────────────────── */
-export type InsurancePackageType = 'TNDS_BAT_BUOC' | 'VAT_CHAT_XE' | 'TAI_NAN_NGUOI' | 'TOAN_DIEN';
+export type InsurancePackageType =
+  | 'TNDS_BAT_BUOC'
+  | 'TNDS_NGUOI_NGOI'
+  | 'VAT_CHAT_TOAN_DIEN'
+  | 'VAT_CHAT_XE'
+  | 'TAI_NAN_NGUOI'
+  | 'TOAN_DIEN';
 export type InsuranceStatus = 'HieuLuc' | 'ChoDuyet' | 'HetHan' | 'TuChoi';
 
 export interface InsurancePackage {
   id: InsurancePackageType;
   tenGoi: string;
   phi1Nam: number;
-  phi2Nam: number;
+  phi2Nam?: number;
+  phi3Nam?: number;
   moTa: string;
   quyenLoi: string[];
   mucTrachNhiem: string;
   badge: string;
   icon: string;
   color: string;
+  tags?: string[];
 }
 
 export interface InsuranceContract {
@@ -294,32 +440,78 @@ export interface InsuranceContract {
   soMay?: string;
   packageType: InsurancePackageType;
   tenGoi: string;
-  thoiHanNam: number; // 1 hoặc 2
+  thoiHanNam: number; // 1, 2, 3
   phiBaoHiem: number;
+  thueVAT?: number;
+  tongTien?: number;
+  maGiamGia?: string;
+  phuongThucThanhToan?: 'ChuyenKhoan' | 'TienMat';
+  kenhDangKy?: 'Web' | 'TaiQuay';
   nhaBaoHiem: string; // Bảo Việt, PVI, PTI, MIC...
   ngayCap: string; // YYYY-MM-DD
   ngayBatDau: string; // YYYY-MM-DD
   ngayKetThuc: string; // YYYY-MM-DD
   trangThai: InsuranceStatus;
   ghiChu?: string;
+  isRenewed?: boolean;
+  hopDongGocId?: string;
 }
 
 export const INSURANCE_PACKAGES: InsurancePackage[] = [
   {
     id: 'TNDS_BAT_BUOC',
-    tenGoi: 'Bảo hiểm TNDS Bắt buộc xe máy',
+    tenGoi: 'GÓI CƠ BẢN (TNDS Bắt Buộc)',
     phi1Nam: 66000,
     phi2Nam: 120000,
-    moTa: 'Bảo hiểm bắt buộc theo Nghị định 67/2023/NĐ-CP của Chính phủ khi tham gia giao thông.',
+    phi3Nam: 180000,
+    moTa: 'Quyền lợi cơ bản theo quy định nhà nước.',
     quyenLoi: [
       'Bồi thường thiệt hại về người: Tối đa 150.000.000 đ/người/vụ',
       'Bồi thường thiệt hại về tài sản: Tối đa 50.000.000 đ/vụ',
-      'Cấp Giấy chứng nhận điện tử có mã QR hợp chuẩn Cảnh sát giao thông',
+      'Cấp Giấy chứng nhận điện tử có mã QR hợp chuẩn CSGT',
     ],
     mucTrachNhiem: '150.000.000 đ/người/vụ',
     badge: 'Bắt buộc theo luật',
     icon: '🛡️',
     color: '#dc2626',
+    tags: ['TNDS Bắt buộc', 'Đúng luật giao thông'],
+  },
+  {
+    id: 'TNDS_NGUOI_NGOI',
+    tenGoi: 'GÓI NÂNG CAO (TNDS + Người ngồi)',
+    phi1Nam: 150000,
+    phi2Nam: 280000,
+    phi3Nam: 400000,
+    moTa: 'Đền bù TNDS & người ngồi trên xe.',
+    quyenLoi: [
+      'Bao gồm toàn bộ quyền lợi gói TNDS Bắt buộc',
+      'Bảo hiểm tai nạn lái xe & người ngồi sau: 50.000.000 đ/người',
+      'Hỗ trợ chi phí cấp cứu và viện phí tai nạn',
+    ],
+    mucTrachNhiem: '150 triệu người / 50 triệu tài sản',
+    badge: 'An tâm toàn diện',
+    icon: '👥',
+    color: '#2563eb',
+    tags: ['TNDS Bắt buộc', 'Bảo vệ người ngồi'],
+  },
+  {
+    id: 'VAT_CHAT_TOAN_DIEN',
+    tenGoi: 'GÓI TOÀN DIỆN',
+    phi1Nam: 1250000,
+    phi2Nam: 2300000,
+    phi3Nam: 3300000,
+    moTa: 'Bảo vệ xe toàn diện trước mọi rủi ro va quẹt, thủy kích, trộm cắp và hỗ trợ cứu hộ 24/7.',
+    quyenLoi: [
+      'Đền bù va quẹt, trầy xước và tai nạn thân vỏ xe',
+      'Bảo hiểm rủi ro thủy kích ngập nước',
+      'Đền bù mất cắp, mất cướp bộ phận hoặc toàn bộ xe',
+      'Cứu hộ giao thông khẩn cấp 24/7 không giới hạn số lần',
+    ],
+    mucTrachNhiem: '100% Giá trị xe + Cứu hộ 24/7',
+    badge: 'Khuyên dùng · VIP',
+    icon: '👑',
+    color: '#7c3aed',
+    tags: ['Đền bù va quẹt', 'Thủy kích', 'Cứu hộ 24/7', 'Mất cắp bộ phận'],
   },
   {
     id: 'VAT_CHAT_XE',
@@ -800,7 +992,7 @@ export const mockParts: Part[] = [
 
 /* ───────────────────────── CUSTOMERS ───────────────────────── */
 export const mockCustomers: Customer[] = [
-  { id: 'KH001', hoTen: 'Nguyễn Văn An', email: 'nguyenvanan1990@gmail.com', soDienThoai: '0901234567', diaChi: '12 Lý Thường Kiệt, Q.1, TP.HCM', ngaySinh: '1990-05-15', gioiTinh: 'Nam', trangThai: 'HoatDong', ngayDangKy: '2023-01-10', soXe: 'XE001', tongChiTieu: 4850000, avatar: '/images/KH/kh1.jpg' },
+  { id: 'KH001', hoTen: 'Nguyễn Minh Anh', email: 'minhanh.nguyen@email.com', soDienThoai: '0901234567', diaChi: '12 Lý Thường Kiệt, Q.1, TP.HCM', ngaySinh: '1990-05-15', gioiTinh: 'Nam', trangThai: 'HoatDong', ngayDangKy: '2023-01-10', soXe: 'XE001', tongChiTieu: 158500000, avatar: '/images/KH/kh1.jpg' },
   { id: 'KH002', hoTen: 'Trần Thị Bích', email: 'tranthibich95@gmail.com', soDienThoai: '0912345678', diaChi: '45 Nguyễn Huệ, Q.1, TP.HCM', ngaySinh: '1995-08-22', gioiTinh: 'Nu', trangThai: 'HoatDong', ngayDangKy: '2023-02-14', soXe: 'XE002', tongChiTieu: 12300000, avatar: '/images/KH/kh2.jpg' },
   { id: 'KH003', hoTen: 'Lê Hoàng Cường', email: 'lehoangcuong88@gmail.com', soDienThoai: '0923456789', diaChi: '78 Trần Phú, Q.5, TP.HCM', ngaySinh: '1988-11-30', gioiTinh: 'Nam', trangThai: 'HoatDong', ngayDangKy: '2023-03-05', soXe: 'XE003', tongChiTieu: 1200000, avatar: '/images/KH/kh3.jpg' },
   { id: 'KH004', hoTen: 'Phạm Thị Duyên', email: 'phamduyen98@gmail.com', soDienThoai: '0934567890', diaChi: '23 CMT8, Q.3, TP.HCM', ngaySinh: '1998-03-18', gioiTinh: 'Nu', trangThai: 'HoatDong', ngayDangKy: '2023-04-20', soXe: 'XE004', tongChiTieu: 7640000, avatar: '/images/KH/kh4.jpg' },
@@ -814,16 +1006,63 @@ export const mockCustomers: Customer[] = [
 
 /* ───────────────────────── VEHICLES ───────────────────────── */
 export const mockVehicles: Vehicle[] = [
-  { id: 'XE001', customerId: 'KH001', tenXe: 'Honda SH 160i ABS', bienSo: '51K-123.45', namSanXuat: 2023, hanBaoHanh: '2026-01-10', mauSac: 'Đen mờ', trangThaiBaoHanh: 'ConHan', soKhung: 'RLHKD160CB1234567' },
-  { id: 'XE002', customerId: 'KH002', tenXe: 'Vespa Sprint 125', bienSo: '51H-678.90', namSanXuat: 2022, hanBaoHanh: '2025-02-14', mauSac: 'Trắng', trangThaiBaoHanh: 'ConHan', soKhung: 'VESP125CB2345678' },
-  { id: 'XE003', customerId: 'KH003', tenXe: 'Honda Winner X 150', bienSo: '59G1-234.56', namSanXuat: 2021, hanBaoHanh: '2024-03-05', mauSac: 'Đỏ đen', trangThaiBaoHanh: 'HetHan', soKhung: 'RLHKW150CB3456789' },
-  { id: 'XE004', customerId: 'KH004', tenXe: 'Honda Lead 125', bienSo: '59F1-888.88', namSanXuat: 2022, hanBaoHanh: '2025-04-20', mauSac: 'Đỏ đô', trangThaiBaoHanh: 'ConHan', soKhung: 'RLHKL125CB4567890' },
-  { id: 'XE005', customerId: 'KH005', tenXe: 'Yamaha Exciter 155 VVA', bienSo: '59S2-345.67', namSanXuat: 2022, hanBaoHanh: '2025-05-11', mauSac: 'Xanh GP', trangThaiBaoHanh: 'ConHan', soKhung: 'MHYEX155CB5678901' },
-  { id: 'XE006', customerId: 'KH006', tenXe: 'Honda Vision 110', bienSo: '59V1-999.99', namSanXuat: 2023, hanBaoHanh: '2026-06-08', mauSac: 'Xám xi măng', trangThaiBaoHanh: 'ConHan', soKhung: 'RLHKV110CB6789012' },
-  { id: 'XE007', customerId: 'KH007', tenXe: 'Honda Air Blade 160', bienSo: '51X1-456.78', namSanXuat: 2022, hanBaoHanh: '2025-07-15', mauSac: 'Đen nhám', trangThaiBaoHanh: 'ConHan', soKhung: 'RLHKA160CB7890123' },
-  { id: 'XE008', customerId: 'KH008', tenXe: 'Yamaha Janus 125', bienSo: '59T2-123.89', namSanXuat: 2021, hanBaoHanh: '2024-08-22', mauSac: 'Xanh bạc', trangThaiBaoHanh: 'HetHan', soKhung: 'MHYJA125CB8901234' },
-  { id: 'XE009', customerId: 'KH009', tenXe: 'VinFast Feliz S', bienSo: '51L1-567.89', namSanXuat: 2022, hanBaoHanh: '2025-09-19', mauSac: 'Bạc', trangThaiBaoHanh: 'ConHan', soKhung: 'VFEL125CB9012345' },
-  { id: 'XE010', customerId: 'KH010', tenXe: 'Honda Vario 160', bienSo: '59U1-678.12', namSanXuat: 2023, hanBaoHanh: '2026-10-05', mauSac: 'Đen cam', trangThaiBaoHanh: 'ConHan', soKhung: 'RLHKO160CB0123456' },
+  {
+    id: 'XE001',
+    customerId: 'KH001',
+    tenXe: 'VINFAST (XE ĐIỆN) EVO 200 160CC',
+    bienSo: '59Y-155.55',
+    namSanXuat: 2025,
+    ngayMua: '2025-05-12',
+    hanBaoHanh: 'Không áp dụng',
+    mauSac: 'Đen trắng',
+    trangThaiBaoHanh: 'KhongApDung',
+    nguonGoc: 'NgoaiHeThong',
+    soKhung: 'VFEVO200CB15555',
+    soMay: 'EVO200E15555',
+    trangThaiDuyet: 'DaDuyet',
+    hinhAnh: 'https://images.unsplash.com/photo-1568772585407-9361f9bf3a87?w=800&auto=format&fit=crop&q=80',
+  },
+  {
+    id: 'XE002',
+    customerId: 'KH001',
+    tenXe: 'HONDA SH 150i',
+    bienSo: '59S1-123.45',
+    namSanXuat: 2024,
+    ngayMua: '2024-01-20',
+    hanBaoHanh: '2027-10-15',
+    mauSac: 'Đỏ đen',
+    trangThaiBaoHanh: 'ConHan',
+    nguonGoc: 'CuaHang',
+    soKhung: 'RLHKD150CB12345',
+    soMay: 'KD150E12345',
+    trangThaiDuyet: 'DaDuyet',
+    hinhAnh: 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=800&auto=format&fit=crop&q=80',
+  },
+  {
+    id: 'XE003',
+    customerId: 'KH001',
+    tenXe: 'YAMAHA EXCITER 155',
+    bienSo: '59G1-678.90',
+    namSanXuat: 2023,
+    ngayMua: '2023-08-15',
+    hanBaoHanh: '2026-12-31',
+    mauSac: 'Xanh đen',
+    trangThaiBaoHanh: 'ConHan',
+    nguonGoc: 'CuaHang',
+    soKhung: 'MHYEX155CB67890',
+    soMay: 'EX155E67890',
+    trangThaiDuyet: 'DaDuyet',
+    hinhAnh: 'https://images.unsplash.com/photo-1525160354320-d8e92641c563?w=800&auto=format&fit=crop&q=80',
+  },
+  { id: 'XE004', customerId: 'KH002', tenXe: 'Vespa Sprint 125', bienSo: '51H-678.90', namSanXuat: 2022, ngayMua: '2022-02-14', hanBaoHanh: '2025-02-14', mauSac: 'Trắng', trangThaiBaoHanh: 'ConHan', nguonGoc: 'CuaHang', soKhung: 'VESP125CB2345678', trangThaiDuyet: 'DaDuyet' },
+  { id: 'XE005', customerId: 'KH003', tenXe: 'Honda Winner X 150', bienSo: '59G1-234.56', namSanXuat: 2021, ngayMua: '2021-03-05', hanBaoHanh: '2024-03-05', mauSac: 'Đỏ đen', trangThaiBaoHanh: 'HetHan', nguonGoc: 'CuaHang', soKhung: 'RLHKW150CB3456789', trangThaiDuyet: 'DaDuyet' },
+  { id: 'XE006', customerId: 'KH004', tenXe: 'Honda Lead 125', bienSo: '59F1-888.88', namSanXuat: 2022, ngayMua: '2022-04-20', hanBaoHanh: '2025-04-20', mauSac: 'Đỏ đô', trangThaiBaoHanh: 'ConHan', nguonGoc: 'CuaHang', soKhung: 'RLHKL125CB4567890', trangThaiDuyet: 'DaDuyet' },
+  { id: 'XE007', customerId: 'KH005', tenXe: 'Yamaha Exciter 155 VVA', bienSo: '59S2-345.67', namSanXuat: 2022, ngayMua: '2022-05-11', hanBaoHanh: '2025-05-11', mauSac: 'Xanh GP', trangThaiBaoHanh: 'ConHan', nguonGoc: 'CuaHang', soKhung: 'MHYEX155CB5678901', trangThaiDuyet: 'DaDuyet' },
+  { id: 'XE008', customerId: 'KH006', tenXe: 'Honda Vision 110', bienSo: '59V1-999.99', namSanXuat: 2023, ngayMua: '2023-06-08', hanBaoHanh: '2026-06-08', mauSac: 'Xám xi măng', trangThaiBaoHanh: 'ConHan', nguonGoc: 'CuaHang', soKhung: 'RLHKV110CB6789012', trangThaiDuyet: 'DaDuyet' },
+  { id: 'XE009', customerId: 'KH007', tenXe: 'Honda Air Blade 160', bienSo: '51X1-456.78', namSanXuat: 2022, ngayMua: '2022-07-15', hanBaoHanh: '2025-07-15', mauSac: 'Đen nhám', trangThaiBaoHanh: 'ConHan', nguonGoc: 'CuaHang', soKhung: 'RLHKA160CB7890123', trangThaiDuyet: 'DaDuyet' },
+  { id: 'XE010', customerId: 'KH008', tenXe: 'Yamaha Janus 125', bienSo: '59T2-123.89', namSanXuat: 2021, ngayMua: '2021-08-22', hanBaoHanh: '2024-08-22', mauSac: 'Xanh bạc', trangThaiBaoHanh: 'HetHan', nguonGoc: 'CuaHang', soKhung: 'MHYJA125CB8901234', trangThaiDuyet: 'DaDuyet' },
+  { id: 'XE011', customerId: 'KH009', tenXe: 'VinFast Feliz S', bienSo: '51L1-567.89', namSanXuat: 2022, ngayMua: '2022-09-19', hanBaoHanh: '2025-09-19', mauSac: 'Bạc', trangThaiBaoHanh: 'ConHan', nguonGoc: 'CuaHang', soKhung: 'VFEL125CB9012345', trangThaiDuyet: 'DaDuyet' },
+  { id: 'XE012', customerId: 'KH010', tenXe: 'Honda Vario 160', bienSo: '59U1-678.12', namSanXuat: 2023, ngayMua: '2023-10-05', hanBaoHanh: '2026-10-05', mauSac: 'Đen cam', trangThaiBaoHanh: 'ConHan', nguonGoc: 'CuaHang', soKhung: 'RLHKO160CB0123456', trangThaiDuyet: 'DaDuyet' },
 ];
 
 export function renewVehicleWarranty(vehicleId: string, years: number): Vehicle | null {
@@ -836,18 +1075,494 @@ export function renewVehicleWarranty(vehicleId: string, years: number): Vehicle 
   return v;
 }
 
-/* ───────────────────────── ORDERS (5 CRM TRANSACTIONS) ───────────────────────── */
+/* ───────────────────────── ORDERS (PARTS & VEHICLES) ───────────────────────── */
 export const mockOrders: Order[] = [
-  { id: 'DH001', customerId: 'KH001', hoTenKH: 'Nguyễn Văn An', ngayDat: '2024-11-15', trangThai: 'HoanThanh', tongTien: 312000, diaChiGiao: '12 Lý Thường Kiệt, Q.1, TP.HCM', items: [{ tenSanPham: 'Nhớt Motul 7100 4T 10W40 1L', soLuong: 1, donGia: 255000 }, { tenSanPham: 'Bugi NGK Iridium Laser CPR8EAIX-9', soLuong: 1, donGia: 57000 }] },
-  { id: 'DH002', customerId: 'KH002', hoTenKH: 'Trần Thị Bích', ngayDat: '2024-12-03', trangThai: 'DangGiao', tongTien: 1650000, diaChiGiao: '45 Nguyễn Huệ, Q.1, TP.HCM', items: [{ tenSanPham: 'Lốp Michelin Pilot Street 2 110/70-12', soLuong: 1, donGia: 1650000 }] },
-  { id: 'DH003', customerId: 'KH004', hoTenKH: 'Phạm Thị Duyên', ngayDat: '2024-12-10', trangThai: 'ChoDuyet', tongTien: 1105000, diaChiGiao: '23 CMT8, Q.3, TP.HCM', items: [{ tenSanPham: 'Bóng đèn pha LED Philips Ultinon Essential Moto HS1', soLuong: 1, donGia: 315000 }, { tenSanPham: 'Má phanh đĩa trước Brembo Carbon Ceramic', soLuong: 1, donGia: 790000 }] },
-  { id: 'DH004', customerId: 'KH005', hoTenKH: 'Hoàng Văn Giang', ngayDat: '2024-12-12', trangThai: 'HoanThanh', tongTien: 510000, diaChiGiao: '56 Điện Biên Phủ, Bình Thạnh, TP.HCM', items: [{ tenSanPham: 'Bộ nhông sên dĩa D.I.D 428D Vàng (130L)', soLuong: 1, donGia: 510000 }] },
-  { id: 'DH005', customerId: 'KH007', hoTenKH: 'Vũ Minh Hải', ngayDat: '2024-12-14', trangThai: 'DaHuy', tongTien: 450000, diaChiGiao: '34 Nguyễn Đình Chiểu, Phú Nhuận, TP.HCM', items: [{ tenSanPham: 'Dây curoa Bando V-Belt chính hãng', soLuong: 1, donGia: 450000 }] },
+  // ── ĐƠN HÀNG XE MỚI (KHỚP MOCKUP ẢNH 2) ──
+  {
+    id: 'MS-100234',
+    customerId: 'KH001',
+    hoTenKH: 'Nguyễn Minh Anh',
+    soDienThoai: '0901234567',
+    email: 'minhanh.nguyen@email.com',
+    ngayDat: '2026-05-12',
+    trangThai: 'DangGiao',
+    trangThaiThanhToan: 'DaThanhToan',
+    kenhBan: 'Online',
+    loaiDon: 'Xe',
+    tongTien: 22000000,
+    diaChiGiao: 'Showroom Autora - Chi nhánh 1',
+    items: [],
+    maNV: 'NV02',
+    tenNV: 'Nguyễn Thị Ánh',
+    phuongThucThanhToan: 'ChuyenKhoan',
+    thongTinXe: {
+      customerType: 'Individual',
+      maXe: 'XE001',
+      tenXe: 'XE MÁY VINFAST EVO 200',
+      mauSac: 'Đen trắng',
+      phienBan: 'Bản Tiêu Chuẩn',
+      giaNiemYet: 22000000,
+      tongGiaTri: 22000000,
+    } as any,
+  },
+  {
+    id: 'MS-098432',
+    customerId: 'KH001',
+    hoTenKH: 'Nguyễn Minh Anh',
+    soDienThoai: '0901234567',
+    email: 'minhanh.nguyen@email.com',
+    ngayDat: '2026-01-20',
+    trangThai: 'HoanThanh',
+    trangThaiThanhToan: 'DaThanhToan',
+    kenhBan: 'TaiQuay',
+    loaiDon: 'Xe',
+    tongTien: 115000000,
+    diaChiGiao: 'Showroom Autora - 123 Nguyễn Trãi, Q.5',
+    items: [],
+    maNV: 'NV02',
+    tenNV: 'Nguyễn Thị Ánh',
+    phuongThucThanhToan: 'ChuyenKhoan',
+    thongTinXe: {
+      customerType: 'Individual',
+      maXe: 'XE002',
+      tenXe: 'HONDA SH 150i',
+      mauSac: 'Đỏ đen',
+      phienBan: 'Bản Thể Thao ABS',
+      giaNiemYet: 115000000,
+      tongGiaTri: 115000000,
+    } as any,
+  },
+  {
+    id: 'DH-XE-001',
+    customerId: 'KH001',
+    hoTenKH: 'Nguyễn Minh Anh',
+    soDienThoai: '0901234567',
+    email: 'minhanh.nguyen@email.com',
+    ngayDat: '2026-10-04',
+    trangThai: 'ChoGiaoXe',
+    trangThaiThanhToan: 'DaCoc',
+    kenhBan: 'Online',
+    loaiDon: 'Xe',
+    tongTien: 104900000,
+    diaChiGiao: 'Showroom DailyXeMay - Chi nhánh 1 (Tại quầy)',
+    items: [],
+    maNV: 'NV02',
+    tenNV: 'Nguyễn Thị Ánh',
+    phuongThucThanhToan: 'ChuyenKhoan',
+    maLichHen: 'HEN-XE-8492',
+    qrCodeUrl: 'https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=HEN-XE-8492',
+    ghiChu: 'Khách đặt cọc online 2.000.000đ, hẹn nhận xe ngày 07/10/2026 khung giờ 09:30.',
+    thongTinXe: {
+      customerType: 'Individual',
+      idCardTaxNo: '079090123456',
+      customerNotes: 'Lắp thêm cảng sau và thảm lót chân cao su',
+      maXe: 'XM-HD01',
+      tenXe: 'Honda SH 160i ABS 2025',
+      mauSac: 'Đen mờ',
+      phienBan: 'Bản Thể Thao ABS',
+      dongCo: '156.9cc eSP+ 4 van',
+      soKhungVIN: 'RLHKD160CB1234567',
+      soMay: 'KF12E-1234567',
+      giaNiemYet: 95900000,
+      phiTruocBa: 4795000,
+      phiDangKyBienSo: 4000000,
+      tinhThanhDangKy: 'TP. Hồ Chí Minh',
+      goiBaoHiem: 'Bảo hiểm TNDS Bắt buộc 1 năm + Vật chất xe',
+      phiBaoHiem: 1205000,
+      khuyenMai: 1000000,
+      tongGiaTri: 104900000,
+      soTienDatCoc: 2000000,
+      ngayDatCoc: '2026-10-04',
+      soTienConLai: 102900000,
+      phuongThucThanhToan: 'ChuyenKhoan',
+      taiKhoanNhan: 'Vietcombank: 1012345678 (CTY DAILYXEMAY)',
+      trangThaiDonHang: 'ChoGiaoXe',
+      hinhThucGiao: 'Showroom',
+      ngayGiaoXe: '2026-10-07',
+      khungGioGiao: '09:30 - 11:30',
+      diaChiGiao: 'Showroom DailyXeMay - 123 Lê Văn Sỹ, P.13, Q.3, TP.HCM',
+      checklist: {
+        xacThucKH: true,
+        thuThapCCCD: true,
+        kyHopDong: true,
+        nhapSoKhungVIN: true,
+        dangKyBienSo: false,
+        thuTienCoc: true,
+        hoSoVay: false,
+        capBaoHiem: true,
+        kiemTraPDI: true,
+        banGiaoXe: false,
+      },
+    },
+  },
+  {
+    id: 'DH-XE-002',
+    customerId: 'KH002',
+    hoTenKH: 'Trần Thị Bích',
+    soDienThoai: '0912345678',
+    email: 'tranthibich95@gmail.com',
+    ngayDat: '2026-09-28',
+    trangThai: 'HoanThanh',
+    trangThaiThanhToan: 'DaThanhToan',
+    kenhBan: 'TaiQuay',
+    loaiDon: 'Xe',
+    tongTien: 84680000,
+    diaChiGiao: 'Showroom DailyXeMay (Đã bàn giao)',
+    items: [],
+    maNV: 'NV03',
+    tenNV: 'Trần Minh Hoàng',
+    phuongThucThanhToan: 'ChuyenKhoan',
+    maLichHen: 'HEN-XE-7120',
+    qrCodeUrl: 'https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=HEN-XE-7120',
+    ghiChu: 'Đã thanh toán 100%, hoàn tất thủ tục đăng ký biển số và bàn giao xe thành công.',
+    thongTinXe: {
+      customerType: 'Individual',
+      idCardTaxNo: '079195009876',
+      customerNotes: 'Khách hàng nữ, hỗ trợ hướng dẫn tính năng mở khóa thông minh',
+      maXe: 'XM-PI01',
+      tenXe: 'Vespa Sprint 125 ABS',
+      mauSac: 'Trắng Innocenza',
+      phienBan: 'Bản Tiêu Chuẩn',
+      dongCo: '124.5cc i-Get 3V',
+      soKhungVIN: 'VESP125CB2345678',
+      soMay: 'VP12E-2345678',
+      giaNiemYet: 77800000,
+      phiTruocBa: 3890000,
+      phiDangKyBienSo: 4000000,
+      tinhThanhDangKy: 'TP. Hồ Chí Minh',
+      goiBaoHiem: 'Bảo hiểm TNDS Bắt buộc 2 năm',
+      phiBaoHiem: 120000,
+      khuyenMai: 1130000,
+      tongGiaTri: 84680000,
+      soTienDatCoc: 84680000,
+      ngayDatCoc: '2026-09-28',
+      soTienConLai: 0,
+      phuongThucThanhToan: 'ChuyenKhoan',
+      taiKhoanNhan: 'BIDV: 1234567890 (DAILYXEMAY POS)',
+      trangThaiDonHang: 'HoanThanh',
+      hinhThucGiao: 'Showroom',
+      ngayGiaoXe: '2026-09-28',
+      khungGioGiao: '14:00 - 16:00',
+      diaChiGiao: 'Showroom DailyXeMay - 123 Lê Văn Sỹ, P.13, Q.3, TP.HCM',
+      checklist: {
+        xacThucKH: true,
+        thuThapCCCD: true,
+        kyHopDong: true,
+        nhapSoKhungVIN: true,
+        dangKyBienSo: true,
+        thuTienCoc: true,
+        hoSoVay: false,
+        capBaoHiem: true,
+        kiemTraPDI: true,
+        banGiaoXe: true,
+      },
+    },
+  },
+  {
+    id: 'DH-XE-003',
+    customerId: 'KH003',
+    hoTenKH: 'Lê Hoàng Cường',
+    soDienThoai: '0923456789',
+    email: 'lehoangcuong88@gmail.com',
+    ngayDat: '2026-10-05',
+    trangThai: 'ChoDuyet',
+    trangThaiThanhToan: 'DaCoc',
+    kenhBan: 'Online',
+    loaiDon: 'Xe',
+    tongTien: 60250000,
+    diaChiGiao: 'Showroom DailyXeMay - Chi nhánh 1',
+    items: [],
+    maNV: 'NV04',
+    tenNV: 'Lê Thị Thu Hà',
+    phuongThucThanhToan: 'ChuyenKhoan',
+    maLichHen: 'HEN-XE-9104',
+    qrCodeUrl: 'https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=HEN-XE-9104',
+    ghiChu: 'Khách đặt cọc online 2.000.000đ giữ xe Exciter 155 VVA ABS, hẹn nhận xe ngày 08/10/2026.',
+    thongTinXe: {
+      customerType: 'Individual',
+      idCardTaxNo: '079088001122',
+      customerNotes: 'Kiểm tra kỹ tem Monster Energy trước khi bàn giao',
+      maXe: 'XM-YM01',
+      tenXe: 'Yamaha Exciter 155 VVA ABS',
+      mauSac: 'Xanh GP Monster',
+      phienBan: 'Bản Giới Hạn ABS',
+      dongCo: '155cc 4 van VVA',
+      giaNiemYet: 55000000,
+      phiTruocBa: 2750000,
+      phiDangKyBienSo: 2000000,
+      tinhThanhDangKy: 'TP. Hồ Chí Minh',
+      goiBaoHiem: 'Bảo hiểm TNDS 1 năm',
+      phiBaoHiem: 66000,
+      khuyenMai: 566000,
+      tongGiaTri: 60250000,
+      soTienDatCoc: 2000000,
+      ngayDatCoc: '2026-10-05',
+      soTienConLai: 58250000,
+      phuongThucThanhToan: 'ChuyenKhoan',
+      trangThaiDonHang: 'ChoDuyet',
+      hinhThucGiao: 'Showroom',
+      ngayGiaoXe: '2026-10-08',
+      khungGioGiao: '15:00 - 17:00',
+      diaChiGiao: 'Showroom DailyXeMay',
+      checklist: {
+        xacThucKH: true,
+        thuThapCCCD: true,
+        kyHopDong: false,
+        nhapSoKhungVIN: false,
+        dangKyBienSo: false,
+        thuTienCoc: true,
+        hoSoVay: false,
+        capBaoHiem: false,
+        kiemTraPDI: false,
+        banGiaoXe: false,
+      },
+    },
+  },
+
+  // ── ĐƠN HÀNG PHỤ TÙNG (KHỚP MOCKUP ẢNH 3) ──
+  {
+    id: 'MS-009842',
+    customerId: 'KH001',
+    hoTenKH: 'Nguyễn Minh Anh',
+    soDienThoai: '0901234567',
+    ngayDat: '2026-05-15',
+    trangThai: 'HoanThanh',
+    trangThaiThanhToan: 'DaThanhToan',
+    kenhBan: 'Online',
+    loaiDon: 'PhuTung',
+    tongTien: 1250000,
+    diaChiGiao: '12 Lý Thường Kiệt, Q.1, TP.HCM',
+    phuongThucThanhToan: 'ChuyenKhoan',
+    items: [
+      {
+        tenSanPham: 'Lốp xe Michelin Pilot Street 2',
+        soLuong: 1,
+        donGia: 1250000,
+        maPhuTung: 10,
+        hinhAnh: 'https://images.unsplash.com/photo-1578844251758-2f71da64c96f?w=500&auto=format',
+      } as any,
+    ],
+  },
+  {
+    id: 'MS-008311',
+    customerId: 'KH001',
+    hoTenKH: 'Nguyễn Minh Anh',
+    soDienThoai: '0901234567',
+    ngayDat: '2026-04-28',
+    trangThai: 'HoanThanh',
+    trangThaiThanhToan: 'DaThanhToan',
+    kenhBan: 'Online',
+    loaiDon: 'PhuTung',
+    tongTien: 850000,
+    diaChiGiao: '12 Lý Thường Kiệt, Q.1, TP.HCM',
+    phuongThucThanhToan: 'ChuyenKhoan',
+    items: [
+      {
+        tenSanPham: 'Má phanh dầu Brembo',
+        soLuong: 1,
+        donGia: 850000,
+        maPhuTung: 6,
+        hinhAnh: 'https://images.unsplash.com/photo-1486006920555-c77dce18193b?w=500&auto=format',
+      } as any,
+    ],
+  },
+  {
+    id: 'MS-007502',
+    customerId: 'KH001',
+    hoTenKH: 'Nguyễn Minh Anh',
+    soDienThoai: '0901234567',
+    ngayDat: '2026-03-10',
+    trangThai: 'DaHuy',
+    trangThaiThanhToan: 'ChuaThanhToan',
+    kenhBan: 'Online',
+    loaiDon: 'PhuTung',
+    tongTien: 680000,
+    diaChiGiao: '12 Lý Thường Kiệt, Q.1, TP.HCM',
+    phuongThucThanhToan: 'TienMat',
+    items: [
+      {
+        tenSanPham: 'Nhông sên dĩa DID',
+        soLuong: 1,
+        donGia: 680000,
+        maPhuTung: 13,
+        hinhAnh: 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=500&auto=format',
+      } as any,
+    ],
+  },
+  {
+    id: 'DH001',
+    customerId: 'KH001',
+    hoTenKH: 'Nguyễn Minh Anh',
+    soDienThoai: '0901234567',
+    ngayDat: '2024-11-15',
+    trangThai: 'HoanThanh',
+    trangThaiThanhToan: 'DaThanhToan',
+    kenhBan: 'TaiQuay',
+    loaiDon: 'PhuTung',
+    tongTien: 312000,
+    diaChiGiao: '12 Lý Thường Kiệt, Q.1, TP.HCM',
+    phuongThucThanhToan: 'TienMat',
+    maNV: 'NV02',
+    tenNV: 'Nguyễn Thị Ánh',
+    items: [
+      { tenSanPham: 'Nhớt Motul 7100 4T 10W40 1L', soLuong: 1, donGia: 255000, maPhuTung: 1 },
+      { tenSanPham: 'Bugi NGK Iridium Laser CPR8EAIX-9', soLuong: 1, donGia: 57000, maPhuTung: 8 },
+    ],
+  },
+  {
+    id: 'DH002',
+    customerId: 'KH002',
+    hoTenKH: 'Trần Thị Bích',
+    soDienThoai: '0912345678',
+    ngayDat: '2024-12-03',
+    trangThai: 'DangGiao',
+    trangThaiThanhToan: 'DaThanhToan',
+    kenhBan: 'Online',
+    loaiDon: 'PhuTung',
+    tongTien: 1650000,
+    diaChiGiao: '45 Nguyễn Huệ, Q.1, TP.HCM',
+    phuongThucThanhToan: 'ChuyenKhoan',
+    items: [{ tenSanPham: 'Lốp Michelin Pilot Street 2 110/70-12', soLuong: 1, donGia: 1650000, maPhuTung: 10 }],
+  },
+  {
+    id: 'DH003',
+    customerId: 'KH004',
+    hoTenKH: 'Phạm Thị Duyên',
+    soDienThoai: '0934567890',
+    ngayDat: '2024-12-10',
+    trangThai: 'ChoDuyet',
+    trangThaiThanhToan: 'ChuaThanhToan',
+    kenhBan: 'Online',
+    loaiDon: 'PhuTung',
+    tongTien: 1105000,
+    diaChiGiao: '23 CMT8, Q.3, TP.HCM',
+    phuongThucThanhToan: 'TienMat',
+    items: [
+      { tenSanPham: 'Bóng đèn pha LED Philips Ultinon Essential Moto HS1', soLuong: 1, donGia: 315000, maPhuTung: 14 },
+      { tenSanPham: 'Má phanh đĩa trước Brembo Carbon Ceramic', soLuong: 1, donGia: 790000, maPhuTung: 6 },
+    ],
+  },
+  {
+    id: 'DH004',
+    customerId: 'KH005',
+    hoTenKH: 'Hoàng Văn Giang',
+    soDienThoai: '0945678901',
+    ngayDat: '2024-12-12',
+    trangThai: 'HoanThanh',
+    trangThaiThanhToan: 'DaThanhToan',
+    kenhBan: 'TaiQuay',
+    loaiDon: 'PhuTung',
+    tongTien: 510000,
+    diaChiGiao: '56 Điện Biên Phủ, Bình Thạnh, TP.HCM',
+    phuongThucThanhToan: 'TienMat',
+    maNV: 'NV03',
+    tenNV: 'Trần Minh Hoàng',
+    items: [{ tenSanPham: 'Bộ nhông sên dĩa D.I.D 428D Vàng (130L)', soLuong: 1, donGia: 510000, maPhuTung: 13 }],
+  },
+  {
+    id: 'DH005',
+    customerId: 'KH007',
+    hoTenKH: 'Vũ Minh Hải',
+    soDienThoai: '0967890123',
+    ngayDat: '2024-12-14',
+    trangThai: 'DaHuy',
+    trangThaiThanhToan: 'ChuaThanhToan',
+    kenhBan: 'Online',
+    loaiDon: 'PhuTung',
+    tongTien: 450000,
+    diaChiGiao: '34 Nguyễn Đình Chiểu, Phú Nhuận, TP.HCM',
+    phuongThucThanhToan: 'ChuyenKhoan',
+    items: [{ tenSanPham: 'Dây curoa Bando V-Belt chính hãng', soLuong: 1, donGia: 450000, maPhuTung: 12 }],
+  },
 ];
 
-/* ───────────────────────── APPOINTMENTS (5 CRM TRANSACTIONS) ───────────────────────── */
+/* ───────────────────────── APPOINTMENTS (5 CRM TRANSACTIONS + VEHICLE PICKUP) ───────────────────────── */
 export const mockAppointments: Appointment[] = [
-  { id: 'LH001', customerId: 'KH001', hoTenKH: 'Nguyễn Văn An', soDienThoai: '0901234567', loaiDichVu: 'BaoDuong', ngayHen: '2026-10-06', gioHen: '09:00', trangThai: 'DaXacNhan', ghiChu: '[GÓI BẢO DƯỠNG]: Gói Chuyên Sâu (Cấp 2) (350.000₫) | Xe chạy hơi ồn, cần kiểm tra phuộc và thay nhớt', tenXe: 'Honda SH 160i ABS', bienSo: '51K-123.45', nhanVienPhuTrach: 'Lê Văn Cường (Kỹ thuật viên)', createdDate: '2026-10-04 10:00' },
+  // Lịch hẹn đón tiếp khách nhận xe mới (D. BÁN XE)
+  {
+    id: 'LH006',
+    customerId: 'KH001',
+    hoTenKH: 'Nguyễn Văn An',
+    soDienThoai: '0901234567',
+    loaiDichVu: 'NhanXe',
+    ngayHen: '2026-10-07',
+    gioHen: '09:30',
+    trangThai: 'DaXacNhan',
+    ghiChu: '[NHẬN XE MỚI]: Khách đã cọc online 2.000.000đ giữ xe Honda SH 160i ABS (Mã lịch: HEN-XE-8492). Đã giữ 1 xe trong kho.',
+    tenXe: 'Honda SH 160i ABS 2025',
+    bienSo: 'CHỜ BẤM BIỂN',
+    nhanVienPhuTrach: 'Nguyễn Thị Ánh (Tư vấn bán hàng)',
+    createdDate: '2026-10-04 14:10',
+    maLichHen: 'HEN-XE-8492',
+    maDonHangXe: 'DH-XE-001',
+    mauXe: 'Đen mờ',
+    phienBan: 'Bản Thể Thao ABS',
+    soTienCoc: 2000000,
+    daThanhToan100: false,
+    soKhungVIN: 'RLHKD160CB1234567',
+    soMay: 'KF12E-1234567',
+  },
+  {
+    id: 'LH-1012',
+    customerId: 'KH001',
+    hoTenKH: 'Nguyễn Minh Anh',
+    soDienThoai: '0901234567',
+    loaiDichVu: 'SuaChua',
+    ngayHen: '2026-10-12',
+    gioHen: '14:00',
+    trangThai: 'DaXacNhan',
+    ghiChu: 'SỬA CHỮA: THAY XÍCH & LỐP XE | Cơ sở 1 - 123 Nguyễn Trãi, Q.5',
+    tenXe: 'Honda SH 150i',
+    bienSo: '59S1-123.45',
+    nhanVienPhuTrach: 'Lê Văn Cường (Kỹ thuật viên)',
+    createdDate: '2026-10-08 10:00',
+  },
+  {
+    id: 'LH-1017',
+    customerId: 'KH001',
+    hoTenKH: 'Nguyễn Minh Anh',
+    soDienThoai: '0901234567',
+    loaiDichVu: 'SuaChua',
+    ngayHen: '2026-10-17',
+    gioHen: '09:30',
+    trangThai: 'ChoXacNhan',
+    ghiChu: 'SỬA CHỮA: KIỂM TRA HỆ THỐNG PHANH | Đang đợi nhân viên duyệt lịch | Cơ sở 1 - 123 Nguyễn Trãi, Q.5',
+    tenXe: 'Yamaha Exciter 155',
+    bienSo: '59G1-678.90',
+    nhanVienPhuTrach: 'Chưa phân công',
+    createdDate: '2026-10-09 08:30',
+  },
+  {
+    id: 'LH-1020',
+    customerId: 'KH001',
+    hoTenKH: 'Nguyễn Minh Anh',
+    soDienThoai: '0901234567',
+    loaiDichVu: 'SuaChua',
+    ngayHen: '2026-10-20',
+    gioHen: '15:30',
+    trangThai: 'DaHuy',
+    ghiChu: 'SỬA CHỮA: THAY BÓNG ĐÈN PHA | Cơ sở 2 - 456 Lê Lợi, Q.1 | Lý do hủy: Khách hàng yêu cầu hủy lịch',
+    tenXe: 'VinFast EVO 200',
+    bienSo: '59Y-155.55',
+    nhanVienPhuTrach: 'Trần Văn Long (Kỹ thuật viên)',
+    createdDate: '2026-10-07 14:00',
+  },
+  {
+    id: 'LH-1027',
+    customerId: 'KH001',
+    hoTenKH: 'Nguyễn Minh Anh',
+    soDienThoai: '0901234567',
+    loaiDichVu: 'SuaChua',
+    ngayHen: '2026-10-27',
+    gioHen: '10:00',
+    trangThai: 'DaXacNhan',
+    ghiChu: 'SỬA CHỮA: BẢO TRÌ ĐỘNG CƠ | Cơ sở 1 - 123 Nguyễn Trãi, Q.5',
+    tenXe: 'Yamaha Exciter 155',
+    bienSo: '59G1-678.90',
+    nhanVienPhuTrach: 'Lê Văn Cường (Kỹ thuật viên)',
+    createdDate: '2026-10-09 11:00',
+  },
+  { id: 'LH001', customerId: 'KH001', hoTenKH: 'Nguyễn Minh Anh', soDienThoai: '0901234567', loaiDichVu: 'BaoDuong', ngayHen: '2026-10-12', gioHen: '14:00', trangThai: 'DaXacNhan', ghiChu: '[GÓI BẢO DƯỠNG]: Gói Tiêu Chuẩn | Bảo dưỡng định kỳ xe Honda SH 150i', tenXe: 'Honda SH 150i', bienSo: '59S1-123.45', nhanVienPhuTrach: 'Lê Văn Cường (Kỹ thuật viên)', createdDate: '2026-10-04 10:00' },
   { id: 'LH002', customerId: 'KH002', hoTenKH: 'Trần Thị Bích', soDienThoai: '0912345678', loaiDichVu: 'SuaChua', ngayHen: '2026-10-06', gioHen: '10:30', trangThai: 'ChoXacNhan', ghiChu: '[TÌNH TRẠNG XE]: Phanh kêu / bó phanh / mất phanh | Phanh trước kêu nhẹ, kiểm tra vệ sinh nồi xe Vespa', tenXe: 'Vespa Sprint 125', bienSo: '51H-678.90', nhanVienPhuTrach: 'Chưa phân công', createdDate: '2026-10-05 08:30' },
   { id: 'LH003', customerId: 'KH003', hoTenKH: 'Lê Hoàng Cường', soDienThoai: '0923456789', loaiDichVu: 'LaiThu', ngayHen: '2026-10-07', gioHen: '14:00', trangThai: 'DaXacNhan', ghiChu: '[GPLX LÁI THỬ]: Số 790123456789 (Hạng A1) | Đăng ký lái thử xe Yamaha Exciter 155 VVA thế hệ mới', tenXe: 'Yamaha Exciter 155 VVA ABS', bienSo: 'XE-LÁI-THỬ', nhanVienPhuTrach: 'Trần Thị Mai (Tư vấn bán hàng)', createdDate: '2026-10-04 15:20' },
   { id: 'LH004', customerId: 'KH006', hoTenKH: 'Đặng Thị Phương Thảo', soDienThoai: '0956789012', loaiDichVu: 'BaoDuong', ngayHen: '2026-10-03', gioHen: '08:30', trangThai: 'DaHoanThanh', ghiChu: '[GÓI BẢO DƯỠNG]: Gói Tiêu Chuẩn (Cấp 1) (150.000₫) | Bảo dưỡng định kỳ 5.000km và rửa xe', tenXe: 'Honda Vision 110', bienSo: '59V1-999.99', nhanVienPhuTrach: 'Lê Văn Cường (Kỹ thuật viên)', createdDate: '2026-10-02 09:15' },
@@ -856,29 +1571,148 @@ export const mockAppointments: Appointment[] = [
 
 /* ───────────────────────── MOTORBIKE INSURANCE CONTRACTS (BHX01 - BHX05) ───────────────────────── */
 export const mockInsuranceContracts: InsuranceContract[] = [
+  // ── XE 1: VINFAST EVO 200 (59Y - 155.55) ──
+  {
+    id: 'BH-VF-01',
+    soGCN: 'GCN-MIC-2026-1001',
+    customerId: 'KH001',
+    hoTenKH: 'Nguyễn Minh Anh',
+    soDienThoai: '0901234567',
+    email: 'minhanh.nguyen@email.com',
+    diaChi: '12 Lý Thường Kiệt, Q.1, TP.HCM',
+    vehicleId: 'XE001',
+    tenXe: 'VINFAST EVO 200 (59Y - 155.55)',
+    bienSo: '59Y-155.55',
+    soKhung: 'VFEVO200CB15555',
+    packageType: 'TNDS_BAT_BUOC',
+    tenGoi: 'BẢO HIỂM BẮT BUỘC TNDS XE MÁY',
+    thoiHanNam: 1,
+    phiBaoHiem: 66000,
+    nhaBaoHiem: 'Bảo hiểm MIC',
+    ngayCap: '2026-10-07',
+    ngayBatDau: '2026-10-07',
+    ngayKetThuc: '2027-10-07',
+    trangThai: 'HieuLuc',
+    ghiChu: 'Bảo hiểm TNDS bắt buộc theo quy định nhà nước',
+  },
+  {
+    id: 'BH-VF-02',
+    soGCN: 'GCN-MIC-2026-1002',
+    customerId: 'KH001',
+    hoTenKH: 'Nguyễn Minh Anh',
+    soDienThoai: '0901234567',
+    email: 'minhanh.nguyen@email.com',
+    diaChi: '12 Lý Thường Kiệt, Q.1, TP.HCM',
+    vehicleId: 'XE001',
+    tenXe: 'VINFAST EVO 200 (59Y - 155.55)',
+    bienSo: '59Y-155.55',
+    soKhung: 'VFEVO200CB15555',
+    packageType: 'TAI_NAN_NGUOI',
+    tenGoi: 'BẢO HIỂM TAI NẠN NGƯỜI NGỒI TRÊN XE',
+    thoiHanNam: 1,
+    phiBaoHiem: 20000,
+    nhaBaoHiem: 'Bảo hiểm MIC',
+    ngayCap: '2026-10-07',
+    ngayBatDau: '2026-10-07',
+    ngayKetThuc: '2027-10-07',
+    trangThai: 'HieuLuc',
+    ghiChu: 'Bảo hiểm tai nạn cho 02 người ngồi trên xe máy',
+  },
+
+  // ── XE 2: HONDA SH 150i (59S1 - 123.45) ──
+  {
+    id: 'BH-SH-01',
+    soGCN: 'GCN-BV-2025-0912',
+    customerId: 'KH001',
+    hoTenKH: 'Nguyễn Minh Anh',
+    soDienThoai: '0901234567',
+    email: 'minhanh.nguyen@email.com',
+    diaChi: '12 Lý Thường Kiệt, Q.1, TP.HCM',
+    vehicleId: 'XE002',
+    tenXe: 'HONDA SH 150i (59S1 - 123.45)',
+    bienSo: '59S1-123.45',
+    soKhung: 'RLHKD150CB12345',
+    packageType: 'TNDS_BAT_BUOC',
+    tenGoi: 'BẢO HIỂM BẮT BUỘC TNDS XE MÁY',
+    thoiHanNam: 1,
+    phiBaoHiem: 66000,
+    nhaBaoHiem: 'Bảo hiểm Bảo Việt',
+    ngayCap: '2025-11-12',
+    ngayBatDau: '2025-11-12',
+    ngayKetThuc: '2026-11-12',
+    trangThai: 'HieuLuc',
+    ghiChu: 'Sắp hết hạn (Còn 35 ngày)',
+  },
+  {
+    id: 'BH-SH-02',
+    soGCN: 'GCN-PVI-2025-1105',
+    customerId: 'KH001',
+    hoTenKH: 'Nguyễn Minh Anh',
+    soDienThoai: '0901234567',
+    email: 'minhanh.nguyen@email.com',
+    diaChi: '12 Lý Thường Kiệt, Q.1, TP.HCM',
+    vehicleId: 'XE002',
+    tenXe: 'HONDA SH 150i (59S1 - 123.45)',
+    bienSo: '59S1-123.45',
+    soKhung: 'RLHKD150CB12345',
+    packageType: 'VAT_CHAT_TOAN_DIEN',
+    tenGoi: 'BẢO HIỂM TỰ NGUYỆN XE MÁY',
+    thoiHanNam: 1,
+    phiBaoHiem: 150000,
+    nhaBaoHiem: 'Bảo hiểm PVI',
+    ngayCap: '2025-12-15',
+    ngayBatDau: '2025-12-15',
+    ngayKetThuc: '2026-12-15',
+    trangThai: 'HieuLuc',
+  },
+
+  // ── XE 3: YAMAHA EXCITER 155 (59G1 - 678.90) ──
+  {
+    id: 'BH-EX-01',
+    soGCN: 'GCN-PVI-2025-0610',
+    customerId: 'KH001',
+    hoTenKH: 'Nguyễn Minh Anh',
+    soDienThoai: '0901234567',
+    email: 'minhanh.nguyen@email.com',
+    diaChi: '12 Lý Thường Kiệt, Q.1, TP.HCM',
+    vehicleId: 'XE003',
+    tenXe: 'YAMAHA EXCITER 155 (59G1 - 678.90)',
+    bienSo: '59G1-678.90',
+    soKhung: 'MHYEX155CB67890',
+    packageType: 'VAT_CHAT_XE',
+    tenGoi: 'BẢO HIỂM VẬT CHẤT & TAI NẠN XE MÁY',
+    thoiHanNam: 1,
+    phiBaoHiem: 450000,
+    nhaBaoHiem: 'Bảo hiểm PVI',
+    ngayCap: '2025-09-15',
+    ngayBatDau: '2025-09-15',
+    ngayKetThuc: '2026-09-15',
+    trangThai: 'HetHan',
+    ghiChu: 'Đã quá hạn từ 15/09/2026',
+  },
   {
     id: 'BH001',
-    soGCN: 'GCN-BV-2025-0189',
+    soGCN: 'GCN-BV-2026-0812',
     customerId: 'KH001',
-    hoTenKH: 'Nguyễn Văn An',
+    hoTenKH: 'Nguyễn Minh Anh',
     soDienThoai: '0901234567',
-    email: 'nguyenvanan@gmail.com',
-    diaChi: '12 Lê Thường Kiệt, Q.1, TP.HCM',
+    email: 'nguyenvanan1990@gmail.com',
+    diaChi: '12 Lý Thường Kiệt, Q.1, TP.HCM',
     vehicleId: 'XE001',
-    tenXe: 'Honda SH 160i ABS',
-    bienSo: '51K-123.45',
-    soKhung: 'RLHKD160CB1234567',
-    soMay: 'KD160E123456',
-    packageType: 'TOAN_DIEN',
-    tenGoi: 'Gói Bảo hiểm Toàn diện 3-trong-1 (VIP)',
+    tenXe: 'HONDA VISION 110',
+    bienSo: '59A1-12345',
+    soKhung: 'RLHKV110CB12345',
+    soMay: 'KV110E12345',
+    packageType: 'TNDS_BAT_BUOC',
+    tenGoi: 'TNDS bắt buộc',
     thoiHanNam: 1,
-    phiBaoHiem: 520000,
+    phiBaoHiem: 66000,
     nhaBaoHiem: 'Tổng Công ty Bảo hiểm Bảo Việt',
-    ngayCap: '2025-01-10',
-    ngayBatDau: '2025-01-10',
-    ngayKetThuc: '2026-01-10',
+    ngayCap: '2026-10-01',
+    ngayBatDau: '2026-10-01',
+    ngayKetThuc: '2027-10-01',
     trangThai: 'HieuLuc',
-    ghiChu: 'Cấp chứng nhận điện tử cho xe tay ga cao cấp Honda SH 160i.',
+    ghiChu: 'Cấp chứng nhận bảo hiểm TNDS bắt buộc theo xe Honda Vision 110.',
   },
   {
     id: 'BH002',
@@ -979,16 +1813,15 @@ export const mockInsuranceContracts: InsuranceContract[] = [
   {
     id: 'BH006',
     soGCN: 'GCN-BV-2026-2392',
-    customerId: 'KH001',
-    hoTenKH: 'Nguyễn Văn An',
-    soDienThoai: '0901234567',
-    email: 'nguyenvanan@gmail.com',
-    diaChi: '12 Lê Thường Kiệt, Q.1, TP.HCM',
-    vehicleId: 'XE001',
-    tenXe: 'Honda SH 160i ABS',
-    bienSo: '51K-123.45',
-    soKhung: 'RLHKD160CB1234567',
-    soMay: 'KD160E123456',
+    customerId: 'KH006',
+    hoTenKH: 'Đặng Thị Phương Thảo',
+    soDienThoai: '0956789012',
+    email: 'dangphuongthao96@gmail.com',
+    diaChi: '89 Võ Văn Tần, Q.3, TP.HCM',
+    vehicleId: 'XE008',
+    tenXe: 'Honda Vision 110',
+    bienSo: '59V1-999.99',
+    soKhung: 'RLHKV110CB6789012',
     packageType: 'TNDS_BAT_BUOC',
     tenGoi: 'Bảo hiểm TNDS Bắt buộc xe máy',
     thoiHanNam: 2,
@@ -1455,18 +2288,217 @@ export const mockSurveyResponses: SurveyResponse[] = [
 ];
 
 export const mockStaffAccounts: StaffAccount[] = [
-  { id: 'ST000', hoTen: 'Trần Văn Quản Lý', email: 'admin@motoshop.vn', soDienThoai: '0909999888', chucVu: 'Giám đốc Showroom', vaiTro: 'SuperAdmin', trangThai: 'HoatDong', ngayThamGia: '2022-01-01', avatar: '/images/NV/nv1.jpg' },
-  { id: 'ST001', hoTen: 'Nguyễn Thị Ánh', email: 'anhnguyen@motoshop.vn', soDienThoai: '0988777661', chucVu: 'Chuyên viên Tư vấn Bán hàng', vaiTro: 'NhanVienBanHang', trangThai: 'HoatDong', ngayThamGia: '2023-01-15', avatar: '/images/NV/nv1.jpg' },
-  { id: 'ST002', hoTen: 'Trần Minh Hoàng', email: 'hoangtran@motoshop.vn', soDienThoai: '0988777662', chucVu: 'Chuyên viên Tư vấn Bán hàng', vaiTro: 'NhanVienBanHang', trangThai: 'HoatDong', ngayThamGia: '2023-02-20', avatar: '/images/NV/nv2.jpg' },
-  { id: 'ST003', hoTen: 'Lê Thị Thu Hà', email: 'hale@motoshop.vn', soDienThoai: '0988777663', chucVu: 'Chuyên viên Bán hàng & CSKH', vaiTro: 'NhanVienBanHang', trangThai: 'HoatDong', ngayThamGia: '2023-03-10', avatar: '/images/NV/nv3.jpg' },
-  { id: 'ST004', hoTen: 'Phạm Quốc Bảo', email: 'baopham@motoshop.vn', soDienThoai: '0988777664', chucVu: 'Chuyên viên Bán xe & Trả góp', vaiTro: 'NhanVienBanHang', trangThai: 'HoatDong', ngayThamGia: '2023-04-05', avatar: '/images/NV/nv4.jpg' },
-  { id: 'ST005', hoTen: 'Võ Ngọc Anh', email: 'anhvo@motoshop.vn', soDienThoai: '0988777665', chucVu: 'Chuyên viên Bán hàng & CRM', vaiTro: 'NhanVienBanHang', trangThai: 'HoatDong', ngayThamGia: '2023-05-18', avatar: '/images/NV/nv5.jpg' },
-  { id: 'ST006', hoTen: 'Nguyễn Văn Thành', email: 'nguyen.thanh67@gmail.com', soDienThoai: '0901234567', chucVu: 'Kỹ thuật viên Trưởng xưởng', vaiTro: 'NhanVienKyThuat', trangThai: 'HoatDong', ngayThamGia: '2023-01-10', avatar: '/images/KT/nvkt1.png' },
-  { id: 'ST007', hoTen: 'Trần Minh Đức', email: 'tran.duc78@gmail.com', soDienThoai: '0912345678', chucVu: 'Kỹ thuật viên Bảo dưỡng', vaiTro: 'NhanVienKyThuat', trangThai: 'HoatDong', ngayThamGia: '2023-02-15', avatar: '/images/KT/nvkt2.png' },
-  { id: 'ST008', hoTen: 'Lê Hoàng Nam', email: 'le.nam89@gmail.com', soDienThoai: '0923456789', chucVu: 'Kỹ thuật viên Sửa chữa máy', vaiTro: 'NhanVienKyThuat', trangThai: 'HoatDong', ngayThamGia: '2023-03-20', avatar: '/images/KT/nvkt3.png' },
-  { id: 'ST009', hoTen: 'Phạm Quốc Huy', email: 'pham.huy90@gmail.com', soDienThoai: '0934567890', chucVu: 'Kỹ thuật viên Điện & Phụ tùng', vaiTro: 'NhanVienKyThuat', trangThai: 'HoatDong', ngayThamGia: '2023-04-12', avatar: '/images/KT/nvkt4.png' },
-  { id: 'ST010', hoTen: 'Võ Thành Đạt', email: 'vo.dat36@gmail.com', soDienThoai: '0945678901', chucVu: 'Kỹ thuật viên Bảo hành', vaiTro: 'NhanVienKyThuat', trangThai: 'HoatDong', ngayThamGia: '2023-05-25', avatar: '/images/KT/nvkt5.png' },
+  {
+    id: 'ST000',
+    hoTen: 'Trần Văn Quản Lý',
+    email: 'admin@motoshop.vn',
+    soDienThoai: '0909999888',
+    chucVu: 'Quản lý Showroom',
+    vaiTro: 'SuperAdmin',
+    trangThai: 'HoatDong',
+    ngayThamGia: '2022-01-01',
+    avatar: '/images/NV/nv1.jpg',
+    gioiTinh: 'Nam',
+    ngaySinh: '1985-06-15',
+    diaChi: '128 Hai Bà Trưng, Phường Bến Nghé, Quận 1, TP.HCM',
+    cccd: '079085001234',
+    loaiNhanVien: 'Full-time',
+    luongCoBan: 28000000,
+    nganHang: 'Vietcombank',
+    soTaiKhoan: '1012345678',
+  },
+  {
+    id: 'ST001',
+    hoTen: 'Nguyễn Thị Ánh',
+    email: 'anhnguyen@motoshop.vn',
+    soDienThoai: '0988777661',
+    chucVu: 'Chuyên viên Tư vấn & CSKH',
+    vaiTro: 'NhanVienBanHang',
+    trangThai: 'HoatDong',
+    ngayThamGia: '2023-01-15',
+    avatar: '/images/NV/nv1.jpg',
+    gioiTinh: 'Nu',
+    ngaySinh: '1995-09-20',
+    diaChi: '45 Lê Duẩn, Phường Bến Nghé, Quận 1, TP.HCM',
+    cccd: '079095002345',
+    loaiNhanVien: 'Full-time',
+    luongCoBan: 14000000,
+    nganHang: 'MB Bank',
+    soTaiKhoan: '098877766188',
+  },
+  {
+    id: 'ST002',
+    hoTen: 'Trần Minh Hoàng',
+    email: 'hoangtran@motoshop.vn',
+    soDienThoai: '0988777662',
+    chucVu: 'Chuyên viên Bán xe & Trả góp',
+    vaiTro: 'NhanVienBanHang',
+    trangThai: 'HoatDong',
+    ngayThamGia: '2023-02-20',
+    avatar: '/images/NV/nv2.jpg',
+    gioiTinh: 'Nam',
+    ngaySinh: '1993-04-12',
+    diaChi: '230 Trần Hưng Đạo, Phường 2, Quận 5, TP.HCM',
+    cccd: '079093003456',
+    loaiNhanVien: 'Full-time',
+    luongCoBan: 15000000,
+    nganHang: 'Techcombank',
+    soTaiKhoan: '190345678912',
+  },
+  {
+    id: 'ST003',
+    hoTen: 'Lê Thị Thu Hà',
+    email: 'hale@motoshop.vn',
+    soDienThoai: '0988777663',
+    chucVu: 'Chuyên viên Marketing & CRM',
+    vaiTro: 'NhanVienBanHang',
+    trangThai: 'HoatDong',
+    ngayThamGia: '2023-03-10',
+    avatar: '/images/NV/nv3.jpg',
+    gioiTinh: 'Nu',
+    ngaySinh: '1996-11-25',
+    diaChi: '88 Nguyễn Đình Chiểu, Phường Đa Kao, Quận 1, TP.HCM',
+    cccd: '079096004567',
+    loaiNhanVien: 'Full-time',
+    luongCoBan: 14500000,
+    nganHang: 'ACB',
+    soTaiKhoan: '246813579',
+  },
+  {
+    id: 'ST004',
+    hoTen: 'Phạm Quốc Bảo',
+    email: 'baopham@motoshop.vn',
+    soDienThoai: '0988777664',
+    chucVu: 'Kế toán Bán hàng & Thu ngân',
+    vaiTro: 'NhanVienBanHang',
+    trangThai: 'HoatDong',
+    ngayThamGia: '2023-04-05',
+    avatar: '/images/NV/nv4.jpg',
+    gioiTinh: 'Nam',
+    ngaySinh: '1994-08-18',
+    diaChi: '72 Điện Biên Phủ, Phường 15, Quận Bình Thạnh, TP.HCM',
+    cccd: '079094005678',
+    loaiNhanVien: 'Full-time',
+    luongCoBan: 13500000,
+    nganHang: 'BIDV',
+    soTaiKhoan: '60110000123456',
+  },
+  {
+    id: 'ST005',
+    hoTen: 'Võ Ngọc Anh',
+    email: 'anhvo@motoshop.vn',
+    soDienThoai: '0988777665',
+    chucVu: 'Chuyên viên Tư vấn & CSKH',
+    vaiTro: 'NhanVienBanHang',
+    trangThai: 'HoatDong',
+    ngayThamGia: '2023-05-18',
+    avatar: '/images/NV/nv5.jpg',
+    gioiTinh: 'Nu',
+    ngaySinh: '1998-03-08',
+    diaChi: '15 Võ Văn Tần, Phường Võ Thị Sáu, Quận 3, TP.HCM',
+    cccd: '079098006789',
+    loaiNhanVien: 'Part-time',
+    luongCoBan: 8500000,
+    nganHang: 'VPBank',
+    soTaiKhoan: '1888222333',
+  },
+  {
+    id: 'ST006',
+    hoTen: 'Nguyễn Văn Thành',
+    email: 'nguyen.thanh67@gmail.com',
+    soDienThoai: '0901234567',
+    chucVu: 'Kỹ thuật viên Trưởng xưởng',
+    vaiTro: 'NhanVienKyThuat',
+    trangThai: 'HoatDong',
+    ngayThamGia: '2023-01-10',
+    avatar: '/images/KT/nvkt1.png',
+    gioiTinh: 'Nam',
+    ngaySinh: '1987-12-05',
+    diaChi: '56 Phan Đăng Lưu, Phường 5, Quận Phú Nhuận, TP.HCM',
+    cccd: '079087007890',
+    loaiNhanVien: 'Full-time',
+    luongCoBan: 22000000,
+    nganHang: 'Vietcombank',
+    soTaiKhoan: '0071001234567',
+  },
+  {
+    id: 'ST007',
+    hoTen: 'Trần Minh Đức',
+    email: 'tran.duc78@gmail.com',
+    soDienThoai: '0912345678',
+    chucVu: 'Kỹ thuật viên Bảo dưỡng định kỳ',
+    vaiTro: 'NhanVienKyThuat',
+    trangThai: 'HoatDong',
+    ngayThamGia: '2023-02-15',
+    avatar: '/images/KT/nvkt2.png',
+    gioiTinh: 'Nam',
+    ngaySinh: '1992-07-22',
+    diaChi: '112 Cách Mạng Tháng 8, Phường 7, Quận 3, TP.HCM',
+    cccd: '079092008901',
+    loaiNhanVien: 'Full-time',
+    luongCoBan: 16000000,
+    nganHang: 'Agribank',
+    soTaiKhoan: '1500205123456',
+  },
+  {
+    id: 'ST008',
+    hoTen: 'Lê Hoàng Nam',
+    email: 'le.nam89@gmail.com',
+    soDienThoai: '0923456789',
+    chucVu: 'Kỹ thuật viên Sửa chữa máy',
+    vaiTro: 'NhanVienKyThuat',
+    trangThai: 'HoatDong',
+    ngayThamGia: '2023-03-20',
+    avatar: '/images/KT/nvkt3.png',
+    gioiTinh: 'Nam',
+    ngaySinh: '1991-10-30',
+    diaChi: '34 Lê Văn Sỹ, Phường 13, Quận 3, TP.HCM',
+    cccd: '079091009012',
+    loaiNhanVien: 'Full-time',
+    luongCoBan: 17500000,
+    nganHang: 'MB Bank',
+    soTaiKhoan: '092345678999',
+  },
+  {
+    id: 'ST009',
+    hoTen: 'Phạm Quốc Huy',
+    email: 'pham.huy90@gmail.com',
+    soDienThoai: '0934567890',
+    chucVu: 'Thủ kho & Quản lý phụ tùng',
+    vaiTro: 'NhanVienKyThuat',
+    trangThai: 'HoatDong',
+    ngayThamGia: '2023-04-12',
+    avatar: '/images/KT/nvkt4.png',
+    gioiTinh: 'Nam',
+    ngaySinh: '1990-05-14',
+    diaChi: '90 Hoàng Văn Thụ, Phường 4, Quận Tân Bình, TP.HCM',
+    cccd: '079090010123',
+    loaiNhanVien: 'Full-time',
+    luongCoBan: 15500000,
+    nganHang: 'Techcombank',
+    soTaiKhoan: '190333444555',
+  },
+  {
+    id: 'ST010',
+    hoTen: 'Võ Thành Đạt',
+    email: 'vo.dat36@gmail.com',
+    soDienThoai: '0945678901',
+    chucVu: 'Kỹ thuật viên Điện & Phụ tùng xe',
+    vaiTro: 'NhanVienKyThuat',
+    trangThai: 'HoatDong',
+    ngayThamGia: '2023-05-25',
+    avatar: '/images/KT/nvkt5.png',
+    gioiTinh: 'Nam',
+    ngaySinh: '1995-01-19',
+    diaChi: '105 Cộng Hòa, Phường 12, Quận Tân Bình, TP.HCM',
+    cccd: '079095011234',
+    loaiNhanVien: 'Full-time',
+    luongCoBan: 16500000,
+    nganHang: 'TPBank',
+    soTaiKhoan: '03456789001',
+  },
 ];
+
 
 /* ───────────────────────── CHART & REVENUE DATA ───────────────────────── */
 export const dailyRevenueData = [
@@ -1524,8 +2556,11 @@ export const ageDistributionData = [
   { name: '46+', value: 15, fill: '#d4d4d8' },
 ];
 
-export function formatVND(n: number): string {
-  return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(n);
+export function formatVND(n: number | string | undefined | null): string {
+  if (n == null || n === '') return '0 đ';
+  const num = typeof n === 'number' ? n : Number(String(n).replace(/\D/g, ''));
+  if (isNaN(num)) return '0 đ';
+  return num.toLocaleString('vi-VN') + ' đ';
 }
 
 /* ───────────────────────── SUPPLIERS & PURCHASE RECEIPTS ───────────────────────── */
@@ -1537,6 +2572,14 @@ export interface Supplier {
   soDienThoai: string;
   email: string;
   diaChi: string;
+  tinhThanh?: string;
+  quanHuyen?: string;
+  phuongXa?: string;
+  soNhaDuong?: string;
+  nganHang?: string;
+  soTaiKhoan?: string;
+  chuKyThanhToan?: string;
+  ngayHopTac?: string;
   nhomHang: string[];
   chietKhau: number; // % chiết khấu đại lý
   danhGia: number;   // 1-5 sao uy tín
@@ -1577,9 +2620,17 @@ export const mockSuppliers: Supplier[] = [
     tenNhaCungCap: 'Công ty Honda Việt Nam (HVN)',
     maSoThue: '2500150335',
     nguoiLienHe: 'Trần Minh Tuấn (Trưởng ban Phân phối)',
-    soDienThoai: '1800 8001',
+    soDienThoai: '0988112233',
     email: 'cr@honda.com.vn',
-    diaChi: 'Phường Phúc Thắng, TP. Phúc Yên, Vĩnh Phúc',
+    tinhThanh: 'Hà Nội',
+    quanHuyen: 'Quận Ba Đình',
+    phuongXa: 'Phường Liễu Giai',
+    soNhaDuong: 'Tòa nhà Honda Tower, 25 Liễu Giai',
+    diaChi: 'Tòa nhà Honda Tower, 25 Liễu Giai, Phường Liễu Giai, Quận Ba Đình, Hà Nội',
+    nganHang: 'Vietcombank',
+    soTaiKhoan: '0011004567890',
+    chuKyThanhToan: '60 ngày',
+    ngayHopTac: '2020-03-15',
     nhomHang: ['Xe máy nguyên chiếc', 'Phụ tùng chính hãng Honda', 'Dầu nhờn Pro Honda'],
     chietKhau: 12,
     danhGia: 5.0,
@@ -1592,9 +2643,17 @@ export const mockSuppliers: Supplier[] = [
     tenNhaCungCap: 'Công ty TNHH Yamaha Motor Việt Nam',
     maSoThue: '0100774342',
     nguoiLienHe: 'Lê Hoàng Nam (Phụ trách Đại lý KV Miền Nam)',
-    soDienThoai: '1800 1588',
+    soDienThoai: '0977223344',
     email: 'dealer@yamaha-motor.com.vn',
-    diaChi: 'Xã Trung Giã, Huyện Sóc Sơn, TP. Hà Nội',
+    tinhThanh: 'Hà Nội',
+    quanHuyen: 'Quận Cầu Giấy',
+    phuongXa: 'Phường Dịch Vọng',
+    soNhaDuong: 'Số 12 Duy Tân, Khu liên hiệp Yamaha',
+    diaChi: 'Số 12 Duy Tân, Khu liên hiệp Yamaha, Phường Dịch Vọng, Quận Cầu Giấy, Hà Nội',
+    nganHang: 'BIDV',
+    soTaiKhoan: '12010000889988',
+    chuKyThanhToan: '45 ngày',
+    ngayHopTac: '2021-06-20',
     nhomHang: ['Xe máy nguyên chiếc', 'Phụ tùng Yamalube chính hãng'],
     chietKhau: 11.5,
     danhGia: 4.9,
@@ -1607,9 +2666,17 @@ export const mockSuppliers: Supplier[] = [
     tenNhaCungCap: 'Công ty TNHH Dầu nhớt Motul Châu Á (Việt Nam)',
     maSoThue: '0303889123',
     nguoiLienHe: 'Nguyễn Văn Đạt (Kinh doanh KV TP.HCM)',
-    soDienThoai: '028 3754 0999',
+    soDienThoai: '0903889123',
     email: 'sales-vn@motul.com',
-    diaChi: 'Đường số 7, KCN Tân Tạo, Q. Bình Tân, TP.HCM',
+    tinhThanh: 'TP. Hồ Chí Minh',
+    quanHuyen: 'Quận Tân Bình',
+    phuongXa: 'Phường 2',
+    soNhaDuong: 'Đường số 7, KCN Tân Bình mở rộng',
+    diaChi: 'Đường số 7, KCN Tân Bình mở rộng, Phường 2, Quận Tân Bình, TP. Hồ Chí Minh',
+    nganHang: 'Techcombank',
+    soTaiKhoan: '19034567891011',
+    chuKyThanhToan: '30 ngày',
+    ngayHopTac: '2022-01-10',
     nhomHang: ['Dầu nhớt', 'Chăm sóc xe & Phụ gia động cơ'],
     chietKhau: 18,
     danhGia: 5.0,
@@ -1622,9 +2689,17 @@ export const mockSuppliers: Supplier[] = [
     tenNhaCungCap: 'Michelin Châu Á - Thái Bình Dương (Văn phòng VN)',
     maSoThue: '0309998124',
     nguoiLienHe: 'Phạm Thanh Sơn (Quản lý Phân phối Vỏ xe máy)',
-    soDienThoai: '028 3822 5577',
+    soDienThoai: '0918999124',
     email: 'tw-sales.vn@michelin.com',
-    diaChi: 'Tầng 14, Tòa nhà Sun Wah, 115 Nguyễn Huệ, Quận 1, TP.HCM',
+    tinhThanh: 'TP. Hồ Chí Minh',
+    quanHuyen: 'Quận 1',
+    phuongXa: 'Phường Bến Nghé',
+    soNhaDuong: 'Tầng 14, Tòa nhà Sun Wah, 115 Nguyễn Huệ',
+    diaChi: 'Tầng 14, Tòa nhà Sun Wah, 115 Nguyễn Huệ, Phường Bến Nghé, Quận 1, TP. Hồ Chí Minh',
+    nganHang: 'HSBC Việt Nam',
+    soTaiKhoan: '002888999111',
+    chuKyThanhToan: '30 ngày',
+    ngayHopTac: '2022-08-15',
     nhomHang: ['Lốp xe chính hãng', 'Vỏ không ruột thể thao'],
     chietKhau: 15,
     danhGia: 4.8,
@@ -1637,9 +2712,17 @@ export const mockSuppliers: Supplier[] = [
     tenNhaCungCap: 'Brembo Racing & Braking Systems VN (Đại diện ủy quyền)',
     maSoThue: '0314567890',
     nguoiLienHe: 'Võ Minh Trí (Giám đốc Kỹ thuật & Bán hàng)',
-    soDienThoai: '0909 123 789',
+    soDienThoai: '0909123789',
     email: 'info@brembovietnam.vn',
-    diaChi: 'Khu Đô Thị Phú Mỹ Hưng, Quận 7, TP.HCM',
+    tinhThanh: 'TP. Hồ Chí Minh',
+    quanHuyen: 'Quận 7',
+    phuongXa: 'Phường Tân Phong',
+    soNhaDuong: 'Số 88 Nguyễn Đức Cảnh, KĐT Phú Mỹ Hưng',
+    diaChi: 'Số 88 Nguyễn Đức Cảnh, KĐT Phú Mỹ Hưng, Phường Tân Phong, Quận 7, TP. Hồ Chí Minh',
+    nganHang: 'VietinBank',
+    soTaiKhoan: '108001234567',
+    chuKyThanhToan: '15 ngày',
+    ngayHopTac: '2023-04-01',
     nhomHang: ['Phanh & Thắng đĩa', 'Phụ kiện hiệu năng cao', 'Dầu thắng thể thao'],
     chietKhau: 14,
     danhGia: 4.9,
@@ -1652,9 +2735,17 @@ export const mockSuppliers: Supplier[] = [
     tenNhaCungCap: 'Công ty CP Phụ tùng Daichi Việt Nam',
     maSoThue: '0106789123',
     nguoiLienHe: 'Đỗ Quốc Hùng (Trưởng phòng Cung ứng Tổng hợp)',
-    soDienThoai: '024 3789 9988',
+    soDienThoai: '0936789123',
     email: 'kinhdoanh@daichi.vn',
-    diaChi: 'Số 45 Trần Thái Tông, Cầu Giấy, Hà Nội',
+    tinhThanh: 'Hà Nội',
+    quanHuyen: 'Quận Cầu Giấy',
+    phuongXa: 'Phường Dịch Vọng Hậu',
+    soNhaDuong: 'Số 45 Trần Thái Tông',
+    diaChi: 'Số 45 Trần Thái Tông, Phường Dịch Vọng Hậu, Quận Cầu Giấy, Hà Nội',
+    nganHang: 'MB Bank',
+    soTaiKhoan: '0680199998888',
+    chuKyThanhToan: '30 ngày',
+    ngayHopTac: '2021-11-20',
     nhomHang: ['Bugi', 'Truyền động', 'Lọc gió', 'Phụ tùng thay thế định kỳ'],
     chietKhau: 20,
     danhGia: 4.7,
@@ -1851,3 +2942,427 @@ export const mockPurchaseReceipts: PurchaseReceipt[] = [
     ],
   },
 ];
+
+/* ───────────────────────── BẢO HÀNH & LỊCH HẸN BẢO HÀNH (WARRANTY) ───────────────────────── */
+export interface WarrantyRecord {
+  id: string;
+  vehicleId: string;
+  lanThu: number;
+  ngayThucHien: string;
+  noiDung: string;
+  chiPhi: number;
+  loaiChiPhi: 'BaoHanh' | 'CoPhi';
+  trangThai: 'HoanThanh' | 'DangXuLy';
+  chiNhanh?: string;
+  maLichHen?: string;
+  soKm?: number;
+  kyThuatVien?: string;
+  chiTietLinhKien?: string[];
+}
+
+export type WarrantyAppointmentStatus =
+  | 'ChoTiepNhan'     // Chờ tiếp nhận (khách vừa gửi form)
+  | 'DaXacNhan'       // Đã xác nhận (nhân viên xác nhận lịch)
+  | 'DaTiepNhan'      // Đã tiếp nhận xe (xe đã đến xưởng)
+  | 'DangKiemTra'     // Đang kiểm tra (KTV kiểm tra & thẩm định)
+  | 'SuaChuaBH'       // Đang sửa chữa bảo hành (nhánh Được bảo hành)
+  | 'KiemTraSauSuaBH' // Kiểm tra sau sửa chữa (nhánh Được bảo hành)
+  | 'TuChoi'          // Từ chối bảo hành (chờ khách quyết định)
+  | 'BaoGia'          // Báo giá sửa chữa (khách đồng ý sửa có phí)
+  | 'SuaCoPhi'        // Đang sửa chữa có phí
+  | 'KiemTraSauSuaCoPhi' // Kiểm tra sau sửa có phí
+  | 'DongYeuCau'      // Đóng yêu cầu / Trả xe (khách không sửa)
+  | 'HoanTat'         // Hoàn tất (In phiếu BH hoặc In hóa đơn)
+  | 'DaHuy';          // Đã hủy
+
+export interface TechnicalAssessment {
+  boPhanLoi: string[];
+  soKmThucTe: number;
+  hinhAnhKyThuat: string[];
+  yKienKyThuat: string;
+  ngayDanhGia?: string;
+  kyThuatVien?: string;
+}
+
+export type WarrantyDecision =
+  | 'DuocBaoHanh'     // Được bảo hành (0đ)
+  | 'TuChoi_DongYSua' // Từ chối BH, khách đồng ý sửa chữa (có phí)
+  | 'TuChoi_KhongSua' // Từ chối BH, khách không sửa chữa (trả xe)
+  | null;
+
+export interface WarrantyAppointment {
+  id: string; // #BH-120426-01
+  customerId: string;
+  hoTenKH: string;
+  soDienThoai: string;
+  vehicleId: string;
+  tenXe: string;
+  bienSo: string;
+  odoKhachBao: number;
+  vanDeGapPhai: string[];
+  moTaChiTiet: string;
+  hinhAnhKhachHang: string[];
+  ngayHen: string;
+  gioHen: string;
+  chiNhanh: string;
+  trangThai: WarrantyAppointmentStatus;
+  
+  // Đánh giá kỹ thuật
+  danhGiaKyThuat?: TechnicalAssessment;
+  quyetDinh?: WarrantyDecision;
+  
+  // Chi phí & Báo giá
+  chiPhiBaoGia?: number;
+  chiPhiThucTe?: number;
+  
+  // In ấn
+  inPhieuLoai?: 'PhieuBaoHanh' | 'HoaDonSuaChua' | 'BienBanTraXe';
+  ngayTao: string;
+  ngayHoanTat?: string;
+}
+
+export const WARRANTY_BRANCHES = [
+  'Hệ thống Honda Ủy nhiệm - Chi nhánh 1 (Quận 1, TP. HCM)',
+  'Hệ thống Honda Ủy nhiệm - Chi nhánh 2 (Bình Thạnh, TP. HCM)',
+  'Hệ thống Honda Ủy nhiệm - Chi nhánh 3 (Quận 7, TP. HCM)',
+  'Hệ thống Honda Ủy nhiệm - Chi nhánh 4 (Thủ Đức, TP. HCM)',
+];
+
+export const WARRANTY_ISSUES_LIST = [
+  'Động cơ / Động cơ kêu to',
+  'Phanh (Thắng) trước/sau',
+  'Hệ thống điện / Đèn / Còi',
+  'Giảm xóc (Phuộc)',
+  'Hệ thống truyền động (Côn/Xích)',
+  'Ốp nhựa / Rò rỉ dầu / Khác',
+];
+
+export interface ExtendedWarrantyPackage {
+  id: string;
+  tenGoi: string;
+  moTa: string;
+  thoiGianThem: string;
+  kmThem: string;
+  giaGoc: number;
+  giaUuDai: number;
+  quyenLoi: string[];
+  isPopular?: boolean;
+  isEligible?: boolean;
+  ineligibleReason?: string;
+}
+
+export const EXTENDED_WARRANTY_PACKAGES: ExtendedWarrantyPackage[] = [
+  {
+    id: 'GOI_TIEU_CHUAN_1Y',
+    tenGoi: 'GÓI TIÊU CHUẨN (1 NĂM)',
+    moTa: 'Bảo vệ xe thêm 1 năm hoặc 10.000 km tiếp theo.',
+    thoiGianThem: '12 tháng',
+    kmThem: '10.000 km',
+    giaGoc: 450000,
+    giaUuDai: 350000,
+    isPopular: true,
+    isEligible: true,
+    quyenLoi: [
+      'Khắc phục lỗi động cơ, hệ thống điện, IC, giảm xóc... miễn phí tại mọi chi nhánh',
+      'Cứu hộ giao thông khẩn cấp 24/7 toàn quốc',
+    ],
+  },
+  {
+    id: 'GOI_TOAN_DIEN_2Y',
+    tenGoi: 'GÓI TOÀN DIỆN (2 NĂM)',
+    moTa: 'Bảo vệ xe thêm 2 năm hoặc 20.000 km tiếp theo.',
+    thoiGianThem: '24 tháng',
+    kmThem: '20.000 km',
+    giaGoc: 750000,
+    giaUuDai: 600000,
+    isEligible: true,
+    quyenLoi: [
+      'Bao gồm toàn bộ quyền lợi gói 1 năm',
+      'Tặng 2 lượt bảo dưỡng định kỳ miễn phí',
+      'Cứu hộ giao thông khẩn cấp 24/7',
+    ],
+  },
+  {
+    id: 'GOI_CAO_CAP_3Y',
+    tenGoi: 'GÓI CAO CẤP (3 NĂM)',
+    moTa: 'Chăm sóc toàn diện 3 năm hoặc 30.000 km tiếp theo.',
+    thoiGianThem: '36 tháng',
+    kmThem: '30.000 km',
+    giaGoc: 1050000,
+    giaUuDai: 850000,
+    isEligible: false,
+    ineligibleReason: 'Chỉ áp dụng cho xe mua dưới 12 tháng (Xe của bạn đã sử dụng 2 năm)',
+    quyenLoi: [
+      'Bảo vệ trọn đời linh kiện đắt tiền',
+      'Tặng 4 lượt bảo dưỡng định kỳ miễn phí',
+      'Cứu hộ toàn quốc 24/7',
+    ],
+  },
+  {
+    id: 'GOI_CON_TAY_XE_SO',
+    tenGoi: 'GÓI ĐẶC BIỆT CÔN TAY/XE SỐ',
+    moTa: 'Gói chuyên sâu cho xe côn tay & xe số 12 tháng.',
+    thoiGianThem: '12 tháng',
+    kmThem: '10.000 km',
+    giaGoc: 650000,
+    giaUuDai: 500000,
+    isEligible: false,
+    ineligibleReason: 'Chỉ dành cho xe côn tay & xe số (Xe của bạn là xe tay ga)',
+    quyenLoi: [
+      'Bảo dưỡng bộ côn nồi ly hợp chuyên sâu',
+      'Kiểm tra nhông sên dĩa định kỳ',
+      'Cứu hộ 24/7',
+    ],
+  },
+  // Backward compatibility alias:
+  {
+    id: 'CARE_PLUS_1Y',
+    tenGoi: 'Gói Care+ 1 Năm Mở Rộng',
+    moTa: 'Bảo vệ xe thêm 1 năm hoặc 10.000 km khi gia hạn sớm hôm nay!',
+    thoiGianThem: '12 tháng',
+    kmThem: '10.000 km',
+    giaGoc: 450000,
+    giaUuDai: 350000,
+    isEligible: true,
+    quyenLoi: [
+      'Khắc phục lỗi động cơ, hệ thống điện, IC, giảm xóc...',
+      'Cứu hộ 24/7',
+    ],
+  },
+  {
+    id: 'CARE_PLUS_2Y',
+    tenGoi: 'Gói Care+ Premium 2 Năm',
+    moTa: 'Gói chăm sóc toàn diện 2 năm hoặc 20.000 km, tối ưu chi phí bảo dưỡng.',
+    thoiGianThem: '24 tháng',
+    kmThem: '20.000 km',
+    giaGoc: 750000,
+    giaUuDai: 600000,
+    isEligible: true,
+    quyenLoi: [
+      'Bao gồm toàn bộ quyền lợi gói 1 năm',
+      'Tặng 2 lượt bảo dưỡng định kỳ',
+    ],
+  },
+];
+
+export interface VehicleServiceHistoryRecord {
+  id: string;
+  vehicleId: string;
+  ngayThucHien: string;
+  tenDichVu: string;
+  chiNhanh: string;
+  soKm: number;
+  ketQua: 'Dat' | 'PhatHienCanThiep';
+  ghiChu?: string;
+}
+
+export const mockVehicleServiceHistories: Record<string, VehicleServiceHistoryRecord[]> = {
+  XE001: [
+    {
+      id: 'LSDV-004',
+      vehicleId: 'XE001',
+      ngayThucHien: '10/06/2026',
+      tenDichVu: 'Bảo dưỡng định kỳ lần 3 (Tại CN1 - Quận 1)',
+      chiNhanh: 'CN1 - Quận 1',
+      soKm: 11200,
+      ketQua: 'Dat',
+    },
+    {
+      id: 'LSDV-003',
+      vehicleId: 'XE001',
+      ngayThucHien: '20/01/2026',
+      tenDichVu: 'Sửa chữa/thay thế dầu máy (Tại CN1 - Quận 1)',
+      chiNhanh: 'CN1 - Quận 1',
+      soKm: 7500,
+      ketQua: 'Dat',
+    },
+    {
+      id: 'LSDV-002',
+      vehicleId: 'XE001',
+      ngayThucHien: '15/09/2025',
+      tenDichVu: 'Bảo dưỡng định kỳ lần 2 (Tại CN1 - Quận 1)',
+      chiNhanh: 'CN1 - Quận 1',
+      soKm: 4800,
+      ketQua: 'Dat',
+    },
+    {
+      id: 'LSDV-001',
+      vehicleId: 'XE001',
+      ngayThucHien: '10/11/2024',
+      tenDichVu: 'Bảo dưỡng định kỳ lần 1 (Tại CN1 - Quận 1)',
+      chiNhanh: 'CN1 - Quận 1',
+      soKm: 1000,
+      ketQua: 'Dat',
+    },
+  ],
+  XE001_FAIL: [
+    {
+      id: 'LSDV-FAIL-002',
+      vehicleId: 'XE001',
+      ngayThucHien: '10/06/2026',
+      tenDichVu: 'Sửa chữa/Thay thế ngoài hệ thống (Thay thế bình ắc quy ngoài tại cơ sở không chính hãng)',
+      chiNhanh: 'Cơ sở bên ngoài',
+      soKm: 11200,
+      ketQua: 'PhatHienCanThiep',
+      ghiChu: 'Phát hiện can thiệp bên ngoài',
+    },
+    {
+      id: 'LSDV-FAIL-001',
+      vehicleId: 'XE001',
+      ngayThucHien: '20/01/2026',
+      tenDichVu: 'Bảo dưỡng định kỳ lần 1 (Tại CN Q.1)',
+      chiNhanh: 'CN1 - Quận 1',
+      soKm: 4800,
+      ketQua: 'Dat',
+      ghiChu: 'Mất lịch sử bảo dưỡng định kỳ lần 2 và lần 3 trong hệ thống',
+    },
+  ],
+};
+
+export const mockWarrantyRecords: WarrantyRecord[] = [
+  {
+    id: 'WREC-002',
+    vehicleId: 'XE001',
+    lanThu: 2,
+    ngayThucHien: '20/06/2026',
+    noiDung: 'Khắc phục tiếng ồn phuộc trước & kiểm tra cổ phốt',
+    chiPhi: 0,
+    loaiChiPhi: 'BaoHanh',
+    trangThai: 'HoanThanh',
+    chiNhanh: 'CN 1 - Quận 1',
+    maLichHen: '#BH-090925-04',
+    soKm: 12000,
+    kyThuatVien: 'Trần Văn Nam',
+    chiTietLinhKien: ['Phốt phuộc dầu chính hãng', 'Bạc đạn cổ lái'],
+  },
+  {
+    id: 'WREC-001',
+    vehicleId: 'XE001',
+    lanThu: 1,
+    ngayThucHien: '10/12/2025',
+    noiDung: 'Thay thế cảm biến oxy khí thải và vệ sinh kim phun PGM-FI',
+    chiPhi: 0,
+    loaiChiPhi: 'BaoHanh',
+    trangThai: 'HoanThanh',
+    chiNhanh: 'CN 1 - Quận 1',
+    maLichHen: '#BH-070725-01',
+    soKm: 6500,
+    kyThuatVien: 'Nguyễn Văn Minh',
+    chiTietLinhKien: ['Cảm biến oxy PGM-FI', 'Dung dịch vệ sinh kim phun Honda'],
+  },
+];
+
+export const mockWarrantyAppointments: WarrantyAppointment[] = [
+  {
+    id: '#BH-120426-01',
+    customerId: 'KH001',
+    hoTenKH: 'Nguyễn Văn A',
+    soDienThoai: '0987 654 321',
+    vehicleId: 'XE001',
+    tenXe: 'Honda Vision 110',
+    bienSo: '59A1-123.45',
+    odoKhachBao: 12500,
+    vanDeGapPhai: ['Phanh (Thắng) trước/sau', 'Động cơ / Động cơ kêu to'],
+    moTaChiTiet: 'Xe bị kêu lạch cạch ở phía sau khi tăng tốc, phanh sau không ăn khi bóp mạnh.',
+    hinhAnhKhachHang: [
+      'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=500&auto=format',
+      'https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?w=500&auto=format',
+    ],
+    ngayHen: '15/10/2026',
+    gioHen: '08:30',
+    chiNhanh: 'CN 1 - Quận 1',
+    trangThai: 'DangKiemTra',
+    danhGiaKyThuat: {
+      boPhanLoi: ['Động cơ / Hộp số', 'Hệ thống điện'],
+      soKmThucTe: 12500,
+      hinhAnhKyThuat: [
+        'https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?w=500&auto=format',
+        'https://images.unsplash.com/photo-1599819811279-d5ad9cccf838?w=500&auto=format',
+      ],
+      yKienKyThuat: 'Phát hiện bộ côn bị mòn tự nhiên, lốc máy có vết trầy xước do va đập ngoại lực nhẹ không thuộc phạm vi lỗi nhà sản xuất...',
+      ngayDanhGia: '15/10/2026',
+      kyThuatVien: 'KTV. Trần Minh Long',
+    },
+    quyetDinh: null,
+    chiPhiBaoGia: 450000,
+    chiPhiThucTe: 0,
+    ngayTao: '2026-10-12 09:15',
+  },
+  {
+    id: '#BH-120426-02',
+    customerId: 'KH002',
+    hoTenKH: 'Trần Thị B',
+    soDienThoai: '0901 234 567',
+    vehicleId: 'XE002',
+    tenXe: 'Honda Air Blade',
+    bienSo: '59A1-678.90',
+    odoKhachBao: 18200,
+    vanDeGapPhai: ['Giảm xóc (Phuộc)', 'Hệ thống điện / Đèn / Còi'],
+    moTaChiTiet: 'Phuộc sau kêu cọt kẹt khi qua gờ giảm tốc, đèn xi nhan chớp nháy thất thường.',
+    hinhAnhKhachHang: [],
+    ngayHen: '14/10/2026',
+    gioHen: '10:00',
+    chiNhanh: 'CN 3 - Quận 7',
+    trangThai: 'ChoTiepNhan',
+    ngayTao: '2026-10-12 10:20',
+  },
+  {
+    id: '#BH-090925-04',
+    customerId: 'KH003',
+    hoTenKH: 'Phạm Văn C',
+    soDienThoai: '0948 111 222',
+    vehicleId: 'XE003',
+    tenXe: 'Yamaha Exciter 155',
+    bienSo: '60C1-777.77',
+    odoKhachBao: 9500,
+    vanDeGapPhai: ['Động cơ / Động cơ kêu to', 'Phanh (Thắng) trước/sau'],
+    moTaChiTiet: 'Bảo hành thay thế bố nồi và căn chỉnh xích tải định kỳ.',
+    hinhAnhKhachHang: [],
+    ngayHen: '14/10/2026',
+    gioHen: '14:00',
+    chiNhanh: 'CN 1 - Quận 1',
+    trangThai: 'HoanTat',
+    quyetDinh: 'DuocBaoHanh',
+    chiPhiThucTe: 0,
+    inPhieuLoai: 'PhieuBaoHanh',
+    ngayTao: '2026-10-09 14:00',
+    ngayHoanTat: '2026-10-14 16:30',
+  },
+  {
+    id: '#BH-080825-12',
+    customerId: 'KH004',
+    hoTenKH: 'Lê Hoàng D',
+    soDienThoai: '0945 999 888',
+    vehicleId: 'XE004',
+    tenXe: 'Honda SH 160i',
+    bienSo: '59A1-999.99',
+    odoKhachBao: 22000,
+    vanDeGapPhai: ['Hệ thống điện / Đèn / Còi'],
+    moTaChiTiet: 'Khách yêu cầu kiểm tra smartkey và sạc điện thoại trên xe.',
+    hinhAnhKhachHang: [],
+    ngayHen: '12/10/2026',
+    gioHen: '09:30',
+    chiNhanh: 'CN 2 - Bình Thạnh',
+    trangThai: 'DaHuy',
+    ngayTao: '2026-10-08 09:30',
+  },
+  {
+    id: '#BH-070725-03',
+    customerId: 'KH005',
+    hoTenKH: 'Hoàng Thị E',
+    soDienThoai: '0912 345 678',
+    vehicleId: 'XE005',
+    tenXe: 'Honda Vision 110',
+    bienSo: '29B1-999.99',
+    odoKhachBao: 14100,
+    vanDeGapPhai: ['Động cơ / Động cơ kêu to'],
+    moTaChiTiet: 'Tiếng róc máy nhẹ khi chạy dải tốc độ 40-50 km/h.',
+    hinhAnhKhachHang: [],
+    ngayHen: '11/10/2026',
+    gioHen: '15:30',
+    chiNhanh: 'CN 1 - Quận 1',
+    trangThai: 'DangKiemTra',
+    ngayTao: '2026-10-07 15:30',
+  },
+];
+

@@ -1,14 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CartProvider } from './contexts/CartContext';
 import AdminLayout from './layouts/AdminLayout';
 import CustomerLayout from './layouts/CustomerLayout';
-import { type Customer, type StaffAccount, mockStaffAccounts } from './data/mockData';
+import { type Customer, type StaffAccount, type Appointment, mockStaffAccounts } from './data/mockData';
 
 // Admin pages
 import AdminLoginPage from './pages/admin/AdminLogin';
 import DashboardPage from './pages/admin/Dashboard';
 import ReportsPage from './pages/admin/Reports';
 import SalesPage from './pages/admin/Sales';
+import AppointmentsPage from './pages/admin/Appointments';
 import CustomersPage from './pages/admin/Customers';
 import FeedbackPage from './pages/admin/Feedback';
 import PartsPage from './pages/admin/Parts';
@@ -16,6 +17,8 @@ import VehiclesPage from './pages/admin/Vehicles';
 import SuppliersPage from './pages/admin/Suppliers';
 import StaffRolesPage from './pages/admin/StaffRoles';
 import InsurancePage from './pages/admin/Insurance';
+import PromotionsPage from './pages/admin/Promotions';
+import { WarrantyPage } from './pages/admin/Warranty';
 
 // Customer pages
 import PartsStore from './pages/customer/PartsStore';
@@ -26,7 +29,7 @@ import VehiclesShowroom from './pages/customer/VehiclesShowroom';
 import SurveyTaking from './pages/customer/SurveyTaking';
 
 type Mode = 'admin' | 'customer' | null;
-type AdminPage = 'dashboard' | 'sales' | 'appointments' | 'insurance' | 'customers' | 'feedback' | 'reports' | 'parts' | 'vehicles' | 'suppliers' | 'staff';
+type AdminPage = 'dashboard' | 'sales' | 'promotions' | 'appointments' | 'warranty' | 'insurance' | 'customers' | 'feedback' | 'reports' | 'parts' | 'vehicles' | 'suppliers' | 'staff';
 type CustomerPage = 'store' | 'vehicles' | 'booking' | 'dashboard' | 'checkout' | 'survey';
 
 
@@ -143,6 +146,7 @@ export default function App() {
     return (saved as CustomerPage) || 'vehicles';
   });
   const [selectedVehicleForBooking, setSelectedVehicleForBooking] = useState<string | undefined>(undefined);
+  const [vehicleOrderPreFill, setVehicleOrderPreFill] = useState<Appointment | null>(null);
   
   const [currentCustomer, setCurrentCustomerState] = useState<Customer | null>(() => {
     try {
@@ -157,12 +161,25 @@ export default function App() {
   const [currentStaff, setCurrentStaffState] = useState<StaffAccount | null>(() => {
     try {
       const saved = localStorage.getItem('crm_current_staff');
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.trangThai === 'BiKhoa') {
+          localStorage.removeItem('crm_current_staff');
+          return null;
+        }
+        return parsed;
+      }
     } catch {}
-    return mockStaffAccounts[0];
+    return mockStaffAccounts[0]?.trangThai === 'BiKhoa' ? null : mockStaffAccounts[0];
   });
 
   const setCurrentCustomer = (c: Customer | null) => {
+    if (c && c.trangThai === 'BiKhoa') {
+      alert('⚠️ Tài khoản khách hàng này đang BỊ KHÓA! Không thể tiếp tục đăng nhập.');
+      setCurrentCustomerState(null);
+      localStorage.removeItem('crm_current_customer');
+      return;
+    }
     setCurrentCustomerState(c);
     if (c) {
       localStorage.setItem('crm_current_customer', JSON.stringify(c));
@@ -172,6 +189,12 @@ export default function App() {
   };
 
   const setCurrentStaff = (s: StaffAccount | null) => {
+    if (s && s.trangThai === 'BiKhoa') {
+      alert('⚠️ Tài khoản nhân viên này đang BỊ KHÓA! Không thể đăng nhập quản trị.');
+      setCurrentStaffState(null);
+      localStorage.removeItem('crm_current_staff');
+      return;
+    }
     setCurrentStaffState(s);
     if (s) {
       localStorage.setItem('crm_current_staff', JSON.stringify(s));
@@ -179,6 +202,27 @@ export default function App() {
       localStorage.removeItem('crm_current_staff');
     }
   };
+
+  // NV05: Lắng nghe sự kiện đồng bộ tài khoản nhân sự từ StaffRoles
+  useEffect(() => {
+    const handleStaffChange = () => {
+      try {
+        const saved = localStorage.getItem('crm_current_staff');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed.trangThai === 'BiKhoa') {
+            alert('⚠️ Tài khoản nhân viên của bạn vừa bị KHÓA bởi Quản trị viên!');
+            localStorage.removeItem('crm_current_staff');
+            setCurrentStaffState(null);
+            return;
+          }
+          setCurrentStaffState(parsed);
+        }
+      } catch {}
+    };
+    window.addEventListener('crm-staff-change', handleStaffChange);
+    return () => window.removeEventListener('crm-staff-change', handleStaffChange);
+  }, []);
 
   const setAdminPage = (p: AdminPage) => {
     setAdminPageState(p);
@@ -261,20 +305,37 @@ export default function App() {
         onHome={() => setMode(null)}
       >
         {adminPage === 'dashboard' && <DashboardPage />}
-        {(adminPage === 'sales' || adminPage === 'appointments') && (
+        {adminPage === 'sales' && (
           <SalesPage
-            activeTab={adminPage === 'appointments' ? 'appointments' : 'orders'}
-            onTabChange={(tab) => setAdminPage(tab === 'orders' ? 'sales' : 'appointments')}
+            currentStaff={currentStaff}
+            initialPreFillVehicleOrder={vehicleOrderPreFill}
+            onClearPreFill={() => setVehicleOrderPreFill(null)}
           />
         )}
+        {adminPage === 'promotions' && <PromotionsPage />}
+        {adminPage === 'appointments' && (
+          <AppointmentsPage
+            currentStaff={currentStaff}
+            onNavigateToCreateVehicleOrder={(appt) => {
+              setVehicleOrderPreFill(appt);
+              setAdminPage('sales');
+            }}
+          />
+        )}
+        {adminPage === 'warranty' && <WarrantyPage />}
         {adminPage === 'insurance' && <InsurancePage />}
         {adminPage === 'customers' && <CustomersPage />}
         {adminPage === 'feedback' && <FeedbackPage currentStaff={currentStaff} />}
         {adminPage === 'reports' && <ReportsPage />}
         {adminPage === 'parts' && <PartsPage />}
         {adminPage === 'vehicles' && <VehiclesPage />}
-        {adminPage === 'suppliers' && <SuppliersPage />}
-        {adminPage === 'staff' && <StaffRolesPage />}
+        {adminPage === 'suppliers' && <SuppliersPage currentStaff={currentStaff} />}
+        {adminPage === 'staff' && (
+          <StaffRolesPage
+            currentStaff={currentStaff}
+            onCurrentStaffChange={setCurrentStaff}
+          />
+        )}
       </AdminLayout>
     );
   }
@@ -297,6 +358,7 @@ export default function App() {
               setCustomerPage('booking');
             }}
             onNavigateToSurvey={() => setCustomerPage('survey')}
+            onNavigateToOrders={() => setCustomerPage('dashboard')}
           />
         )}
         {customerPage === 'store' && (

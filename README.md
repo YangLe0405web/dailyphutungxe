@@ -1,6 +1,14 @@
 # 🏍️ Motoshop CRM & E-Commerce Management System
 
-Hệ thống Quản lý Khách hàng (CRM) và Bán hàng Đại lý Xe máy & Phụ tùng.
+Hệ thống Quản lý Khách hàng (CRM) và Bán hàng Đại lý Xe máy & Phụ tùng **Autora Motoshop**.
+
+---
+
+## 🌟 TÀI LIỆU QUAN TRỌNG DÀNH CHO NHÓM (BẢN MỚI NHẤT)
+
+- 🚀 **[HƯỚNG DẪN CÀI ĐẶT & CHẠY BẢN MỚI NHẤT](./HUONG_DAN_CAI_DAT_VA_CHAY.md)**: Chi tiết cách pull nhánh `develop`, chạy Backend (.NET Core 5208), chạy Frontend (Vite 5173), tài khoản test.
+- 🧪 **[KẾ HOẠCH & PHÂN CHIA NHIỆM VỤ TEST END-USER](./KE_HOACH_TEST_END_USER.md)**: Phân công 4 thành viên **Minh, Nghĩa, Phương, Lộc** kèm kịch bản test flow chi tiết từng bước.
+- 📋 **[NHẬT KÝ SỬA CHỮA & PHỤC HỒI CHỨC NĂNG (FIX_LOG.md)](./FIX_LOG.md)**: Toàn bộ lịch sử các mã lỗi, khôi phục tính năng và cập nhật giao diện.
 
 ---
 

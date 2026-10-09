@@ -183,5 +183,24 @@ namespace CrmBackend.Controllers
             if (rows == 0) return NotFound(new { message = "Không tìm thấy nhân viên!" });
             return Ok(new { message = "Đã xóa nhân viên thành công!" });
         }
+
+        // ── PUT: api/NhanVien/doi-mat-khau/5 ── Đổi mật khẩu nhân viên
+        [HttpPut("doi-mat-khau/{maNv}")]
+        public async Task<IActionResult> DoiMatKhau(int maNv, [FromBody] DoiMatKhauNhanVienDto dto)
+        {
+            if (string.IsNullOrWhiteSpace(dto.MatKhauMoi) || dto.MatKhauMoi.Length < 6)
+            {
+                return BadRequest(new { message = "Mật khẩu mới phải có tối thiểu 6 ký tự!" });
+            }
+
+            var sql = @"
+                UPDATE TAI_KHOAN 
+                SET MatKhau = @MatKhauMoi 
+                WHERE MaTK = (SELECT MaTK FROM NHAN_VIEN WHERE MaNV = @MaNV)";
+
+            var rows = await _db.ExecuteAsync(sql, new { MaNV = maNv, dto.MatKhauMoi });
+            if (rows == 0) return NotFound(new { message = "Không tìm thấy tài khoản nhân viên!" });
+            return Ok(new { success = true, message = "Đổi mật khẩu nhân viên thành công!" });
+        }
     }
 }

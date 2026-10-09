@@ -17,6 +17,9 @@ namespace CrmBackend.Models
         // JOIN từ TAI_KHOAN
         public string? TenDangNhap { get; set; }
         public string? TrangThai { get; set; }
+
+        // Tính toán từ DON_HANG hoàn thành
+        public decimal TongChiTieu { get; set; }
     }
 
     // ── DTO tạo khách hàng mới (POST) ──
@@ -62,6 +65,14 @@ namespace CrmBackend.Models
     public class KhachHangResetPasswordDto
     {
         public string EmailHoacSdt { get; set; } = "";
+        public string MatKhauMoi { get; set; } = "";
+    }
+
+    // ── DTO đổi mật khẩu (có xác thực mật khẩu cũ) ──
+    public class KhachHangDoiMatKhauDto
+    {
+        public string EmailHoacSdt { get; set; } = "";
+        public string MatKhauCu { get; set; } = "";
         public string MatKhauMoi { get; set; } = "";
     }
 }

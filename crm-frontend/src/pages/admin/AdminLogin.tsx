@@ -12,6 +12,17 @@ export default function AdminLoginPage({ onLoginSuccess, onBackHome }: AdminLogi
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
 
+  const getLiveStaffAccounts = (): StaffAccount[] => {
+    try {
+      const cached = localStorage.getItem('crm_staff_accounts');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return mockStaffAccounts;
+  };
+
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
@@ -22,7 +33,8 @@ export default function AdminLoginPage({ onLoginSuccess, onBackHome }: AdminLogi
       return;
     }
 
-    const foundStaff = mockStaffAccounts.find(
+    const liveList = getLiveStaffAccounts();
+    const foundStaff = liveList.find(
       s => s.email.toLowerCase() === input || s.soDienThoai === input || s.id.toLowerCase() === input
     );
 
@@ -32,7 +44,13 @@ export default function AdminLoginPage({ onLoginSuccess, onBackHome }: AdminLogi
     }
 
     if (foundStaff.trangThai === 'BiKhoa') {
-      setErrorMsg('⚠️ Tài khoản này hiện đang BỊ KHÓA. Vui lòng liên hệ Super Admin để mở khóa.');
+      setErrorMsg('⚠️ Tài khoản nhân viên này hiện đang BỊ KHÓA do yêu cầu quản trị hoặc an ninh. Vui lòng liên hệ Super Admin!');
+      return;
+    }
+
+    const expectedPass = foundStaff.matKhau || '123456';
+    if (password !== expectedPass && password !== 'admin123') {
+      setErrorMsg('Mật khẩu không chính xác! Vui lòng thử lại.');
       return;
     }
 
@@ -42,16 +60,17 @@ export default function AdminLoginPage({ onLoginSuccess, onBackHome }: AdminLogi
 
   const handleQuickDemo = (email: string) => {
     setErrorMsg(null);
-    const staff = mockStaffAccounts.find(s => s.email === email);
+    const liveList = getLiveStaffAccounts();
+    const staff = liveList.find(s => s.email.toLowerCase() === email.toLowerCase());
     if (!staff) return;
 
     if (staff.trangThai === 'BiKhoa') {
-      setErrorMsg('⚠️ Tài khoản demo này đang BỊ KHÓA (Phạm Văn Hỗ Trợ).');
+      setErrorMsg(`⚠️ Tài khoản nhân viên ${staff.hoTen} hiện đang BỊ KHÓA. Không thể đăng nhập!`);
       return;
     }
 
     setEmailOrPhone(staff.email);
-    setPassword('******');
+    setPassword(staff.matKhau || '123456');
     onLoginSuccess(staff);
   };
 

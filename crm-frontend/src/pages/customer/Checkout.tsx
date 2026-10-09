@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useCart } from '../../contexts/CartContext';
 import { formatVND, mockCustomers, getCustomerTier, type Customer } from '../../data/mockData';
-import { orderApi, customerApi } from '../../services/api';
+import { orderApi, customerApi, partApi, addCustomerNotification } from '../../services/api';
 
 interface CheckoutProps {
   onBack: () => void;
@@ -100,21 +100,47 @@ export default function Checkout({ onBack, onSuccess, currentCustomer, onCustome
     }
   };
 
+  const stockMap = useMemo(() => {
+    const all = partApi.getAllSync();
+    const map = new Map<string, number>();
+    all.forEach(p => map.set(p.id, p.soLuongTon));
+    return map;
+  }, [checkoutItems]);
+
+  const stockErrors = useMemo(() => {
+    const errors: string[] = [];
+    checkoutItems.forEach(it => {
+      const available = stockMap.get(it.part.id) ?? it.part.soLuongTon;
+      if (available <= 0) {
+        errors.push(`"${it.part.tenSanPham}" đã HẾT HÀNG (Tồn kho: 0)`);
+      } else if (it.soLuong > available) {
+        errors.push(`"${it.part.tenSanPham}" chỉ còn ${available} cái trong kho (Bạn đang đặt ${it.soLuong} cái)`);
+      }
+    });
+    return errors;
+  }, [checkoutItems, stockMap]);
+
   async function handleOrder(e: React.FormEvent) {
     e.preventDefault();
     if (!currentCustomer) {
       alert('Vui lòng đăng nhập hoặc tạo tài khoản trước khi xác nhận đặt hàng!');
       return;
     }
+    if (stockErrors.length > 0) {
+      alert(`⚠️ Không thể đặt hàng:\n- ${stockErrors.join('\n- ')}\n\nVui lòng quay lại giỏ hàng điều chỉnh số lượng!`);
+      return;
+    }
     if (submitting) return;
     setSubmitting(true);
 
     try {
-      await orderApi.create({
+      const res = await orderApi.create({
         customerId: currentCustomer.id,
         hoTenKH: form.hoTen.trim() || currentCustomer.hoTen,
         soDienThoai: form.soDienThoai.trim() || currentCustomer.soDienThoai,
         diaChiGiao: form.diaChi.trim() || currentCustomer.diaChi || 'TP.HCM',
+        phuongThucThanhToan: pay === 'cod' ? 'TienMat' : 'ChuyenKhoan',
+        trangThaiThanhToan: pay === 'cod' ? 'ChuaThanhToan' : 'DaThanhToan',
         items: checkoutItems.map(it => {
           const numId = parseInt(it.part.id.replace(/\D/g, ''), 10) || 1;
           const unitPrice = it.part.giaKhuyenMai ?? it.part.giaGoc;
@@ -128,10 +154,32 @@ export default function Checkout({ onBack, onSuccess, currentCustomer, onCustome
         tongTien: grand,
         ghiChu: form.ghiChu,
       });
-    } catch (err) {
-      console.error('Lỗi khi tạo đơn hàng:', err);
-    } finally {
-      setSubmitting(false);
+
+      if (!res.success) {
+        addCustomerNotification({
+          customerId: currentCustomer.id,
+          icon: '⚠️',
+          title: '⚠️ Đặt hàng không thành công',
+          message: res.message || 'Đặt hàng không thành công do không đủ tồn kho!',
+          category: 'order',
+          page: 'store',
+        });
+        alert(res.message || 'Đặt hàng không thành công do không đủ tồn kho!');
+        setSubmitting(false);
+        return;
+      }
+
+      addCustomerNotification({
+        customerId: currentCustomer.id,
+        icon: '📦',
+        title: '📦 Đặt hàng phụ tùng thành công',
+        message: `Đơn hàng #${res.order?.id || ''} (${formatVND(grand)}) đã được gửi thành công. Nhân viên đang chuẩn bị đóng gói.`,
+        category: 'order',
+        page: 'dashboard',
+        tab: 'orders',
+        targetId: res.order?.id,
+      });
+
       setDone(true);
       if (selectedCount > 0) {
         checkoutItems.forEach(it => remove(it.part.id));
@@ -139,20 +187,32 @@ export default function Checkout({ onBack, onSuccess, currentCustomer, onCustome
         clear();
       }
       setTimeout(onSuccess, 3000);
+    } catch (err) {
+      console.error('Lỗi khi tạo đơn hàng:', err);
+      alert('Có sự cố xảy ra khi tạo đơn hàng. Vui lòng thử lại!');
+    } finally {
+      setSubmitting(false);
     }
   }
 
   if (done) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-8" style={{ background: 'var(--color-zinc-50)' }}>
-        <div className="text-center max-w-sm">
+        <div className="text-center max-w-md">
           <div className="flex items-center justify-center rounded-full mb-6 mx-auto"
             style={{ width: 80, height: 80, background: 'var(--color-success-bg)' }}>
             <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--color-success)" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
           </div>
-          <div style={{ fontFamily: 'var(--font-display)', fontSize: 32, fontWeight: 800, color: 'var(--color-zinc-900)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>ĐẶT HÀNG THÀNH CÔNG!</div>
-          <p className="text-sm mt-3 mb-8" style={{ color: 'var(--color-zinc-500)' }}>Đơn hàng của bạn đang được xử lý. Chúng tôi sẽ liên hệ xác nhận trong 30 phút.</p>
-          <div className="text-sm animate-pulse" style={{ color: 'var(--color-zinc-400)' }}>Đang chuyển hướng…</div>
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: 30, fontWeight: 800, color: 'var(--color-zinc-900)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+            ĐẶT HÀNG THÀNH CÔNG!
+          </div>
+          <p className="text-sm mt-3 mb-2 font-medium" style={{ color: 'var(--color-zinc-700)' }}>
+            Đơn hàng của bạn đã được ghi nhận ở trạng thái <strong>Chờ xác nhận</strong>.
+          </p>
+          <p className="text-xs mb-6 leading-relaxed" style={{ color: 'var(--color-zinc-500)' }}>
+            Hệ thống đã tự động giữ tồn kho khả dụng cho bạn. Bạn có thể theo dõi tiến độ hoặc <strong>Hủy đơn hàng</strong> (khi đơn chưa chuyển sang trạng thái đang giao) trong mục <strong>Đơn hàng của tôi</strong>.
+          </p>
+          <div className="text-xs font-mono animate-pulse" style={{ color: 'var(--color-zinc-400)' }}>Đang chuyển hướng về trang cá nhân…</div>
         </div>
       </div>
     );
@@ -397,6 +457,26 @@ export default function Checkout({ onBack, onSuccess, currentCustomer, onCustome
                   <label className="block text-sm font-500 mb-1.5" style={{ color: 'var(--color-zinc-600)' }}>Địa chỉ giao hàng *</label>
                   <input required value={form.diaChi} onChange={e => setForm(f => ({...f, diaChi: e.target.value}))} style={inputSt} />
                 </div>
+                <div className="col-span-2 p-3 bg-zinc-50 border border-zinc-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                  <div className="flex items-center gap-2 text-zinc-700">
+                    <span>📍</span>
+                    <span>Thông tin được tự động điền từ tài khoản. Bạn có thể sửa trực tiếp nếu <strong>đặt hộ người khác</strong>.</span>
+                  </div>
+                  {currentCustomer && (
+                    <button
+                      type="button"
+                      onClick={() => setForm(f => ({
+                        ...f,
+                        hoTen: currentCustomer.hoTen,
+                        soDienThoai: currentCustomer.soDienThoai,
+                        diaChi: currentCustomer.diaChi || 'TP. Hồ Chí Minh',
+                      }))}
+                      className="text-[11px] text-red-700 font-bold hover:underline whitespace-nowrap self-end sm:self-auto"
+                    >
+                      Khôi phục thông tin tôi
+                    </button>
+                  )}
+                </div>
                 <div className="col-span-2">
                   <label className="block text-sm font-500 mb-1.5" style={{ color: 'var(--color-zinc-600)' }}>Ghi chú đơn hàng (tùy chọn)</label>
                   <textarea rows={2} value={form.ghiChu} onChange={e => setForm(f => ({...f, ghiChu: e.target.value}))}
@@ -437,21 +517,41 @@ export default function Checkout({ onBack, onSuccess, currentCustomer, onCustome
               ))}
             </div>
 
+            {stockErrors.length > 0 && (
+              <div className="p-4 bg-red-50 border border-red-200 rounded-2xl text-xs text-red-700 font-medium space-y-1 mb-4 shadow-2xs">
+                <div className="font-bold flex items-center gap-1.5 text-red-800">
+                  <span>⚠️</span> KHÔNG THỂ ĐẶT HÀNG DO LỖI TỒN KHO:
+                </div>
+                {stockErrors.map((err, idx) => (
+                  <div key={idx} className="pl-4 font-mono">• {err}</div>
+                ))}
+                <div className="text-[11px] text-zinc-500 pt-1">
+                  💡 Vui lòng bấm "Quay lại giỏ hàng" để xóa bớt hoặc giảm số lượng phù hợp với kho.
+                </div>
+              </div>
+            )}
+
             <button
               type="submit"
-              disabled={!currentCustomer || submitting}
+              disabled={!currentCustomer || submitting || stockErrors.length > 0}
               className="w-full py-4 rounded-xl font-800 text-white transition-all shadow-md"
               style={{
-                background: currentCustomer ? 'var(--color-red-700)' : 'var(--color-zinc-400)',
+                background: currentCustomer && stockErrors.length === 0 ? 'var(--color-red-700)' : 'var(--color-zinc-400)',
                 border: 'none',
-                cursor: currentCustomer ? 'pointer' : 'not-allowed',
+                cursor: currentCustomer && stockErrors.length === 0 ? 'pointer' : 'not-allowed',
                 fontFamily: 'var(--font-display)',
-                fontSize: 20,
-                letterSpacing: '0.08em',
+                fontSize: 18,
+                letterSpacing: '0.06em',
                 textTransform: 'uppercase',
               }}
             >
-              {submitting ? 'ĐANG TẠO ĐƠN HÀNG...' : currentCustomer ? 'XÁC NHẬN ĐẶT HÀNG →' : '🔒 VUI LÒNG ĐĂNG NHẬP ĐỂ ĐẶT HÀNG'}
+              {submitting
+                ? 'ĐANG TẠO ĐƠN HÀNG...'
+                : stockErrors.length > 0
+                ? '⚠️ VƯỢT QUÁ TỒN KHO - KHÔNG THỂ ĐẶT'
+                : currentCustomer
+                ? 'XÁC NHẬN ĐẶT HÀNG →'
+                : '🔒 VUI LÒNG ĐĂNG NHẬP ĐỂ ĐẶT HÀNG'}
             </button>
           </form>
         </div>
@@ -462,13 +562,25 @@ export default function Checkout({ onBack, onSuccess, currentCustomer, onCustome
           <div className="flex flex-col gap-3 mb-4 max-h-[350px] overflow-y-auto pr-1">
             {checkoutItems.map(item => {
               const price = item.part.giaKhuyenMai ?? item.part.giaGoc;
+              const avail = stockMap.get(item.part.id) ?? item.part.soLuongTon;
+              const isOut = avail <= 0;
+              const isOver = item.soLuong > avail;
               return (
                 <div key={item.part.id} className="flex items-center gap-3">
                   <img src={item.part.hinhAnh} alt={item.part.tenSanPham} className="rounded-lg object-cover shrink-0"
                     style={{ width: 48, height: 48, background: 'var(--color-zinc-100)' }} />
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-500 truncate" style={{ color: 'var(--color-zinc-900)' }}>{item.part.tenSanPham}</div>
-                    <div className="text-xs" style={{ color: 'var(--color-zinc-500)', fontFamily: 'var(--font-mono)' }}>x{item.soLuong}</div>
+                    <div className="text-xs flex items-center gap-2" style={{ color: 'var(--color-zinc-500)', fontFamily: 'var(--font-mono)' }}>
+                      <span>x{item.soLuong}</span>
+                      {isOut ? (
+                        <span className="text-red-600 font-bold bg-red-50 px-1.5 py-0.5 rounded">[HẾT HÀNG]</span>
+                      ) : isOver ? (
+                        <span className="text-amber-700 font-bold bg-amber-50 px-1.5 py-0.5 rounded">[Kho còn {avail}]</span>
+                      ) : (
+                        <span className="text-zinc-400 font-normal">(Kho: {avail})</span>
+                      )}
+                    </div>
                   </div>
                   <div className="font-600 text-sm shrink-0" style={{ color: 'var(--color-zinc-900)' }}>{formatVND(price * item.soLuong)}</div>
                 </div>
