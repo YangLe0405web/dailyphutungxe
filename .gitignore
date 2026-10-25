@@ -27,6 +27,10 @@ mssql_data/
 
 # ── Word Docs & Internal Guides ──
 *.docx
-docs/*.docx
+docs/
+CODEBASE_AUDIT_REPORT.md
+FIX_LOG.md
+KE_HOACH_CONG_VIEC_TIEP_THEO.md
+KE_HOACH_PHAN_CONG_TEST_HE_THONG.md
 HUONG_DAN_CAI_DAT_VA_CHAY.md
 KE_HOACH_TEST_END_USER.md
