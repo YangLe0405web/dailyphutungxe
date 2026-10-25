@@ -24,6 +24,8 @@ export default function RenewInsuranceModal({
   // Tính ngày bắt đầu và kết thúc mới
   const oldEndDate = new Date(contract.ngayKetThuc);
   const today = new Date();
+  const todayStr = today.toISOString().split('T')[0];
+  const isStillValid = contract.trangThai === 'HieuLuc' && contract.ngayKetThuc >= todayStr;
   const startNewDate = !isNaN(oldEndDate.getTime()) && oldEndDate > today ? oldEndDate : today;
   
   const endNewDate = new Date(startNewDate);
@@ -39,6 +41,10 @@ export default function RenewInsuranceModal({
   const totalAmount = baseFee + vat;
 
   const handleProceed = () => {
+    if (isStillValid) {
+      alert(`⚠️ KHÔNG THỂ GIA HẠN: Hợp đồng ${contract.soGCN} vẫn đang còn hiệu lực đến ngày ${contract.ngayKetThuc.split('-').reverse().join('/')}. Chỉ được phép gia hạn sau khi hợp đồng đã hết hiệu lực!`);
+      return;
+    }
     if (paymentMethod === 'ChuyenKhoan') {
       setShowQrStep(true);
     } else {
@@ -81,23 +87,36 @@ export default function RenewInsuranceModal({
         {!showQrStep ? (
           /* BƯỚC 1: CHỌN THỜI HẠN & XEM TÍNH PHÍ */
           <div className="space-y-4">
-            {/* Tóm tắt hợp đồng cũ */}
-            <div className="p-4 rounded-2xl bg-zinc-50 border border-zinc-200 text-xs space-y-2">
-              <div className="flex justify-between items-center text-zinc-600">
+            {/* Tóm tắt hợp đồng cũ - BH03: Màu chữ đen rõ nét */}
+            <div className="p-4 rounded-2xl bg-zinc-50 border border-zinc-200 text-xs space-y-2 text-black">
+              <div className="flex justify-between items-center text-black font-medium">
                 <span>Gói bảo hiểm:</span>
-                <span className="font-bold text-zinc-900">{contract.tenGoi}</span>
+                <span className="font-extrabold text-black">{contract.tenGoi}</span>
               </div>
-              <div className="flex justify-between items-center text-zinc-600">
+              <div className="flex justify-between items-center text-black font-medium">
                 <span>Phương tiện:</span>
-                <span className="font-bold text-zinc-900">{contract.tenXe} ({contract.bienSo})</span>
+                <span className="font-extrabold text-black">{contract.tenXe} ({contract.bienSo})</span>
               </div>
-              <div className="flex justify-between items-center text-zinc-600">
+              <div className="flex justify-between items-center text-black font-medium">
                 <span>Thời hạn hiện tại:</span>
-                <span className="font-mono text-zinc-700">
+                <span className="font-mono text-black font-bold">
                   {contract.ngayBatDau.split('-').reverse().join('/')} ➔ {contract.ngayKetThuc.split('-').reverse().join('/')}
                 </span>
               </div>
             </div>
+
+            {/* Cảnh báo hợp đồng còn hiệu lực */}
+            {isStillValid && (
+              <div className="p-3.5 rounded-2xl bg-amber-50 border-2 border-amber-300 text-amber-900 text-xs flex items-center gap-2.5">
+                <span className="text-xl">⚠️</span>
+                <div>
+                  <div className="font-bold uppercase">Hợp đồng bảo hiểm vẫn đang còn hiệu lực</div>
+                  <div className="text-[11px] text-amber-800 mt-0.5">
+                    Hợp đồng này còn hạn đến ngày <strong>{contract.ngayKetThuc.split('-').reverse().join('/')}</strong>. Theo quy định, chỉ được phép gia hạn sau khi hợp đồng đã hết hiệu lực.
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Chọn thời hạn gia hạn */}
             <div>
@@ -208,11 +227,17 @@ export default function RenewInsuranceModal({
               <button
                 type="button"
                 onClick={handleProceed}
-                disabled={isSubmitting}
-                className="px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider bg-blue-700 hover:bg-blue-800 text-white transition shadow-md cursor-pointer flex items-center gap-1.5 font-display"
+                disabled={isSubmitting || isStillValid}
+                className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition shadow-md flex items-center gap-1.5 font-display ${
+                  isStillValid
+                    ? 'bg-zinc-200 text-zinc-400 border border-zinc-300 cursor-not-allowed opacity-80'
+                    : 'bg-blue-700 hover:bg-blue-800 text-white cursor-pointer'
+                }`}
               >
                 <span>
-                  {paymentMethod === 'ChuyenKhoan'
+                  {isStillValid
+                    ? '⚠️ HỢP ĐỒNG CÒN HIỆU LỰC - KHÔNG THỂ GIA HẠN'
+                    : paymentMethod === 'ChuyenKhoan'
                     ? 'QUÉT MÃ VIETQR THANH TOÁN →'
                     : 'XÁC NHẬN THU TIỀN VÀ GIA HẠN'}
                 </span>

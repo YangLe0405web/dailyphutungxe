@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, Fragment } from 'react';
 import {
   formatVND,
   mockProductReviews,
@@ -11,12 +11,12 @@ import {
   type VehicleOrderDetails,
   type Vehicle,
 } from '../../data/mockData';
-import { catalogVehicleApi, feedbackApi, surveyApi, orderApi, appointmentApi, vehicleApi, addCustomerNotification } from '../../services/api';
+import { catalogVehicleApi, feedbackApi, surveyApi, orderApi, appointmentApi, vehicleApi, addCustomerNotification, isSameCategory } from '../../services/api';
 
 export interface ShowroomVehicle {
   id: string;
   tenXe: string;
-  hang: 'Honda' | 'Yamaha' | 'Suzuki' | 'Piaggio & Vespa';
+  hang: 'Honda' | 'Yamaha' | 'Suzuki' | 'Piaggio & Vespa' | 'SYM';
   phanKhuc: 'Tay ga' | 'Côn tay' | 'Xe số' | 'Scrambler' | 'Hyper-underbone';
   giaNiemYet: number;
   mauSac: string;
@@ -330,6 +330,9 @@ function BuyVehicleOnlineModal({
   const [customerPhone, setCustomerPhone] = useState(currentCustomer?.soDienThoai || '');
   const [customerIdCard, setCustomerIdCard] = useState('');
   const [customerNotes, setCustomerNotes] = useState('Đại lý chuẩn bị sẵn xe kiểm tra PDI trước giờ nhận');
+  const [deliveryMethod, setDeliveryMethod] = useState<'Showroom' | 'HomeDelivery'>('Showroom');
+  const [deliveryAddress, setDeliveryAddress] = useState<string>(currentCustomer?.diaChi || '123 Lê Văn Sỹ, P.13, Q.3, TP. Hồ Chí Minh');
+  const [deliveryNotes, setDeliveryNotes] = useState<string>('');
 
   // ── Step 3: Phương thức thanh toán (Option 1: Đặt cọc 2.000.000đ | Option 2: 100%) ──
   const [paymentOption, setPaymentOption] = useState<'deposit' | 'full'>('deposit');
@@ -399,6 +402,11 @@ function BuyVehicleOnlineModal({
       return;
     }
 
+    if (deliveryMethod === 'HomeDelivery' && !deliveryAddress.trim()) {
+      alert('Vui lòng nhập địa chỉ nhận xe chi tiết khi chọn Giao xe tận nơi!');
+      return;
+    }
+
     setSubmitting(true);
     try {
       const maLichHen = `HEN-XE-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -418,6 +426,10 @@ function BuyVehicleOnlineModal({
         kiemTraPDI: true,
         banGiaoXe: false,
       };
+
+      const finalDeliveryPlace = deliveryMethod === 'HomeDelivery'
+        ? deliveryAddress.trim()
+        : 'Showroom Chính Motoshop: 123 Lê Văn Sỹ, P.13, Q.3, TP.HCM';
 
       const vehicleOrderDetails: VehicleOrderDetails = {
         customerType: 'Individual',
@@ -441,10 +453,10 @@ function BuyVehicleOnlineModal({
         soTienConLai: remainingAmount,
         phuongThucThanhToan: 'ChuyenKhoan',
         trangThaiDonHang: 'ChoGiaoXe',
-        hinhThucGiao: 'Showroom',
+        hinhThucGiao: deliveryMethod,
         ngayGiaoXe: pickupDate,
         khungGioGiao: pickupTime,
-        diaChiGiao: 'Showroom Chính Motoshop (Khách đến nhận trực tiếp)',
+        diaChiGiao: finalDeliveryPlace,
         checklist: defaultChecklist,
       };
 
@@ -453,15 +465,15 @@ function BuyVehicleOnlineModal({
         hoTenKH: customerName,
         soDienThoai: customerPhone,
         email: currentCustomer.email,
-        diaChiGiao: 'Showroom Chính Motoshop (Khách đến nhận trực tiếp)',
+        diaChiGiao: finalDeliveryPlace,
         kenhBan: 'Online',
         trangThaiThanhToan: paymentOption === 'deposit' ? 'DaCoc' : 'DaThanhToan',
         trangThai: 'ChoGiaoXe',
         tongTien: payNowAmount,
         phuongThucThanhToan: 'ChuyenKhoan',
-        ghiChu: `[Khách đặt online]: ${vehicle.tenXe} (${selectedColor}, ${selectedVersion.label}) - ${
+        ghiChu: `[Khách đặt online - ${deliveryMethod === 'HomeDelivery' ? 'GIAO TẬN NƠI' : 'TẠI SHOWROOM'}]: ${vehicle.tenXe} (${selectedColor}, ${selectedVersion.label}) - ${
           paymentOption === 'deposit' ? 'Đã cọc 2.000.000₫ online' : 'Đã thanh toán 100% online'
-        }`,
+        }${deliveryMethod === 'HomeDelivery' ? `. Đ/C giao: ${deliveryAddress.trim()}` : ''}${deliveryNotes ? `. Ghi chú: ${deliveryNotes.trim()}` : ''}`,
         maLichHen: maLichHen,
         qrCodeUrl: qrUrl,
         thongTinXe: vehicleOrderDetails,
@@ -484,42 +496,34 @@ function BuyVehicleOnlineModal({
         bienSo: paymentOption === 'full' && selectedProvince.id !== 'TU_DANG_KY' ? 'Bấm biển tại Showroom' : 'Chưa có',
         mauXe: selectedColor,
         phienBan: selectedVersion.label,
-        soTienCoc: depositAmount,
+        soTienCoc: paymentOption === 'full' ? fullPriceTotal : depositAmount,
         daThanhToan100: paymentOption === 'full',
+        hinhThucGiao: deliveryMethod,
+        diaChiGiao: finalDeliveryPlace,
         maLichHen: maLichHen,
         maDonHangXe: orderRes.order?.id,
-        ghiChu: `Khách đến nhận xe theo đơn #${orderRes.order?.id}. ${
-          paymentOption === 'deposit' ? 'Đã cọc 2.000.000₫, thu nốt tiền tại quầy.' : 'Đã thanh toán 100% online.'
-        }`,
+        ghiChu: deliveryMethod === 'HomeDelivery'
+          ? `Khách yêu cầu GIAO XE TẬN NƠI tại: ${deliveryAddress.trim()}.${deliveryNotes ? ` Ghi chú: ${deliveryNotes.trim()}.` : ''} Đơn #${orderRes.order?.id}. ${
+              paymentOption === 'deposit' ? 'Đã cọc 2.000.000₫, thu nốt tại nhà.' : 'Đã thanh toán 100% online.'
+            }`
+          : `Khách đến nhận xe theo đơn #${orderRes.order?.id}. ${
+              paymentOption === 'deposit' ? 'Đã cọc 2.000.000₫, thu nốt tại quầy.' : 'Đã thanh toán 100% online.'
+            }`,
       });
 
       setCreatedOrderId(orderRes.order?.id || 'DH-XE-001');
       setCreatedAppointmentCode(maLichHen);
       setCreatedQrUrl(qrUrl);
 
-      // Tự động gắn xe mới đặt cọc/mua vào tài khoản khách hàng ở trạng thái "Chưa có biển số"
-      try {
-        await vehicleApi.createSoldVehicle({
-          customerId: currentCustomer.id,
-          tenXe: vehicle.tenXe,
-          hangXe: vehicle.hang,
-          bienSo: 'Chưa có biển số',
-          mauSac: selectedColor,
-          namSanXuat: vehicle.namSanXuat || new Date().getFullYear(),
-        });
-      } catch (vehErr) {
-        console.warn('Lỗi tự động gắn xe sau khi đặt mua:', vehErr);
-      }
-
-      // Thông báo chúc mừng và hướng dẫn cập nhật biển số
+      // Thông báo chúc mừng đơn mua xe thành công (Xe sẽ kích hoạt khi hoàn tất bàn giao)
       addCustomerNotification({
         customerId: currentCustomer.id,
         icon: '🏍️',
         title: '🎉 Đặt cọc / Mua xe máy thành công',
-        message: `Đơn mua xe ${vehicle.tenXe} (#${orderRes.order?.id}) đã được ghi nhận. Xe đã được gắn vào mục "Phương tiện của tôi" ở trạng thái Chưa có biển số. Vui lòng cập nhật biển số và ảnh cà vẹt xe sau khi hoàn tất thủ tục bàn giao!`,
+        message: `Đơn mua xe ${vehicle.tenXe} (#${orderRes.order?.id}) đã được ghi nhận. Xe sẽ được kích hoạt vào mục "Phương tiện của tôi" sau khi quý khách hoàn tất thủ tục bàn giao xe!`,
         category: 'order',
         page: 'dashboard',
-        tab: 'vehicles',
+        tab: 'orders',
         targetId: orderRes.order?.id,
       });
 
@@ -684,19 +688,106 @@ function BuyVehicleOnlineModal({
           </div>
         )}
 
-        {/* ── STEP 2: LỊCH NHẬN XE TẠI SHOWROOM ── */}
+        {/* ── STEP 2: LỰA CHỌN HÌNH THỨC NHẬN XE & LỊCH HẸN ── */}
         {step === 2 && (
           <div className="space-y-5">
-            {/* Showroom location notice */}
-            <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 flex items-center gap-3 text-xs text-amber-900">
-              <span className="text-2xl shrink-0">📍</span>
-              <div>
-                <strong className="font-bold uppercase font-mono block">Địa điểm nhận bàn giao xe:</strong>
-                <p className="text-[11px] text-amber-800 mt-0.5">
-                  Showroom Chính Motoshop: <strong>123 Lê Văn Sỹ, P.13, Q.3, TP. Hồ Chí Minh</strong>. Hệ thống tự động giữ 01 xe mới nguyên bản trong kho cho quý khách.
-                </p>
+            {/* Lựa chọn hình thức nhận xe: Showroom vs Giao tận nơi */}
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-zinc-800 uppercase font-mono">
+                1. Chọn hình thức nhận bàn giao xe <span className="text-red-600">*</span>
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div
+                  onClick={() => setDeliveryMethod('Showroom')}
+                  className={`p-3.5 rounded-2xl border-2 transition cursor-pointer flex items-start gap-3 ${
+                    deliveryMethod === 'Showroom'
+                      ? 'border-red-600 bg-red-50/50 text-red-950 shadow-xs ring-1 ring-red-300'
+                      : 'border-zinc-200 bg-white hover:border-zinc-300 text-zinc-700'
+                  }`}
+                >
+                  <span className="text-2xl shrink-0">🏢</span>
+                  <div>
+                    <div className="font-extrabold text-xs">Đến Showroom nhận xe</div>
+                    <div className="text-[11px] text-zinc-500 mt-0.5">
+                      123 Lê Văn Sỹ, P.13, Q.3, TP.HCM. Khách đến trực tiếp showroom kiểm tra xe, bấm biển và nhận xe.
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  onClick={() => {
+                    setDeliveryMethod('HomeDelivery');
+                    setPaymentOption('full');
+                  }}
+                  className={`p-3.5 rounded-2xl border-2 transition cursor-pointer flex items-start gap-3 ${
+                    deliveryMethod === 'HomeDelivery'
+                      ? 'border-red-600 bg-red-50/50 text-red-950 shadow-xs ring-1 ring-red-300'
+                      : 'border-zinc-200 bg-white hover:border-zinc-300 text-zinc-700'
+                  }`}
+                >
+                  <span className="text-2xl shrink-0">🚚</span>
+                  <div>
+                    <div className="font-extrabold text-xs">Giao xe tận nơi (Giao tận nhà)</div>
+                    <div className="text-[11px] text-zinc-500 mt-0.5">
+                      Showroom vận chuyển xe nguyên bản bằng xe tải chuyên dụng đến tận nhà theo địa chỉ yêu cầu.
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
+
+            {/* Khung địa chỉ tương ứng */}
+            {deliveryMethod === 'HomeDelivery' ? (
+              <div className="p-4 rounded-2xl bg-purple-50/70 border border-purple-200 space-y-3">
+                <div className="font-bold text-xs uppercase font-mono text-purple-900 flex items-center justify-between">
+                  <span>📍 ĐỊA CHỈ GIAO XE TẬN NƠI</span>
+                  {currentCustomer?.diaChi && (
+                    <button
+                      type="button"
+                      onClick={() => setDeliveryAddress(currentCustomer.diaChi)}
+                      className="text-[11px] text-purple-700 underline font-normal hover:text-purple-900 cursor-pointer"
+                    >
+                      Dùng địa chỉ trong hồ sơ
+                    </button>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-[11px] text-zinc-600 font-semibold mb-1">
+                    Địa chỉ nhận xe chi tiết (Số nhà, tên đường, phường/xã, quận/huyện, tỉnh/thành) <span className="text-red-600">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={deliveryAddress}
+                    onChange={e => setDeliveryAddress(e.target.value)}
+                    placeholder="VD: 45/2 Nguyễn Thị Minh Khai, P. Bến Nghé, Quận 1, TP. Hồ Chí Minh"
+                    className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600 font-medium"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] text-zinc-600 font-semibold mb-1">
+                    Ghi chú giao xe tận nơi (nếu có)
+                  </label>
+                  <input
+                    type="text"
+                    value={deliveryNotes}
+                    onChange={e => setDeliveryNotes(e.target.value)}
+                    placeholder="VD: Gọi trước khi giao 30 phút, giao xe vào buổi sáng"
+                    className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs bg-white focus:outline-none focus:border-red-600"
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 flex items-center gap-3 text-xs text-amber-900">
+                <span className="text-2xl shrink-0">📍</span>
+                <div>
+                  <strong className="font-bold uppercase font-mono block">Địa điểm nhận bàn giao xe tại Showroom:</strong>
+                  <p className="text-[11px] text-amber-800 mt-0.5">
+                    Showroom Chính Motoshop: <strong>123 Lê Văn Sỹ, P.13, Q.3, TP. Hồ Chí Minh</strong>. Hệ thống tự động giữ 01 xe mới nguyên bản trong kho cho quý khách.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Chọn Ngày & Giờ */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -826,11 +917,16 @@ function BuyVehicleOnlineModal({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {/* Option 1: Đặt cọc 2.000.000đ */}
                 <div
-                  onClick={() => setPaymentOption('deposit')}
-                  className={`p-4 rounded-2xl border-2 transition cursor-pointer flex flex-col justify-between ${
-                    paymentOption === 'deposit'
-                      ? 'border-red-600 bg-red-50/50 shadow-sm'
-                      : 'border-zinc-200 bg-white hover:border-zinc-300'
+                  onClick={() => {
+                    if (deliveryMethod === 'HomeDelivery') return;
+                    setPaymentOption('deposit');
+                  }}
+                  className={`p-4 rounded-2xl border-2 transition flex flex-col justify-between ${
+                    deliveryMethod === 'HomeDelivery'
+                      ? 'border-zinc-200 bg-zinc-100/80 opacity-60 cursor-not-allowed'
+                      : paymentOption === 'deposit'
+                      ? 'border-red-600 bg-red-50/50 shadow-sm cursor-pointer'
+                      : 'border-zinc-200 bg-white hover:border-zinc-300 cursor-pointer'
                   }`}
                 >
                   <div className="space-y-1.5">
@@ -838,16 +934,30 @@ function BuyVehicleOnlineModal({
                       <span className="font-extrabold text-xs text-zinc-900 uppercase font-mono">
                         OPTION 1: ĐẶT CỌC GIỮ XE
                       </span>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                        Khuyên dùng
-                      </span>
+                      {deliveryMethod === 'HomeDelivery' ? (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
+                          🔒 Chỉ nhận tại Showroom
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                          Khuyên dùng
+                        </span>
+                      )}
                     </div>
                     <div className="text-xl font-extrabold text-red-700 font-mono">
                       {formatVND(depositAmount)}
                     </div>
                     <p className="text-[11px] text-zinc-600 leading-relaxed">
-                      Đặt cọc giữ ngay 01 xe trong kho showroom. Số tiền còn lại{' '}
-                      <strong className="text-zinc-900 font-mono">{formatVND(remainingAmount)}</strong> sẽ thanh toán tại cửa hàng khi nhận bàn giao xe và kiểm tra PDI.
+                      {deliveryMethod === 'HomeDelivery' ? (
+                        <span className="text-amber-900 font-medium">
+                          ⚠️ Hình thức <strong>Giao xe tận nơi</strong> yêu cầu thanh toán đủ 100% trước khi điều phối xe chuyên dụng.
+                        </span>
+                      ) : (
+                        <>
+                          Đặt cọc giữ ngay 01 xe trong kho showroom. Số tiền còn lại{' '}
+                          <strong className="text-zinc-900 font-mono">{formatVND(remainingAmount)}</strong> sẽ thanh toán tại cửa hàng khi nhận bàn giao xe và kiểm tra PDI.
+                        </>
+                      )}
                     </p>
                   </div>
                   <div className="mt-3 pt-2 border-t border-zinc-200/60 text-[11px] text-emerald-700 font-semibold flex items-center gap-1">
@@ -1111,6 +1221,18 @@ function BuyVehicleOnlineModal({
                   <strong className="text-zinc-900">{vehicle.tenXe} ({selectedColor})</strong>
                 </div>
                 <div className="flex justify-between">
+                  <span className="text-zinc-500">Hình thức nhận xe:</span>
+                  <strong className="text-zinc-900">
+                    {deliveryMethod === 'HomeDelivery' ? '🚚 Giao xe tận nơi' : '🏢 Đến Showroom nhận'}
+                  </strong>
+                </div>
+                {deliveryMethod === 'HomeDelivery' && (
+                  <div className="flex justify-between text-left">
+                    <span className="text-zinc-500 shrink-0">Địa chỉ giao:</span>
+                    <strong className="text-purple-700 text-right max-w-[65%] text-[11px]">{deliveryAddress}</strong>
+                  </div>
+                )}
+                <div className="flex justify-between">
                   <span className="text-zinc-500">Thời gian nhận xe:</span>
                   <strong className="text-red-700 font-mono">{pickupTime} ngày {pickupDate}</strong>
                 </div>
@@ -1167,6 +1289,7 @@ const brandMeta: Record<string, { label: string; color: string; bg: string; badg
   Yamaha: { label: 'Yamaha', color: '#2563eb', bg: '#eff6ff', badge: '🔵 Yamaha' },
   Suzuki: { label: 'Suzuki', color: '#d97706', bg: '#fffbeb', badge: '🟡 Suzuki' },
   'Piaggio & Vespa': { label: 'Piaggio & Vespa', color: '#059669', bg: '#ecfdf5', badge: '🟢 Vespa Ý' },
+  SYM: { label: 'SYM', color: '#7c3aed', bg: '#f5f3ff', badge: '🟣 SYM' },
 };
 
 export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onRequireLogin, onNavigateToSurvey, onNavigateToOrders }: Props) {
@@ -1194,6 +1317,27 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
   const [selectedOrigin, setSelectedOrigin] = useState<string>('ALL');
   const [sortBy, setSortBy] = useState<'default' | 'priceAsc' | 'priceDesc' | 'nameAsc' | 'nameDesc'>('default');
   const [onlyTestDrive, setOnlyTestDrive] = useState<boolean>(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number | 'ALL'>(9);
+  const [showBackToTop, setShowBackToTop] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollY = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
+      if (scrollY > 100) setShowBackToTop(true);
+      else setShowBackToTop(false);
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    window.addEventListener('wheel', handleScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('wheel', handleScroll);
+    };
+  }, []);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, selectedHang, selectedPhanKhuc, selectedPriceRange, selectedOrigin, sortBy, onlyTestDrive]);
   const [detailVehicle, setDetailVehicle] = useState<ShowroomVehicle | null>(null);
   const [activeModalTab, setActiveModalTab] = useState<'specs' | 'reviews'>('specs');
   const [buyingVehicle, setBuyingVehicle] = useState<ShowroomVehicle | null>(null);
@@ -1302,35 +1446,77 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
   const [isEditingReview, setIsEditingReview] = useState(false);
   const [reviewToast, setReviewToast] = useState<string | null>(null);
 
+  // Helper kiểm tra đánh giá có thuộc về xe tương ứng hay không
+  const isMatchVehicleReview = (r: ProductReview, vId: string, vName: string) => {
+    if (r.targetId && (r.targetId === vId || (r.targetId.replace(/\D/g, '') && vId.replace(/\D/g, '') && r.targetId.replace(/\D/g, '') === vId.replace(/\D/g, '')))) return true;
+    const rName = (r.dongXeDaMua || r.productName || '').toLowerCase().trim();
+    const name = vName.toLowerCase().trim();
+    if (rName && name) {
+      if (rName.includes(name) || name.includes(rName)) return true;
+      const rClean = rName.replace(/abs|cbs|smartkey|2025|2026|phiên bản|thể thao|cao cấp|\(|\)/gi, '').trim();
+      const vClean = name.replace(/abs|cbs|smartkey|2025|2026|phiên bản|thể thao|cao cấp|\(|\)/gi, '').trim();
+      if (rClean && vClean && (rClean.includes(vClean) || vClean.includes(rClean))) return true;
+    }
+    // Nếu đánh giá xe chung mà xe là Honda SH 160i (hoặc targetId là 1) thì hiển thị
+    if ((!r.targetId || r.targetId === '1' || r.targetId === 'XM001') && (vId === 'XM-HD01' || vId === 'XM001' || vId === '1')) return true;
+    return false;
+  };
+
   // Sync vehicle reviews from feedbackApi (ĐG04, ĐG09)
   useEffect(() => {
     const syncVehicleReviews = async () => {
       try {
         const feedbacks = await feedbackApi.getAll();
         const vFeedbacks: ProductReview[] = feedbacks
-          .filter(f => f.productType === 'XeMau' || f.productId?.startsWith('XM') || (f.xeDangDung && !f.productId?.startsWith('PT')))
-          .map(f => ({
-            id: f.id,
-            targetId: f.productId || '',
-            customerId: f.customerId,
-            tenKhachHang: f.hoTen,
-            soDienThoai: f.soDienThoai,
-            soSao: f.diemDanhGia,
-            ngayDanhGia: f.ngayGui,
-            noiDung: f.noiDung,
-            daMua: true,
-            dongXeDaMua: f.productName || f.xeDangDung || 'Xe máy chính hãng',
-            editCount: f.editCount || 0,
-            productName: f.productName || f.xeDangDung,
-            hinhAnhDinhKem: f.hinhAnhDinhKem || [],
-          }));
+          .filter(f => 
+            f.productType === 'XeMau' || 
+            f.productId?.startsWith('XM') || 
+            (f.xeDangDung && !f.productId?.startsWith('PT')) ||
+            (f.noiDung && f.noiDung.toLowerCase().includes('xe')) ||
+            (f.productName && showroomVehicles.some(sv => 
+              f.productName!.toLowerCase().includes(sv.hang.toLowerCase()) || 
+              sv.tenXe.toLowerCase().includes(f.productName!.toLowerCase()) ||
+              f.productName!.toLowerCase().includes(sv.tenXe.toLowerCase().replace(/abs|cbs|smartkey|2025|2026/gi, '').trim())
+            ))
+          )
+          .map(f => {
+            let targetId = f.productId || '';
+            const bikeName = (f.productName || f.xeDangDung || '').toLowerCase().trim();
+            if (!targetId || !targetId.startsWith('XM')) {
+              const matchedV = (vehicles.length > 0 ? vehicles : showroomVehicles).find(v => {
+                const vName = v.tenXe.toLowerCase().trim();
+                if (!bikeName || !vName) return false;
+                return vName.includes(bikeName) || bikeName.includes(vName) ||
+                  vName.replace(/abs|cbs|smartkey|2025|2026|\(|\)/gi, '').trim().includes(bikeName.replace(/abs|cbs|smartkey|2025|2026|\(|\)/gi, '').trim());
+              });
+              if (matchedV) {
+                targetId = matchedV.id;
+              }
+            }
+
+            return {
+              id: f.id,
+              targetId: targetId || 'XM-HD01',
+              customerId: f.customerId,
+              tenKhachHang: f.hoTen,
+              soDienThoai: f.soDienThoai,
+              soSao: f.diemDanhGia,
+              ngayDanhGia: f.ngayGui,
+              noiDung: f.noiDung,
+              daMua: true,
+              dongXeDaMua: f.productName || f.xeDangDung || 'Honda SH 160i ABS 2025',
+              editCount: f.editCount || 0,
+              productName: f.productName || f.xeDangDung || 'Honda SH 160i ABS 2025',
+              hinhAnhDinhKem: f.hinhAnhDinhKem || [],
+            };
+          });
 
         setAllReviews(prev => {
           const merged = [...prev];
           vFeedbacks.forEach(vf => {
             const idx = merged.findIndex(m => m.id === vf.id);
             if (idx !== -1) merged[idx] = { ...merged[idx], ...vf };
-            else if (vf.targetId) merged.unshift(vf);
+            else merged.unshift(vf);
           });
           return merged;
         });
@@ -1342,7 +1528,7 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
     syncVehicleReviews();
     window.addEventListener('crm-data-refresh', syncVehicleReviews);
     return () => window.removeEventListener('crm-data-refresh', syncVehicleReviews);
-  }, []);
+  }, [vehicles]);
 
   useEffect(() => {
     if (currentCustomer) {
@@ -1381,7 +1567,7 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
         (v.mauSac ? matchVietnameseSearch(v.mauSac, search) : false);
 
       const matchHang = selectedHang === 'ALL' || v.hang === selectedHang;
-      const matchPhanKhuc = selectedPhanKhuc === 'ALL' || v.phanKhuc === selectedPhanKhuc;
+      const matchPhanKhuc = selectedPhanKhuc === 'ALL' || isSameCategory(v.phanKhuc, selectedPhanKhuc);
       const matchTestDrive = !onlyTestDrive || v.coTheLaiThu;
 
       // Khoảng giá (TC02)
@@ -1407,15 +1593,22 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
       return 0;
     });
 
+  const totalPages = pageSize === 'ALL' ? 1 : Math.max(1, Math.ceil(filteredVehicles.length / pageSize));
+  const paginatedVehicles = useMemo(() => {
+    if (pageSize === 'ALL') return filteredVehicles;
+    const start = (currentPage - 1) * pageSize;
+    return filteredVehicles.slice(start, start + pageSize);
+  }, [filteredVehicles, currentPage, pageSize]);
+
   const currentVehicleReviews = detailVehicle
-    ? allReviews.filter(r => r.targetId === detailVehicle.id)
+    ? allReviews.filter(r => isMatchVehicleReview(r, detailVehicle.id, detailVehicle.tenXe))
     : [];
 
   // Check if currentCustomer has already reviewed detailVehicle (ĐG05)
   const existingVehicleReview = useMemo(() => {
     if (!currentCustomer || !detailVehicle) return null;
     return allReviews.find(r =>
-      r.targetId === detailVehicle.id &&
+      isMatchVehicleReview(r, detailVehicle.id, detailVehicle.tenXe) &&
       (
         r.customerId === currentCustomer.id ||
         (r.soDienThoai && currentCustomer.soDienThoai && r.soDienThoai.replace(/\D/g, '') === currentCustomer.soDienThoai.replace(/\D/g, '')) ||
@@ -1515,7 +1708,7 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
   // ── TC04: DEDICATED FULL-PAGE VEHICLE DETAIL VIEW ──
   if (detailVehicle) {
     const meta = brandMeta[detailVehicle.hang] || { color: '#dc2626', bg: '#fef2f2', badge: detailVehicle.hang };
-    const vReviews = allReviews.filter(r => r.targetId === detailVehicle.id);
+    const vReviews = allReviews.filter(r => isMatchVehicleReview(r, detailVehicle.id, detailVehicle.tenXe));
     const relatedVehicles = vehicles
       .filter(v => v.id !== detailVehicle.id && (v.hang === detailVehicle.hang || v.phanKhuc === detailVehicle.phanKhuc))
       .slice(0, 4);
@@ -2354,7 +2547,24 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
               </div>
             </div>
           )}
-          {/* Modal Mua xe / Đặt cọc trực tuyến (D. BÁN XE) */}
+          {/* Floating Back to Top Button */}
+      {showBackToTop && (
+        <button
+          type="button"
+          onClick={() => {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            document.documentElement.scrollTo({ top: 0, behavior: 'smooth' });
+            document.body.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+          className="fixed bottom-8 right-8 z-50 px-4 py-3 rounded-full bg-gradient-to-r from-red-700 to-red-600 hover:from-red-600 hover:to-red-500 text-white shadow-2xl flex items-center gap-2 font-bold text-xs font-mono transition-all duration-300 hover:scale-105 border-2 border-white/30 cursor-pointer animate-in fade-in zoom-in-75 duration-200"
+          title="Cuộn lên đầu trang"
+        >
+          <span className="text-base">↑</span>
+          <span>Lên đầu trang</span>
+        </button>
+      )}
+
+      {/* Modal Mua xe / Đặt cọc trực tuyến (D. BÁN XE) */}
           {buyingVehicle && (
             <BuyVehicleOnlineModal
               vehicle={buyingVehicle}
@@ -2520,7 +2730,7 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
                 Tất cả ({vehicles.length})
               </button>
 
-              {(['Honda', 'Yamaha', 'Suzuki', 'Piaggio & Vespa'] as const).map(b => {
+              {(['Honda', 'Yamaha', 'Suzuki', 'Piaggio & Vespa', 'SYM'] as const).map(b => {
                 const count = vehicles.filter(v => v.hang === b).length;
                 const meta = brandMeta[b];
                 const isSelected = selectedHang === b;
@@ -2587,9 +2797,9 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-2">
-            {filteredVehicles.map(v => {
+            {paginatedVehicles.map(v => {
               const meta = brandMeta[v.hang] || { color: '#dc2626', bg: '#fef2f2', badge: v.hang };
-              const vReviews = allReviews.filter(r => r.targetId === v.id);
+              const vReviews = allReviews.filter(r => isMatchVehicleReview(r, v.id, v.tenXe));
 
               return (
                 <div
@@ -2730,6 +2940,133 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {/* ── Pagination Bar ── */}
+        {filteredVehicles.length > 0 && (
+          <div className="mt-8 p-4 bg-white rounded-2xl border border-zinc-200 shadow-xs flex flex-col md:flex-row items-center justify-between gap-4">
+            {/* Items count info */}
+            <div className="text-xs text-zinc-600 font-mono">
+              Hiển thị{' '}
+              <strong className="text-zinc-900 font-bold">
+                {pageSize === 'ALL' ? 1 : (currentPage - 1) * pageSize + 1}
+              </strong>{' '}
+              -{' '}
+              <strong className="text-zinc-900 font-bold">
+                {pageSize === 'ALL' ? filteredVehicles.length : Math.min(currentPage * pageSize, filteredVehicles.length)}
+              </strong>{' '}
+              trên tổng số{' '}
+              <strong className="text-red-700 font-bold">{filteredVehicles.length}</strong> mẫu xe
+            </div>
+
+            {/* Page Size Selector */}
+            <div className="flex items-center gap-2 text-xs font-mono">
+              <span className="text-zinc-500">Hiển thị mỗi trang:</span>
+              <div className="flex gap-1">
+                {[9, 12, 18, 'ALL'].map(size => (
+                  <button
+                    key={size}
+                    type="button"
+                    onClick={() => {
+                      setPageSize(size as any);
+                      setCurrentPage(1);
+                    }}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                      pageSize === size
+                        ? 'bg-zinc-900 text-white shadow-xs'
+                        : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+                    }`}
+                  >
+                    {size === 'ALL' ? 'Tất cả' : size}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Page Navigation Controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center gap-1 font-mono text-xs">
+                <button
+                  type="button"
+                  disabled={currentPage === 1}
+                  onClick={() => {
+                    setCurrentPage(1);
+                    window.scrollTo({ top: 400, behavior: 'smooth' });
+                  }}
+                  className="px-2.5 py-1.5 rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-100 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer font-bold"
+                  title="Trang đầu"
+                >
+                  « Đầu
+                </button>
+                <button
+                  type="button"
+                  disabled={currentPage === 1}
+                  onClick={() => {
+                    setCurrentPage(p => Math.max(1, p - 1));
+                    window.scrollTo({ top: 400, behavior: 'smooth' });
+                  }}
+                  className="px-2.5 py-1.5 rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-100 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer font-bold"
+                  title="Trang trước"
+                >
+                  ‹ Trước
+                </button>
+
+                <div className="flex gap-1 mx-1">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 2)
+                    .map((p, idx, arr) => {
+                      const prev = arr[idx - 1];
+                      return (
+                        <React.Fragment key={p}>
+                          {prev && p - prev > 1 && (
+                            <span className="px-1 text-zinc-400 self-center">...</span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCurrentPage(p);
+                              window.scrollTo({ top: 400, behavior: 'smooth' });
+                            }}
+                            className={`w-8 h-8 rounded-lg text-xs font-bold transition cursor-pointer ${
+                              currentPage === p
+                                ? 'bg-red-700 text-white shadow-sm'
+                                : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
+                            }`}
+                          >
+                            {p}
+                          </button>
+                        </React.Fragment>
+                      );
+                    })}
+                </div>
+
+                <button
+                  type="button"
+                  disabled={currentPage === totalPages}
+                  onClick={() => {
+                    setCurrentPage(p => Math.min(totalPages, p + 1));
+                    window.scrollTo({ top: 400, behavior: 'smooth' });
+                  }}
+                  className="px-2.5 py-1.5 rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-100 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer font-bold"
+                  title="Trang sau"
+                >
+                  Sau ›
+                </button>
+                <button
+                  type="button"
+                  disabled={currentPage === totalPages}
+                  onClick={() => {
+                    setCurrentPage(totalPages);
+                    window.scrollTo({ top: 400, behavior: 'smooth' });
+                  }}
+                  className="px-2.5 py-1.5 rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-100 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer font-bold"
+                  title="Trang cuối"
+                >
+                  Cuối »
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

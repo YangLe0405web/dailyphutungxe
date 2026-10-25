@@ -17,25 +17,92 @@ import {
   type Feedback,
   formatVND,
 } from '../../data/mockData';
-import { customerApi, vehicleApi, orderApi, appointmentApi, feedbackApi } from '../../services/api';
+import { customerApi, vehicleApi, orderApi, appointmentApi, feedbackApi, insuranceApi } from '../../services/api';
 import ImageUploader from '../../components/shared/ImageUploader';
+import { VIETNAM_LOCATIONS } from '../../data/vietnamLocations';
 
 const PAGE_SIZE = 8;
 
-/* ── Modal Thêm khách hàng (H01, H02, H04) ── */
+/* ── Modal Thêm khách hàng (H01, H02, H04, ĐK01, ĐK02) ── */
 function AddModal({ onClose, onAdd }: { onClose: () => void; onAdd: (c: Customer) => void }) {
   const [form, setForm] = useState({
-    hoTen: '', email: '', soDienThoai: '', diaChi: '', ngaySinh: '', gioiTinh: 'Nam' as 'Nam' | 'Nu', avatar: '',
-    tenXe: '', bienSo: '', soKhung: '', mauSac: 'Đen bóng', namSanXuat: '2025', hinhAnhXe: '',
+    hoTen: '',
+    email: '',
+    soDienThoai: '',
+    ngaySinh: '2000-01-01',
+    gioiTinh: 'Nam' as 'Nam' | 'Nu',
+    avatar: '',
+    // Địa chỉ hành chính phân cấp (ĐK01)
+    province: VIETNAM_LOCATIONS[0].name,
+    district: VIETNAM_LOCATIONS[0].districts[0].name,
+    ward: VIETNAM_LOCATIONS[0].districts[0].wards[0],
+    streetAddress: '',
+    // Thiết lập mật khẩu tài khoản (ĐK01, ĐK02)
+    matKhau: 'Customer@123',
+    xacNhanMatKhau: 'Customer@123',
+    // Thông tin xe sở hữu
+    tenXe: '',
+    bienSo: '',
+    soKhung: '',
+    mauSac: 'Đen bóng',
+    namSanXuat: '2025',
+    hinhAnhXe: '',
   });
+
+  const [showPass, setShowPass] = useState(false);
+  const [showConfirmPass, setShowConfirmPass] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [serverErr, setServerErr] = useState<string | null>(null);
   const [err, setErr] = useState<Record<string, string>>({});
+
+  // Cascading dropdowns theo Tỉnh/TP đã chọn
+  const currentProvinceObj = VIETNAM_LOCATIONS.find(p => p.name === form.province) || VIETNAM_LOCATIONS[0];
+  const availableDistricts = currentProvinceObj.districts;
+  const currentDistrictObj = availableDistricts.find(d => d.name === form.district) || availableDistricts[0];
+  const availableWards = currentDistrictObj ? currentDistrictObj.wards : [];
+
+  const handleProvinceChange = (provinceName: string) => {
+    const prov = VIETNAM_LOCATIONS.find(p => p.name === provinceName) || VIETNAM_LOCATIONS[0];
+    const firstDist = prov.districts[0];
+    setForm(prev => ({
+      ...prev,
+      province: provinceName,
+      district: firstDist.name,
+      ward: firstDist.wards[0] || '',
+    }));
+  };
+
+  const handleDistrictChange = (districtName: string) => {
+    const dist = availableDistricts.find(d => d.name === districtName) || availableDistricts[0];
+    setForm(prev => ({
+      ...prev,
+      district: districtName,
+      ward: dist ? (dist.wards[0] || '') : '',
+    }));
+  };
+
+  // Nút sinh mật khẩu ngẫu nhiên đạt chuẩn an toàn
+  const generateRandomPassword = () => {
+    const randNum = Math.floor(100 + Math.random() * 900);
+    const pass = `Motoshop@${randNum}`;
+    setForm(f => ({ ...f, matKhau: pass, xacNhanMatKhau: pass }));
+  };
+
+  // Tiêu chí mật khẩu mạnh
+  const pass = form.matKhau;
+  const passLengthValid = pass.length >= 8;
+  const passUpperValid = /[A-Z]/.test(pass);
+  const passLowerValid = /[a-z]/.test(pass);
+  const passNumberValid = /[0-9]/.test(pass);
+  const passSpecialValid = /[^A-Za-z0-9]/.test(pass);
+  const passMatch = pass.length > 0 && pass === form.xacNhanMatKhau;
+  const isPasswordValid = passLengthValid && passUpperValid && passLowerValid && passNumberValid && passSpecialValid && passMatch;
 
   function validate() {
     const e: Record<string, string> = {};
     if (!form.hoTen.trim()) e.hoTen = 'Họ và tên bắt buộc';
     if (!form.email.includes('@')) e.email = 'Email không đúng định dạng';
     if (!/^0\d{9}$/.test(form.soDienThoai.trim())) e.soDienThoai = 'SĐT phải gồm 10 chữ số bắt đầu bằng 0';
-    if (!form.diaChi.trim()) e.diaChi = 'Địa chỉ bắt buộc';
 
     // H01: Kiểm tra ngày sinh (bắt buộc, không chọn ngày tương lai, tuổi >= 16)
     if (!form.ngaySinh) {
@@ -55,32 +122,44 @@ function AddModal({ onClose, onAdd }: { onClose: () => void; onAdd: (c: Customer
       }
     }
 
+    // ĐK06: Kiểm tra mật khẩu
+    if (!isPasswordValid) {
+      e.matKhau = 'Mật khẩu chưa đáp ứng tiêu chuẩn an toàn hoặc chưa trùng khớp!';
+    }
+
     setErr(e);
     return Object.keys(e).length === 0;
   }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    setServerErr(null);
     if (!validate()) return;
+
+    setIsSubmitting(true);
     let newCustId = `KH${Date.now().toString().slice(-4)}`;
+    const fullAddress = `${form.streetAddress.trim() ? form.streetAddress.trim() + ', ' : ''}${form.ward}, ${form.district}, ${form.province}`;
 
     try {
       const res = await customerApi.create({
         hoTen: form.hoTen.trim(),
         email: form.email.trim(),
         soDienThoai: form.soDienThoai.trim(),
-        diaChi: form.diaChi.trim(),
-        ngaySinh: form.ngaySinh ? `${form.ngaySinh}T00:00:00` : '2000-01-01T00:00:00',
+        diaChi: fullAddress,
+        ngaySinh: `${form.ngaySinh}T00:00:00`,
         gioiTinh: form.gioiTinh === 'Nu' ? 'Nu' : 'Nam',
-        tenDangNhap: form.email.split('@')[0],
-        matKhau: '123456',
+        tenDangNhap: form.email.trim(),
+        matKhau: form.matKhau,
         avatar: form.avatar || undefined,
       } as any);
+
       if (res.customer) {
         newCustId = res.customer.id;
       }
-    } catch (err) {
-      console.warn('Backend call failed, creating locally:', err);
+    } catch (err: any) {
+      setIsSubmitting(false);
+      setServerErr(err?.message || 'Lỗi khi tạo tài khoản khách hàng trên hệ thống!');
+      return;
     }
 
     if (form.tenXe.trim() || form.bienSo.trim()) {
@@ -104,7 +183,7 @@ function AddModal({ onClose, onAdd }: { onClose: () => void; onAdd: (c: Customer
       hoTen: form.hoTen.trim(),
       email: form.email.trim(),
       soDienThoai: form.soDienThoai.trim(),
-      diaChi: form.diaChi.trim(),
+      diaChi: fullAddress,
       ngaySinh: form.ngaySinh,
       gioiTinh: form.gioiTinh,
       avatar: form.avatar || undefined,
@@ -112,9 +191,10 @@ function AddModal({ onClose, onAdd }: { onClose: () => void; onAdd: (c: Customer
       ngayDangKy: new Date().toISOString().split('T')[0],
       soXe: form.bienSo ? form.bienSo.trim() : '',
       tongChiTieu: 0,
-      matKhau: '123456',
+      matKhau: form.matKhau,
     };
 
+    setIsSubmitting(false);
     onAdd(newCustomer);
     onClose();
   }
@@ -123,21 +203,36 @@ function AddModal({ onClose, onAdd }: { onClose: () => void; onAdd: (c: Customer
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto" style={{ background: 'rgba(9,9,11,0.7)', backdropFilter: 'blur(4px)' }}>
-      <div className="rounded-2xl shadow-2xl w-full max-w-lg my-8 bg-white overflow-hidden">
+      <div className="rounded-2xl shadow-2xl w-full max-w-2xl my-8 bg-white overflow-hidden">
         <div className="px-6 py-5 border-b flex items-center justify-between" style={{ borderColor: 'var(--color-zinc-200)', background: 'var(--color-zinc-950)' }}>
           <div>
             <div style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 800, color: 'white', letterSpacing: '0.06em', textTransform: 'uppercase' }}>THÊM KHÁCH HÀNG MỚI</div>
-            <div className="text-xs mt-0.5" style={{ color: 'var(--color-zinc-400)', fontFamily: 'var(--font-mono)' }}>Điền thông tin cá nhân & chọn ảnh đại diện</div>
+            <div className="text-xs mt-0.5" style={{ color: 'var(--color-zinc-400)', fontFamily: 'var(--font-mono)' }}>Đăng ký tài khoản khách hàng đầy đủ trường thông tin chuẩn xác</div>
           </div>
           <button onClick={onClose} className="text-zinc-400 hover:text-white bg-zinc-800 rounded-lg w-8 h-8 flex items-center justify-center font-bold text-lg cursor-pointer">✕</button>
         </div>
-        <form onSubmit={submit} className="p-6 flex flex-col gap-4 max-h-[80vh] overflow-y-auto">
-          <div className="grid grid-cols-2 gap-4">
+
+        <form onSubmit={submit} className="p-6 flex flex-col gap-4 max-h-[82vh] overflow-y-auto">
+          {serverErr && (
+            <div className="p-3 rounded-xl bg-red-50 border border-red-300 text-xs text-red-700 flex items-start gap-2">
+              <span className="font-bold text-sm">⚠️</span>
+              <div>
+                <strong>Lỗi tạo tài khoản:</strong> {serverErr}
+              </div>
+            </div>
+          )}
+
+          {/* 1. THÔNG TIN CÁ NHÂN CƠ BẢN */}
+          <div className="text-xs font-bold text-zinc-900 uppercase flex items-center gap-1.5 pb-1 border-b border-zinc-100" style={{ fontFamily: 'var(--font-display)' }}>
+            <span>👤 1. THÔNG TIN CÁ NHÂN</span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-600 mb-1 text-zinc-600 uppercase">Họ và tên *</label>
               <input
                 type="text"
-                placeholder="VD: Nguyễn Văn Nam"
+                placeholder="VD: Nguyễn Văn Hoàng"
                 value={form.hoTen}
                 onChange={e => setForm(f => ({ ...f, hoTen: e.target.value }))}
                 style={{ ...inputSt, borderColor: err.hoTen ? 'var(--color-red-500)' : 'var(--color-zinc-200)' }}
@@ -158,52 +253,197 @@ function AddModal({ onClose, onAdd }: { onClose: () => void; onAdd: (c: Customer
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
-              <label className="block text-xs font-600 mb-1 text-zinc-600 uppercase">Email *</label>
+              <label className="block text-xs font-600 mb-1 text-zinc-600 uppercase">Email đăng nhập *</label>
               <input
                 type="email"
-                placeholder="VD: nam@gmail.com"
+                placeholder="VD: hoang@gmail.com"
                 value={form.email}
                 onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
                 style={{ ...inputSt, borderColor: err.email ? 'var(--color-red-500)' : 'var(--color-zinc-200)' }}
               />
               {err.email && <p className="text-xs mt-1 text-red-600">{err.email}</p>}
             </div>
+
             <div>
               <label className="block text-xs font-600 mb-1 text-zinc-600 uppercase">Số điện thoại *</label>
               <input
                 type="tel"
-                placeholder="VD: 0912345678"
+                maxLength={10}
+                placeholder="VD: 0987654321"
                 value={form.soDienThoai}
-                onChange={e => setForm(f => ({ ...f, soDienThoai: e.target.value }))}
+                onChange={e => setForm(f => ({ ...f, soDienThoai: e.target.value.replace(/\D/g, '') }))}
                 style={{ ...inputSt, borderColor: err.soDienThoai ? 'var(--color-red-500)' : 'var(--color-zinc-200)' }}
               />
               {err.soDienThoai && <p className="text-xs mt-1 text-red-600">{err.soDienThoai}</p>}
             </div>
+
+            <div>
+              <label className="block text-xs font-600 mb-1 text-zinc-600 uppercase">Giới tính</label>
+              <select
+                value={form.gioiTinh}
+                onChange={e => setForm(f => ({ ...f, gioiTinh: e.target.value as 'Nam' | 'Nu' }))}
+                style={{ ...inputSt, cursor: 'pointer' }}
+              >
+                <option value="Nam">Nam</option>
+                <option value="Nu">Nữ</option>
+              </select>
+            </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-600 mb-1 text-zinc-600 uppercase">Địa chỉ thường trú *</label>
-            <input
-              type="text"
-              placeholder="VD: 123 Nguyễn Trãi, Q.5, TP.HCM"
-              value={form.diaChi}
-              onChange={e => setForm(f => ({ ...f, diaChi: e.target.value }))}
-              style={{ ...inputSt, borderColor: err.diaChi ? 'var(--color-red-500)' : 'var(--color-zinc-200)' }}
-            />
-            {err.diaChi && <p className="text-xs mt-1 text-red-600">{err.diaChi}</p>}
+          {/* 2. ĐỊA CHỈ HÀNH CHÍNH PHÂN CẤP (ĐK01) */}
+          <div className="pt-2 border-t border-zinc-200 space-y-3">
+            <div className="text-xs font-bold text-zinc-900 uppercase flex items-center justify-between" style={{ fontFamily: 'var(--font-display)' }}>
+              <span>📍 2. ĐỊA CHỈ CƯ TRÚ (3 CẤP HÀNH CHÍNH)</span>
+              <span className="text-[10px] text-zinc-400 font-mono font-normal">Đồng bộ theo danh mục Vietnam Locations</span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-[11px] font-semibold text-zinc-600 uppercase mb-1">Tỉnh / Thành phố *</label>
+                <select
+                  value={form.province}
+                  onChange={e => handleProvinceChange(e.target.value)}
+                  style={{ ...inputSt, cursor: 'pointer' }}
+                >
+                  {VIETNAM_LOCATIONS.map(p => (
+                    <option key={p.name} value={p.name}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-zinc-600 uppercase mb-1">Quận / Huyện *</label>
+                <select
+                  value={form.district}
+                  onChange={e => handleDistrictChange(e.target.value)}
+                  style={{ ...inputSt, cursor: 'pointer' }}
+                >
+                  {availableDistricts.map(d => (
+                    <option key={d.name} value={d.name}>{d.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-zinc-600 uppercase mb-1">Phường / Xã *</label>
+                <select
+                  value={form.ward}
+                  onChange={e => setForm(f => ({ ...f, ward: e.target.value }))}
+                  style={{ ...inputSt, cursor: 'pointer' }}
+                >
+                  {availableWards.map(w => (
+                    <option key={w} value={w}>{w}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-zinc-600 uppercase mb-1">Số nhà, tên đường (Địa chỉ cụ thể)</label>
+              <input
+                type="text"
+                placeholder="VD: 123 Nguyễn Trãi hoặc Số 45 Đường số 7"
+                value={form.streetAddress}
+                onChange={e => setForm(f => ({ ...f, streetAddress: e.target.value }))}
+                style={inputSt}
+              />
+            </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-600 mb-1 text-zinc-600 uppercase">Giới tính</label>
-            <select value={form.gioiTinh} onChange={e => setForm(f => ({ ...f, gioiTinh: e.target.value as 'Nam' | 'Nu' }))} style={{ ...inputSt, cursor: 'pointer' }}>
-              <option value="Nam">Nam</option>
-              <option value="Nu">Nữ</option>
-            </select>
+          {/* 3. THIẾT LẬP MẬT KHẨU TÀI KHOẢN (ĐK01 & ĐK02) */}
+          <div className="pt-2 border-t border-zinc-200 space-y-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="text-xs font-bold text-zinc-900 uppercase flex items-center gap-1.5" style={{ fontFamily: 'var(--font-display)' }}>
+                <span>🔑 3. THIẾT LẬP MẬT KHẨU TÀI KHOẢN KHÁCH HÀNG</span>
+              </div>
+              <button
+                type="button"
+                onClick={generateRandomPassword}
+                className="text-[11px] font-bold text-red-700 hover:text-red-800 bg-red-50 hover:bg-red-100 px-2.5 py-1 rounded-lg border border-red-200 transition cursor-pointer flex items-center gap-1"
+              >
+                <span>🎲</span> Sinh mật khẩu ngẫu nhiên
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-semibold text-zinc-600 uppercase mb-1">Mật khẩu khởi tạo *</label>
+                <div className="relative">
+                  <input
+                    type={showPass ? 'text' : 'password'}
+                    placeholder="Nhập mật khẩu"
+                    value={form.matKhau}
+                    onChange={e => setForm(f => ({ ...f, matKhau: e.target.value }))}
+                    style={{ ...inputSt, paddingRight: 36, borderColor: err.matKhau ? 'var(--color-red-500)' : 'var(--color-zinc-200)' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPass(!showPass)}
+                    className="absolute right-2.5 top-2.5 text-zinc-400 hover:text-zinc-600 text-xs cursor-pointer"
+                  >
+                    {showPass ? '🙈' : '👁️'}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-zinc-600 uppercase mb-1">Xác nhận mật khẩu *</label>
+                <div className="relative">
+                  <input
+                    type={showConfirmPass ? 'text' : 'password'}
+                    placeholder="Nhập lại mật khẩu"
+                    value={form.xacNhanMatKhau}
+                    onChange={e => setForm(f => ({ ...f, xacNhanMatKhau: e.target.value }))}
+                    style={{ ...inputSt, paddingRight: 36, borderColor: (!passMatch && form.xacNhanMatKhau) ? 'var(--color-red-500)' : 'var(--color-zinc-200)' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPass(!showConfirmPass)}
+                    className="absolute right-2.5 top-2.5 text-zinc-400 hover:text-zinc-600 text-xs cursor-pointer"
+                  >
+                    {showConfirmPass ? '🙈' : '👁️'}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Checklist tiêu chí mật khẩu an toàn */}
+            <div className="p-3 rounded-xl bg-zinc-50 border border-zinc-200 text-[11px] space-y-1 font-mono">
+              <div className="font-bold text-zinc-700 font-sans mb-1.5 flex items-center justify-between">
+                <span>Tiêu chuẩn mật khẩu hệ thống (ĐK06):</span>
+                {isPasswordValid ? (
+                  <span className="text-emerald-700 font-extrabold flex items-center gap-1 font-mono">✓ ĐẠT TIÊU CHUẨN</span>
+                ) : (
+                  <span className="text-amber-700 font-bold font-mono">⚠️ Chưa đủ điều kiện</span>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                <div className={passLengthValid ? 'text-emerald-700' : 'text-zinc-400'}>
+                  {passLengthValid ? '✓' : '○'} Tối thiểu 8 ký tự ({pass.length}/8)
+                </div>
+                <div className={passUpperValid ? 'text-emerald-700' : 'text-zinc-400'}>
+                  {passUpperValid ? '✓' : '○'} Có ít nhất 1 chữ HOA (A-Z)
+                </div>
+                <div className={passLowerValid ? 'text-emerald-700' : 'text-zinc-400'}>
+                  {passLowerValid ? '✓' : '○'} Có ít nhất 1 chữ thường (a-z)
+                </div>
+                <div className={passNumberValid ? 'text-emerald-700' : 'text-zinc-400'}>
+                  {passNumberValid ? '✓' : '○'} Có ít nhất 1 chữ số (0-9)
+                </div>
+                <div className={passSpecialValid ? 'text-emerald-700' : 'text-zinc-400'}>
+                  {passSpecialValid ? '✓' : '○'} Có ít nhất 1 ký tự đặc biệt (@, #, $...)
+                </div>
+                <div className={passMatch ? 'text-emerald-700' : 'text-zinc-400'}>
+                  {passMatch ? '✓' : '○'} Hai mật khẩu trùng khớp
+                </div>
+              </div>
+            </div>
+            {err.matKhau && <p className="text-xs text-red-600">{err.matKhau}</p>}
           </div>
 
-          {/* H02: Ảnh đại diện với mẫu chọn nhanh */}
+          {/* 4. ẢNH ĐẠI DIỆN AVATAR */}
           <div className="pt-2 border-t border-zinc-200">
             <label className="block text-xs font-600 mb-1.5 text-zinc-700 uppercase">Ảnh đại diện Avatar (Mẫu có sẵn hoặc tải lên)</label>
             <div className="flex items-center gap-2 mb-3 overflow-x-auto pb-1">
@@ -231,10 +471,10 @@ function AddModal({ onClose, onAdd }: { onClose: () => void; onAdd: (c: Customer
             />
           </div>
 
-          {/* Optional Vehicle Registration */}
-          <div className="pt-3 border-t border-zinc-200">
+          {/* 5. THÔNG TIN XE SỞ HỮU (TÙY CHỌN) */}
+          <div className="pt-2 border-t border-zinc-200">
             <div className="text-xs font-bold text-zinc-900 mb-2 uppercase flex items-center gap-1.5" style={{ fontFamily: 'var(--font-display)' }}>
-              <span>🏍️ THÔNG TIN XE SỞ HỮU (TÙY CHỌN)</span>
+              <span>🏍️ THÔNG TIN XE SỞ HỮU BAN ĐẦU (TÙY CHỌN)</span>
             </div>
             <div className="grid grid-cols-2 gap-3 mb-3">
               <div>
@@ -285,17 +525,28 @@ function AddModal({ onClose, onAdd }: { onClose: () => void; onAdd: (c: Customer
             />
           </div>
 
-          <div className="flex gap-3 pt-3">
-            <button type="button" onClick={onClose} style={{ flex: 1, padding: '10px', borderRadius: 10, border: '1px solid var(--color-zinc-200)', background: 'white', color: 'var(--color-zinc-700)', cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>Hủy</button>
-            <button type="submit" style={{ flex: 1, padding: '10px', borderRadius: 10, border: 'none', background: 'var(--color-red-700)', color: 'white', cursor: 'pointer', fontWeight: 700, fontSize: 13, fontFamily: 'var(--font-display)', letterSpacing: '0.04em' }}>THÊM KHÁCH HÀNG</button>
+          <div className="flex gap-3 pt-3 border-t border-zinc-200">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isSubmitting}
+              style={{ flex: 1, padding: '10px', borderRadius: 10, border: '1px solid var(--color-zinc-200)', background: 'white', color: 'var(--color-zinc-700)', cursor: 'pointer', fontWeight: 600, fontSize: 13 }}
+            >
+              Hủy
+            </button>
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              style={{ flex: 1.5, padding: '10px', borderRadius: 10, border: 'none', background: isSubmitting ? 'var(--color-zinc-400)' : 'var(--color-red-700)', color: 'white', cursor: isSubmitting ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: 13, fontFamily: 'var(--font-display)', letterSpacing: '0.04em' }}
+            >
+              {isSubmitting ? 'ĐANG TẠO TÀI KHOẢN...' : 'TẠO TÀI KHOẢN KHÁCH HÀNG'}
+            </button>
           </div>
         </form>
       </div>
     </div>
   );
-}
-
-/* ── Modal Sửa thông tin khách hàng (H01, H02, H04) ── */
+}/* ── Modal Sửa thông tin khách hàng (H01, H02, H04) ── */
 function EditModal({ customer, onClose, onSave }: { customer: Customer; onClose: () => void; onSave: (updated: Customer) => void }) {
   const [form, setForm] = useState({
     hoTen: customer.hoTen,
@@ -1093,42 +1344,32 @@ function Customer360Modal({
                           </div>
                         )}
 
-                        {/* Banner 1: Duyệt biển số xe cho xe mua tại cửa hàng */}
+                        {/* Banner 1: Trạng thái chờ duyệt biển số xe (Chế độ chỉ xem) */}
                         {isCuaHang && v.trangThaiDuyetBienSo === 'ChoDuyet' && (
                           <div className="p-3.5 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-between flex-wrap gap-2.5">
                             <div className="text-xs text-blue-950">
                               <strong>Yêu cầu cấp biển số mới:</strong> Khách hàng đề xuất biển số{' '}
-                              <strong className="text-red-700 font-mono font-bold text-sm">{v.bienSoChoDuyet}</strong> kèm ảnh cà vẹt xe. Vui lòng đối chiếu thông tin pháp lý trước khi phê duyệt.
+                              <strong className="text-red-700 font-mono font-bold text-sm">{v.bienSoChoDuyet}</strong> kèm ảnh cà vẹt xe.
                             </div>
-                            <button
-                              type="button"
-                              disabled={approvingPlateId === v.id}
-                              onClick={() => handleApprovePlate(v.id)}
-                              className="px-4 py-2 rounded-lg text-xs font-bold bg-blue-700 hover:bg-blue-800 text-white shadow transition flex items-center gap-1.5 cursor-pointer"
-                            >
-                              <span>{approvingPlateId === v.id ? 'Đang duyệt...' : `✓ Phê duyệt biển số (${v.bienSoChoDuyet})`}</span>
-                            </button>
+                            <span className="px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-100 text-blue-800 border border-blue-300 font-mono">
+                              ⏳ Đang chờ duyệt biển số
+                            </span>
                           </div>
                         )}
 
-                        {/* Banner 2: Duyệt xe & Cà vẹt cho xe ngoài hệ thống */}
+                        {/* Banner 2: Trạng thái xe ngoài hệ thống chờ duyệt (Chế độ chỉ xem) */}
                         {!isCuaHang && isChoDuyet && (
                           <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-between flex-wrap gap-2.5">
                             <div className="text-xs text-amber-950">
-                              <strong>Hồ sơ xe chờ duyệt:</strong> Xe do khách hàng tự đăng ký trên Web kèm ảnh cà vẹt xe. Nhân viên cần đối chiếu giấy tờ và bấm duyệt để kích hoạt vào tài khoản khách hàng.
+                              <strong>Hồ sơ xe chờ duyệt:</strong> Xe do khách hàng tự đăng ký kèm ảnh cà vẹt xe.
                             </div>
-                            <button
-                              type="button"
-                              disabled={approvingVehicleId === v.id}
-                              onClick={() => handleApproveVehicle(v.id)}
-                              className="px-4 py-2 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow transition flex items-center gap-1.5 cursor-pointer"
-                            >
-                              <span>{approvingVehicleId === v.id ? 'Đang duyệt...' : '✓ Duyệt xe & Cà vẹt'}</span>
-                            </button>
+                            <span className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300 font-mono">
+                              ⏳ Đang chờ đối chiếu hồ sơ
+                            </span>
                           </div>
                         )}
 
-                        {/* Thông tin bảo hành & hành động */}
+                        {/* Thông tin bảo hành (Chế độ chỉ xem - Nghiệp vụ xử lý bảo hành chuyển trang riêng) */}
                         <div className="pt-3 border-t border-zinc-100 flex items-center justify-between flex-wrap gap-2">
                           <div className="text-xs text-zinc-600 font-mono">
                             {isCuaHang ? (
@@ -1141,28 +1382,9 @@ function Customer360Modal({
                               </span>
                             )}
                           </div>
-                          {isCuaHang && (
-                            <div className="flex gap-2">
-                              <button
-                                onClick={() => {
-                                  onRenewWarranty(v.id, 1);
-                                  setVehicles(prev => prev.map(x => x.id === v.id ? { ...x, hanBaoHanh: new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0], trangThaiBaoHanh: 'ConHan' } : x));
-                                }}
-                                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-700 text-white hover:bg-red-800 shadow-sm transition cursor-pointer"
-                              >
-                                + Gia hạn 12 tháng
-                              </button>
-                              <button
-                                onClick={() => {
-                                  onRenewWarranty(v.id, 2);
-                                  setVehicles(prev => prev.map(x => x.id === v.id ? { ...x, hanBaoHanh: new Date(Date.now() + 2 * 365 * 86400000).toISOString().split('T')[0], trangThaiBaoHanh: 'ConHan' } : x));
-                                }}
-                                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-zinc-900 text-white hover:bg-zinc-800 shadow-sm transition cursor-pointer"
-                              >
-                                + Gia hạn 24 tháng
-                              </button>
-                            </div>
-                          )}
+                          <div className="text-[11px] text-zinc-400 font-mono italic">
+                            (Quản lý & xử lý bảo hành tại menu Quản lý bảo hành)
+                          </div>
                         </div>
                       </div>
                     );
@@ -1254,6 +1476,8 @@ export default function CustomersPage() {
         const ordersList = ordersData || mockOrders;
         if (isMounted) setAllOrders(ordersList);
 
+        const allInsurances = insuranceApi.getAll();
+
         const baseList = data && data.length > 0 ? data : mockCustomers;
         const computed = baseList.map(c => {
           const cOrders = ordersList.filter(o =>
@@ -1265,7 +1489,21 @@ export default function CustomersPage() {
           const completedSpent = cOrders
             .filter(o => o.trangThai === 'HoanThanh' || (o.trangThai as any) === 'DaHoanThanh' || (o.trangThai as any) === 'Hoàn thành')
             .reduce((sum, o) => sum + (o.tongTien || 0), 0);
-          const realSpending = Math.max(c.tongChiTieu || 0, completedSpent);
+
+          // BH05: Tính chi phí các hợp đồng bảo hiểm hợp lệ của khách hàng
+          const cNum = parseInt(c.id.replace(/\D/g, ''), 10);
+          const insSpent = allInsurances
+            .filter(ins => {
+              if (ins.trangThai === 'TuChoi') return false;
+              if (ins.customerId === c.id) return true;
+              const insCNum = parseInt(ins.customerId.replace(/\D/g, ''), 10);
+              if (!isNaN(cNum) && !isNaN(insCNum) && cNum === insCNum) return true;
+              if (c.soDienThoai && ins.soDienThoai === c.soDienThoai) return true;
+              return false;
+            })
+            .reduce((sum, ins) => sum + (ins.tongTien || ins.phiBaoHiem || 0), 0);
+
+          const realSpending = Math.max(c.tongChiTieu || 0, completedSpent + insSpent);
           return { ...c, tongChiTieu: realSpending };
         });
 
@@ -1297,11 +1535,13 @@ export default function CustomersPage() {
 
     window.addEventListener('crm-data-refresh', handleRefresh);
     window.addEventListener('crm-admin-notification', handleRefresh);
+    window.addEventListener('storage', handleRefresh);
 
     return () => {
       isMounted = false;
       window.removeEventListener('crm-data-refresh', handleRefresh);
       window.removeEventListener('crm-admin-notification', handleRefresh);
+      window.removeEventListener('storage', handleRefresh);
     };
   }, []);
 
@@ -1419,7 +1659,7 @@ export default function CustomersPage() {
     mockCustomers.unshift(newC);
     customerApi.saveLocal(updated);
     window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'customer_registered' } }));
-    showToast(`🎉 Thêm thành công khách hàng ${newC.hoTen}!`);
+    showToast(`🎉 Tạo tài khoản thành công cho ${newC.hoTen}! Đăng nhập bằng Email: ${newC.email} hoặc SĐT: ${newC.soDienThoai} (Mật khẩu: ${newC.matKhau || 'Customer@123'})`);
   }
 
   // Cập nhật thông tin khách hàng

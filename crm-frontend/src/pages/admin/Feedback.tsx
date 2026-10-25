@@ -65,31 +65,8 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
-  // Đón nhận highlight từ thông báo Admin để chuyển đúng tab Khảo sát hoặc Đánh giá
-  useEffect(() => {
-    const handleHighlight = (payload?: any) => {
-      let data = payload;
-      if (!data) {
-        try {
-          const raw = sessionStorage.getItem('crm_admin_highlight');
-          if (raw) data = JSON.parse(raw);
-        } catch {}
-      }
-      if (!data || data.page !== 'feedback') return;
-
-      if (data.category === 'survey' || (data.targetId && data.targetId.startsWith('KS'))) {
-        setActiveMainTab('survey');
-      } else {
-        setActiveMainTab('feedback');
-      }
-      sessionStorage.removeItem('crm_admin_highlight');
-    };
-
-    handleHighlight();
-    const onEvent = (e: any) => handleHighlight(e.detail);
-    window.addEventListener('crm-admin-highlight-target', onEvent);
-    return () => window.removeEventListener('crm-admin-highlight-target', onEvent);
-  }, []);
+  // Highlight mục tiêu khi nhấp vào thông báo
+  const [highlightTargetId, setHighlightTargetId] = useState<string | null>(null);
 
   const getStaffHandlingName = (): string => {
     const staff = activeStaff || currentStaff;
@@ -211,6 +188,70 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
       window.removeEventListener('crm-chat-update', handleChatUpdate);
     };
   }, [chatFeedback]);
+
+  // Đón nhận highlight từ thông báo Admin để chuyển đúng tab Khảo sát hoặc Đánh giá
+  useEffect(() => {
+    const handleHighlight = async (payload?: any) => {
+      let data = payload;
+      if (!data) {
+        try {
+          const raw = sessionStorage.getItem('crm_admin_highlight');
+          if (raw) data = JSON.parse(raw);
+        } catch {}
+      }
+      if (!data || data.page !== 'feedback') return;
+
+      // Đồng bộ dữ liệu mới nhất từ backend và cache
+      await loadData();
+
+      if (data.category === 'survey' || (data.targetId && data.targetId.startsWith('KS'))) {
+        setActiveMainTab('survey');
+      } else {
+        setActiveMainTab('feedback');
+        // Reset sạch bộ lọc để đảm bảo đánh giá mới chắc chắn hiển thị trong danh sách
+        setTypeFilter('All');
+        setStatusFilter('All');
+        setRatingFilter('All');
+        setCategoryFilter('All');
+        setSearchQuery('');
+
+        const tid = data.targetId || data.meta?.id || data.meta?.feedbackId || data.meta?.customerId;
+        if (tid) {
+          setHighlightTargetId(tid);
+        }
+      }
+      sessionStorage.removeItem('crm_admin_highlight');
+    };
+
+    handleHighlight();
+    const onEvent = (e: any) => handleHighlight(e.detail);
+    window.addEventListener('crm-admin-highlight-target', onEvent);
+    return () => window.removeEventListener('crm-admin-highlight-target', onEvent);
+  }, []);
+
+  // Tự động cuộn đến phần tử đánh giá mục tiêu khi highlightTargetId thay đổi
+  useEffect(() => {
+    if (!highlightTargetId) return;
+    const tryScroll = () => {
+      const el = document.getElementById(`target-feedback-${highlightTargetId}`) ||
+                 document.querySelector(`[data-feedback-id="${highlightTargetId}"]`) ||
+                 document.querySelector(`[data-customer-id="${highlightTargetId}"]`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    };
+    tryScroll();
+    const t1 = setTimeout(tryScroll, 150);
+    const t2 = setTimeout(tryScroll, 500);
+    const t3 = setTimeout(tryScroll, 1000);
+    const tClear = setTimeout(() => setHighlightTargetId(null), 8000);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+      clearTimeout(tClear);
+    };
+  }, [highlightTargetId, feedbacks]);
 
   // Real-time polling when chat modal is open
   useEffect(() => {
@@ -614,9 +655,38 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
               filteredFeedbacks.map(f => {
                 const isNewReview = f.trangThai === 'ChoXuLy';
                 const cleanProductTitle = (f.productName || f.xeDangDung || 'Dịch vụ bảo dưỡng & phụ tùng chính hãng').replace(/\s*\([^)]*\)/g, '').trim();
+                const isHighlighted = highlightTargetId && (
+                  f.id === highlightTargetId ||
+                  f.customerId === highlightTargetId ||
+                  f.id.toLowerCase().includes(highlightTargetId.toLowerCase()) ||
+                  highlightTargetId.toLowerCase().includes(f.id.toLowerCase()) ||
+                  (f.productName && f.productName.toLowerCase().includes(highlightTargetId.toLowerCase())) ||
+                  (highlightTargetId.toLowerCase().includes(f.hoTen.toLowerCase()))
+                );
 
                 return (
-                <div key={f.id} className="rounded-2xl p-5" style={{ background: 'white', border: `1px solid ${isNewReview ? 'var(--color-amber-300)' : 'var(--color-zinc-200)'}` }}>
+                <div
+                  key={f.id}
+                  id={`target-feedback-${f.id}`}
+                  data-feedback-id={f.id}
+                  data-customer-id={f.customerId}
+                  className={`rounded-2xl p-5 transition-all duration-300 ${
+                    isHighlighted
+                      ? 'ring-4 ring-red-500 bg-red-50/50 shadow-xl shadow-red-500/20 animate-pulse'
+                      : ''
+                  }`}
+                  style={{
+                    background: 'white',
+                    border: isHighlighted
+                      ? '2px solid #ef4444'
+                      : `1px solid ${isNewReview ? 'var(--color-amber-300)' : 'var(--color-zinc-200)'}`
+                  }}
+                >
+                  {isHighlighted && (
+                    <div className="mb-3 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-600 text-white text-xs font-bold shadow-md animate-bounce">
+                      <span>🔔</span> Đánh giá vừa chọn từ thông báo (#{f.id})
+                    </div>
+                  )}
                   <div className="flex items-start justify-between gap-4 flex-wrap">
                     <div className="flex items-center gap-3">
                       <div className="flex items-center justify-center rounded-full font-700"

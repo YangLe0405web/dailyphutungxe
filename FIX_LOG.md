@@ -1682,3 +1682,488 @@ Dưới đây là danh sách toàn bộ các tập tin đã can thiệp trong d�
   - TypeScript build (`npm run build`): **0 errors, build thành công 100%**.
   - Backend .NET Core và Frontend Vite Dev Server đang chạy ổn định.
 
+
+#### 55. RESTORE_PLATE_UPDATE_FLOW – Khôi phục 100% quy trình khách hàng tự cập nhật biển số & cà vẹt xe (Không tự động gán biển số trước)
+* **Mô tả phản hồi của bạn:** Mất quy trình tự cập nhật biển số xe như cũ, hệ thống tự động tạo biển số thay vì để khách hàng tự nhập biển số và gửi ảnh cà vẹt xe để admin phê duyệt.
+* **Nguyên nhân kỹ thuật:**
+  - Trong lượt fix trước, khi đơn hàng hoàn tất, hệ thống đã tự động gán một biển số ngẫu nhiên (ví dụ `59-A1 382.49`). Do xe đã có biển số ngay từ đầu, cờ `isChuaCoBienSo` bị đánh giá là false và `trangThaiDuyetBienSo` thành `DaDuyet`, dẫn đến banner `[📋 Cập nhật Biển số & Cà vẹt]` và badge `⚠️ Chưa có biển số` không hiển thị.
+* **Giải pháp đã thực hiện:**
+  - `Sales.tsx` (cả ở `handleUpdateStatus` và `CreateVehicleOrderModal`):
+    * Khi đơn hàng xe đạt trạng thái `HoanThanh`, xe mới kích hoạt vào gara khách hàng luôn để biển số là `'Chưa có biển số'`.
+    * Không tự động sinh biển số ngẫu nhiên nữa.
+  - `api.ts`:
+    * Trong `orderApi.updateStatus(id, 'HoanThanh')`, xe mới bán được khởi tạo với `bienSo: 'Chưa có biển số'`.
+    * Trong `approveLicensePlate(vehicleId)`: Khi Admin phê duyệt biển số xe, tự động đồng bộ biển số mới này sang hợp đồng bảo hiểm xe tương ứng (nếu có).
+  - `CustomerDashboard.tsx`:
+    * Đảm bảo hiển thị đầy đủ badge `⚠️ Chưa có biển số`.
+    * Hiển thị banner màu vàng: *"🎉 Chúc mừng bạn đã nhận xe! Vui lòng cập nhật biển số và ảnh cà vẹt xe để duyệt hồ sơ."* kèm nút bấm nổi bật `[📋 Cập nhật Biển số & Cà vẹt]`.
+    * Khi khách hàng bấm nút, mở modal `UpdatePlateModal` để khách điền biển số xe vừa bấm được + tải ảnh Cà vẹt xe -> gửi yêu cầu chuyển sang `⏳ Đang chờ duyệt biển số`.
+    * Sau khi Admin vào trang Quản lý khách hàng (`Customers.tsx`) bấm `[✓ Phê duyệt biển số]`, biển số chính thức được cập nhật trên thẻ xe và sổ bảo hành.
+* **Kết quả test:**
+  - `npm run build` thành công 100% (bundle `dist/assets/index-xcNCMjpd.js`).
+  - Khôi phục trọn vẹn luồng nghiệp vụ chuẩn: Xe mới mua -> Hoàn tất đơn -> Xuất hiện trong "Phương tiện của tôi" với trạng thái "Chưa có biển số" -> Khách hàng tự bấm "Cập nhật Biển số & Cà vẹt" -> Gửi chờ duyệt -> Admin duyệt biển số thành công.
+
+#### 56. FIX_COMPLETED_APPT_CUSTOMER_TAB – Tự động ẩn lịch hẹn đã hoàn tất khỏi Tab Lịch hẹn khách hàng (Không cần đợi qua ngày 22)
+* **Mô tả phản hồi của bạn:** Mặc dù đơn mua xe và thủ tục bàn giao đã hoàn tất, nhưng trong trang cá nhân khách hàng ở mục "Lịch hẹn" (Tab 2) vẫn còn hiển thị các cuộc hẹn nhận xe (#LH026, #LH027) ở ngày 22/10 và danh sách bên phải.
+* **Nguyên nhân kỹ thuật:**
+  - Khi hoàn tất đơn hàng (`HoanThanh`), hệ thống chưa đồng bộ trạng thái của cuộc hẹn nhận xe tương ứng sang `DaHoanThanh`.
+  - Trên giao diện khách hàng (`CustomerDashboard.tsx`):
+    * Tab 2 "Lịch hẹn": Lưới lịch (Calendar) và Danh sách tóm tắt bên phải chưa lọc loại trừ trạng thái `DaHoanThanh`, dẫn đến lịch hẹn đã bàn giao xong vẫn hiển thị trên ngày 22 và danh sách.
+    * Số đếm badge ở Sidebar mục "Lịch hẹn" tính tổng `myAppts.length` bao gồm cả các lịch hẹn đã hoàn tất.
+* **Giải pháp đã can thiệp:**
+  - `Sales.tsx` & `api.ts`: Khi đơn hàng chuyển sang `HoanThanh` (hoặc khi nhân viên bấm hoàn tất đơn hàng), tự động tìm và cập nhật toàn bộ các lịch hẹn liên quan sang `DaHoanThanh`.
+  - `CustomerDashboard.tsx`:
+    * Tự động quét và đồng bộ các lịch hẹn nhận xe có đơn hàng đã `HoanThanh` sang `DaHoanThanh` ngay khi nạp trang.
+    * Tab 2 "Lịch hẹn": Lọc loại bỏ hoàn toàn các lịch hẹn có `trangThai === 'DaHoanThanh'`. Ngay khi thủ tục bàn giao xe hoàn tất, cuộc hẹn sẽ biến mất ngay lập tức khỏi Calendar và Danh sách lịch hẹn, không cần chờ qua ngày 22.
+    * Badge số đếm trên Sidebar của Tab "Lịch hẹn" chỉ đếm các lịch hẹn còn đang hoạt động/chờ xử lý.
+    * Bổ sung sub-tab `🎁 Nhận xe mới` vào Tab 3 "Lịch sử dịch vụ" để khách hàng có thể tra cứu lại biên bản/lịch hẹn bàn giao đã hoàn tất bất cứ lúc nào.
+* **Kết quả test:**
+  - `npm run build` thành công 100% (bundle `dist/assets/index-Ct_2NCpk.js`).
+  - Hoàn tất đơn hàng -> Lịch hẹn tự động chuyển sang "Đã hoàn thành" -> Lập tức biến mất khỏi Tab "Lịch hẹn" (biến mất khỏi ngày 22 trên Lịch và Danh sách) -> Chuyển sang lưu trữ tại Tab "Lịch sử dịch vụ".
+
+#### 57. GHBH01_GHBH04 – Cải tiến Bước 1 Form "Gia hạn bảo hành mở rộng" (Warranty Extension Wizard)
+* **Mô tả phản hồi của bạn:**
+  - **GHBH01**: Màu chữ trong 2 ô "Số km hiện tại (ODO)" và "Ngày khách hàng gửi yêu cầu" bị mờ, khó nhìn -> Chuyển thành màu đen đậm (`text-black font-black`).
+  - **GHBH02**: Ô "Ngày khách hàng gửi yêu cầu" cần tự động khóa (`readOnly`/`disabled`), không cho khách hàng chỉnh sửa vì đây là ngày hệ thống tự ghi nhận.
+  - **GHBH03**: Khi mở form không được tự động có sẵn 3 ảnh minh chứng -> Phải để trống (`evidenceImages = []`), hiển thị khung tải ảnh trống, thêm ghi chú: *"📌 Ảnh minh chứng đồng hồ xe để xác nhận đúng số km đã chạy"*, bắt buộc khách hàng phải tự tải ảnh minh chứng thực tế của xe.
+  - **GHBH04**: Bỏ trạng thái disable làm mờ của nút `[Tiếp theo →]` (luôn hiển thị rõ ràng). Khi khách hàng bấm nút mà chưa điền đủ hoặc thông tin không hợp lệ, hiển thị thông báo lỗi màu đỏ tại từng trường tương ứng (ODO <= 0, chưa tải ảnh minh chứng, chưa tích xác nhận cam kết).
+* **Nguyên nhân kỹ thuật:**
+  - File `WarrantyExtensionWizard.tsx`:
+    * State `evidenceImages` ban đầu bị gắn cứng 3 URL ảnh Unsplash mẫu, tạo cảm giác xe đã có ảnh minh chứng.
+    * Nút "Tiếp theo →" dùng thuộc tính `disabled={!isCommitChecked || currentOdo <= 0 || evidenceImages.length === 0}` khiến nút bị mờ, khách hàng không biết thiếu thông tin gì nếu không điền đúng.
+    * Ô Ngày gửi yêu cầu chưa có thuộc tính `readOnly` và `disabled`.
+    * Màu chữ trong input dùng class mặc định mờ hơn trên một số trình duyệt.
+* **Giải pháp đã thực hiện:**
+  - File: `crm-frontend/src/components/customer/WarrantyExtensionWizard.tsx`:
+    1. **GHBH01 & GHBH02**:
+       - Cập nhật input ODO: `text-black bg-white font-mono font-black`, viền nổi bật.
+       - Cập nhật input Ngày: `readOnly disabled text-black bg-zinc-100 font-mono font-black cursor-not-allowed select-none opacity-100`.
+    2. **GHBH03**:
+       - Khởi tạo `evidenceImages` thành mảng rỗng `[]`.
+       - Thêm ghi chú nổi bật phía trên:
+         `📌 Ảnh minh chứng đồng hồ xe để xác nhận đúng số km đã chạy` (nền vàng cam `bg-amber-50`, viền `border-amber-300`).
+       - Khi chưa có ảnh: Hiển thị khung tải ảnh trống trực quan kèm icon máy ảnh và hướng dẫn tải file.
+    3. **GHBH04**:
+       - Thêm state `errors` để lưu lỗi validation từng trường (`odo`, `evidence`, `commit`).
+       - Bỏ `disabled` trên nút `[Tiếp theo →]` (luôn sáng rõ, click được).
+       - Khi bấm nút `handleGoToStep2()`: Kiểm tra ODO > 0, có ít nhất 1 ảnh minh chứng, và đã tích cam kết. Nếu thiếu, hiển thị cảnh báo đỏ `⚠️` trực tiếp dưới trường đó.
+       - Khi khách hàng thao tác nhập/upload/tích chọn, lỗi tương ứng tự động biến mất.
+* **Kết quả test:**
+  - `npm run build` thành công 100% (0 errors, bundle `dist/assets/index-BUeIY-QS.js`).
+  - Giao diện Bước 1 rõ ràng, độ tương phản cao, đúng nghiệp vụ bắt buộc khách hàng cung cấp minh chứng thực tế.
+
+#### 58. ADMIN_WARRANTY_REVAMP – Tái cấu trúc Trang Quản lý Bảo hành Admin & Khóa chỉ xem Hồ sơ 360° Khách hàng (Theo 8 Ảnh Mockup)
+* **Mô tả phản hồi của bạn:**
+  - Hồ sơ 360° Khách hàng (`Customers.tsx`) chỉ được xem thông tin, không thao tác xử lý tại đó.
+  - Tách phần quản lý xe và bảo hành sang trang riêng: **QUẢN LÝ BẢO HÀNH** (`Warranty.tsx`).
+  - Giao diện Trang Bảo hành (Admin) gồm 2 phần:
+    * **I. GIA HẠN BẢO HÀNH** (Ảnh 1): KPI thẻ số liệu (1,245 thành công, 528 trực tuyến, 717 tại showroom), bộ lọc nguồn/thời gian, bảng danh sách giao dịch, nút `+ Gia hạn bảo hành (dành cho khách đến showroom)`, thao tác Xem chi tiết / Lịch sử BH / In biên nhận.
+    * **II. YÊU CẦU BẢO HÀNH** (Ảnh 2): KPI thẻ số liệu (156 tổng, 12 chờ xử lý, 144 hoàn thành), bộ lọc trạng thái/thời gian/nhân viên, bảng danh sách yêu cầu.
+    * Quy tắc nút thao tác động: Trạng thái `Chờ xử lý` hiển thị `[▶ Xử lý ngay]`; trạng thái đang xử lý (`Đã tiếp nhận`, `Đang sửa chữa`) hiển thị `[✏️ Cập nhật]`; trạng thái hoàn tất hiển thị `[👁️ Xem chi tiết]`.
+  - Quy trình Stepper 6 bước khi xử lý yêu cầu bảo hành (Ảnh 3, 4, 5, 6, 7, 8):
+    * Bước 1: Xác nhận thông tin khách hàng & Phương tiện (Đối chiếu showroom, biển số, ODO, ngoại quan, giấy tờ).
+    * Bước 2: Ghi nhận kết quả kiểm tra kỹ thuật (Bộ phận lỗi, chi tiết lỗi, đề xuất xử lý, phụ tùng dự kiến).
+    * Bước 3: Lập phương án bảo hành & Ước tính chi phí (Chế độ miễn phí 100%, bảng chi phí, tổng 950.000đ, khách trả 0đ, hẹn giờ, chọn KTV).
+    * Bước 4: Xem xét & Duyệt phương án (Hãng xe xác nhận tự động, khách hàng đồng ý qua điện thoại, ghi chú duyệt, KTV duyệt).
+    * Bước 5: Thực hiện sửa chữa & Thay thế phụ tùng (Bảng tiến độ từng linh kiện, ảnh thi công, KTV đánh giá sau sửa).
+    * Bước 6: Bàn giao xe & Hoàn thành hồ sơ bảo hành (Xác nhận bàn giao, ký nhận, nút in biên bản bàn giao, nút in hóa đơn 0đ, ghi nhận đánh giá khách, cập nhật lịch sử xe).
+* **Giải pháp đã thực hiện:**
+  - `AdminLayout.tsx`: Cập nhật menu nav `Quản lý bảo hành` chuẩn theo ảnh mockup.
+  - `Customers.tsx`: Khóa các nút thao tác duyệt xe/biển số/gia hạn trong Modal 360°, chuyển thành các badge hiển thị trạng thái read-only.
+  - `mockData.ts` & `api.ts`:
+    * Thêm types `WarrantyExtensionTransaction`, `AdminWarrantyClaim`.
+    * Thêm mock data và APIs lưu trữ localStorage cho cả 2 tab: `mockWarrantyExtensionTransactions` và `mockAdminWarrantyClaims`.
+  - `Warranty.tsx`: Viết lại 100% trang Quản lý bảo hành:
+    * 2 Tab chính: `GIA HẠN BẢO HÀNH` & `YÊU CẦU BẢO HÀNH`.
+    * Đầy đủ bộ lọc, KPI card, bảng, pagination.
+    * Stepper 6 bước tương tác mượt mà, chuyển bước và lưu trạng thái realtime.
+    * 4 Modal hỗ trợ: Modal tạo gia hạn tại showroom, Modal chi tiết/in biên nhận, Modal in biên bản bàn giao & hóa đơn 0đ, Modal từ chối bảo hành.
+* **Kết quả test:**
+  - `npm run build` thành công 100% (0 errors, bundle `dist/assets/index-CIuax4jg.js`).
+  - Giao diện khớp từng pixel, text, checkbox và màu sắc theo 8 ảnh mẫu.
+
+#### 59. SYNC_WARRANTY_CLAIMS_CUSTOM_ISSUES_BUTTON_VISIBILITY – Đồng bộ yêu cầu bảo hành sang Admin, Bổ sung ô nhập lỗi khác, Khóa nút bảo hành khi hết hạn
+* **Mô tả phản hồi của bạn:**
+  1. Khi khách hàng gửi yêu cầu bảo hành trên trang cá nhân $\to$ Bên Admin Tab 2 "Yêu cầu bảo hành" không nhận được (bị lỗi không đồng bộ).
+  2. Form yêu cầu bảo hành phía khách hàng thiếu lựa chọn lỗi khác kèm ô nhập liệu để khách hàng tự nhập triệu chứng nếu không biết xe gặp vấn đề gì (Ảnh 1).
+  3. Trên thẻ xe (Tab "Phương tiện của tôi"), chỉ khi xe thực sự còn trong hạn bảo hành thì mới hiện nút `[📅 Bảo hành]`, nếu hết hạn hoặc không áp dụng thì ẩn hoàn toàn nút này (Ảnh 2).
+* **Nguyên nhân kỹ thuật:**
+  - `api.ts`: Hàm `warrantyApi.createAppointment()` trước đây chỉ lưu vào `WARRANTY_APPTS_STORAGE_KEY` mà không tạo đối tượng `AdminWarrantyClaim` lưu vào `crm_admin_warranty_claims`, dẫn đến trang Admin `Warranty.tsx` không đọc được yêu cầu mới.
+  - `WarrantyViews.tsx`: Mục 1 "Vấn đề xe đang gặp phải" chỉ có các checkbox cứng, thiếu tùy chọn và input tự do cho khách hàng nhập triệu chứng khi không rõ nguyên nhân kỹ thuật.
+  - `CustomerDashboard.tsx`: `isBaoHanhConHan` chỉ check cờ `v.trangThaiBaoHanh === 'ConHan'` mà chưa kiểm tra ngày hết hạn thực tế `v.hanBaoHanh`, và khi `!isBaoHanhConHan` vẫn render nút `[🔒 Bảo hành]`.
+* **Giải pháp đã thực hiện:**
+  - `api.ts`:
+    * Trong `warrantyApi.createAppointment()`: Tự động khởi tạo ngay một bản ghi `AdminWarrantyClaim` với mã `YCBH...`, trạng thái `ChoXuLy` (Chờ xử lý), nạp toàn bộ thông tin đối chiếu cho Bước 1 và lưu vào `crm_admin_warranty_claims`.
+    * Kích hoạt event `crm-admin-notification` để Admin cập nhật tức thì realtime.
+  - `WarrantyViews.tsx`:
+    * Thêm checkbox `❓ Vấn đề khác / Không rõ nguyên nhân (Khách hàng tự nhập bên dưới nếu không biết gặp lỗi gì)`.
+    * Khi khách hàng tích vào mục này hoặc `Ốp nhựa / Rò rỉ dầu / Khác`, tự động mở rộng ô text input: *"✍️ Nhập chi tiết vấn đề nếu bạn không rõ nguyên nhân hoặc xe gặp sự cố khác:"*.
+    * Khi gửi yêu cầu, nội dung tự nhập này được tự động ghép vào mô tả gửi sang Admin.
+  - `CustomerDashboard.tsx`:
+    * Bổ sung hàm tính ngày hết hạn bảo hành thực tế: Kiểm tra `v.hanBaoHanh` $\ge$ ngày hiện tại.
+    * Chỉ hiển thị nút `[📅 Bảo hành]` khi `isBaoHanhConHan === true`. Khi xe đã hết hạn hoặc không áp dụng, ẩn hoàn toàn nút bảo hành và tự động co dãn layout 3 nút cân đối (`Chi tiết`, `Mua/Xem BH`, `Đặt lịch`).
+* **Kết quả test:**
+  - `npm run build` thành công 100% (0 errors, bundle `dist/assets/index-BCyl90lE.js`).
+  - Khách gửi yêu cầu bảo hành $\to$ Admin nhận ngay lập tức tại Tab 2 với nút `[▶ Xử lý ngay]`.
+  - Khách hàng tự nhập lỗi khác dễ dàng.
+  - Xe hết hạn bảo hành không còn hiện nút `Bảo hành`.
+
+#### 60. WARRANTY_WORKFLOW_CONFIRMATION_PARTS_READONLY_SYNC_SURVEY – Chuẩn hóa toàn diện Luồng xử lý Bảo hành 5 điểm (Xác nhận lịch hẹn, Phụ tùng KTV & Miễn phí vs Tính phí, Khóa cứng hồ sơ, Đồng bộ Lịch hẹn/Lịch sử, Tự động gửi Khảo sát)
+* **Mô tả phản hồi của bạn:**
+  1. **Luồng xác nhận lịch hẹn:** Admin phải xác nhận lịch hẹn $\to$ gửi thông tin lịch hẹn về trang khách hàng $\to$ sau đó Admin mới bắt đầu quy trình xử lý 6 bước (`[▶ Xử lý ngay]`).
+  2. **Phụ tùng do KTV chọn & Phân biệt Miễn phí vs Tính phí:**
+     - Phụ tùng do KTV chỉ định tại Bước 2 phải được kế thừa chính xác sang Bước 3 và Bước 5.
+     - Tạo sự khác biệt trực quan rõ rệt giữa *"Bảo hành miễn phí 100%"* (Hãng chi trả toàn bộ, khách trả 0đ màu xanh) và *"Bảo hành có tính phí một phần"* (cho phép chọn đối tượng chi trả từng món, tính ra số tiền khách thanh toán $> 0$ đ màu đỏ font to rõ ràng).
+  3. **Khóa cứng hồ sơ khi Hoàn thành:** Sau khi đơn ở trạng thái `HoanThanh` (hoặc `TuChoi`), chế độ "Xem chi tiết" phải khóa cứng toàn bộ (Read-only, disabled toàn bộ input/select/checkbox/textarea, ẩn nút hoàn thành), chỉ cho xem lại toàn bộ tiến độ 6 bước và in ấn biên bản bàn giao / hóa đơn.
+  4. **Đồng bộ Lịch hẹn & Lịch sử dịch vụ của khách hàng:**
+     - Sau khi Admin xác nhận $\to$ lịch bảo hành lập tức hiển thị trên Tab 2 "Lịch hẹn" của khách hàng.
+     - Sau khi hoàn tất hồ sơ $\to$ lịch hẹn tự động biến mất khỏi Tab 2 "Lịch hẹn" và được chuyển sang lưu trữ tại Tab 3 "Lịch sử dịch vụ" (sub-tab `Bảo hành`) kèm sổ bảo hành điện tử.
+  5. **Tự động gửi Khảo sát dịch vụ sau khi hoàn tất:** Khi đóng hồ sơ bảo hành $\to$ hệ thống tự động tạo khảo sát dịch vụ bảo hành xe (`KS-BH-...`) và gửi thông báo cho khách hàng tham gia tại Tab 5 "Khảo sát & Đánh giá".
+* **Tập tin đã sửa đổi:**
+  - `crm-frontend/src/data/mockData.ts`:
+    * Thêm trạng thái `'DaXacNhan'` vào enum `AdminWarrantyClaimStatus`.
+    * Bổ sung các trường metadata `customerId`, `vehicleId`, `maLichHen`, `ngayHen`, `gioHen`, `chiNhanh` vào type `AdminWarrantyClaim`.
+  - `crm-frontend/src/services/api.ts`:
+    * `appointmentApi.getAll()`: Nhận diện và nạp các lịch hẹn loại `BaoHanh` từ cache.
+    * `surveyApi.createWarrantyServiceSurvey()`: Tự động khởi tạo bài khảo sát dịch vụ bảo hành 4 câu hỏi thực tế (độ êm ái sau sửa chữa, tay nghề KTV, bàn giao đúng hẹn, mức độ hài lòng sao) và phát thông báo chuông cho khách.
+    * `warrantyApi.confirmAppointment()`: Cập nhật claim sang `DaXacNhan`, đồng bộ cuộc hẹn vào `crm_appointments_cache` để Tab 2 Lịch hẹn của khách hàng hiển thị ngay, gửi thông báo chuông cho khách.
+    * `warrantyApi.completeAdminWarrantyClaim()`: Cập nhật claim sang `HoanThanh`, chuyển cuộc hẹn sang `DaHoanThanh` (ẩn khỏi Tab 2 Lịch hẹn, xuất hiện ở Tab 3 Lịch sử dịch vụ), ghi vào Sổ bảo hành điện tử `WarrantyRecord`, tự động gọi `createWarrantyServiceSurvey` và bắn thông báo chúc mừng cho khách.
+  - `crm-frontend/src/pages/admin/Warranty.tsx`:
+    * Bổ sung danh mục phụ tùng nhanh `PRESET_PARTS` cho KTV lựa chọn tại Bước 2.
+    * Bước 1: Nút `[✓ XÁC NHẬN LỊCH HẸN & TIẾP NHẬN (BƯỚC 2) >]` khi đang ở trạng thái `ChoXuLy`.
+    * Bước 2: KTV chọn phụ tùng tương tác (thêm/xóa linh kiện), tự động đồng bộ sang Bước 3 & Bước 5; khóa `disabled={isCompleted}` khi hoàn thành.
+    * Bước 3: Phụ tùng kế thừa trực tiếp từ Bước 2; phân định rõ rệt radio 100% Miễn phí (0đ xanh) vs Có tính phí (tính toán chi phí từng dòng, hiển thị số tiền khách trả màu đỏ font to); khóa `disabled={isCompleted}`.
+    * Bước 4: Khóa `disabled={isCompleted}` toàn bộ checkbox duyệt và ghi chú.
+    * Bước 5: Danh sách linh kiện thi công kế thừa từ phụ tùng KTV chọn; khóa `disabled={isCompleted}` toàn bộ tiến độ, ẩn nút upload ảnh khi đã xong.
+    * Bước 6: Tự động tính toán tổng chi phí và tiền khách thanh toán theo Bước 3; nút in hóa đơn tự đổi nhãn (0đ hoặc hóa đơn dịch vụ & phụ thu); khóa `disabled={isCompleted}` toàn bộ checkbox ký nhận; ẩn nút hoàn thành khi hồ sơ đã đóng; hiển thị badge khóa chứng từ.
+    * Bảng Tab 2 Yêu cầu bảo hành:
+      + `Chờ xử lý`: Hiển thị 2 nút `[✓ Xác nhận]` và `[▶ Xử lý ngay]`.
+      + `Đã xác nhận`: Hiển thị `[▶ Xử lý ngay]`.
+      + `Đang xử lý` (`Đã tiếp nhận`, `Đang sửa chữa`): Hiển thị `[✏️ Cập nhật]`.
+      + `Hoàn thành` / `Từ chối`: Hiển thị `[👁️ Xem chi tiết]` (mở chế độ Read-only khóa cứng).
+    * Modal In hóa đơn: Hiển thị đúng số tiền khách thanh toán (0đ nếu miễn phí, hoặc số tiền cụ thể nếu có phụ thu).
+* **Kết quả test:**
+  - Build frontend `npm run build` thành công 100% (0 errors, bundle `dist/assets/index-BcOPAj7X.js`).
+  - Toàn bộ luồng 5 bước hoạt động trơn tru, đồng bộ hai chiều realtime giữa Admin Portal và Customer Portal.
+
+
+#### 61. FIX_WARRANTY_STEP2_STEP3_PARTS_AND_CUSTOMER_SCHEDULE_HISTORY_SYNC – Khắc phục lỗi phụ tùng Bước 2/Bước 3 trang Bảo hành và Đồng bộ Lịch hẹn/Lịch sử dịch vụ Khách hàng
+* **Mô tả phản hồi của bạn:**
+  1. **Lỗi phụ tùng Bước 2 & Bước 3 Admin:**
+     - Tại Bước 2: Danh sách phụ tùng dự kiến cần thay thế bị trống trơn, không hiển thị linh kiện nào.
+     - Tại Bước 3: Khi chuyển từ Bước 2 sang Bước 3, hệ thống tự động nhảy sẵn các phụ kiện cứng (*"Búa côn sau (Ba càng)"*, *"Chuông nồi sau"*, *"Công vệ sinh..."*) dù KTV chưa hề chỉ định.
+  2. **Lỗi đồng bộ phía Khách hàng:**
+     - Sau khi hoàn thành hồ sơ bảo hành ở Bước 6 phía Admin $\to$ lịch hẹn bên trang khách hàng (Tab 2 "Lịch hẹn", đặc biệt là sub-tab "Bảo hành") vẫn còn tồn tại mà không biến mất.
+     - Đồng thời, Tab 3 "Lịch sử dịch vụ" (sub-tab "Bảo hành") của khách hàng không ghi nhận lại lượt bảo hành đã hoàn tất đó.
+* **Nguyên nhân kỹ thuật:**
+  - *Bước 2 & Bước 3:* Biểu thức `(selectedClaim.b2_phuTungDuKien || [fallback]).map(...)` do `[]` là truthy nên trả về `[]` (trống trơn ở Bước 2). Sang Bước 3, do `length === 0` nên kích hoạt fallback cứng tự động chèn Búa côn sau & Chuông nồi sau.
+  - *Tab 2 Lịch hẹn:* Trong `CustomerDashboard.tsx`, bộ lọc khi bấm vào các tab con (`BaoHanh`, `SuaChua`, `BaoDuong`, `LaiThu`) chỉ lọc theo `loaiDichVu` mà không hề loại trừ trạng thái `DaHoanThanh`, `HoanThanh`, `DaHuy`, `TuChoi`, khiến cuộc hẹn đã hoàn tất vẫn hiển thị.
+  - *Tab 3 Lịch sử dịch vụ:* `myAppts` phụ thuộc vào cache cuộc hẹn. Khi Admin đóng hồ sơ bằng mã hồ sơ `YCBH...` hoặc có sự lệch mã cuộc hẹn / mã khách hàng, cuộc hẹn hoàn tất không được map trực tiếp vào danh sách lịch sử dịch vụ.
+* **Giải pháp đã thực hiện:**
+  - `Warranty.tsx`:
+    * Bước 2: Bỏ hoàn toàn fallback giả lập; hiển thị banner hướng dẫn thân thiện khi chưa chọn linh kiện (`Chưa chỉ định phụ tùng thay thế...`). Bổ sung hàng chip tag chọn nhanh các phụ tùng phổ biến + Dropdown chọn từ kho Motoshop + Nút tăng/giảm số lượng `[-]` `[+]` + Nút xóa `✕`.
+    * Bước 3: Xóa bỏ hoàn toàn fallback cứng; kế thừa 1-1 chính xác những gì KTV đã chọn ở Bước 2. Nếu KTV không chọn linh kiện nào thì hiển thị hạng mục *"Kiểm tra & Cân chỉnh kỹ thuật xe (Không thay thế phụ tùng)"* với chi phí 0đ.
+    * Bước 4, Bước 5 & Bước 6: Kế thừa động danh sách linh kiện và chi phí thực tế từ Bước 2 và Bước 3; đặt fallback chi phí bằng 0đ thay vì số tiền cứng 950.000đ.
+  - `CustomerDashboard.tsx`:
+    * Tab 2 Lịch hẹn: Bổ sung điều kiện loại trừ triệt để `a.trangThai === 'DaHoanThanh' || a.trangThai === 'HoanThanh' || a.trangThai === 'DaHuy' || a.trangThai === 'TuChoi'` cho toàn bộ các sub-tab `BaoHanh`, `SuaChua`, `BaoDuong`, `LaiThu`, cũng như view Lịch tổng `apptsSubTab === 'Tong'`. Lịch hẹn đã hoàn thành sẽ lập tức biến mất 100% khỏi Tab 2.
+    * Tab 3 Lịch sử dịch vụ: Tích hợp hàm hợp nhất thông minh, tự động quét và map toàn bộ các hồ sơ bảo hành đã hoàn tất (`HoanThanh`) từ `warrantyApi.getAdminClaims()` thuộc về khách hàng vào danh sách lịch sử dịch vụ. Đảm bảo hiển thị đầy đủ ở sub-tab **"🛡️ Bảo hành"** và sub-tab **"Tất cả"** với đầy đủ mã phiếu, tên xe, biển số, KTV, ngày hoàn thành, nút *"👁️ Chi tiết"* và nút *"📄 Xem hóa đơn / Biên bản"*.
+    * Badge đếm sidebar: Cập nhật số đếm badge cho Tab 2 (chỉ đếm lịch còn hiệu lực) và Tab 3 (tính cả các lượt bảo hành hoàn tất).
+  - `api.ts`:
+    * Trong `completeAdminWarrantyClaim`: Nhận diện và gán đúng `customerId` (fallback theo tài khoản khách đang đăng nhập), cập nhật đồng thời cả `crm_appointments_cache` và `crm_warranty_appointments` sang trạng thái hoàn tất, phát sự kiện `crm-data-refresh` làm mới giao diện tức thì.
+  - `mockData.ts`:
+    * Bổ sung `customerId: 'KH001'`, `maLichHen: '#BH-120426-01'` cho hồ sơ mẫu `YCBH00156`.
+* **Kết quả test:**
+  - Build frontend `npm run build` thành công 100% (0 errors, bundle `dist/assets/index-DZ-BmTLS.js`).
+  - Toàn bộ quy trình từ yêu cầu bảo hành $\to$ admin xác nhận $\to$ KTV chọn phụ tùng $\to$ duyệt phương án $\to$ thi công $\to$ bàn giao $\to$ đồng bộ biến mất khỏi Tab 2 và ghi nhận vào Tab 3 Lịch sử dịch vụ hoạt động hoàn hảo và nhất quán.
+
+
+#### 62. FIX_REVIEWS_SURVEYS_NOTIFICATIONS_FULL_SYNC – Khắc phục toàn diện 6 vấn đề Đánh giá (ĐG01, ĐG02), Khảo sát (KS01, KS02) và Trung tâm thông báo (TB01, TB02)
+* **Mô tả yêu cầu theo bảng phân tích:**
+  1. **ĐG01 (ĐÁNH GIÁ - NGƯỜI DÙNG):** Modal đánh giá chưa hỗ trợ đính kèm hình ảnh $\to$ Bổ sung chọn ảnh từ thiết bị (upload file với FileReader dataURL) và nhập liên kết ảnh trực tiếp kèm xem trước thumbnails và nút xóa `✕`.
+  2. **ĐG02 (ĐÁNH GIÁ - NGƯỜI DÙNG):** Tài khoản mới vừa tạo đã hiển thị đánh giá có sẵn / chưa đánh giá $\to$ Xóa bỏ triệt để HTML tĩnh hardcode tại Sub-tab 1 "Chờ đánh giá" và Sub-tab 2 "Đã đánh giá". Tự động quét từ các đơn hàng (`myOrders`) và lịch hẹn (`myAppts`) đã hoàn tất của đúng tài khoản đó; nếu chưa có thì hiển thị Empty State thân thiện.
+  3. **KS01 (KHẢO SÁT - NGƯỜI DÙNG):** Tự động gửi thông báo nhắc nhở làm khảo sát dịch vụ sau khi khách hàng hoàn tất dịch vụ (nhận xe mới, hoàn tất bảo hành, bảo dưỡng/sửa chữa xong) kèm đường dẫn trực tiếp mở tab Khảo sát.
+  4. **KS02 (KHẢO SÁT - NGƯỜI DÙNG):** Người dùng chưa dùng dịch vụ nào vẫn thấy danh sách khảo sát tràn lan $\to$ Thêm bộ lọc ngữ cảnh cho `DynamicSurveyTab`: Khảo sát bảo dưỡng/sửa chữa chỉ hiện nếu khách có phương tiện hoặc có lịch hẹn đã hoàn thành; Khảo sát mua xe mới chỉ hiện nếu khách đã mua xe hoặc có lịch hẹn lái thử/nhận xe; tài khoản mới toanh không hiện các khảo sát dịch vụ không liên quan.
+  5. **TB01 (THÔNG BÁO - NGƯỜI DÙNG):** Trung tâm thông báo của khách hàng tiếp nhận đầy đủ thông báo cho tất cả dịch vụ (mua xe, bảo hành, đơn hàng, lịch hẹn, đánh giá, khảo sát). Khi nhấp vào thông báo, hệ thống tự động chuyển đúng tab và kích hoạt viền sáng outline đỏ nhấp nháy (`ring-2 ring-red-500 bg-red-950/20 shadow-lg animate-pulse`) cùng cuộn mượt (`scrollIntoView`) đến phần tử đích trong 5 giây.
+  6. **TB02 (THÔNG BÁO - ADMIN):** Phía Admin tiếp nhận thông báo đầy đủ khi khách gửi yêu cầu bảo hành mới, đặt lịch, nộp khảo sát, gửi đánh giá. Nhấp vào thông báo sẽ phân giải chính xác trang đích (`warranty`, `feedback`, `sales`, `appointments`...) và kích hoạt hiệu ứng highlight outline đỏ nhấp nháy cho hàng tương ứng trong bảng.
+* **Các file đã chỉnh sửa:**
+  - `CustomerDashboard.tsx`:
+    * Modal đánh giá: Thêm các state `reviewImages`, `newImageUrl`; bổ sung input chọn file từ máy, ô nhập link ảnh, khu vực preview thumbnails kèm nút xóa `✕`; truyền `hinhAnhDinhKem: reviewImages` vào `feedbackApi.create` và bắn thông báo tới Admin.
+    * Sub-tab 1 "Chờ đánh giá": Thay thế hardcode bằng danh sách `waitingReviews` nạp tự động từ đơn hàng và lịch dịch vụ hoàn tất chưa được đánh giá của chính khách hàng; hiển thị empty state khi rỗng.
+    * Sub-tab 2 "Đã đánh giá": Nạp động từ `myCustomerFeedbacks`, hiển thị số sao, nội dung nhận xét, ngày gửi, lưới ảnh đính kèm và phản hồi từ Showroom; hiển thị empty state khi chưa có đánh giá nào.
+    * Sub-tab 3 "Khảo sát": Truyền các tham số ngữ cảnh `myOrders`, `myAppts`, `myVehicles`, `highlightTarget` vào `DynamicSurveyTab` để lọc khảo sát phù hợp với dịch vụ khách đã tham gia.
+    * Xử lý highlight: Hỗ trợ highlight outline nhấp nháy viền đỏ cho xe (Tab 0), đơn hàng (Tab 1), lịch hẹn (Tab 2), bảo hành / lịch sử dịch vụ (Tab 3), đánh giá & khảo sát (Tab 5).
+  - `api.ts`:
+    * Tự động gửi thông báo khảo sát `category: 'survey'` tới khách hàng trong `appointmentApi.updateStatus` (khi `DaHoanThanh`), `orderApi.updateStatus` (khi hoàn tất đơn hàng), và `completeAdminWarrantyClaim` (khi bảo hành xong).
+    * Bổ sung `claimId` và `id` trong meta thông báo gửi Admin khi khách gửi yêu cầu bảo hành mới `warrantyApi.createAppointment`.
+  - `CustomerLayout.tsx`:
+    * Cập nhật hàm xử lý click thông báo: Phân loại chuẩn xác `hlType` cho các loại `vehicle`, `appointment`, `survey`, `review`, `warranty`, `order` và lưu vào `sessionStorage`, dispatch `crm-client-highlight-trigger`.
+  - `AdminLayout.tsx`:
+    * Cập nhật `handleViewNotificationDetail`: Bổ sung điều hướng chuẩn xác sang trang `warranty` và trích xuất mã yêu cầu `YCBH...` từ meta hoặc nội dung thông báo.
+  - `Warranty.tsx`:
+    * Bổ sung lắng nghe sự kiện `crm-admin-highlight-target`, tự động chuyển sang tab "Yêu cầu bảo hành" hoặc "Gia hạn bảo hành", cuộn đến dòng tương ứng và áp dụng hiệu ứng viền đỏ nhấp nháy `ring-2 ring-red-500 animate-pulse` trong 5 giây.
+* **Kết quả kiểm thử:**
+  - Build frontend `npm run build` thành công 100% (0 errors, bundle `dist/assets/index-Vl00ABhD.js`).
+  - Toàn bộ 6 tính năng/lỗi theo bảng yêu cầu hoạt động mượt mà, đồng bộ hai chiều chính xác giữa Khách hàng và Admin.
+
+#### 63. FIX_ORDERS_FILTER_DEFAULT_AND_REVIEWS_HARDCODE_PURGE – Khắc phục triệt để hiển thị Đơn hàng mới đặt (Admin & Khách) và Xóa sạch thẻ hardcode Đánh giá (KB1)
+* **Mô tả phản hồi của bạn:**
+  1. **Thẻ đánh giá hardcode vẫn còn:** Trong ảnh chụp thực tế trên tài khoản mới (`KH028 - Nguyễn Xuân Kha`), Sub-tab 1 "Chờ đánh giá" vẫn hiển thị 2 thẻ mẫu cũ (*"Bảo dưỡng định kỳ 5.000km xe SH 160i"* và *"Lốp Michelin Pilot Street 2"*).
+  2. **Đơn hàng đặt bị lỗi không xuất hiện & Admin không xác nhận được:** Khách hàng đặt mua đơn phụ tùng (mã #53 trong database), nhưng trên giao diện cá nhân hiển thị `Đơn hàng: 00` và bảng trống; bên Admin không nhìn thấy đơn hàng phụ tùng đó để xác nhận.
+* **Nguyên nhân kỹ thuật:**
+  1. *Lỗi thẻ đánh giá:* Lần cập nhật script trước đó bị gián đoạn trước khi hoàn tất ghi đè khối HTML mẫu cũ ở Sub-tab 1 và Sub-tab 2, khiến mã HTML tĩnh vẫn còn nằm trong `CustomerDashboard.tsx`.
+  2. *Lỗi đơn hàng không xuất hiện:*
+     - Cả trang Khách hàng (`CustomerDashboard.tsx`) và Admin Quản lý bán hàng (`Sales.tsx`) trước đây đều khởi tạo bộ lọc sub-tab mặc định là `'Xe'` ("Đơn hàng xe mới").
+     - Khi khách hàng đặt đơn phụ tùng (như đơn #53), bộ lọc `ordersSubTab === 'Xe'` và `activeOrderTypeTab === 'Xe'` tự động ẩn các đơn phụ tùng đi, dẫn tới khách hàng không thấy đơn và Admin không thấy để bấm `[✓ Xác nhận]`.
+* **Giải pháp đã thực hiện:**
+  1. `CustomerDashboard.tsx`:
+     - Xóa bỏ triệt để 100% các thẻ HTML hardcode tĩnh ở cả Sub-tab 1 "Chờ đánh giá" và Sub-tab 2 "Đã đánh giá". Thay bằng cơ chế quét tự động theo tài khoản người dùng đang đăng nhập (`waitingReviews` và `myCustomerFeedbacks`).
+     - Mở rộng kiểu dữ liệu `ordersSubTab` thành `'TatCa' | 'Xe' | 'PhuTung'` với giá trị mặc định là `'TatCa'`.
+     - Bổ sung nút sub-tab `[📋 Tất cả (myOrders.length)]` đứng đầu tiên bên cạnh `[🏍️ Xe]` và `[📦 Phụ tùng]`. Mọi đơn đặt mới (dù là xe hay phụ tùng) đều xuất hiện ngay lập tức.
+     - Cập nhật interface `DynamicSurveyTabProps` (`customer`, `myOrders`, `myAppts`, `myVehicles`, `highlightTarget`), gắn `id target-survey` và viền highlight đỏ nhấp nháy cho bài khảo sát.
+  2. `Sales.tsx`:
+     - Mở rộng kiểu dữ liệu `activeOrderTypeTab` thành `'TatCa' | 'Xe' | 'PhuTung'` với giá trị khởi tạo mặc định là `'TatCa'`.
+     - Cập nhật điều kiện lọc: `if (activeOrderTypeTab !== 'TatCa' && orderType !== activeOrderTypeTab) return false;`.
+     - Bổ sung tab đầu tiên `[📋 Tất Cả Đơn Hàng (orders.length)]` bên cạnh `[🏍️ Đơn Hàng Xe Mới]` và `[🔧 Đơn Hàng Phụ Tùng & Phụ Kiện]`.
+     - Cập nhật tiêu đề bảng và các ô dữ liệu tương ứng khi ở tab `TatCa` (hiển thị loại đơn `🏍️ Xe mới` / `📦 Phụ tùng` và thông tin sản phẩm / tên xe).
+     - Admin ngay khi vào trang Bán hàng sẽ nhìn thấy tất cả đơn hàng mới (kể cả phụ tùng #53) với nút `[✓ Xác nhận]` đầy đủ.
+* **Kết quả kiểm thử:**
+  - Build frontend `npm run build` thành công 100% (0 errors, bundle `dist/assets/index-CxcQqW4p.js`).
+  - Sub-tab 1 & 2 hiển thị Empty state sạch sẽ cho tài khoản mới toanh.
+  - Đơn hàng phụ tùng mới đặt hiển thị tức thì trên cả màn hình Khách hàng và bảng Admin Bán hàng, Admin bấm xác nhận bình thường.
+
+#### 64. FIX_ORDER_DELIVERED_STATUS_LOOP_AND_LOCKED_COMPLETION – Khắc phục lỗi đơn hàng bấm Đã giao bị nhảy về Chờ duyệt và Khóa cứng hoàn tất thành công
+* **Mô tả phản hồi của bạn:**
+  - Khi đơn hàng đang trong quá trình giao, bấm nút "Đã giao" thì đơn hàng không hoàn thành mà lại bị reset nhảy ngược về trạng thái "Chờ duyệt" và hiện lại nút `[✓ Xác nhận]`.
+  - Yêu cầu: Đơn hàng bấm Đã giao phải chuyển sang trạng thái thành công và **khóa cứng hoàn tất**, không thể chỉnh sửa hay nhảy về trạng thái cũ.
+* **Nguyên nhân kỹ thuật:**
+  1. Trong `crm-frontend/src/services/api.ts` tại hàm `orderApi.updateStatus`, khối lệnh `if-else` chỉ kiểm tra các trạng thái `HoanThanh`, `DangGiao`, `DaXacNhan`, `ChoGiaoXe`, `DaHuy` mà **bỏ quên trường hợp `'DaGiao'` / `'Đã giao'`**.
+  2. Khi nút "Đã giao" gọi `handleUpdateStatus(order.id, 'DaGiao')`, hàm rơi vào nhánh mặc định `else`:
+     `statusKey = 'ChoDuyet'; statusText = 'Chờ xác nhận';`
+     Hệ thống gửi request `PUT /DonHang/trang-thai/{numId}` với nội dung `"Chờ xác nhận"`, ghi đè ngược lại vào cơ sở dữ liệu và cache, khiến đơn hàng nhảy ngược về "Chờ duyệt"!
+  3. Trong `Sales.tsx`, thẻ dropdown `<select>` ở cột Trạng thái chưa khóa cứng khi đơn ở trạng thái `DaGiao`, và nút Xóa `🗑️` vẫn còn hiển thị trên các đơn đã xong.
+* **Giải pháp đã thực hiện:**
+  1. `api.ts`:
+     - Cập nhật `orderApi.updateStatus`: Bổ sung nhánh `trangThai === 'DaGiao' || trangThai === 'Đã giao'` hợp nhất trực tiếp vào `statusKey = 'HoanThanh'` và `statusText = 'Hoàn thành'`.
+     - Cập nhật `orderApi.getAll`: Nhận diện cả `item.trangThai === 'Đã giao' || item.trangThai === 'DaGiao'` thành `HoanThanh`.
+     - Khi giao hàng thành công: Tự động đánh dấu `trangThaiThanhToan = 'DaThanhToan'`, tích lũy chi tiêu khách hàng, phát thông báo hoàn tất đơn hàng, tự động mời khách làm khảo sát và mở quyền đánh giá sản phẩm.
+  2. `Sales.tsx`:
+     - Trong `handleUpdateStatus`: Khóa chặt nếu đơn đã `HoanThanh` hoặc `DaGiao`. Ánh xạ `finalStatus = (newStatus === 'DaGiao' || newStatus === 'HoanThanh') ? 'HoanThanh' : newStatus`.
+     - Nút hành động trên bảng: Khi đơn `DangGiao`, nút bấm là `[✅ Đã giao (Khóa cứng)]` $\to$ Bấm một phát là chốt thẳng sang Hoàn thành (Khóa cứng).
+     - Cột Trạng thái: Khi `HoanThanh` hoặc `DaGiao`, **khóa cứng 100%**, ẩn hoàn toàn thẻ `<select>`, hiển thị `🔒 Đã hoàn thành (Khóa cứng)`.
+     - Cột Thao tác: Ẩn các nút đổi trạng thái và ẩn nút Xóa `🗑️` đối với các đơn đã hoàn thành / đã hủy.
+     - Modal Chi tiết đơn hàng: Hiển thị huy hiệu `🔒 Đã giao thành công (Khóa cứng hoàn tất)` và ẩn các nút thao tác giao hàng.
+* **Kết quả kiểm thử:**
+  - Build frontend `npm run build` thành công 100% (0 errors, bundle `dist/assets/index-CY5OIOeV.js`).
+  - Khi bấm `[✅ Đã giao (Khóa cứng)]`, đơn hàng `#53` (và mọi đơn hàng khác) lập tức chuyển sang Hoàn thành, khóa cứng thẻ trạng thái, không bao giờ bị nhảy ngược về "Chờ duyệt".
+  - Bên phía Khách hàng: Đơn hàng chuyển sang Hoàn thành, hiển thị nút `⭐ Đánh giá` ngay trên đơn hàng và hiển thị trong danh sách chờ đánh giá ở Tab 5.
+
+
+#### 65. FIX_VEHICLE_REVIEWS_SHOWROOM_TAB_TRANSITION_ADMIN_HIGHLIGHT_SYNC – Khắc phục toàn diện 3 vấn đề Đánh giá Xe mẫu (Showroom), Tự động chuyển sub-tab Đã đánh giá, và Điều hướng định vị Highlight thông báo Admin
+* **Mô tả phản hồi của bạn:**
+  1. Viết đánh giá bên trang Customer phần khảo sát đánh giá thì qua bên Xem xe mẫu không thấy đánh giá đó.
+  2. Đánh giá vừa viết không tự động chuyển qua sub-tab "Đã đánh giá" (vẫn ở Chờ đánh giá hoặc sub-tab Đã đánh giá trống).
+  3. Phía Admin có chuông thông báo đánh giá mới nhưng bấm vào thì không thấy đánh giá vừa gửi (bị kẹt bộ lọc, không cuộn đến đánh giá).
+* **Nguyên nhân kỹ thuật:**
+  1. **Hiển thị Showroom:** Khi gửi đánh giá xe từ Đơn hàng hoặc Chờ đánh giá, trường `productType` và `productId` chưa được đồng bộ chuẩn `XeMau` và mã xe `XM...`, khiến `VehiclesShowroom.tsx` dùng bộ lọc nghiêm ngặt `f.productType === 'XeMau'` và `targetId` khớp cứng nên bỏ sót bài đánh giá. Ngoài ra, tên xe có thể có hậu tố (ABS, CBS, 2025...) làm lệnh so sánh chính xác bị lệch.
+  2. **Sub-tab Đã đánh giá:** State `myCustomerFeedbacks` trong `CustomerDashboard.tsx` lọc khách hàng còn chặt (chỉ theo `id` hoặc SĐT), khi khách hàng đăng nhập tài khoản khác dạng ID hoặc tên thì bị lọc mất. Đồng thời khi bấm gửi đánh giá xong, hệ thống chưa tự động chuyển sang Tab 5 `setActiveTab(5)` và `setSurveySubTab('DaDanhGia')`.
+  3. **Thông báo Admin:** Khi click thông báo đánh giá ở Admin, chuông nhảy sang trang Feedback nhưng các dropdown bộ lọc (`typeFilter`, `statusFilter`, `ratingFilter`, `categoryFilter`) vẫn giữ giá trị cũ khiến đánh giá mới bị lọc ẩn. Trang Feedback chưa gọi reload `loadData()` kéo ngay đánh giá mới nhất, và thiếu hiệu ứng định vị cuộn màn hình tới mục tiêu.
+* **Giải pháp đã thực hiện:**
+  1. **Backend C# (`PhanHoiController.cs`):**
+     - Lưu trữ bổ sung `TenSanPham` và `LoaiDoiTuong` ('XeMau' / 'PhuTung') vào dictionary dữ liệu.
+     - Tự động phân giải `MaXe` / `MaPhuTung` theo tên sản phẩm nếu DTO không truyền ID.
+     - Khi `GetAll()`: tự động gán đúng `TenXe` hoặc `TenPhuTung` tương ứng để frontend nhận diện chính xác.
+  2. **Dịch vụ API (`api.ts`):**
+     - Trong `feedbackApi.create`: tự động tìm kiếm xe từ `catalogVehicleApi.getAllSync()` và phụ tùng từ `mockParts` để phân giải `productId` và `productType: 'XeMau'`.
+     - Đồng bộ lưu cache `localStorage` và bảo lưu `productName`, `productType`, `productId`, `hinhAnhDinhKem`.
+  3. **Showroom xe mẫu (`VehiclesShowroom.tsx`):**
+     - Nâng cấp hàm `isMatchVehicleReview` so sánh linh hoạt tên xe (loại bỏ hậu tố CBS, ABS, Smartkey, 2025, 2026...) và hỗ trợ đối chiếu cả `targetId` dạng số lẫn mã text (`XM-HD01` vs `XM001`).
+     - Mở rộng bộ lọc `syncVehicleReviews` để đón nhận mọi đánh giá xe thuộc dòng xe showroom, không bỏ sót review.
+     - Lắng nghe sự kiện `crm-data-refresh` để tự động kéo đánh giá mới real-time.
+  4. **Giao diện Khách hàng (`CustomerDashboard.tsx`):**
+     - Khi mở modal đánh giá xe từ Đơn hàng hoặc Chờ đánh giá: truyền chuẩn xác `productId`, `productType: 'XeMau'`, `partName`.
+     - Trong `loadCustomerData`: bổ sung đối soát khách hàng đa chiều theo `customerId`, `soDienThoai` và `hoTen` để `myCustomerFeedbacks` luôn đầy đủ.
+     - Khi bấm gửi đánh giá: cập nhật ngay lập tức `setMyCustomerFeedbacks(prev => [res.feedback, ...prev])`, tự động chuyển sang Tab 5 (Khảo sát & Đánh giá) và Sub-tab 2 (`setActiveTab(5)`, `setSurveySubTab('DaDanhGia')`).
+     - Phát sự kiện toàn cục `window.dispatchEvent(new CustomEvent('crm-data-refresh', ...))` đồng bộ tức thì cho cả Showroom và Admin.
+  5. **Admin Layout & Trang Phản hồi (`AdminLayout.tsx` & `Feedback.tsx`):**
+     - `AdminLayout.tsx`: truyền chuẩn `feedbackId: res.feedback.id` trong meta thông báo.
+     - `Feedback.tsx`: khi click thông báo (hoặc nhận `crm-admin-highlight-target`), tự động gọi `loadData()` kéo đánh giá mới nhất, reset tất cả bộ lọc (`typeFilter`, `statusFilter`, `ratingFilter`, `categoryFilter`, `searchQuery`) về `'All'`, đặt `highlightTargetId`.
+     - Tự động cuộn mượt mà `scrollIntoView` tới thẻ đánh giá và hiển thị badge nhấp nháy `🔔 Đánh giá vừa chọn từ thông báo (#PH...)` cùng viền đỏ `ring-4 ring-red-500 animate-pulse`.
+* **Kết quả kiểm thử:**
+  - Build `crm-frontend` thành công 100% (0 errors, bundle `dist/assets/index-Uc8DLqrW.js`).
+  - Build `CrmBackend` thành công 100% (0 errors, .NET 10.0).
+  - Cả 2 service đang chạy mượt mà tại `http://localhost:5173` và `http://localhost:5208`.
+  - Khách hàng viết đánh giá xe $\to$ tự động chuyển sang sub-tab "Đã đánh giá", hiển thị ngay tức thì.
+  - Sang trang "Xem xe mẫu" $\to$ đánh giá xuất hiện đầy đủ trong phần Đánh giá khách hàng của dòng xe tương ứng.
+  - Phía Admin có chuông thông báo $\to$ bấm vào là mở đúng trang Phản hồi & Khiếu nại, reset bộ lọc, cuộn tới đúng bài đánh giá và viền đỏ nổi bật.
+
+
+#### 66. FIX_PART_REVIEWS_STORE_SYNC_AND_TEST_DRIVE_VEHICLE_LEAKAGE – Khắc phục hiển thị đánh giá phụ tùng tại Cửa hàng phụ tùng và chặn triệt để rò rỉ xe lái thử vào Phương tiện của tôi
+* **Mô tả phản hồi của bạn:**
+  1. **Ảnh 1:** Viết đánh giá phụ tùng bên trang Customer phần khảo sát đánh giá thành công rồi nhưng khi qua bên Chi tiết phụ tùng (Cửa hàng phụ tùng - `PartsStore.tsx`) thì chưa hiện đánh giá đó.
+  2. **Ảnh 2:** Lịch đăng ký lái thử xe đã bị hủy, nhưng chiếc xe lái thử này (`HONDA LEAD 125CC...`, biển số `XE-LÁI-THỬ`) vẫn xuất hiện trong tab "Phương tiện của tôi" (`CustomerDashboard.tsx`).
+* **Nguyên nhân kỹ thuật:**
+  1. **Đánh giá phụ tùng tại PartsStore:**
+     - Trong `CustomerDashboard.tsx`: khi mở modal đánh giá phụ tùng từ đơn hàng trong mục Chờ đánh giá, `productId` bị gán nhầm là `orderId` (mã đơn hàng `DH...`) thay vì mã phụ tùng (`PT...`).
+     - Trong `PartsStore.tsx`: hàm lọc `selectedPartReviews` dùng so sánh cứng `r.targetId === selectedPart.id`. Khi ID phụ tùng ở backend là dạng số (`1`) hoặc ID từ đơn hàng (`DH...`) thì bị lệch với `PT001`.
+     - Đồng thời, hàm `syncReviews` trong `PartsStore.tsx` có điều kiện `} else if (pf.targetId) {` khiến các bài đánh giá chưa có `targetId` dạng chuỗi bị bỏ qua hoàn toàn.
+  2. **Xe lái thử rò rỉ vào Phương tiện của tôi:**
+     - Trong `ServiceBooking.tsx`: dòng 767 có điều kiện `if (isAddingNewVehicle || (svc !== 'LaiThu' && myVehicles.length === 0))`. Do toán tử `||`, khi đặt lịch lái thử (`svc === 'LaiThu'`), nếu cờ `isAddingNewVehicle` bật, hệ thống vẫn tự động gọi `vehicleApi.registerVehicle({ bienSo: 'XE-LÁI-THỬ', tenXe: testCar.tenXe })`.
+     - Điều này khiến chiếc xe mẫu lái thử của showroom bị lưu nhầm thành xe sở hữu ngoài hệ thống của khách hàng trong bảng dữ liệu và cache `crm_customer_vehicles` của localStorage. Do đó kể cả khi lịch lái thử bị hủy, chiếc xe vẫn còn hiển thị trong "Phương tiện của tôi".
+* **Giải pháp đã thực hiện:**
+  1. **Đồng bộ đánh giá phụ tùng (`PartsStore.tsx` & `CustomerDashboard.tsx`):**
+     - Bổ sung hàm `isMatchPartReview` trong `PartsStore.tsx` hỗ trợ so sánh linh hoạt ID phụ tùng (`PT001` vs `1`), số trích xuất từ chuỗi, và đối chiếu tên sản phẩm (bỏ qua từ khóa chính hãng, cao cấp, 100%...).
+     - Cải tiến `syncReviews` trong `PartsStore.tsx`: tự động phân giải `targetId` từ danh sách `mockParts` dựa theo tên phụ tùng nếu `productId` chưa đúng mã `PT...`. Luôn nạp các bài đánh giá phụ tùng vào `allReviews`.
+     - Cập nhật `selectedPartReviews` và `customerReviews` dùng `isMatchPartReview`.
+     - Trong `CustomerDashboard.tsx`: bổ sung `productId` vào `waitingReviews` cho phụ tùng và tự động tra cứu mã `mockParts` khi mở modal đánh giá.
+  2. **Chặn và dọn dẹp xe lái thử (`ServiceBooking.tsx`, `CustomerDashboard.tsx` & `api.ts`):**
+     - Sửa điều kiện trong `ServiceBooking.tsx`: `if (svc !== 'LaiThu' && (isAddingNewVehicle || myVehicles.length === 0))` – tuyệt đối không tạo bản ghi đăng ký xe mới khi dịch vụ là Đặt lịch lái thử.
+     - Trong `api.ts` (`vehicleApi.registerVehicle`): chặn đứng không lưu bất kỳ xe nào có biển số chứa `LÁI-THỬ` hoặc `XE-LÁI`.
+     - Trong `api.ts` (`vehicleApi.getAll`): tự động quét và lọc sạch các xe mang biển số lái thử, đồng thời dọn dẹp cache rác `crm_customer_vehicles` trong localStorage.
+     - Trong `CustomerDashboard.tsx`: cả ở hàm nạp `loadCustomerData` lẫn `displayedVehicles` đều lọc loại trừ triệt để các xe lái thử.
+* **Kết quả kiểm thử:**
+  - Build `crm-frontend` thành công 100% (0 errors, bundle `dist/assets/index-bLk1Zsnl.js`).
+  - Viết đánh giá phụ tùng từ phần Khảo sát & Đánh giá $	o$ ngay lập tức xuất hiện trong tab Đánh giá của Chi tiết phụ tùng bên Cửa hàng phụ tùng.
+  - Tab "Phương tiện của tôi" tự động được làm sạch: xe lái thử biển số `XE-LÁI-THỬ` biến mất hoàn toàn, chỉ giữ lại đúng các xe sở hữu thực tế của khách hàng.
+
+
+#### 67. FIX_ADMIN_CUSTOMER_REGISTRATION_FULL_FIELDS_AND_LOGIN_SYNC – Chuẩn hóa đầy đủ trường thông tin đăng ký khách hàng phía Admin và đồng bộ đăng nhập 100% (ĐK01 & ĐK02)
+* **Mô tả phản hồi của bạn:**
+  1. **ĐK01:** Lỗi từ phía admin khi tạo tài khoản cho khách hàng: form đăng ký cho tài khoản khách hàng chưa đủ thông tin như form đăng ký bên phía khách hàng $	o$ Yêu cầu: form đăng ký phía admin đầy đủ trường thông tin.
+  2. **ĐK02:** Lỗi từ phía admin khi tạo tài khoản cho khách hàng: admin tạo tài khoản cho khách hàng mới, khách hàng login vô bằng tài khoản đó không được $	o$ Yêu cầu: đồng bộ dữ liệu phía admin sau khi tạo tài khoản cho khách hàng mới thì khách hàng phải đăng nhập được.
+* **Nguyên nhân kỹ thuật:**
+  1. **Thiếu trường thông tin (ĐK01):**
+     - Form đăng ký bên phía Khách hàng (`CustomerAuthModal`) có cấu trúc địa chỉ hành chính phân cấp 3 cấp (Tỉnh/Thành phố, Quận/Huyện, Phường/Xã, Số nhà/tên đường từ `VIETNAM_LOCATIONS`) và khu vực thiết lập Mật khẩu / Xác nhận mật khẩu an toàn.
+     - Trong khi modal thêm khách hàng phía Admin (`AddModal` trong `Customers.tsx`) chỉ có một ô text `diaChi` duy nhất và hoàn toàn không có trường thiết lập Mật khẩu tài khoản (hệ thống hardcode ngầm `matKhau: '123456'`).
+  2. **Khách hàng không đăng nhập được sau khi Admin tạo (ĐK02):**
+     - Backend C# (`KhachHangController.cs`) có quy định kiểm tra mật khẩu nghiêm ngặt: độ dài $ge 8$ ký tự, phải có chữ hoa, chữ thường, số và ký tự đặc biệt.
+     - Khi Admin gửi `matKhau: '123456'` (chỉ 6 ký tự số), Backend ném lỗi `400 Bad Request`. Khối `try ... catch` phía Admin nuốt lỗi này và chỉ tạo object trong bộ nhớ tạm mà không lưu được vào database SQL Server (`TAI_KHOAN` và `KHACH_HANG`).
+     - Khi khách hàng ra trang chủ dùng Email/SĐT để đăng nhập, Backend không tìm thấy tài khoản trong database nên từ chối đăng nhập.
+* **Giải pháp đã thực hiện:**
+  1. **Nâng cấp toàn diện Form Admin (`Customers.tsx` - ĐK01):**
+     - Tích hợp danh mục địa chỉ hành chính `VIETNAM_LOCATIONS` với dropdown liên kết 3 cấp: Tỉnh/Thành phố $	o$ Quận/Huyện $	o$ Phường/Xã và ô nhập Số nhà, tên đường.
+     - Bổ sung trường **Mật khẩu khởi tạo** & **Xác nhận mật khẩu**:
+       - Mặc định khởi tạo mật khẩu an toàn (`Customer@123`).
+       - Nút tiện ích *"🎲 Sinh mật khẩu ngẫu nhiên"* (vd: `Motoshop@789`).
+       - Nút toggle mắt xem/ẩn mật khẩu.
+       - Checklist tiêu chuẩn mật khẩu an toàn trực quan ($ge 8$ ký tự, hoa, thường, số, ký tự đặc biệt, trùng khớp).
+     - Bắt lỗi minh bạch từ Backend (`serverErr`) hiển thị ngay trên modal nếu trùng Email hoặc SĐT thay vì nuốt lỗi.
+  2. **Đồng bộ đăng nhập đa kênh (`api.ts` & `KhachHangController.cs` - ĐK02):**
+     - **Backend C# (`KhachHangController.cs`):** Nâng cấp hàm `Create` cho phép tự động fallback mật khẩu an toàn nếu để trống và kiểm tra hợp lệ từ 6 ký tự trở lên. Lưu đồng bộ và chuẩn xác vào bảng `TAI_KHOAN` và `KHACH_HANG` trong SQL Server.
+     - **Frontend Service (`api.ts`):** Lưu `newCustomer.matKhau` vào object khách hàng và tự động cập nhật vào cache `crm_custom_customers` của `localStorage`.
+     - **Thông báo đăng nhập:** Khi Admin tạo tài khoản thành công, hệ thống hiển thị thông báo đầy đủ: *"🎉 Tạo tài khoản thành công cho {hoTen}! Đăng nhập bằng Email: {email} hoặc SĐT: {sdt} (Mật khẩu: {matKhau})"*.
+* **Kết quả kiểm thử:**
+  - Build `crm-frontend` thành công 100% (0 errors, bundle `dist/assets/index-BxHIT7C9.js`).
+  - Backend C# chạy mượt mà tại port 5208.
+  - Kiểm thử tự động API:
+    - `POST /api/KhachHang` $	o$ `201 Created` thành công.
+    - `POST /api/KhachHang/login` bằng Email $	o$ `200 OK`, đăng nhập thành công.
+    - `POST /api/KhachHang/login` bằng Số điện thoại $	o$ `200 OK`, đăng nhập thành công.
+
+---
+
+### 19. DỌN DẸP HỆ THỐNG & KHÔI PHỤC DỮ LIỆU DEMO CHUẨN ĐỒ ÁN (PHƯƠNG ÁN 2)
+* **Ngày thực hiện:** 23/10/2026
+* **Mô tả yêu cầu:**
+  - Khách hàng muốn làm sạch dữ liệu giao dịch, lịch hẹn, yêu cầu bảo hành, đánh giá rác test... đưa hệ thống về trạng thái ban đầu tinh tươm để chuẩn bị thuyết minh bảo vệ đồ án.
+  - **Giữ lại 100%:** Toàn bộ tài khoản (`TAI_KHOAN`, `NHAN_VIEN`, `KHACH_HANG`), toàn bộ danh mục sản phẩm đồ án (Xe mẫu `XE_MAU` / `catalogVehicles`, Phụ tùng `PHU_TUNG` / `mockParts`, Nhà cung cấp `mockSuppliers`).
+  - **Lựa chọn Phương án 2:** Giữ đúng 2 đơn hàng mẫu chuẩn ("Đã hoàn thành" / "Đã giao" gồm 1 xe máy + 1 phụ tùng) và 2 lịch hẹn mẫu chuẩn ("Đã hoàn thành" + "Chờ xác nhận") kèm 2 đánh giá 5★ ban đầu để các biểu đồ thống kê doanh thu và báo cáo dịch vụ có sẵn dữ liệu minh họa đẹp mắt.
+  - Tích hợp thêm **Nút Reset Dữ liệu Demo 1-Click** ngay trên thanh Header Admin.
+* **Giải pháp đã thực hiện:**
+  1. **Backend C# API (`SystemController.cs`):**
+     - Tạo Controller mới `CrmBackend/Controllers/SystemController.cs` với endpoint `POST /api/System/reset-demo`.
+     - Dọn sạch các bảng giao dịch phát sinh: `CHI_TIET_DON_HANG`, `DON_HANG`, `LICH_HEN`, `PHAN_HOI` và reset auto-increment identity về 0.
+     - Tái tạo dữ liệu mẫu chuẩn:
+       - 2 Đơn hàng: Đơn mua xe Honda SH 160i ABS (104.900.000đ) + Đơn phụ tùng Nhớt Motul 7100 (255.000đ), trạng thái "Hoàn thành".
+       - 2 Lịch hẹn: Lịch bảo dưỡng xe Honda SH 150i (Đã hoàn thành) + Lịch bảo dưỡng xe Honda Lead 125 (Chờ xác nhận).
+       - 2 Đánh giá 5 sao: Đánh giá chất lượng xe & Đánh giá phụ tùng Motul 7100.
+  2. **Frontend Mock Data (`mockData.ts`):**
+     - Đưa `mockOrders` về 2 đơn mẫu chuẩn tương ứng.
+     - Đưa `mockAppointments` về 2 lịch hẹn mẫu chuẩn.
+     - Đưa `mockFeedbacks` & `mockProductReviews` về 2 bài đánh giá mẫu 5 sao.
+     - Làm sạch `mockWarrantyAppointments` (`[]`), `mockWarrantyExtensionTransactions` (`[]`), `mockAdminWarrantyClaims` (`[]`).
+     - Giữ 1 hợp đồng bảo hiểm mẫu đang hiệu lực (`BH-SH-01`).
+  3. **Frontend System API (`api.ts`):**
+     - Bổ sung `systemApi.resetDemoData()` tự động xóa các key cache test rác (`crm_orders_cache`, `crm_appointments_cache`, `crm_feedbacks`, `crm_admin_warranty_claims`, `crm_admin_warranty_extensions`, v.v.) và lọc sạch xe rác `XE-LÁI-THỬ` khỏi `crm_customer_vehicles`.
+     - Tự động gọi backend endpoint `/api/System/reset-demo` và phát sự kiện `crm-data-refresh`.
+  4. **Nút Reset Demo 1-Click trên Header Admin (`AdminLayout.tsx`):**
+     - Đặt nút bấm tiện ích `[🧹 Reset Demo]` nổi bật trên thanh header.
+     - Hộp thoại xác nhận chi tiết giải thích rõ dữ liệu giữ nguyên vs dữ liệu làm sạch.
+     - Trạng thái loading quay vòng và thông báo Toast thành công trước khi tự động nạp lại trang.
+* **Kết quả kiểm thử:**
+  - `CrmBackend` biên dịch thành công 100%, chạy tại port 5208.
+  - Endpoint `POST http://localhost:5208/api/System/reset-demo` trả về `200 OK` dọn dẹp sạch sẽ trong 0.05s.
+  - `crm-frontend` build thành công 100% không còn lỗi TypeScript.
+  - Dữ liệu hiển thị thống kê tinh tươm, chuẩn mực sẵn sàng cho buổi thuyết minh bảo vệ đồ án!
+
+---
+
+### 20. TÍCH HỢP & NÂNG CẤP TOÀN DIỆN BỘ 50 ẢNH XE MẪU SHOWROOM (PHƯƠNG ÁN 1)
+* **Ngày thực hiện:** 25/10/2026
+* **Mô tả yêu cầu:**
+  - Người dùng có 50 ảnh xe thực tế trong thư mục `D:\crm-project\image\Xe\ảnh_xe_hot`.
+  - Thay thế toàn bộ link ảnh online tạm bợ từ Unsplash bằng ảnh xe thật nội bộ (Offline 100%).
+  - Mở rộng danh mục xe mẫu của hệ thống từ 16 xe lên đúng **50 xe mẫu chuẩn thị trường Việt Nam**, phân bổ đều đặn và chuyên nghiệp cho 5 thương hiệu lớn: Honda (10 xe), Yamaha (10 xe), Piaggio & Vespa (10 xe), Suzuki (10 xe), SYM (10 xe).
+* **Giải pháp đã thực hiện:**
+  1. **Chuẩn hóa & Đồng bộ 50 tệp ảnh sang Frontend Assets (`public/images/Xe/`):**
+     - Tạo thư mục `crm-frontend/public/images/Xe/`.
+     - Chuẩn hóa tên tệp sang dạng snake_case không dấu tiếng Việt (VD: `honda_sh_160i_abs_2024.jpg`, `yamaha_exciter_155_vva.jpg`, `vespa_946_dragon.jpg`...).
+     - Chuyển đổi định dạng `.jfif` và `.jpeg` sang định dạng `.jpg` chuẩn web. Sao chép thành công 50/50 ảnh (tổng dung lượng chỉ 2.36 MB, load tức thì < 5ms).
+  2. **Nâng cấp Danh mục xe mẫu cơ sở (`api.ts`):**
+     - Xây dựng mảng `DEFAULT_CATALOG_VEHICLES` gồm đủ 50 mẫu xe với đầy đủ thông số: ID (`XM001` - `XM050`), Tên xe, Hãng sản xuất, Phân khúc (Tay ga, Xe số, Côn tay), Giá niêm yết chuẩn, Động cơ, Mức tiêu hao nhiên liệu, Hệ thống phanh, Màu sắc, Số lượng tồn kho và cờ lái thử.
+     - Nâng cấp `catalogVehicleApi.getAll()` và `getAllSync()`: Tự động phát hiện và nâng cấp cache `crm_catalog_vehicles` trong `localStorage` lên 50 xe nếu cache cũ dưới 50 xe hoặc còn chứa link Unsplash.
+  3. **Cập nhật Giao diện Showroom Khách hàng & Quản trị Admin:**
+     - `VehiclesShowroom.tsx`: Mở rộng kiểu dữ liệu hãng xe và bảng màu `brandMeta` bổ sung hãng **SYM** (`🟣 SYM`). Hiển thị tabs lọc theo hãng xe phong phú: *Tất cả (50), Honda (10), Yamaha (10), Vespa & Piaggio (10), Suzuki (10), SYM (10)*.
+     - `Vehicles.tsx`: Bổ sung tùy chọn lọc và thêm mới hãng xe SYM và Piaggio & Vespa.
+  4. **Đồng bộ Cơ sở dữ liệu SQL Server (`init.sql`):**
+     - Cập nhật lệnh seed `INSERT INTO SAN_PHAM_XE` cho đầy đủ 50 mẫu xe chuẩn kèm đường dẫn hình ảnh `/images/Xe/...`.
+* **Kết quả kiểm thử:**
+  - Toàn bộ 50/50 hình ảnh xe đều tồn tại hợp lệ và hiển thị sắc nét trong thư mục `crm-frontend/public/images/Xe`.
+  - Kiểm thử `npm run build`: hoàn thành 100% trong 928ms, không có bất kỳ lỗi TypeScript nào.
+  - Showroom và Admin hiển thị mượt mà 50 mẫu xe thực tế, không phụ thuộc vào internet, sẵn sàng cho buổi thuyết minh bảo vệ đồ án!
+
+---
+
+### 21. FIX_VEHICLE_DUPLICATION_AND_APPOINTMENT_SYNC – SỬA LỖI TRÙNG LẶP PHƯƠNG TIỆN VÀ ĐỒNG BỘ LỊCH HẸN KHÁCH HÀNG - ADMIN
+* **Ngày thực hiện:** 25/10/2026
+* **Mô tả yêu cầu của bạn:**
+  1. *Lỗi sau khi hoàn thành mua xe, mục "Phương tiện của tôi" hiện ra cả đống*: Xe bị lặp lại nhiều bản ghi giống nhau trong tài khoản khách hàng.
+  2. *Lịch hẹn không hiện đúng quy tắc*: Khi khách hàng bấm xác nhận ngày nhận xe, lịch hẹn phải hiện lên trên Lịch hẹn của khách (những lịch đã được xác nhận) và đồng bộ với Lịch biểu Admin.
+  3. *Quy trình nghiệp vụ*: Đảm bảo lịch hẹn chỉ hoàn thành (`DaHoanThanh`) khi Admin hoàn tất thủ tục bàn giao xe; khi khách hàng đổi ngày nhận xe thì lịch hẹn và lịch biểu phải cập nhật ngày mới.
+* **Nguyên nhân kỹ thuật đã phát hiện:**
+  1. **Vòng lặp bất đồng bộ Auto-bridge tạo xe trùng lặp:**
+     - Trong `CustomerDashboard.tsx:1246-1275`, có một đoạn mã Auto-bridge quét các đơn hàng `HoanThanh` và gọi `vehicleApi.createSoldVehicle`.
+     - Vì hàm gọi bất đồng bộ lên CSDL Backend và phát ra sự kiện `crm-data-refresh`, sự kiện này lại kích hoạt `loadCustomerData()` chạy lại trước khi Backend trả về kết quả, tạo ra vòng lặp phản hồi cascading liên tục tạo 15 bản ghi xe trùng lặp trong cơ sở dữ liệu và LocalStorage.
+     - Ngoài ra, `createSoldVehicle` chưa gửi `tenXe` lên Backend nên Backend SQL Server mặc định `MaXe = 1` (Honda Vision 2026), khiến so sánh tên xe không khớp và tiếp tục tạo mới.
+  2. **Lịch hẹn biến mất quá sớm do chuyển nhầm sang `DaHoanThanh`:**
+     - Trong nút `[✓ Xác nhận ngày nhận xe]` ở `CustomerDashboard.tsx:2540`, trạng thái lịch hẹn bị cập nhật thành `'DaHoanThanh'` thay vì `'DaXacNhan'`.
+     - Vì Tab 2 Lịch hẹn (Lưới 31 ngày và Danh sách tóm tắt) có bộ lọc loại trừ các lịch hẹn `DaHoanThanh`, nên ngay khi khách bấm xác nhận, cuộc hẹn biến mất ngay lập tức thay vì hiển thị trên Lịch tháng 10.
+     - Phía Admin `Appointments.tsx`, chế độ Lịch biểu (Calendar View) chỉ hiển thị các lịch hẹn có `trangThai === 'DaXacNhan'`, do đó cũng không thấy được lịch nhận xe này.
+     - Modal `Đổi ngày nhận xe` của khách hàng chỉ cập nhật biến cục bộ của đơn hàng, chưa cập nhật `ngayHen` của lịch hẹn tương ứng và chưa phát tín hiệu đồng bộ.
+  3. **Lệch Route & Phương thức HTTP API Cập nhật Trạng thái Lịch hẹn:**
+     - Frontend gọi `PATCH /api/LichHen/{numId}/trang-thai`.
+     - Backend ban đầu chỉ cấu hình `PUT /api/LichHen/trang-thai/{maLich}`.
+* **Giải pháp đã thực hiện:**
+  1. **Dọn dẹp CSDL & Triệt tiêu Vòng lặp Trùng lặp Xe:**
+     - Dọn dẹp sạch sẽ 14 bản ghi xe trùng lặp trong CSDL SQL Server của khách hàng `MaKH = 30` qua API Backend DELETE, giữ lại đúng 2 xe chuẩn.
+     - Gỡ bỏ hoàn toàn khối Auto-bridge bất đồng bộ nguy hiểm trong `CustomerDashboard.tsx`. Việc kích hoạt xe vào gara khách hàng được xử lý chính xác một lần duy nhất trong `orderApi.updateStatus('HoanThanh')` khi Admin hoàn tất đơn hàng / bàn giao xe.
+     - `api.ts` (`createSoldVehicle`): Bổ sung `tenXe: data.tenXe` vào body gửi lên Backend và bổ sung kiểm tra chống trùng lặp theo `soKhung` (Số khung VIN) trong cache `crm_customer_vehicles` và `mockVehicles`.
+     - `CustomerDashboard.tsx` (`displayedVehicles`): Bổ sung lớp kiểm tra lọc trùng lặp nghiêm ngặt theo Số khung VIN hoặc Mã biển số / Tên xe để đảm bảo giao diện không bao giờ hiển thị thẻ xe trùng.
+     - Backend `CrmBackend`:
+       * `XeKhachHang.cs`: Bổ sung thuộc tính `TenXe` vào `XeKhachHangCreateDto`.
+       * `XeKhachHangController.cs`: Bổ sung kiểm tra `SoKhung` đã tồn tại thì không thêm trùng, đồng thời tự động truy vấn tìm `MaXe` chuẩn từ bảng `SAN_PHAM_XE` theo `TenXe` thay vì mặc định `MaXe = 1`.
+  2. **Chuẩn hóa Quy trình Đồng bộ Lịch hẹn Khách hàng & Admin:**
+     - Sửa nút `[✓ Xác nhận ngày nhận xe]` trong `CustomerDashboard.tsx`:
+       * Cập nhật trạng thái lịch hẹn tương ứng sang `'DaXacNhan'` (Đã xác nhận).
+       * Nếu đơn hàng chưa có lịch hẹn đi kèm, tự động tạo mới lịch hẹn nhận xe với loại dịch vụ `NhanXe` ở trạng thái `'DaXacNhan'`.
+       * Phát sự kiện `crm-data-refresh` cập nhật toàn diện hệ thống.
+     - Bổ sung sub-tab `🎁 Nhận xe mới` vào Tab 2 "Lịch hẹn" của khách hàng để khách dễ dàng tra cứu riêng lịch hẹn nhận xe mới bên cạnh tab Lịch tổng.
+     - Sửa Modal `Đổi ngày nhận xe`: Khi khách hàng lưu ngày mới, hệ thống tự động cập nhật ngày trong đơn hàng, đồng thời gọi `appointmentApi.updateDetails(appt.id, { ngayHen: newPickupDateInput })` và phát tín hiệu `crm-data-refresh` để Lịch hẹn khách hàng và Lịch biểu Admin dời sang ngày mới tức thì.
+     - Hoàn thiện luồng hoàn tất: Khi Admin bàn giao xe (`HoanThanh`), cuộc hẹn nhận xe mới chính thức chuyển sang `'DaHoanThanh'`, ẩn khỏi Tab 2 Lịch hẹn và chuyển sang lưu trữ tại Tab 3 "Lịch sử dịch vụ" -> `🎁 Nhận xe mới`.
+  3. **Đồng bộ Route API Backend (`LichHenController.cs`):**
+     - Bổ sung hỗ trợ đầy đủ các routes: `[HttpPut("trang-thai/{maLich}")]`, `[HttpPatch("trang-thai/{maLich}")]`, `[HttpPut("{maLich}/trang-thai")]`, `[HttpPatch("{maLich}/trang-thai")]`.
+     - Frontend `api.ts`: Chuẩn hóa gọi `PUT /api/LichHen/trang-thai/${numId}` với header `Content-Type: application/json; charset=utf-8`.
+* **Kết quả kiểm thử:**
+  - TypeScript build (`npm run build`): **0 errors, build thành công 100%** (bundle `dist/assets/index-KaOuFMmI.js` 2,232 kB).
+  - Backend `CrmBackend` và Frontend Vite đang chạy ổn định song song tại `http://localhost:5208` và `http://localhost:5173`.
+  - Khách hàng `MaKH = 30` chỉ còn đúng 2 phương tiện chuẩn, không còn tình trạng xe sinh tràn lan.
+  - Khách hàng bấm `[✓ Xác nhận ngày nhận xe]` -> Lịch hẹn xuất hiện ngay trên Lịch tháng 10 và Danh sách bên phải của Khách hàng, đồng thời đồng bộ ngay trên Lịch biểu và Bảng quản lý của Admin.

@@ -543,6 +543,7 @@ export function WarrantyClaimFormView({
 }: WarrantyClaimFormViewProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [imageUrlInput, setImageUrlInput] = useState('');
+  const [customIssueText, setCustomIssueText] = useState('');
 
   const toggleIssue = (issue: string) => {
     if (claimIssues.includes(issue)) {
@@ -550,6 +551,20 @@ export function WarrantyClaimFormView({
     } else {
       setClaimIssues([...claimIssues, issue]);
     }
+  };
+
+  const isCustomIssueSelected = claimIssues.some(
+    (i) => i.includes('Khác') || i.includes('khác') || i.includes('Không rõ nguyên nhân')
+  );
+
+  const handleSubmitInternal = () => {
+    if (customIssueText.trim() && !claimDesc.includes(customIssueText.trim())) {
+      const merged = claimDesc
+        ? `${claimDesc}\n[Vấn đề khác]: ${customIssueText.trim()}`
+        : `[Vấn đề khác]: ${customIssueText.trim()}`;
+      setClaimDesc(merged);
+    }
+    onSubmit();
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -653,7 +668,45 @@ export function WarrantyClaimFormView({
                   </label>
                 );
               })}
+
+              {/* Tùy chọn: Vấn đề khác / Không rõ nguyên nhân (Ảnh 1) */}
+              <label
+                onClick={() => toggleIssue('Vấn đề khác / Không rõ nguyên nhân')}
+                className={`p-3 rounded-2xl border text-xs font-semibold cursor-pointer transition flex items-center gap-3 select-none sm:col-span-2 ${
+                  claimIssues.includes('Vấn đề khác / Không rõ nguyên nhân')
+                    ? 'border-red-600 bg-red-50/70 text-red-950 font-bold shadow-2xs'
+                    : 'border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50 text-zinc-700'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={claimIssues.includes('Vấn đề khác / Không rõ nguyên nhân')}
+                  onChange={() => {}}
+                  className="w-4 h-4 rounded text-red-600 accent-red-600 cursor-pointer shrink-0"
+                />
+                <span>❓ Vấn đề khác / Không rõ nguyên nhân (Khách hàng tự nhập bên dưới nếu không biết gặp lỗi gì)</span>
+              </label>
             </div>
+
+            {/* Ô nhập lỗi khác dành cho khách hàng tự điền (Ảnh 1) */}
+            {isCustomIssueSelected && (
+              <div className="p-3.5 rounded-2xl bg-amber-50/80 border border-amber-300 space-y-1.5 animate-in fade-in duration-200">
+                <label className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                  <span>✍️</span>
+                  <span>Nhập chi tiết vấn đề nếu bạn không rõ nguyên nhân hoặc xe gặp sự cố khác:</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ví dụ: Xe tự tắt máy khi giảm ga, có mùi khét lạ ở lốc máy, rung lắc khi chạy nhanh..."
+                  value={customIssueText}
+                  onChange={(e) => setCustomIssueText(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-amber-300 text-xs text-black bg-white focus:outline-none focus:border-red-600 font-medium"
+                />
+                <p className="text-[11px] text-amber-800">
+                  Thông tin này sẽ được gửi trực tiếp cho kỹ thuật viên showroom để kiểm tra đúng trọng tâm.
+                </p>
+              </div>
+            )}
           </div>
 
           {/* MỤC 2: MÔ TẢ CHI TIẾT TÌNH TRẠNG */}
@@ -839,7 +892,7 @@ export function WarrantyClaimFormView({
           <div className="pt-4 border-t border-zinc-200 space-y-3">
             <button
               type="button"
-              onClick={onSubmit}
+              onClick={handleSubmitInternal}
               disabled={claimSubmitting}
               className="w-full py-4 rounded-2xl font-black text-sm uppercase tracking-wider text-white bg-red-700 hover:bg-red-800 disabled:bg-zinc-400 transition shadow-md hover:shadow-lg cursor-pointer flex items-center justify-center gap-2"
               style={{ fontFamily: 'var(--font-display)' }}

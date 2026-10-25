@@ -12,6 +12,7 @@ namespace CrmBackend.Models
         public string? DiaChi { get; set; }
         public string? Email { get; set; }
         public string? SoThich { get; set; }
+        public string? Avatar { get; set; }
         public DateTime NgayTao { get; set; }
 
         // JOIN từ TAI_KHOAN
@@ -32,6 +33,7 @@ namespace CrmBackend.Models
         public string? DiaChi { get; set; }
         public string? Email { get; set; }
         public string? SoThich { get; set; }
+        public string? Avatar { get; set; }
         public string TenDangNhap { get; set; } = "";
         public string MatKhau { get; set; } = "";
     }
@@ -46,6 +48,7 @@ namespace CrmBackend.Models
         public string? DiaChi { get; set; }
         public string? Email { get; set; }
         public string? SoThich { get; set; }
+        public string? Avatar { get; set; }
     }
 
     // ── DTO đăng nhập khách hàng ──

@@ -92,12 +92,45 @@ export default function OnlineInsurancePurchaseView({
     }
   };
 
-  // Xác nhận mở popup Hợp đồng demo
+  // Xác nhận mở popup Hợp đồng demo (Bắt buộc phải có xe mới được mua bảo hiểm)
   const handleOpenDemoContract = () => {
-    if (!selectedVehicle) {
-      alert('Vui lòng chọn hoặc thêm phương tiện cần mua bảo hiểm!');
+    // BH09: Chặn nếu tài khoản bị khóa
+    if (customer?.trangThai === 'BiKhoa') {
+      alert('⚠️ TÀI KHOẢN BỊ KHÓA: Tài khoản của quý khách đang bị tạm khóa bởi Quản trị viên. Quý khách không thể thực hiện đăng ký mua bảo hiểm mới!');
       return;
     }
+
+    if (!selectedVehicle || vehicles.length === 0) {
+      alert('⚠️ YÊU CẦU: Bạn phải có ít nhất 1 phương tiện liên kết với tài khoản để mua bảo hiểm! Vui lòng đăng ký phương tiện trước.');
+      onAddNewVehicle();
+      return;
+    }
+
+    // BH08: Chặn ngày bắt đầu trong quá khứ
+    const todayStr = new Date().toISOString().split('T')[0];
+    if (startDate < todayStr) {
+      alert(`⚠️ Ngày bắt đầu hiệu lực (${startDate.split('-').reverse().join('/')}) không được nhỏ hơn ngày hôm nay (${todayStr.split('-').reverse().join('/')})!`);
+      return;
+    }
+
+    // BH04: Kiểm tra trùng gói bảo hiểm còn hiệu lực
+    const allContracts = insuranceApi.getAll();
+    const normPlate = (selectedVehicle.bienSo || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const duplicate = allContracts.find(c => {
+      if (c.trangThai !== 'HieuLuc') return false;
+      if (c.packageType !== selectedPkgId) return false;
+      const cPlateNorm = (c.bienSo || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const matchVeh = (selectedVehicle.id && c.vehicleId === selectedVehicle.id) ||
+        (normPlate && cPlateNorm && normPlate === cPlateNorm);
+      if (!matchVeh) return false;
+      return c.ngayKetThuc >= startDate;
+    });
+
+    if (duplicate) {
+      alert(`⚠️ PHƯƠNG TIỆN ĐÃ CÓ BẢO HIỂM CÙNG LOẠI:\n\nXe "${selectedVehicle.tenXe}" (${selectedVehicle.bienSo || 'Chưa có biển'}) hiện đã có hợp đồng "${duplicate.tenGoi}" (Số GCN: ${duplicate.soGCN}) đang còn hiệu lực đến ngày ${duplicate.ngayKetThuc.split('-').reverse().join('/')}.\n\nHệ thống không cho phép mua trùng gói bảo hiểm còn hạn. Vui lòng chọn gói khác hoặc sử dụng chức năng "Gia hạn hợp đồng" tại mục "Bảo hiểm của tôi"!`);
+      return;
+    }
+
     setShowDemoContract(true);
   };
 
@@ -185,6 +218,19 @@ export default function OnlineInsurancePurchaseView({
           BẢO HIỂM ĐIỆN TỬ CHÍNH HÃNG
         </span>
       </div>
+
+      {/* BH09: Banner cảnh báo nếu tài khoản khách hàng bị khóa */}
+      {customer?.trangThai === 'BiKhoa' && (
+        <div className="p-4 rounded-2xl bg-red-50 border-2 border-red-300 text-red-700 flex items-center gap-3">
+          <span className="text-2xl">🔒</span>
+          <div>
+            <div className="font-bold text-sm uppercase">Tài khoản hiện đang bị khóa</div>
+            <div className="text-xs text-red-600 mt-0.5">
+              Tài khoản của bạn đã bị khóa bởi Quản trị viên. Bạn không thể thực hiện giao dịch đăng ký hoặc thanh toán bảo hiểm trực tuyến. Vui lòng liên hệ bộ phận hỗ trợ chăm sóc khách hàng.
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Grid: Cột trái Form (8 cols) & Cột phải Tóm tắt đơn hàng (4 cols) - Chuẩn Ảnh 1 */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
@@ -275,14 +321,21 @@ export default function OnlineInsurancePurchaseView({
             </div>
 
             {vehicles.length === 0 ? (
-              <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex items-center justify-between">
-                <span>Bạn chưa có phương tiện nào liên kết trong tài khoản.</span>
+              <div className="p-4 rounded-2xl bg-red-50 border-2 border-red-300 text-xs text-red-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <div className="font-black text-red-800 uppercase flex items-center gap-1.5 font-mono">
+                    <span>⚠️</span> BẮT BUỘC PHẢI CÓ XE ĐỂ MUA BẢO HIỂM
+                  </div>
+                  <p className="text-[11px] text-red-700 mt-0.5 font-medium">
+                    Tài khoản của bạn hiện chưa có phương tiện nào. Vui lòng đăng ký phương tiện trước khi mua bảo hiểm.
+                  </p>
+                </div>
                 <button
                   type="button"
                   onClick={onAddNewVehicle}
-                  className="px-3 py-1.5 rounded-xl bg-red-700 text-white font-bold cursor-pointer"
+                  className="px-4 py-2 rounded-xl bg-red-700 hover:bg-red-800 text-white font-bold cursor-pointer shrink-0 shadow-sm transition"
                 >
-                  + Đăng ký xe mới
+                  + Đăng ký xe mới ngay
                 </button>
               </div>
             ) : (
@@ -439,6 +492,7 @@ export default function OnlineInsurancePurchaseView({
                 <label className="block text-[11px] font-semibold text-zinc-600 mb-1">Ngày bắt đầu hiệu lực</label>
                 <input
                   type="date"
+                  min={new Date().toISOString().split('T')[0]}
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
                   className="w-full p-2.5 rounded-xl border border-zinc-200 text-xs font-bold text-zinc-900 focus:outline-none focus:border-blue-600"
@@ -469,7 +523,7 @@ export default function OnlineInsurancePurchaseView({
                     value={couponCode}
                     onChange={(e) => setCouponCode(e.target.value)}
                     placeholder="[Nhập mã...]"
-                    className="flex-1 p-2.5 rounded-xl border border-zinc-200 text-xs font-bold uppercase font-mono focus:outline-none focus:border-blue-600"
+                    className="flex-1 p-2.5 rounded-xl border border-zinc-300 text-xs font-bold uppercase font-mono text-black bg-white placeholder:text-zinc-400 focus:outline-none focus:border-blue-600"
                   />
                   <button
                     type="button"
@@ -540,10 +594,23 @@ export default function OnlineInsurancePurchaseView({
               <button
                 type="button"
                 onClick={handleOpenDemoContract}
-                className="w-full py-3.5 rounded-2xl text-xs font-black uppercase tracking-wider bg-blue-700 hover:bg-blue-800 text-white shadow-md hover:shadow-lg transition cursor-pointer flex items-center justify-center gap-2"
+                disabled={vehicles.length === 0 || !selectedVehicle || customer?.trangThai === 'BiKhoa'}
+                className={`w-full py-3.5 rounded-2xl text-xs font-black uppercase tracking-wider transition flex items-center justify-center gap-2 ${
+                  customer?.trangThai === 'BiKhoa'
+                    ? 'bg-red-100 text-red-500 border border-red-300 cursor-not-allowed opacity-80'
+                    : vehicles.length > 0 && selectedVehicle
+                    ? 'bg-blue-700 hover:bg-blue-800 text-white shadow-md hover:shadow-lg cursor-pointer'
+                    : 'bg-zinc-300 text-zinc-500 cursor-not-allowed opacity-80'
+                }`}
                 style={{ fontFamily: 'var(--font-display)', letterSpacing: '0.04em' }}
               >
-                <span>XÁC NHẬN & THANH TOÁN ONLINE</span>
+                <span>
+                  {customer?.trangThai === 'BiKhoa'
+                    ? '🔒 TÀI KHOẢN BỊ KHÓA - KHÔNG THỂ MUA BẢO HIỂM'
+                    : vehicles.length > 0 && selectedVehicle
+                    ? 'XÁC NHẬN & THANH TOÁN ONLINE'
+                    : '⚠️ BẮT BUỘC PHẢI CÓ XE ĐỂ MUA BẢO HIỂM'}
+                </span>
               </button>
 
               <button
@@ -581,32 +648,32 @@ export default function OnlineInsurancePurchaseView({
               </button>
             </div>
 
-            {/* Nội dung hợp đồng demo */}
-            <div className="p-5 rounded-2xl bg-zinc-50 border border-zinc-200 text-xs space-y-3 leading-relaxed max-h-[60vh] overflow-y-auto">
-              <div className="text-center font-bold text-zinc-900 border-b border-zinc-200 pb-2">
+            {/* Nội dung hợp đồng demo - BH03: Đổi màu chữ sang màu đen rõ ràng */}
+            <div className="p-5 rounded-2xl bg-zinc-50 border border-zinc-200 text-xs text-black space-y-3 leading-relaxed max-h-[60vh] overflow-y-auto">
+              <div className="text-center font-bold text-black border-b border-zinc-200 pb-2">
                 CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM<br />
                 Độc lập - Tự do - Hạnh phúc
               </div>
 
-              <div className="grid grid-cols-2 gap-2 font-mono text-[11px] bg-white p-3 rounded-xl border border-zinc-200">
-                <div>Số GCN dự kiến: <strong>GCN-BV-2026-DEMO</strong></div>
-                <div>Đơn vị bảo hiểm: <strong>Bảo hiểm Bảo Việt</strong></div>
-                <div>Chủ phương tiện: <strong>{buyerName}</strong></div>
-                <div>Số điện thoại: <strong>{buyerPhone}</strong></div>
-                <div>Biển số xe: <strong>{selectedVehicle?.bienSo || 'Chưa gắn biển'}</strong></div>
-                <div>Tên phương tiện: <strong>{selectedVehicle?.tenXe}</strong></div>
-                <div>Số khung: <strong>{selectedVehicle?.soKhung || 'Đang cập nhật'}</strong></div>
-                <div>Thời hạn: <strong>{durationYears} năm (đến {endDate})</strong></div>
+              <div className="grid grid-cols-2 gap-2 font-mono text-[11px] bg-white text-black p-3.5 rounded-xl border border-zinc-300">
+                <div className="text-black font-semibold">Số GCN dự kiến: <strong className="text-black font-extrabold">GCN-BV-2026-DEMO</strong></div>
+                <div className="text-black font-semibold">Đơn vị bảo hiểm: <strong className="text-black font-extrabold">Bảo hiểm Bảo Việt</strong></div>
+                <div className="text-black font-semibold">Chủ phương tiện: <strong className="text-black font-extrabold">{buyerName}</strong></div>
+                <div className="text-black font-semibold">Số điện thoại: <strong className="text-black font-extrabold">{buyerPhone}</strong></div>
+                <div className="text-black font-semibold">Biển số xe: <strong className="text-black font-extrabold">{selectedVehicle?.bienSo || 'Chưa gắn biển'}</strong></div>
+                <div className="text-black font-semibold">Tên phương tiện: <strong className="text-black font-extrabold">{selectedVehicle?.tenXe || 'Chưa chọn'}</strong></div>
+                <div className="text-black font-semibold">Số khung: <strong className="text-black font-extrabold">{selectedVehicle?.soKhung || 'Đang cập nhật'}</strong></div>
+                <div className="text-black font-semibold">Thời hạn: <strong className="text-black font-extrabold">{durationYears} năm (đến {endDate})</strong></div>
               </div>
 
-              <div className="space-y-1.5">
-                <div className="font-extrabold text-zinc-900 uppercase">Quyền lợi và phạm vi bảo hiểm:</div>
-                <div className="text-zinc-700">• {selectedPackage.tenGoi} - Mức trách nhiệm: {selectedPackage.mucTrachNhiem}</div>
-                <div className="text-zinc-700">• Chi tiết: {selectedPackage.quyenLoi.join(', ')}</div>
-                <div className="text-zinc-700">• Phương thức thanh toán bắt buộc: <strong>Chuyển khoản ngân hàng (VietQR)</strong></div>
+              <div className="space-y-1.5 text-black">
+                <div className="font-extrabold text-black uppercase">Quyền lợi và phạm vi bảo hiểm:</div>
+                <div className="text-black font-medium">• {selectedPackage.tenGoi} - Mức trách nhiệm: <strong className="text-black font-bold">{selectedPackage.mucTrachNhiem}</strong></div>
+                <div className="text-black font-medium">• Chi tiết: {selectedPackage.quyenLoi.join(', ')}</div>
+                <div className="text-black font-medium">• Phương thức thanh toán bắt buộc: <strong className="text-black font-bold">Chuyển khoản ngân hàng (VietQR)</strong></div>
               </div>
 
-              <div className="text-zinc-500 text-[11px] italic">
+              <div className="text-zinc-700 text-[11px] italic font-medium">
                 Lưu ý: Hợp đồng chính thức sẽ được ký số điện tử và cấp mã QR Giấy chứng nhận ngay khi quý khách chuyển khoản thanh toán thành công.
               </div>
             </div>

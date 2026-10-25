@@ -274,7 +274,7 @@ export default function PartsPage() {
       giaKhuyenMai: null,
       soLuongTon: 10,
       moTa: '',
-      hinhAnh: 'https://images.unsplash.com/photo-1635773054018-22c6630f9a2e?w=500',
+      hinhAnh: '/images/phutung/phuoc_ohlins.webp',
       trangThaiHienThi: 'Hien',
     });
     setErrors({});
