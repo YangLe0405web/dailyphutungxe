@@ -32,7 +32,7 @@ export default function InsurancePage() {
   const [durationYears, setDurationYears] = useState<number>(1);
   const [paymentMethod, setPaymentMethod] = useState<'TienMat' | 'ChuyenKhoan'>('TienMat');
   const [couponCode, setCouponCode] = useState('');
-  const [couponDiscount, setCouponDiscount] = useState(0);
+  const [appliedCoupon, setAppliedCoupon] = useState<string | null>(null);
   const [insurer, setInsurer] = useState('Tổng Công ty Bảo hiểm Bảo Việt');
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [customVeh, setCustomVeh] = useState({
@@ -158,22 +158,29 @@ export default function InsurancePage() {
   }, [durationYears, currentPackageObj]);
 
   const vatFee = useMemo(() => Math.round(baseCalculatedFee * 0.1), [baseCalculatedFee]);
+
+  // BH06: Tự động tính lại chiết khấu khi thay đổi gói bảo hiểm hoặc số năm
+  const couponDiscount = useMemo(() => {
+    if (!appliedCoupon) return 0;
+    return Math.round(baseCalculatedFee * 0.1);
+  }, [appliedCoupon, baseCalculatedFee]);
+
   const totalAmount = useMemo(() => Math.max(0, baseCalculatedFee + vatFee - couponDiscount), [baseCalculatedFee, vatFee, couponDiscount]);
 
   const handleApplyCoupon = () => {
     if (!couponCode.trim()) return;
     const code = couponCode.trim().toUpperCase();
-    if (code === 'MOTOCARE10' || code === 'VIP10' || code === 'GIAM10') {
+    if (code === 'MOTOCARE10' || code === 'VIP10' || code === 'GIAM10' || code === 'VIP') {
+      setAppliedCoupon(code);
       const disc = Math.round(baseCalculatedFee * 0.1);
-      setCouponDiscount(disc);
-      alert(`Áp dụng mã ${code} thành công! Giảm ${formatVND(disc)} (10%)`);
+      alert(`Áp dụng mã ${code} thành công! Giảm 10% (${formatVND(disc)}). Giảm giá sẽ tự động cập nhật lại khi bạn thay đổi gói hoặc thời hạn.`);
     } else {
-      alert('Mã giảm giá không hợp lệ hoặc đã hết hạn!');
+      alert('Mã giảm giá không hợp lệ hoặc đã hết hạn! Thử mã "MOTOCARE10"');
     }
   };
 
   // Handle Create Contract Submit (BHX01 POS)
-  const handleCreateSubmit = (e: React.FormEvent) => {
+  const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setCreateErr(null);
 
@@ -189,10 +196,54 @@ export default function InsurancePage() {
       return;
     }
 
+    // BH08: Chặn ngày bắt đầu trong quá khứ
+    const todayStr = new Date().toISOString().split('T')[0];
+    if (startDate < todayStr) {
+      setCreateErr(`⚠️ Ngày bắt đầu hiệu lực (${startDate.split('-').reverse().join('/')}) không được nhỏ hơn ngày hôm nay (${todayStr.split('-').reverse().join('/')})!`);
+      return;
+    }
+
+    // BH04: Kiểm tra trùng gói bảo hiểm cùng loại còn hiệu lực cho xe này
+    const normPlate = bienSo.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const duplicate = contracts.find(c => {
+      if (c.trangThai !== 'HieuLuc') return false;
+      if (c.packageType !== selectedPkgType) return false;
+      const cPlateNorm = (c.bienSo || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const matchVeh = (selectedVehId && selectedVehId !== 'NEW' && c.vehicleId === selectedVehId) ||
+        (normPlate && cPlateNorm && normPlate === cPlateNorm);
+      if (!matchVeh) return false;
+      return c.ngayKetThuc >= startDate;
+    });
+
+    if (duplicate) {
+      setCreateErr(`⚠️ TRÙNG BẢO HIỂM: Phương tiện biển số "${bienSo}" hiện đã có gói "${duplicate.tenGoi}" (Số GCN: ${duplicate.soGCN}) đang còn hiệu lực đến ngày ${duplicate.ngayKetThuc.split('-').reverse().join('/')}. Không thể đăng ký mới gói cùng loại! Vui lòng chọn gói bảo hiểm khác hoặc sử dụng chức năng "Gia hạn hợp đồng".`);
+      return;
+    }
+
     const cust = currentSelectedCustomer!;
     const end = new Date(startDate);
     end.setFullYear(end.getFullYear() + durationYears);
     const endDateStr = end.toISOString().split('T')[0];
+
+    // BH07: Nếu là xe mới hoặc chưa lưu trong hồ sơ khách, tự động tạo phương tiện để gắn vào tài khoản khách hàng
+    let finalVehicleId = selectedVehId;
+    if (!finalVehicleId || finalVehicleId === 'NEW') {
+      try {
+        const createdVeh = await vehicleApi.createSoldVehicle({
+          customerId: cust.id,
+          tenXe: tenXe,
+          bienSo: bienSo,
+          soKhung: customVeh.soKhung.trim() || undefined,
+          soMay: customVeh.soMay.trim() || undefined,
+          hangXe: tenXe.split(' ')[0] || 'Honda',
+          mauSac: 'Tiêu chuẩn',
+        });
+        finalVehicleId = createdVeh.id;
+      } catch (err) {
+        console.warn('Could not persist vehicle to customer account:', err);
+        finalVehicleId = `XE-POS-${Date.now().toString().slice(-4)}`;
+      }
+    }
 
     const newContract = insuranceApi.create({
       customerId: cust.id,
@@ -200,7 +251,7 @@ export default function InsurancePage() {
       soDienThoai: cust.soDienThoai,
       email: cust.email,
       diaChi: cust.diaChi,
-      vehicleId: selectedVehId !== 'NEW' && selectedVehId ? selectedVehId : `XE-NEW-${Date.now().toString().slice(-4)}`,
+      vehicleId: finalVehicleId,
       tenXe: tenXe,
       bienSo: bienSo,
       soKhung: customVeh.soKhung.trim() || `SK${Date.now().toString().slice(-8)}`,
@@ -211,7 +262,7 @@ export default function InsurancePage() {
       phiBaoHiem: baseCalculatedFee,
       thueVAT: vatFee,
       tongTien: totalAmount,
-      maGiamGia: couponCode.trim() || undefined,
+      maGiamGia: appliedCoupon || couponCode.trim() || undefined,
       phuongThucThanhToan: paymentMethod,
       kenhDangKy: 'TaiQuay',
       nhaBaoHiem: insurer,
@@ -227,7 +278,7 @@ export default function InsurancePage() {
     setSelectedVehId('');
     setCreateNote('');
     setCouponCode('');
-    setCouponDiscount(0);
+    setAppliedCoupon(null);
     loadData();
     setViewingContract(newContract);
   };
@@ -313,7 +364,8 @@ export default function InsurancePage() {
             setDurationYears(1);
             setPaymentMethod('TienMat');
             setCouponCode('');
-            setCouponDiscount(0);
+            setAppliedCoupon(null);
+            setStartDate(new Date().toISOString().split('T')[0]);
             setCreateErr(null);
             setShowCreateModal(true);
           }}
@@ -498,9 +550,25 @@ export default function InsurancePage() {
                             <span>GCN / PDF</span>
                           </button>
                           <button
-                            onClick={() => setRenewingContract(c)}
-                            className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 transition cursor-pointer flex items-center gap-1"
-                            title="Gia hạn thời hạn hợp đồng bảo hiểm này"
+                            onClick={() => {
+                              const todayStr = new Date().toISOString().split('T')[0];
+                              const isActive = c.trangThai === 'HieuLuc' && c.ngayKetThuc >= todayStr;
+                              if (isActive) {
+                                alert(`⚠️ KHÔNG THỂ GIA HẠN:\n\nHợp đồng ${c.soGCN} (${c.tenGoi}) của xe ${c.bienSo} vẫn đang CÒN HIỆU LỰC đến ngày ${c.ngayKetThuc.split('-').reverse().join('/')}.\n\nTheo quy định nghiệp vụ, chỉ được phép gia hạn khi hợp đồng đã hết hiệu lực!`);
+                                return;
+                              }
+                              setRenewingContract(c);
+                            }}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 border ${
+                              c.trangThai === 'HieuLuc' && c.ngayKetThuc >= new Date().toISOString().split('T')[0]
+                                ? 'bg-zinc-100 text-zinc-400 border-zinc-200 cursor-not-allowed opacity-70'
+                                : 'bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200 cursor-pointer shadow-xs'
+                            }`}
+                            title={
+                              c.trangThai === 'HieuLuc' && c.ngayKetThuc >= new Date().toISOString().split('T')[0]
+                                ? `Hợp đồng còn hiệu lực đến ${c.ngayKetThuc.split('-').reverse().join('/')} (Không thể gia hạn)`
+                                : 'Gia hạn thời hạn hợp đồng bảo hiểm này'
+                            }
                           >
                             <span>🔄 Gia hạn</span>
                           </button>
@@ -859,6 +927,7 @@ export default function InsurancePage() {
                     <label className="block text-[11px] font-semibold text-zinc-600 mb-1">Ngày bắt đầu hiệu lực</label>
                     <input
                       type="date"
+                      min={new Date().toISOString().split('T')[0]}
                       value={startDate}
                       onChange={e => setStartDate(e.target.value)}
                       className="w-full p-2.5 text-xs rounded-xl border border-zinc-200 font-bold bg-white text-zinc-800 focus:outline-none focus:border-red-700"
@@ -873,7 +942,7 @@ export default function InsurancePage() {
                         placeholder="Mã: MOTOCARE10"
                         value={couponCode}
                         onChange={e => setCouponCode(e.target.value)}
-                        className="flex-1 p-2 text-xs rounded-xl border border-zinc-200 font-mono uppercase font-bold focus:outline-none focus:border-red-700 bg-white"
+                        className="flex-1 p-2 text-xs rounded-xl border border-zinc-300 font-mono uppercase font-bold text-black bg-white placeholder:text-zinc-400 focus:outline-none focus:border-red-700"
                       />
                       <button
                         type="button"
@@ -883,6 +952,19 @@ export default function InsurancePage() {
                         Áp dụng
                       </button>
                     </div>
+                    {appliedCoupon && (
+                      <div className="flex items-center justify-between mt-1 text-[11px] text-emerald-600 font-bold">
+                        <span>✓ Đã áp dụng mã {appliedCoupon} (-10%)</span>
+                        <button
+                          type="button"
+                          onClick={() => { setAppliedCoupon(null); setCouponCode(''); }}
+                          className="text-zinc-400 hover:text-red-600 cursor-pointer font-mono"
+                          title="Hủy mã giảm giá"
+                        >
+                          ✕ Gỡ
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1067,65 +1149,65 @@ export default function InsurancePage() {
                 </div>
 
                 {/* 2. CHỦ XE */}
-                <div className="p-3.5 rounded-xl bg-zinc-50 border border-zinc-200 space-y-1.5">
-                  <div className="text-[11px] font-bold text-zinc-900 uppercase font-mono tracking-wider">
+                <div className="p-3.5 rounded-xl bg-zinc-50 border border-zinc-200 space-y-1.5 text-black">
+                  <div className="text-[11px] font-bold text-black uppercase font-mono tracking-wider">
                     I. THÔNG TIN CHỦ PHƯƠNG TIỆN
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-zinc-700">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-black">
                     <div>
-                      Họ và tên: <strong className="text-zinc-900">{viewingContract.hoTenKH}</strong>
+                      Họ và tên: <strong className="text-black font-extrabold">{viewingContract.hoTenKH}</strong>
                     </div>
                     <div>
-                      Số điện thoại: <strong className="text-zinc-900 font-mono">{viewingContract.soDienThoai}</strong>
+                      Số điện thoại: <strong className="text-black font-mono font-extrabold">{viewingContract.soDienThoai}</strong>
                     </div>
                     <div className="sm:col-span-2">
-                      Địa chỉ: <span className="text-zinc-800">{viewingContract.diaChi}</span>
+                      Địa chỉ: <span className="text-black font-medium">{viewingContract.diaChi}</span>
                     </div>
                   </div>
                 </div>
 
                 {/* 3. PHƯƠNG TIỆN */}
-                <div className="p-3.5 rounded-xl bg-zinc-50 border border-zinc-200 space-y-1.5">
-                  <div className="text-[11px] font-bold text-zinc-900 uppercase font-mono tracking-wider">
+                <div className="p-3.5 rounded-xl bg-zinc-50 border border-zinc-200 space-y-1.5 text-black">
+                  <div className="text-[11px] font-bold text-black uppercase font-mono tracking-wider">
                     II. THÔNG TIN XE ĐƯỢC BẢO HIỂM
                   </div>
-                  <div className="grid grid-cols-2 gap-2 text-zinc-700">
+                  <div className="grid grid-cols-2 gap-2 text-black">
                     <div>
-                      Dòng xe: <strong className="text-zinc-900">{viewingContract.tenXe}</strong>
+                      Dòng xe: <strong className="text-black font-extrabold">{viewingContract.tenXe}</strong>
                     </div>
                     <div>
                       Biển số đăng ký:{' '}
                       <strong className="text-red-700 font-mono font-extrabold">{viewingContract.bienSo}</strong>
                     </div>
                     <div>
-                      Số khung: <span className="font-mono text-zinc-900">{viewingContract.soKhung}</span>
+                      Số khung: <span className="font-mono text-black font-bold">{viewingContract.soKhung}</span>
                     </div>
                     <div>
-                      Số máy: <span className="font-mono text-zinc-900">{viewingContract.soMay || 'Theo giấy tờ xe'}</span>
+                      Số máy: <span className="font-mono text-black font-bold">{viewingContract.soMay || 'Theo giấy tờ xe'}</span>
                     </div>
                   </div>
                 </div>
 
                 {/* 4. GÓI BẢO HIỂM & THỜI HẠN */}
-                <div className="p-3.5 rounded-xl bg-zinc-50 border border-zinc-200 space-y-2">
-                  <div className="text-[11px] font-bold text-zinc-900 uppercase font-mono tracking-wider">
+                <div className="p-3.5 rounded-xl bg-zinc-50 border border-zinc-200 space-y-2 text-black">
+                  <div className="text-[11px] font-bold text-black uppercase font-mono tracking-wider">
                     III. NỘI DUNG VÀ THỜI HẠN BẢO HIỂM
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-zinc-700">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-black">
                     <div>
-                      Gói bảo hiểm: <strong className="text-zinc-900">{viewingContract.tenGoi}</strong>
+                      Gói bảo hiểm: <strong className="text-black font-extrabold">{viewingContract.tenGoi}</strong>
                     </div>
                     <div>
-                      Thời hạn bảo hiểm: <strong className="text-zinc-900">{viewingContract.thoiHanNam} năm</strong>
+                      Thời hạn bảo hiểm: <strong className="text-black font-extrabold">{viewingContract.thoiHanNam} năm</strong>
                     </div>
                     <div>
-                      Từ ngày: <strong className="text-zinc-900 font-mono">{viewingContract.ngayBatDau}</strong>
+                      Từ ngày: <strong className="text-black font-mono font-bold">{viewingContract.ngayBatDau}</strong>
                     </div>
                     <div>
-                      Đến ngày: <strong className="text-zinc-900 font-mono">{viewingContract.ngayKetThuc}</strong>
+                      Đến ngày: <strong className="text-black font-mono font-bold">{viewingContract.ngayKetThuc}</strong>
                     </div>
                     <div className="sm:col-span-2 flex items-center justify-between pt-1 border-t border-zinc-200">
-                      <span className="font-semibold text-zinc-800">Tổng phí bảo hiểm đã thanh toán:</span>
+                      <span className="font-bold text-black">Tổng phí bảo hiểm đã thanh toán:</span>
                       <strong className="text-sm font-extrabold text-red-700 font-mono">
                         {formatVND(viewingContract.phiBaoHiem)}
                       </strong>

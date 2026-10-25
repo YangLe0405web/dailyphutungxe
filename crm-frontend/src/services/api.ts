@@ -1,3 +1,18 @@
+export function isSameCategory(catA?: string, catB?: string): boolean {
+  if (!catA || !catB) return false;
+  if (catA === catB) return true;
+  const a = catA.toLowerCase().trim();
+  const b = catB.toLowerCase().trim();
+  if (a === b) return true;
+  if (a.includes('ga') && b.includes('ga')) return true;
+  if ((a.includes('côn') || a.includes('con')) && (b.includes('côn') || b.includes('con'))) return true;
+  if ((a.includes('số') || a.includes('so')) && (b.includes('số') || b.includes('so')) && !a.includes('scrambler') && !b.includes('scrambler')) return true;
+  if ((a.includes('điện') || a.includes('dien')) && (b.includes('điện') || b.includes('dien'))) return true;
+  if (a.includes('scrambler') && b.includes('scrambler')) return true;
+  if (a.includes('underbone') && b.includes('underbone')) return true;
+  return false;
+}
+
 import {
   type Customer,
   type Vehicle,
@@ -39,6 +54,10 @@ import {
   EXTENDED_WARRANTY_PACKAGES,
   mockVehicleServiceHistories,
   type VehicleServiceHistoryRecord,
+  type WarrantyExtensionTransaction,
+  type AdminWarrantyClaim,
+  mockWarrantyExtensionTransactions,
+  mockAdminWarrantyClaims,
 } from '../data/mockData';
 import { addAdminNotification, addCustomerNotification } from './notifications';
 export { addAdminNotification, addCustomerNotification };
@@ -141,18 +160,27 @@ export const customerApi = {
       const map = new Map<string, Customer>();
       mockCustomers.forEach(c => map.set(c.id, c));
       customCustomers.forEach(c => map.set(c.id, { ...(map.get(c.id) || {}), ...c }));
+      // Đọc thêm tài khoản khách hàng đang đăng nhập nếu có
+      let curCust: Customer | null = null;
+      try {
+        const curRaw = localStorage.getItem('crm_current_customer');
+        if (curRaw) curCust = JSON.parse(curRaw);
+      } catch {}
+
       backendCustomers.forEach(c => {
         const existing = map.get(c.id);
+        const matchCur = curCust && (curCust.id === c.id || curCust.soDienThoai === c.soDienThoai || curCust.email?.toLowerCase() === c.email?.toLowerCase());
+        const bestAvatar = c.avatar || (matchCur ? curCust?.avatar : undefined) || existing?.avatar;
         if (existing) {
           map.set(c.id, {
             ...existing,
             ...c,
-            avatar: existing.avatar || c.avatar,
-            trangThai: existing.trangThai || c.trangThai,
-            tongChiTieu: existing.tongChiTieu || c.tongChiTieu,
+            avatar: bestAvatar || existing.avatar,
+            trangThai: c.trangThai || existing.trangThai,
+            tongChiTieu: Math.max(c.tongChiTieu || 0, existing.tongChiTieu || 0),
           });
         } else {
-          map.set(c.id, c);
+          map.set(c.id, { ...c, avatar: bestAvatar || c.avatar });
         }
       });
 
@@ -188,8 +216,35 @@ export const customerApi = {
           soDienThoai: data.soDienThoai,
           diaChi: data.diaChi,
           soThich: data.soThich,
+          avatar: data.avatar,
         }),
       });
+
+      // KH01: Đồng bộ avatar và thông tin vào local caches và current customer
+      try {
+        const cached = localStorage.getItem('crm_custom_customers');
+        let list: Customer[] = cached ? JSON.parse(cached) : [...mockCustomers];
+        const matchIdx = list.findIndex(c => {
+          const num = parseInt(c.id.replace(/\D/g, ''), 10);
+          return num === maKhInt || (data.id && c.id === data.id) || (data.soDienThoai && c.soDienThoai === data.soDienThoai);
+        });
+        if (matchIdx !== -1) {
+          list[matchIdx] = { ...list[matchIdx], ...data };
+          localStorage.setItem('crm_custom_customers', JSON.stringify(list));
+        }
+
+        const curRaw = localStorage.getItem('crm_current_customer');
+        if (curRaw) {
+          const cur: Customer = JSON.parse(curRaw);
+          const curNum = parseInt(cur.id.replace(/\D/g, ''), 10);
+          if (curNum === maKhInt || (data.id && cur.id === data.id) || (data.soDienThoai && cur.soDienThoai === data.soDienThoai)) {
+            const updatedCur = { ...cur, ...data };
+            localStorage.setItem('crm_current_customer', JSON.stringify(updatedCur));
+          }
+        }
+      } catch {}
+
+      window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'customer_updated' } }));
       return res.ok;
     } catch (err) {
       console.warn('[customerApi.update] Backend call failed, applied locally:', err);
@@ -268,6 +323,7 @@ export const customerApi = {
       soXe: '',
       tongChiTieu: 0,
       avatar: (data as any).avatar || '',
+      matKhau: data.matKhau || 'Customer@123',
     };
 
     const existIdx = mockCustomers.findIndex(c => c.id === newCustomer.id || c.email === newCustomer.email);
@@ -276,6 +332,15 @@ export const customerApi = {
     } else {
       mockCustomers[existIdx] = newCustomer;
     }
+
+    try {
+      const cached = localStorage.getItem('crm_custom_customers');
+      let list: Customer[] = cached ? JSON.parse(cached) : [];
+      const exIdx = list.findIndex(c => c.id === newCustomer.id || c.email === newCustomer.email || c.soDienThoai === newCustomer.soDienThoai);
+      if (exIdx !== -1) list[exIdx] = newCustomer;
+      else list.unshift(newCustomer);
+      localStorage.setItem('crm_custom_customers', JSON.stringify(list));
+    } catch {}
 
     addAdminNotification({
       type: 'customer_registered',
@@ -601,12 +666,17 @@ export const vehicleApi = {
               id: vId,
               customerId: cId,
               tenXe: item.tenXe || 'Honda SH 160i ABS',
-              bienSo: item.bienSoXe || '51K-123.45',
-              namSanXuat: item.ngayMua ? new Date(item.ngayMua).getFullYear() : 2023,
+              bienSo: (!item.bienSoXe || item.bienSoXe === 'Chưa có biển số' || item.bienSoXe.includes('Chưa có') || item.bienSoXe.includes('Chua co') || item.bienSoXe.startsWith('TAM-') || item.bienSoXe.startsWith('T?M-')) ? 'Chưa có biển số' : item.bienSoXe,
+              hangXe: item.hangXe || (item.tenXe && item.tenXe.includes('Suzuki') ? 'Suzuki' : item.tenXe && item.tenXe.includes('Yamaha') ? 'Yamaha' : 'Honda'),
+              namSanXuat: item.ngayMua ? new Date(item.ngayMua).getFullYear() : 2025,
               hanBaoHanh: hanBH,
-              mauSac: 'Đen mờ',
+              mauSac: 'Tiêu chuẩn',
               trangThaiBaoHanh: isConHan ? 'ConHan' : 'HetHan',
-              soKhung: item.soKhung || 'RLHKD160CB1234567',
+              soKhung: item.soKhung || '',
+              soMay: item.soMay || '',
+              nguonGoc: 'CuaHang' as const,
+              ngayMua: item.ngayMua ? item.ngayMua.split('T')[0] : new Date().toISOString().split('T')[0],
+              trangThaiDuyetBienSo: (!item.bienSoXe || item.bienSoXe === 'Chưa có biển số' || item.bienSoXe.includes('Chưa có') || item.bienSoXe.includes('Chua co') || item.bienSoXe.startsWith('TAM-') || item.bienSoXe.startsWith('T?M-')) ? ('ChoCapNhat' as const) : ('DaDuyet' as const),
               trangThaiDuyet: 'DaDuyet' as const,
             };
           });
@@ -620,7 +690,19 @@ export const vehicleApi = {
     let cachedVehicles: Vehicle[] = [];
     try {
       const cached = localStorage.getItem('crm_customer_vehicles');
-      if (cached) cachedVehicles = JSON.parse(cached);
+      if (cached) {
+        cachedVehicles = JSON.parse(cached);
+        // Tự động dọn dẹp xe mẫu lái thử bị lưu nhầm vào cache
+        const cleaned = cachedVehicles.filter(v => {
+          const plate = (v.bienSo || v.bienSoChoDuyet || '').toUpperCase();
+          const name = (v.tenXe || '').toUpperCase();
+          return !plate.includes('LÁI-THỬ') && !plate.includes('LAI-THU') && !plate.includes('XE-LÁI') && !name.includes('LÁI THỬ') && !name.includes('LAI THU');
+        });
+        if (cleaned.length !== cachedVehicles.length) {
+          localStorage.setItem('crm_customer_vehicles', JSON.stringify(cleaned));
+          cachedVehicles = cleaned;
+        }
+      }
     } catch {}
 
     const vMap = new Map<string, Vehicle>();
@@ -628,10 +710,42 @@ export const vehicleApi = {
     list.forEach(v => vMap.set(v.id, { ...vMap.get(v.id), ...v }));
     cachedVehicles.forEach(v => vMap.set(v.id, { ...vMap.get(v.id), ...v }));
 
-    return Array.from(vMap.values());
+    const rawList = Array.from(vMap.values()).filter(v => {
+      const plate = (v.bienSo || v.bienSoChoDuyet || '').toUpperCase();
+      const name = (v.tenXe || '').toUpperCase();
+      return !plate.includes('LÁI-THỬ') && !plate.includes('LAI-THU') && !plate.includes('XE-LÁI') && !name.includes('LÁI THỬ') && !name.includes('LAI THU');
+    });
+
+    // Lọc sạch trùng lặp phương tiện của khách hàng (Deduplication)
+    const seenCustVeh = new Set<string>();
+    const cleanedResult: Vehicle[] = [];
+    for (const v of rawList) {
+      const plate = (v.bienSo || v.bienSoChoDuyet || '').toUpperCase().trim();
+      const name = (v.tenXe || '').toUpperCase().trim();
+      const color = (v.mauSac || '').toUpperCase().trim();
+      const vin = (v.soKhung || '').toUpperCase().trim();
+      const dedupKey = vin
+        ? `VIN_${vin}`
+        : (plate && plate !== 'CHƯA CÓ BIỂN SỐ' && !plate.includes('CHUA CO'))
+        ? `PLATE_${plate}`
+        : `CUST_${v.customerId}_${name}_${color}`;
+      if (seenCustVeh.has(dedupKey)) continue;
+      seenCustVeh.add(dedupKey);
+      cleanedResult.push(v);
+    }
+    try {
+      localStorage.setItem('crm_customer_vehicles', JSON.stringify(cleanedResult));
+    } catch {}
+    return cleanedResult;
   },
 
   async registerVehicle(data: Omit<Vehicle, 'id'>): Promise<Vehicle> {
+    const plateUpper = (data.bienSo || '').toUpperCase();
+    if (plateUpper.includes('LÁI-THỬ') || plateUpper.includes('LAI-THU') || plateUpper.includes('XE-LÁI')) {
+      console.warn('[vehicleApi.registerVehicle] Blocked registering test drive vehicle as owned vehicle');
+      return { ...data, id: 'XE_TEST_DRIVE' } as Vehicle;
+    }
+
     let newId = `XE${Date.now().toString().slice(-4)}`;
 
     // Đối với xe do khách hàng đăng ký trên web: mặc định là "xe mua ngoài hệ thống", không áp dụng bảo hành cửa hàng
@@ -656,7 +770,7 @@ export const vehicleApi = {
           maKH,
           bienSoXe: data.bienSo,
           soKhung: data.soKhung || '',
-          soMay: '',
+          soMay: data.soMay || '',
           ngayMua: new Date().toISOString(),
           hanBaoHanh: '1970-01-01T00:00:00Z',
         }),
@@ -756,6 +870,7 @@ export const vehicleApi = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           maKH,
+          tenXe: data.tenXe,
           bienSoXe: plate,
           soKhung: data.soKhung || '',
           soMay: data.soMay || '',
@@ -779,18 +894,34 @@ export const vehicleApi = {
     try {
       const cached = localStorage.getItem('crm_customer_vehicles');
       const list: Vehicle[] = cached ? JSON.parse(cached) : [];
-      const existingIdx = list.findIndex(v => (plate !== 'Chưa có biển số' && v.bienSo === plate) || v.id === newVehicle.id);
+      const existingIdx = list.findIndex(v => {
+        if (v.id === newVehicle.id) return true;
+        if (data.soKhung && v.soKhung && v.soKhung.trim().toUpperCase() === data.soKhung.trim().toUpperCase()) return true;
+        if (plate !== 'Chưa có biển số' && v.bienSo === plate) return true;
+        if (v.customerId === newVehicle.customerId && v.tenXe === newVehicle.tenXe && (v.bienSo === 'Chưa có biển số' || !v.bienSo)) {
+          return true;
+        }
+        return false;
+      });
       if (existingIdx !== -1) {
-        list[existingIdx] = newVehicle;
+        list[existingIdx] = { ...list[existingIdx], ...newVehicle, id: list[existingIdx].id };
       } else {
         list.unshift(newVehicle);
       }
       localStorage.setItem('crm_customer_vehicles', JSON.stringify(list));
     } catch {}
 
-    const mockIdx = mockVehicles.findIndex(v => (plate !== 'Chưa có biển số' && v.bienSo === plate) || v.id === newVehicle.id);
+    const mockIdx = mockVehicles.findIndex(v => {
+      if (v.id === newVehicle.id) return true;
+      if (data.soKhung && v.soKhung && v.soKhung.trim().toUpperCase() === data.soKhung.trim().toUpperCase()) return true;
+      if (plate !== 'Chưa có biển số' && v.bienSo === plate) return true;
+      if (v.customerId === newVehicle.customerId && v.tenXe === newVehicle.tenXe && (v.bienSo === 'Chưa có biển số' || !v.bienSo)) {
+        return true;
+      }
+      return false;
+    });
     if (mockIdx !== -1) {
-      mockVehicles[mockIdx] = newVehicle;
+      mockVehicles[mockIdx] = { ...mockVehicles[mockIdx], ...newVehicle, id: mockVehicles[mockIdx].id };
     } else {
       mockVehicles.unshift(newVehicle);
     }
@@ -859,6 +990,53 @@ export const vehicleApi = {
     let finalPlate = '';
     let custId = '';
 
+    // Lấy biển số dự kiến từ cache hoặc mockVehicles
+    let candidatePlate = '';
+    try {
+      const cached = localStorage.getItem('crm_customer_vehicles');
+      if (cached) {
+        const list: Vehicle[] = JSON.parse(cached);
+        const match = list.find(v => v.id === vehicleId);
+        if (match) {
+          candidatePlate = match.bienSoChoDuyet || match.bienSo || '';
+          vehicleName = match.tenXe;
+          custId = match.customerId;
+        }
+      }
+    } catch {}
+
+    if (!candidatePlate) {
+      const vMatch = mockVehicles.find(v => v.id === vehicleId);
+      if (vMatch) {
+        candidatePlate = vMatch.bienSoChoDuyet || vMatch.bienSo || '';
+        vehicleName = vMatch.tenXe;
+        custId = vMatch.customerId;
+      }
+    }
+
+    finalPlate = candidatePlate;
+
+    // Đồng bộ và kiểm tra tính duy nhất trên Backend C# SQL Server
+    const numId = parseInt(vehicleId.replace(/\D/g, ''), 10);
+    if (!isNaN(numId) && finalPlate) {
+      try {
+        const res = await fetchWithTimeout(`${API_BASE_URL}/XeKhachHang/duyet-bien-so/${numId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bienSoXe: finalPlate }),
+        });
+        if (res.status === 400) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.message || 'Biển số xe không hợp lệ hoặc đã tồn tại trên hệ thống!');
+        }
+      } catch (beErr: any) {
+        if (beErr?.message && (beErr.message.includes('tồn tại') || beErr.message.includes('không hợp lệ'))) {
+          throw beErr;
+        }
+        console.warn('[approveLicensePlate] Backend sync warning:', beErr);
+      }
+    }
+
     try {
       const cached = localStorage.getItem('crm_customer_vehicles');
       if (cached) {
@@ -905,7 +1083,70 @@ export const vehicleApi = {
       });
     }
 
+    // Tự động đồng bộ biển số sang hợp đồng bảo hiểm kèm theo (nếu có)
+    try {
+      const allIns = insuranceApi.getAll();
+      let insChanged = false;
+      allIns.forEach(ins => {
+        if ((ins.vehicleId === vehicleId || ins.customerId === custId) && (!ins.bienSo || ins.bienSo === 'Chưa có biển số')) {
+          ins.bienSo = finalPlate;
+          insChanged = true;
+        }
+      });
+      if (insChanged) {
+        localStorage.setItem(INSURANCE_STORAGE_KEY, JSON.stringify(allIns));
+      }
+    } catch {}
+
     window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'license_plate_approved', vehicleId } }));
+    return true;
+  },
+
+  async rejectLicensePlate(vehicleId: string, lyDo: string): Promise<boolean> {
+    let vehicleName = '';
+    let custId = '';
+    let proposedPlate = '';
+
+    try {
+      const cached = localStorage.getItem('crm_customer_vehicles');
+      if (cached) {
+        const list: Vehicle[] = JSON.parse(cached);
+        const match = list.find(v => v.id === vehicleId);
+        if (match) {
+          match.trangThaiDuyetBienSo = 'TuChoi';
+          match.lyDoTuChoiBienSo = lyDo;
+          vehicleName = match.tenXe;
+          custId = match.customerId;
+          proposedPlate = match.bienSoChoDuyet || match.bienSo || '';
+          localStorage.setItem('crm_customer_vehicles', JSON.stringify(list));
+        }
+      }
+    } catch {}
+
+    const vMatch = mockVehicles.find(v => v.id === vehicleId);
+    if (vMatch) {
+      vMatch.trangThaiDuyetBienSo = 'TuChoi';
+      vMatch.lyDoTuChoiBienSo = lyDo;
+      vehicleName = vMatch.tenXe;
+      custId = vMatch.customerId;
+      proposedPlate = vMatch.bienSoChoDuyet || vMatch.bienSo || '';
+    }
+
+    if (custId) {
+      addCustomerNotification({
+        customerId: custId,
+        icon: '⚠️',
+        title: '⚠️ Yêu cầu cấp biển số xe bị từ chối',
+        message: `Yêu cầu cấp biển số ${proposedPlate ? proposedPlate + ' ' : ''}cho xe ${vehicleName} chưa được duyệt. Lý do: "${lyDo}". Vui lòng kiểm tra lại giấy tờ cà vẹt và gửi lại.`,
+        category: 'order',
+        page: 'dashboard',
+        tab: 'vehicles',
+        targetId: vehicleId,
+      });
+    }
+
+    window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'license_plate_rejected', vehicleId } }));
+    window.dispatchEvent(new CustomEvent('crm-vehicles-updated'));
     return true;
   },
 
@@ -1010,6 +1251,22 @@ export const partApi = {
       if (cached) {
         const parsed: Part[] = JSON.parse(cached);
         if (Array.isArray(parsed) && parsed.length > 0) {
+          // Tu dong nang cap anh sang noi bo neu dang dung Unsplash
+          let hasMigration = false;
+          const updated = parsed.map(p => {
+            if (p.hinhAnh && p.hinhAnh.includes('unsplash.com')) {
+              const mockMatch = mockParts.find(m => m.id === p.id);
+              if (mockMatch) {
+                hasMigration = true;
+                return { ...p, hinhAnh: mockMatch.hinhAnh };
+              }
+            }
+            return p;
+          });
+          if (hasMigration) {
+            localStorage.setItem(PARTS_STORAGE_KEY, JSON.stringify(updated));
+            return updated;
+          }
           return parsed;
         }
       }
@@ -1130,37 +1387,61 @@ export const orderApi = {
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data) && data.length > 0) {
+          // Lấy danh sách cache hiện tại để đối chiếu nhận diện đơn xe
+          let currentCached: Order[] = [];
+          try {
+            const rawCached = localStorage.getItem('crm_orders_cache');
+            if (rawCached) currentCached = JSON.parse(rawCached);
+          } catch {}
+
           list = data.map((item: any, idx: number) => {
-            const id = item.maDon ? (item.maDon < 10 ? `DH00${item.maDon}` : `DH0${item.maDon}`) : `DH${idx + 1}`;
-            const cId = item.maKH ? (item.maKH < 10 ? `KH00${item.maKH}` : `KH0${item.maKH}`) : 'KH001';
-            const mockMatch = mockOrders.find(m => m.id === id);
+            const numId = item.maDon;
+            // Đối chiếu tìm đơn hàng tương ứng trong cache hoặc mockOrders (kể cả mã DH-XE-xxx)
+            const matchedExisting = currentCached.find(m =>
+              m.id === `DH-XE-${numId < 10 ? `00${numId}` : `0${numId}`}` ||
+              m.id === `DH-XE-${numId}` ||
+              m.id === `DH00${numId}` ||
+              m.id === `DH0${numId}` ||
+              m.id === `DH${numId}` ||
+              parseInt(m.id.replace(/\D/g, ''), 10) === numId
+            ) || mockOrders.find(m =>
+              m.id === `DH-XE-${numId < 10 ? `00${numId}` : `0${numId}`}` ||
+              parseInt(m.id.replace(/\D/g, ''), 10) === numId
+            );
+
+            const id = matchedExisting?.id || (numId ? (numId < 10 ? `DH00${numId}` : `DH0${numId}`) : `DH${idx + 1}`);
+            const cId = item.maKH ? (item.maKH < 10 ? `KH00${item.maKH}` : `KH0${item.maKH}`) : (matchedExisting?.customerId || 'KH001');
 
             let tt: OrderStatus = 'ChoDuyet';
-            if (item.trangThai === 'Hoàn thành' || item.trangThai === 'HoanThanh') tt = 'HoanThanh';
+            if (item.trangThai === 'Hoàn thành' || item.trangThai === 'HoanThanh' || item.trangThai === 'Đã giao' || item.trangThai === 'DaGiao') tt = 'HoanThanh';
             else if (item.trangThai === 'Đang giao' || item.trangThai === 'DangGiao') tt = 'DangGiao';
             else if (item.trangThai === 'Đã hủy' || item.trangThai === 'DaHuy') tt = 'DaHuy';
+            else if (item.trangThai === 'Chờ giao xe' || item.trangThai === 'ChoGiaoXe') tt = 'ChoGiaoXe';
+            else if (item.trangThai === 'Đã xác nhận' || item.trangThai === 'DaXacNhan') tt = 'DaXacNhan';
+            else if (matchedExisting?.trangThai) tt = matchedExisting.trangThai;
 
             return {
               id,
               customerId: cId,
-              hoTenKH: item.tenKhachHang || mockMatch?.hoTenKH || 'Khách hàng',
-              soDienThoai: item.soDienThoai || mockMatch?.soDienThoai,
-              email: mockMatch?.email,
-              ngayDat: item.ngayDat ? item.ngayDat.split('T')[0] : '2024-12-01',
+              hoTenKH: item.tenKhachHang || matchedExisting?.hoTenKH || 'Khách hàng',
+              soDienThoai: item.soDienThoai || matchedExisting?.soDienThoai,
+              email: matchedExisting?.email,
+              ngayDat: item.ngayDat ? item.ngayDat.split('T')[0] : (matchedExisting?.ngayDat || '2026-10-20'),
               trangThai: tt,
-              trangThaiThanhToan: mockMatch?.trangThaiThanhToan || 'DaThanhToan',
-              kenhBan: mockMatch?.kenhBan || 'Online',
-              loaiDon: mockMatch?.loaiDon || 'PhuTung',
-              tongTien: item.tongTien || mockMatch?.tongTien || 0,
-              diaChiGiao: mockMatch?.diaChiGiao || 'TP.HCM',
-              items: mockMatch?.items || [{ tenSanPham: 'Phụ tùng chính hãng', soLuong: 1, donGia: item.tongTien || 0 }],
-              maNV: mockMatch?.maNV,
-              tenNV: mockMatch?.tenNV,
-              phuongThucThanhToan: mockMatch?.phuongThucThanhToan,
-              thongTinXe: mockMatch?.thongTinXe,
-              ghiChu: mockMatch?.ghiChu,
-              maLichHen: mockMatch?.maLichHen,
-              qrCodeUrl: mockMatch?.qrCodeUrl,
+              trangThaiThanhToan: matchedExisting?.trangThaiThanhToan || (tt === 'DaHuy' ? 'ChuaThanhToan' : 'DaThanhToan'),
+              kenhBan: matchedExisting?.kenhBan || 'Online',
+              loaiDon: matchedExisting?.loaiDon || (matchedExisting?.thongTinXe ? 'Xe' : 'PhuTung'),
+              tongTien: item.tongTien || matchedExisting?.tongTien || 0,
+              diaChiGiao: matchedExisting?.diaChiGiao || 'TP.HCM',
+              items: matchedExisting?.items || [{ tenSanPham: 'Phụ tùng chính hãng', soLuong: 1, donGia: item.tongTien || 0 }],
+              maNV: matchedExisting?.maNV,
+              tenNV: matchedExisting?.tenNV,
+              phuongThucThanhToan: matchedExisting?.phuongThucThanhToan,
+              thongTinXe: matchedExisting?.thongTinXe,
+              ghiChu: matchedExisting?.ghiChu,
+              maLichHen: matchedExisting?.maLichHen,
+              qrCodeUrl: matchedExisting?.qrCodeUrl,
+              lyDoHuy: matchedExisting?.lyDoHuy,
             };
           });
         }
@@ -1182,6 +1463,24 @@ export const orderApi = {
     list.forEach(o => combinedMap.set(o.id, { ...combinedMap.get(o.id), ...o }));
 
     let merged = Array.from(combinedMap.values());
+
+    // Chống trùng lặp tuyệt đối theo id
+    const finalOrderMap = new Map<string, Order>();
+    merged.forEach(o => {
+      if (!finalOrderMap.has(o.id)) {
+        finalOrderMap.set(o.id, o);
+      } else {
+        const prev = finalOrderMap.get(o.id)!;
+        finalOrderMap.set(o.id, {
+          ...prev,
+          ...o,
+          trangThai: (o.trangThai === 'DaHuy' || prev.trangThai === 'DaHuy') ? 'DaHuy' : o.trangThai,
+          lyDoHuy: o.lyDoHuy || prev.lyDoHuy,
+        });
+      }
+    });
+    merged = Array.from(finalOrderMap.values());
+
     try {
       localStorage.setItem('crm_orders_cache', JSON.stringify(merged));
     } catch {}
@@ -1216,7 +1515,7 @@ export const orderApi = {
 
     let statusKey: OrderStatus = 'ChoDuyet';
     let statusText = 'Chờ xác nhận';
-    if (trangThai === 'HoanThanh' || trangThai === 'Hoàn thành') {
+    if (trangThai === 'HoanThanh' || trangThai === 'Hoàn thành' || trangThai === 'DaGiao' || trangThai === 'Đã giao') {
       statusKey = 'HoanThanh'; statusText = 'Hoàn thành';
     } else if (trangThai === 'DangGiao' || trangThai === 'Đang giao') {
       statusKey = 'DangGiao'; statusText = 'Đang giao';
@@ -1356,8 +1655,64 @@ export const orderApi = {
           targetId: targetOrder.id,
         });
 
-        // NẾU LÀ ĐƠN HÀNG XE: Tự động gửi bài khảo sát xe mua mới cho khách hàng!
-        if (targetOrder.loaiDon === 'Xe' || targetOrder.thongTinXe) {
+        // KS01: Tự động gửi thông báo khảo sát khi đơn hàng hoàn tất
+        addCustomerNotification({
+          customerId: targetOrder.customerId,
+          category: 'survey',
+          icon: '📋',
+          title: `📋 Khảo sát trải nghiệm mua sắm #${orderIdStr}`,
+          message: `Đơn hàng #${orderIdStr} đã hoàn tất. Kính mời quý khách dành 1 phút đánh giá trải nghiệm để nhận mã giảm giá ưu đãi!`,
+          page: 'dashboard',
+          tab: 'surveys',
+          targetId: 'KS002',
+        });
+
+        // NẾU LÀ ĐƠN HÀNG XE: Tự động kích hoạt xe vào tài khoản khách & gửi bài khảo sát xe mua mới cho khách hàng!
+        if (targetOrder && (targetOrder.loaiDon === 'Xe' || targetOrder.thongTinXe || (targetOrder.id && targetOrder.id.includes('XE')))) {
+          try {
+            const bikeName = targetOrder.thongTinXe?.tenXe || 'Xe máy chính hãng';
+            const brand = bikeName.includes('Yamaha') ? 'Yamaha' : bikeName.includes('Suzuki') ? 'Suzuki' : 'Honda';
+            const vin = targetOrder.thongTinXe?.soKhungVIN || '';
+            const allVehicles = await vehicleApi.getAll();
+            const isAlreadyAdded = vin
+              ? allVehicles.some((v: any) => v.soKhung === vin)
+              : allVehicles.some((v: any) => targetOrder && v.customerId === targetOrder.customerId && (v.tenXe || '').toLowerCase().trim() === bikeName.toLowerCase().trim() && (v.bienSo === 'Chưa có biển số' || !v.bienSo));
+            if (!isAlreadyAdded) {
+              await vehicleApi.createSoldVehicle({
+                customerId: targetOrder.customerId,
+                tenXe: bikeName,
+                hangXe: brand,
+                bienSo: 'Chưa có biển số',
+                mauSac: targetOrder.thongTinXe?.mauSac || 'Tiêu chuẩn',
+                dongCo: targetOrder.thongTinXe?.dongCo || '160cc PGM-FI',
+                soKhung: vin || ('RLHKD160CB' + Date.now().toString().slice(-7)),
+                soMay: targetOrder.thongTinXe?.soMay || ('KF12E-' + Date.now().toString().slice(-7)),
+                namSanXuat: new Date().getFullYear().toString(),
+                hanBaoHanh: new Date(Date.now() + 3 * 365 * 24 * 3600 * 1000).toISOString().split('T')[0],
+              });
+            }
+          } catch (vehErr) {
+            console.warn('Tự động tạo hồ sơ xe khi đơn hàng hoàn tất thất bại:', vehErr);
+          }
+
+          // Tự động hoàn tất lịch hẹn nhận xe tương ứng (để biến mất khỏi tab Lịch hẹn của khách hàng)
+          try {
+            const ord = targetOrder;
+            if (ord) {
+              const allAppts = await appointmentApi.getAll();
+              const matchedAppts = allAppts.filter(a =>
+                (a.maLichHen && (a.maLichHen === ord.maLichHen || a.maLichHen === ord.thongTinXe?.maLichHen)) ||
+                (a.maDonHangXe && a.maDonHangXe === ord.id) ||
+                (a.customerId === ord.customerId && a.loaiDichVu === 'NhanXe' && a.trangThai !== 'DaHoanThanh')
+              );
+              for (const ma of matchedAppts) {
+                await appointmentApi.updateStatus(ma.id, 'DaHoanThanh');
+              }
+            }
+          } catch (apptErr) {
+            console.warn('Lỗi đồng bộ lịch hẹn khi hoàn tất đơn hàng:', apptErr);
+          }
+
           surveyApi.createVehiclePurchaseSurvey(targetOrder);
         }
       }
@@ -1637,17 +1992,79 @@ export const orderApi = {
       } catch (e) {
         console.warn('Auto restore vehicle stock failed:', e);
       }
+
+      // THU HỒI / XÓA PHƯƠNG TIỆN VÀ HỢP ĐỒNG BẢO HIỂM GẮN VỚI ĐƠN HÀNG HỦY
+      const custId = order.customerId;
+      const targetTenXe = (order.thongTinXe?.tenXe || '').toLowerCase().trim();
+      const targetVin = (order.thongTinXe?.soKhungVIN || '').toLowerCase().trim();
+
+      // 1. Thu hồi phương tiện trong XeKhachHang
+      try {
+        const allCustVehicles = await vehicleApi.getAll();
+        const matchedVehicles = allCustVehicles.filter(v => {
+          if (v.customerId !== custId) {
+            const vCustNum = parseInt(v.customerId.replace(/\D/g, ''), 10);
+            const oCustNum = parseInt(custId.replace(/\D/g, ''), 10);
+            if (isNaN(vCustNum) || isNaN(oCustNum) || vCustNum !== oCustNum) return false;
+          }
+          if (targetVin && v.soKhung && v.soKhung.toLowerCase().trim() === targetVin) return true;
+          if (targetTenXe && v.tenXe && v.tenXe.toLowerCase().trim().includes(targetTenXe)) return true;
+          if (order.thongTinXe?.bienSo && v.bienSo === order.thongTinXe.bienSo) return true;
+          if (v.bienSo === '59-A1 888.88' || v.bienSo === '29-B1 999.99' || v.bienSo === '60-C1 777.77' || v.bienSo === 'Chưa có biển số') return true;
+          return false;
+        });
+
+        for (const mv of matchedVehicles) {
+          const beId = parseInt(mv.id.replace(/\D/g, ''), 10);
+          if (!isNaN(beId) && beId > 0) {
+            try {
+              await fetchWithTimeout(`${API_BASE_URL}/XeKhachHang/${beId}`, { method: 'DELETE' });
+            } catch (delErr) {
+              console.warn('[cancelOrder] Delete XeKhachHang backend error:', delErr);
+            }
+          }
+          // Xóa khỏi cache localStorage
+          try {
+            const cachedV = localStorage.getItem('crm_customer_vehicles');
+            if (cachedV) {
+              const vList: Vehicle[] = JSON.parse(cachedV);
+              const updatedV = vList.filter(v => v.id !== mv.id && v.bienSo !== mv.bienSo);
+              localStorage.setItem('crm_customer_vehicles', JSON.stringify(updatedV));
+            }
+          } catch {}
+          // Xóa khỏi mockVehicles
+          const mIdx = mockVehicles.findIndex(v => v.id === mv.id || (mv.bienSo && v.bienSo === mv.bienSo));
+          if (mIdx !== -1) mockVehicles.splice(mIdx, 1);
+        }
+      } catch (vehErr) {
+        console.warn('[cancelOrder] Auto rollback vehicle failed:', vehErr);
+      }
+
+      // 2. Thu hồi / Hủy hợp đồng bảo hiểm
+      try {
+        const allInsurances = insuranceApi.getAll();
+        const updatedInsurances = allInsurances.filter(ins => {
+          const isMatchOrder = ins.ghiChu && ins.ghiChu.includes(order.id);
+          const isMatchPlate = ins.bienSo && (ins.bienSo === order.thongTinXe?.bienSo || ins.bienSo === '59-A1 888.88' || ins.bienSo === '29-B1 999.99' || ins.bienSo === '60-C1 777.77');
+          return !(isMatchOrder || isMatchPlate);
+        });
+        localStorage.setItem(INSURANCE_STORAGE_KEY, JSON.stringify(updatedInsurances));
+      } catch (insErr) {
+        console.warn('[cancelOrder] Auto rollback insurance failed:', insErr);
+      }
     }
 
     addAdminNotification({
       type: 'order_cancelled',
       title: '❌ Khách hàng đã hủy đơn hàng',
-      message: `Đơn hàng #${order.id} (${order.hoTenKH}) đã được hủy. Lý do: ${cancelReason}. Số lượng sản phẩm đã được hoàn trả lại kho.`,
+      message: `Đơn hàng #${order.id} (${order.hoTenKH}) đã được hủy. Lý do: ${cancelReason}. Số lượng sản phẩm / xe đã được hoàn trả lại kho.`,
       linkPage: 'sales',
       meta: order,
     });
 
     window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'order_cancelled', orderId: order.id } }));
+    window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'order', orderId: order.id } }));
+    window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'vehicle' } }));
     return { success: true, message: 'Hủy đơn hàng thành công và đã hoàn trả tồn kho khả dụng!' };
   },
 
@@ -1669,6 +2086,39 @@ export const orderApi = {
     qrCodeUrl?: string;
     thongTinXe: import('../data/mockData').VehicleOrderDetails;
   }): Promise<{ success: boolean; order?: Order; maDon?: number; message?: string }> {
+    // LH28: Validation máy chủ 2 lớp (Server-side validation)
+    const sanitizedName = (data.hoTenKH || '').trim().replace(/\s+/g, ' ');
+    const nameRegex = /^[a-zA-ZàáảãạâầấẩẫậăằắẳẵặèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđÀÁẢÃẠÂẦẤẨẪẬĂẰẮẲẴẶÈÉẺẼẸÊỀẾỂỄỆÌÍỈĨỊÒÓỎÕỌÔỒỐỔỖỘƠỜỚỞỠỢÙÚỦŨỤƯỪỨỬỮỰỲÝỶỸỴĐ\s]+$/;
+    if (!sanitizedName || !nameRegex.test(sanitizedName)) {
+      return { success: false, message: 'Lỗi kiểm tra máy chủ: Họ và tên không hợp lệ (không được để trống, không chứa số hoặc ký tự đặc biệt)!' };
+    }
+
+    const cccd = (data.thongTinXe?.idCardTaxNo || '').trim();
+    if (!cccd || !/^\d{12}$/.test(cccd)) {
+      return { success: false, message: 'Lỗi kiểm tra máy chủ: Số CCCD không hợp lệ (phải gồm đúng 12 chữ số)!' };
+    }
+
+    const phone = (data.soDienThoai || '').trim();
+    if (!phone || !/^0\d{9}$/.test(phone)) {
+      return { success: false, message: 'Lỗi kiểm tra máy chủ: Số điện thoại không hợp lệ (phải gồm 10 chữ số và bắt đầu bằng số 0)!' };
+    }
+
+    const email = (data.email || '').trim();
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    if (!email || !emailRegex.test(email)) {
+      return { success: false, message: 'Lỗi kiểm tra máy chủ: Email không hợp lệ (ví dụ: abc@gmail.com)!' };
+    }
+
+    const address = (data.diaChiGiao || data.thongTinXe?.diaChiGiao || '').trim();
+    if (!address || address.length < 5 || address.length > 255) {
+      return { success: false, message: 'Lỗi kiểm tra máy chủ: Địa chỉ đăng ký xe không hợp lệ (phải từ 5 đến 255 ký tự)!' };
+    }
+
+    const discount = data.thongTinXe?.khuyenMai ?? 0;
+    if (discount < 0) {
+      return { success: false, message: 'Lỗi kiểm tra máy chủ: Khuyến mãi không được là số âm!' };
+    }
+
     // 1. Kiểm tra tồn kho khả dụng xe trước khi đặt
     try {
       const cached = localStorage.getItem('crm_catalog_vehicles');
@@ -1823,6 +2273,7 @@ export const appointmentApi = {
             if (item.loaiDichVu?.includes('Sửa') || item.loaiDichVu?.includes('Sua')) ldv = 'SuaChua';
             else if (item.loaiDichVu?.includes('Lái') || item.loaiDichVu?.includes('Lai')) ldv = 'LaiThu';
             else if (item.loaiDichVu?.includes('Nhận') || item.loaiDichVu?.includes('Nhan')) ldv = 'NhanXe';
+            else if (item.loaiDichVu?.includes('Bảo hành') || item.loaiDichVu?.includes('BaoHanh')) ldv = 'BaoHanh';
 
             let extractedXe = cachedMatch?.tenXe || mockMatch?.tenXe || 'Honda SH 160i ABS';
             let extractedBs = cachedMatch?.bienSo || mockMatch?.bienSo || '51K-123.45';
@@ -1923,9 +2374,9 @@ export const appointmentApi = {
     // 3. Patch backend
     if (!isNaN(numId) && numId > 0) {
       try {
-        await fetchWithTimeout(`${API_BASE_URL}/LichHen/${numId}/trang-thai`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
+        await fetchWithTimeout(`${API_BASE_URL}/LichHen/trang-thai/${numId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
           body: JSON.stringify({ trangThai: backendStatus, ghiChu: lyDoTuChoi ? `[LÝ DO TỪ CHỐI]: ${lyDoTuChoi}` : undefined }),
         });
       } catch (err) {
@@ -1959,6 +2410,20 @@ export const appointmentApi = {
         tab: 'appts',
         targetId: appt.id,
       });
+
+      // KS01: Tự động gửi thông báo nhắc khách hàng làm khảo sát dịch vụ khi hoàn tất
+      if (status === 'DaHoanThanh') {
+        addCustomerNotification({
+          customerId: appt.customerId,
+          category: 'survey',
+          icon: '📋',
+          title: `📋 Khảo sát trải nghiệm dịch vụ #${appt.id}`,
+          message: `Dịch vụ ${appt.loaiDichVu === 'BaoDuong' ? 'Bảo dưỡng' : appt.loaiDichVu === 'NhanXe' ? 'Nhận xe mới' : 'Sửa chữa'} cho xe ${appt.tenXe || 'của bạn'} đã hoàn tất. Kính mời bạn dành 1 phút đánh giá trải nghiệm để nhận ưu đãi!`,
+          page: 'dashboard',
+          tab: 'surveys',
+          targetId: 'KS001',
+        });
+      }
     }
 
     window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'appointment', apptId, status } }));
@@ -2011,6 +2476,8 @@ export const appointmentApi = {
     daThanhToan100?: boolean;
     soKhungVIN?: string;
     soMay?: string;
+    hinhThucGiao?: 'Showroom' | 'HomeDelivery';
+    diaChiGiao?: string;
   }): Promise<{ success: boolean; appointment: Appointment; maLich?: number }> {
     let maKH = data.customerId ? parseInt(data.customerId.replace(/\D/g, ''), 10) : 1;
     if (isNaN(maKH) || maKH <= 0) maKH = 1;
@@ -2071,6 +2538,8 @@ export const appointmentApi = {
       daThanhToan100: data.daThanhToan100,
       soKhungVIN: data.soKhungVIN,
       soMay: data.soMay,
+      hinhThucGiao: data.hinhThucGiao,
+      diaChiGiao: data.diaChiGiao,
     };
 
     mockAppointments.unshift(newAppt);
@@ -2244,371 +2713,1046 @@ const VEHICLE_STORAGE_KEY = 'crm_catalog_vehicles';
 
 export const DEFAULT_CATALOG_VEHICLES: CatalogVehicle[] = [
   {
-    id: 'XM001',
-    tenXe: 'Honda SH 160i ABS 2025',
-    hang: 'Honda',
-    phanKhuc: 'Tay ga',
-    giaNiemYet: 95900000,
-    mauSac: 'Đen mờ, Đỏ đen, Xám xi măng, Trắng bạc',
-    moTa: 'Flagship tay ga cao cấp của Honda với phanh ABS 2 kênh, động cơ 156.9cc eSP+ 4 van, Smart Key',
-    hinhAnh: 'https://images.unsplash.com/photo-1568772585407-9361f9bf3a87?w=800&auto=format&fit=crop&q=80',
-    coTheLaiThu: true,
-    dongCo: '156.9cc eSP+ 4 van',
-    congSuat: '16.6 HP / 8.500 rpm',
-    tieuHaoNhienLieu: '2.24 L/100km',
-    phanh: 'Đĩa trước & sau, ABS 2 kênh',
-    thongSoKyThuat: '156.9cc eSP+ 4 van, Phanh ABS 2 kênh, HSTC, Khóa thông minh Smart Key',
+    "id": "XM001",
+    "tenXe": "Honda SH 160i ABS 2024",
+    "hang": "Honda",
+    "phanKhuc": "Tay ga",
+    "giaNiemYet": 95900000,
+    "mauSac": "Đen mờ, Đỏ đen, Xám xi măng, Trắng bạc",
+    "moTa": "Flagship tay ga cao cấp của Honda với phanh ABS 2 kênh, động cơ 156.9cc eSP+ 4 van, Smart Key",
+    "hinhAnh": "/images/Xe/honda_sh_160i_abs_2024.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 6,
+    "dongCo": "156.9cc eSP+ 4 van",
+    "congSuat": "16.6 HP / 8.500 rpm",
+    "tieuHaoNhienLieu": "2.24 L/100km",
+    "phanh": "Đĩa trước & sau, ABS 2 kênh",
+    "thongSoKyThuat": "156.9cc eSP+ 4 van, Phanh ABS 2 kênh, HSTC, Khóa thông minh Smart Key",
+    "xuatXu": "Việt Nam"
   },
   {
-    id: 'XM002',
-    tenXe: 'Honda Air Blade 160 ABS',
-    hang: 'Honda',
-    phanKhuc: 'Tay ga',
-    giaNiemYet: 56690000,
-    mauSac: 'Đỏ đen, Xanh xám, Đen vàng đồng',
-    moTa: 'Tay ga thể thao mạnh mẽ, động cơ eSP+ 160cc, cốp rộng 23.2L tích hợp cổng sạc USB',
-    hinhAnh: 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=800&auto=format&fit=crop&q=80',
-    coTheLaiThu: true,
-    dongCo: '156.9cc eSP+ 4 van',
-    congSuat: '15.0 HP / 8.000 rpm',
-    tieuHaoNhienLieu: '2.30 L/100km',
-    phanh: 'Đĩa trước có ABS, đùm sau',
-    thongSoKyThuat: '156.9cc eSP+, Phanh ABS trước, Cổng sạc USB, Cốp rộng 23.2L',
+    "id": "XM002",
+    "tenXe": "Honda Air Blade 160 ABS",
+    "hang": "Honda",
+    "phanKhuc": "Tay ga",
+    "giaNiemYet": 56690000,
+    "mauSac": "Đỏ đen, Xanh xám, Đen vàng đồng",
+    "moTa": "Tay ga thể thao mạnh mẽ, động cơ eSP+ 160cc, cốp rộng 23.2L tích hợp cổng sạc USB tiện lợi",
+    "hinhAnh": "/images/Xe/honda_air_blade_160_abs.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 8,
+    "dongCo": "156.9cc eSP+ 4 van",
+    "congSuat": "15.0 HP / 8.000 rpm",
+    "tieuHaoNhienLieu": "2.30 L/100km",
+    "phanh": "Đĩa trước ABS, tang trống sau",
+    "thongSoKyThuat": "156.9cc eSP+, Phanh ABS trước, Cổng sạc USB, Cốp rộng 23.2L",
+    "xuatXu": "Việt Nam"
   },
   {
-    id: 'XM003',
-    tenXe: 'Honda Lead 125cc (Bản Đặc Biệt)',
-    hang: 'Honda',
-    phanKhuc: 'Tay ga',
-    giaNiemYet: 42790000,
-    mauSac: 'Bạc nhám, Đen mờ, Trắng ngọc',
-    moTa: 'Cốp xe siêu lớn 37L đựng 2 mũ bảo hiểm, cổng sạc USB, động cơ eSP+ 4 van êm ái',
-    hinhAnh: 'https://images.unsplash.com/photo-1558981359-219d6364c9c8?w=800&auto=format&fit=crop&q=80',
-    coTheLaiThu: true,
-    dongCo: '124.8cc eSP+ 4 van',
-    congSuat: '11.0 HP / 8.500 rpm',
-    tieuHaoNhienLieu: '2.16 L/100km',
-    phanh: 'Đĩa trước, đùm sau',
-    thongSoKyThuat: '124.8cc eSP+, Cốp siêu lớn 37L đựng vừa 2 mũ bảo hiểm, Nắp bình xăng trước',
+    "id": "XM003",
+    "tenXe": "Honda Lead 125cc (Bản Đặc Biệt)",
+    "hang": "Honda",
+    "phanKhuc": "Tay ga",
+    "giaNiemYet": 42790000,
+    "mauSac": "Bạc nhám, Đen nhám, Xanh dương",
+    "moTa": "Cốp xe siêu rộng 37L đựng vừa 2 mũ bảo hiểm, nắp bình xăng trước tiện lợi không cần mở yên",
+    "hinhAnh": "/images/Xe/honda_lead_125cc_dac_biet.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 10,
+    "dongCo": "124.8cc eSP+ 4 van",
+    "congSuat": "11.0 HP / 8.500 rpm",
+    "tieuHaoNhienLieu": "2.16 L/100km",
+    "phanh": "Đĩa trước CBS, tang trống sau",
+    "thongSoKyThuat": "124.8cc eSP+, Cốp siêu lớn 37L đựng vừa 2 mũ bảo hiểm, Nắp bình xăng trước",
+    "xuatXu": "Việt Nam"
   },
   {
-    id: 'XM004',
-    tenXe: 'Honda Vision 110 Thể Thao',
-    hang: 'Honda',
-    phanKhuc: 'Tay ga',
-    giaNiemYet: 36612000,
-    mauSac: 'Xám xi măng, Đen bóng, Xanh dương',
-    moTa: 'Xe tay ga quốc dân nhỏ gọn thanh lịch, vành đúc 16 inch cao ráo, Smart Key, siêu tiết kiệm xăng',
-    hinhAnh: 'https://images.unsplash.com/photo-1525160354320-d8e92641c563?w=800&auto=format&fit=crop&q=80',
-    coTheLaiThu: false,
-    dongCo: '109.5cc eSP',
-    congSuat: '8.8 HP / 7.500 rpm',
-    tieuHaoNhienLieu: '1.85 L/100km',
-    phanh: 'Đĩa trước kết hợp CBS',
-    thongSoKyThuat: '109.5cc eSP, Khung dập eSAF thế hệ mới siêu nhẹ, Tiết kiệm xăng 1.85L/100km',
+    "id": "XM004",
+    "tenXe": "Honda Vision 110 Thể Thao",
+    "hang": "Honda",
+    "phanKhuc": "Tay ga",
+    "giaNiemYet": 36590000,
+    "mauSac": "Đen nhám, Xám xi măng thể thao",
+    "moTa": "Mẫu xe ga quốc dân bán chạy nhất, khung dập eSAF thế hệ mới siêu nhẹ và linh hoạt",
+    "hinhAnh": "/images/Xe/honda_vision_110_the_thao.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 12,
+    "dongCo": "109.5cc eSP",
+    "congSuat": "8.8 HP / 7.500 rpm",
+    "tieuHaoNhienLieu": "1.85 L/100km",
+    "phanh": "Đĩa trước CBS, tang trống sau",
+    "thongSoKyThuat": "109.5cc eSP, Khung dập eSAF thế hệ mới siêu nhẹ, Tiết kiệm xăng 1.85L/100km",
+    "xuatXu": "Việt Nam"
   },
   {
-    id: 'XM005',
-    tenXe: 'Honda Winner X 150 ABS',
-    hang: 'Honda',
-    phanKhuc: 'Côn tay',
-    giaNiemYet: 50560000,
-    mauSac: 'Đỏ đen xanh thể thao, Đen nhám bạc',
-    moTa: 'Côn tay thể thao trang bị ly hợp chống trượt Assist & Slipper, xích phốt O-ring, phanh ABS trước',
-    hinhAnh: 'https://images.unsplash.com/photo-1568772585407-9361f9bf3a87?w=800&auto=format&fit=crop&q=80',
-    coTheLaiThu: true,
-    dongCo: '149.1cc DOHC 6 số',
-    congSuat: '15.4 HP / 9.000 rpm',
-    tieuHaoNhienLieu: '1.99 L/100km',
-    phanh: 'Đĩa trước có ABS, đĩa sau',
-    thongSoKyThuat: '149.1cc DOHC 6 cấp số, Phanh đĩa ABS trước, Bộ ly hợp chống trượt 2 chiều',
+    "id": "XM005",
+    "tenXe": "Honda Winner X 150 ABS",
+    "hang": "Honda",
+    "phanKhuc": "Xe côn tay",
+    "giaNiemYet": 50560000,
+    "mauSac": "Đỏ đen trắng HRC, Đen vàng đồng",
+    "moTa": "Underbone thể thao hàng đầu của Honda với bộ ly hợp chống trượt hai chiều Assist & Slipper clutch",
+    "hinhAnh": "/images/Xe/honda_winner_x_150_abs.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 7,
+    "dongCo": "149.1cc DOHC 4 van, 6 cấp số",
+    "congSuat": "15.4 HP / 9.000 rpm",
+    "tieuHaoNhienLieu": "1.99 L/100km",
+    "phanh": "Đĩa trước ABS, đĩa sau",
+    "thongSoKyThuat": "149.1cc DOHC 6 cấp số, Phanh đĩa ABS trước, Bộ ly hợp chống trượt 2 chiều",
+    "xuatXu": "Việt Nam"
   },
   {
-    id: 'XM006',
-    tenXe: 'Honda Wave Alpha 110cc',
-    hang: 'Honda',
-    phanKhuc: 'Xe số',
-    giaNiemYet: 18190000,
-    mauSac: 'Đỏ đen, Xanh đen, Trắng bạc',
-    moTa: 'Xe số phổ thông bền bỉ, tiết kiệm xăng vượt trội, chi phí vận hành siêu kinh tế',
-    hinhAnh: 'https://images.unsplash.com/photo-1449426468159-d96dbf08f19f?w=800&auto=format&fit=crop&q=80',
-    coTheLaiThu: false,
-    dongCo: '109.1cc 4 kỳ',
-    congSuat: '8.2 HP / 7.500 rpm',
-    tieuHaoNhienLieu: '1.72 L/100km',
-    phanh: 'Cơ trước & sau',
-    thongSoKyThuat: '109.1cc làm mát bằng không khí, Động cơ siêu bền bỉ, 1.72L/100km',
+    "id": "XM006",
+    "tenXe": "Honda Wave Alpha 110cc",
+    "hang": "Honda",
+    "phanKhuc": "Xe số",
+    "giaNiemYet": 18190000,
+    "mauSac": "Trắng bạc, Xanh dương, Đỏ đô, Đen mờ",
+    "moTa": "Xe số bền bỉ huyền thoại, tiết kiệm xăng vượt trội, chi phí sử dụng và bảo dưỡng rẻ nhất",
+    "hinhAnh": "/images/Xe/honda_wave_alpha_110_2025.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 15,
+    "dongCo": "109.1cc 4 kỳ làm mát không khí",
+    "congSuat": "8.2 HP / 7.500 rpm",
+    "tieuHaoNhienLieu": "1.72 L/100km",
+    "phanh": "Tang trống trước & sau",
+    "thongSoKyThuat": "109.1cc làm mát bằng không khí, Động cơ siêu bền bỉ, 1.72L/100km",
+    "xuatXu": "Việt Nam"
   },
   {
-    id: 'XM007',
-    tenXe: 'Yamaha Exciter 155 VVA ABS',
-    hang: 'Yamaha',
-    phanKhuc: 'Côn tay',
-    giaNiemYet: 54000000,
-    mauSac: 'Xanh GP thể thao, Đen nhám, Xám ánh kim',
-    moTa: '"Tiểu YZF-R1" với động cơ 155cc VVA van biến thiên, bộ ly hợp chống trượt A&S, phanh ABS 2 piston',
-    hinhAnh: 'https://images.unsplash.com/photo-1609630875171-b1321377ee65?w=800&auto=format&fit=crop&q=80',
-    coTheLaiThu: true,
-    dongCo: '155.1cc VVA 4 van',
-    congSuat: '17.9 HP / 9.500 rpm',
-    tieuHaoNhienLieu: '2.09 L/100km',
-    phanh: 'Đĩa ABS 2 piston trước, đĩa sau',
-    thongSoKyThuat: '155cc 4 van biến thiên VVA, 17.9 mã lực, Phanh ABS 2 piston, Bộ ly hợp A&S',
+    "id": "XM007",
+    "tenXe": "Honda CBR150R",
+    "hang": "Honda",
+    "phanKhuc": "Xe côn tay",
+    "giaNiemYet": 72290000,
+    "mauSac": "Đỏ đen HRC, Đen nhám thể thao",
+    "moTa": "Sportbike 150cc thuần chất với phuộc trước hành trình ngược Upside Down Showa vàng óng ánh",
+    "hinhAnh": "/images/Xe/honda_cbr150r.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 4,
+    "dongCo": "149.2cc DOHC làm mát dung dịch",
+    "congSuat": "16.9 HP / 9.000 rpm",
+    "tieuHaoNhienLieu": "2.25 L/100km",
+    "phanh": "Đĩa trước & sau, ABS 2 kênh",
+    "thongSoKyThuat": "149.2cc DOHC, Phanh ABS 2 kênh, Phuộc Showa USD, Ly hợp chống trượt",
+    "xuatXu": "Indonesia"
   },
   {
-    id: 'XM008',
-    tenXe: 'Yamaha Grande Hybrid',
-    hang: 'Yamaha',
-    phanKhuc: 'Tay ga',
-    giaNiemYet: 49500000,
-    mauSac: 'Đỏ mận chín, Trắng ngọc trai, Xanh pastel',
-    moTa: 'Xe ga tiết kiệm xăng số 1 Việt Nam với công nghệ trợ lực điện Hybrid thông minh, cốp 27L có đèn LED',
-    hinhAnh: 'https://images.unsplash.com/photo-1558980664-3a031cf67ea8?w=800&auto=format&fit=crop&q=80',
-    coTheLaiThu: true,
-    dongCo: '124.9cc Blue Core Hybrid',
-    congSuat: '8.3 HP / 6.500 rpm',
-    tieuHaoNhienLieu: '1.66 L/100km',
-    phanh: 'Đĩa ABS trước, đùm sau',
-    thongSoKyThuat: '124.9cc Blue Core Hybrid trợ lực điện, Tiết kiệm xăng số 1 (1.66L/100km), Phanh ABS',
+    "id": "XM008",
+    "tenXe": "Honda Future 125 Fi",
+    "hang": "Honda",
+    "phanKhuc": "Xe số",
+    "giaNiemYet": 31090000,
+    "mauSac": "Trắng vàng đen, Xanh đen, Đỏ đen",
+    "moTa": "Xe số cao cấp thiết kế sang trọng lịch lãm, cốp U-box rộng rãi và động cơ cực kỳ tiết kiệm xăng",
+    "hinhAnh": "/images/Xe/honda_future_125_fi.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 6,
+    "dongCo": "124.9cc 4 kỳ làm mát không khí",
+    "congSuat": "9.1 HP / 7.500 rpm",
+    "tieuHaoNhienLieu": "1.54 L/100km",
+    "phanh": "Đĩa trước, tang trống sau",
+    "thongSoKyThuat": "124.9cc PGM-FI, Đèn pha LED cao cấp, Cốp U-Box đựng mũ bảo hiểm full đầu",
+    "xuatXu": "Việt Nam"
   },
   {
-    id: 'XM009',
-    tenXe: 'Yamaha MT-15 Naked Bike',
-    hang: 'Yamaha',
-    phanKhuc: 'Côn tay',
-    giaNiemYet: 69000000,
-    mauSac: 'Xanh xám dạ quang, Đen bóng đêm',
-    moTa: 'Naked bike đậm chất đường phố Dark Side of Japan, phuộc Upside Down thể thao mạ vàng cao cấp',
-    hinhAnh: 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=800&auto=format&fit=crop&q=80',
-    coTheLaiThu: true,
-    dongCo: '155cc VVA làm mát chất lỏng',
-    congSuat: '19.0 HP / 10.000 rpm',
-    tieuHaoNhienLieu: '2.28 L/100km',
-    phanh: 'Đĩa trước & sau',
-    thongSoKyThuat: '155cc VVA, Phuộc trước Upside Down vàng thể thao, Đèn pha LED thấu kính',
+    "id": "XM009",
+    "tenXe": "Honda SH Mode 125",
+    "hang": "Honda",
+    "phanKhuc": "Tay ga",
+    "giaNiemYet": 58190000,
+    "mauSac": "Đỏ nâu, Bạc đen, Xanh đen, Trắng nâu",
+    "moTa": "Dòng xe ga thanh lịch quý phái dành cho phái đẹp, khung gầm eSAF chuẩn Châu Âu",
+    "hinhAnh": "/images/Xe/honda_sh_mode_125.png",
+    "coTheLaiThu": true,
+    "soLuong": 5,
+    "dongCo": "124.8cc eSP+ 4 van",
+    "congSuat": "11.0 HP / 8.500 rpm",
+    "tieuHaoNhienLieu": "2.12 L/100km",
+    "phanh": "Đĩa trước ABS, tang trống sau",
+    "thongSoKyThuat": "124.8cc eSP+ 4 van, Phanh ABS trước, Khóa SmartKey, Cổng sạc USB trước",
+    "xuatXu": "Việt Nam"
   },
   {
-    id: 'XM010',
-    tenXe: 'Yamaha PG-1 Scrambler',
-    hang: 'Yamaha',
-    phanKhuc: 'Scrambler',
-    giaNiemYet: 30437000,
-    mauSac: 'Vàng sa mạc, Cam rực rỡ, Xanh rêu bụi',
-    moTa: 'Mẫu xe số địa hình phong cách Scrambler ghi đông trần cá tính, lốp gai to đa dụng vượt mọi địa hình',
-    hinhAnh: 'https://images.unsplash.com/photo-1449426468159-d96dbf08f19f?w=800&auto=format&fit=crop&q=80',
-    coTheLaiThu: true,
-    dongCo: '113.7cc 4 thì SOHC',
-    congSuat: '8.8 HP / 7.000 rpm',
-    tieuHaoNhienLieu: '1.96 L/100km',
-    phanh: 'Đĩa trước thủy lực, đùm sau',
-    thongSoKyThuat: '113.7cc 4 thì SOHC, Phong cách Scrambler ghi đông trần',
+    "id": "XM010",
+    "tenXe": "Honda Vario 160",
+    "hang": "Honda",
+    "phanKhuc": "Tay ga",
+    "giaNiemYet": 51990000,
+    "mauSac": "Đen nhám, Xanh đen bạc, Đỏ đen",
+    "moTa": "Tay ga phong cách đường phố cơ bắp góc cạnh, động cơ 160cc bứt tốc mạnh mẽ vượt trội",
+    "hinhAnh": "/images/Xe/honda_vario_160.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 6,
+    "dongCo": "156.9cc eSP+ 4 van",
+    "congSuat": "15.1 HP / 8.500 rpm",
+    "tieuHaoNhienLieu": "2.20 L/100km",
+    "phanh": "Đĩa trước ABS, đĩa sau",
+    "thongSoKyThuat": "156.9cc eSP+ 4 van, Phanh đĩa ABS trước, Khung eSAF, Sạc USB",
+    "xuatXu": "Việt Nam"
   },
   {
-    id: 'XM011',
-    tenXe: 'Suzuki Raider R150 Fi (DOHC)',
-    hang: 'Suzuki',
-    phanKhuc: 'Hyper-underbone',
-    giaNiemYet: 51190000,
-    mauSac: 'Đỏ đen, Xanh mờ MotoGP, Đen cam',
-    moTa: '"Vua tốc độ" phân khúc 150cc với động cơ DOHC 4 van Twin-Cam công suất cực đại 18.5 HP mạnh nhất phân khúc',
-    hinhAnh: 'https://images.unsplash.com/photo-1591637333184-19aa84b3e01f?w=800&auto=format&fit=crop&q=80',
-    coTheLaiThu: true,
-    dongCo: '147.3cc DOHC 4 van két nước lớn',
-    congSuat: '18.5 HP / 10.000 rpm',
-    tieuHaoNhienLieu: '2.40 L/100km',
-    phanh: 'Đĩa trước & sau hình cánh hoa',
-    thongSoKyThuat: '147.3cc DOHC 4 van làm mát két nước lớn, Công suất cực đại 18.5 mã lực',
+    "id": "XM011",
+    "tenXe": "Yamaha Exciter 155 VVA ABS",
+    "hang": "Yamaha",
+    "phanKhuc": "Xe côn tay",
+    "giaNiemYet": 54000000,
+    "mauSac": "Xanh GP, Đen nhám, Đỏ đen, Xám xi măng",
+    "moTa": "Vua côn tay đường phố với công nghệ van biến thiên VVA và phanh ABS 2 piston thể thao",
+    "hinhAnh": "/images/Xe/yamaha_exciter_155_vva.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 9,
+    "dongCo": "155cc 4 van biến thiên VVA",
+    "congSuat": "17.9 HP / 9.500 rpm",
+    "tieuHaoNhienLieu": "2.09 L/100km",
+    "phanh": "Đĩa trước 2 piston ABS, đĩa sau",
+    "thongSoKyThuat": "155cc 4 van biến thiên VVA, 17.9 mã lực, Phanh ABS 2 piston, Bộ ly hợp A&S",
+    "xuatXu": "Việt Nam"
   },
   {
-    id: 'XM012',
-    tenXe: 'Suzuki Satria F150 Fi Nhập Khẩu',
-    hang: 'Suzuki',
-    phanKhuc: 'Hyper-underbone',
-    giaNiemYet: 53490000,
-    mauSac: 'Trắng đỏ thể thao, Xanh đen, Đen mờ',
-    moTa: 'Nhập khẩu nguyên chiếc từ Suzuki Indonesia, khởi động nhanh 1 chạm Suzuki Easy Start System',
-    hinhAnh: 'https://images.unsplash.com/photo-1558981420-87aa9dad1c89?w=800&auto=format&fit=crop&q=80',
-    coTheLaiThu: true,
-    dongCo: '147.3cc DOHC Fi nguyên bản',
-    congSuat: '18.5 HP / 10.000 rpm',
-    tieuHaoNhienLieu: '2.42 L/100km',
-    phanh: 'Đĩa trước & đĩa sau',
-    thongSoKyThuat: '147.3cc DOHC Fi nguyên bản nhập Indonesia, 18.5 HP',
+    "id": "XM012",
+    "tenXe": "Yamaha Grande Hybrid",
+    "hang": "Yamaha",
+    "phanKhuc": "Tay ga",
+    "giaNiemYet": 49500000,
+    "mauSac": "Trắng ngọc trai, Đỏ nhám, Xanh xám",
+    "moTa": "Mẫu xe ga tiết kiệm xăng số 1 Việt Nam với công nghệ Hybrid trợ lực điện êm ái nhẹ nhàng",
+    "hinhAnh": "/images/Xe/yamaha_grande_hybrid.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 7,
+    "dongCo": "124.9cc Blue Core Hybrid trợ lực điện",
+    "congSuat": "8.3 HP / 6.500 rpm",
+    "tieuHaoNhienLieu": "1.66 L/100km",
+    "phanh": "Đĩa trước ABS, tang trống sau",
+    "thongSoKyThuat": "124.9cc Blue Core Hybrid trợ lực điện, Tiết kiệm xăng số 1 (1.66L/100km), Phanh ABS",
+    "xuatXu": "Việt Nam"
   },
   {
-    id: 'XM013',
-    tenXe: 'Suzuki Burgman Street 125',
-    hang: 'Suzuki',
-    phanKhuc: 'Tay ga',
-    giaNiemYet: 48600000,
-    mauSac: 'Xám mờ thời thượng, Vàng đồng, Đen tuyền',
-    moTa: 'Mẫu xe tay ga đường trường phong cách Maxi sang trọng đẳng cấp châu Âu, sàn để chân kép linh hoạt',
-    hinhAnh: 'https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=800&auto=format&fit=crop&q=80',
-    coTheLaiThu: false,
-    dongCo: '124.3cc SEP tiết kiệm nhiên liệu',
-    congSuat: '8.7 HP / 6.750 rpm',
-    tieuHaoNhienLieu: '1.96 L/100km',
-    phanh: 'Đĩa trước kết hợp phanh CBS',
-    thongSoKyThuat: '124.3cc động cơ SEP, Thiết kế Maxi-Scooter phong cách Châu Âu bề thế',
+    "id": "XM013",
+    "tenXe": "Yamaha NVX 155 VVA",
+    "hang": "Yamaha",
+    "phanKhuc": "Tay ga",
+    "giaNiemYet": 55500000,
+    "mauSac": "Đen vàng, Xám ánh xanh, Đỏ đen Monster",
+    "moTa": "Maxi-scooter thể thao dành cho nam giới, kết nối điện thoại Y-Connect thông minh",
+    "hinhAnh": "/images/Xe/yamaha_nvx_155_vva.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 5,
+    "dongCo": "155.1cc Blue Core VVA làm mát két nước",
+    "congSuat": "15.1 HP / 8.000 rpm",
+    "tieuHaoNhienLieu": "2.23 L/100km",
+    "phanh": "Đĩa trước ABS, tang trống sau",
+    "thongSoKyThuat": "155.1cc VVA, Phanh ABS trước, Kết nối Y-Connect, Khóa SmartKey",
+    "xuatXu": "Việt Nam"
   },
   {
-    id: 'XM014',
-    tenXe: 'Vespa Primavera 125 ABS',
-    hang: 'Piaggio & Vespa',
-    phanKhuc: 'Tay ga',
-    giaNiemYet: 77800000,
-    mauSac: 'Cam hoàng hôn, Trắng sữa, Xanh búp trà',
-    moTa: 'Biểu tượng phong cách nước Ý trường tồn với thời gian, động cơ i-Get 3 van vận hành êm ái, phanh ABS',
-    hinhAnh: 'https://images.unsplash.com/photo-1558981854-3e9821d3f9b2?w=800&auto=format&fit=crop&q=80',
-    coTheLaiThu: true,
-    dongCo: '124.5cc động cơ i-Get 3 van',
-    congSuat: '10.6 HP / 7.700 rpm',
-    tieuHaoNhienLieu: '2.14 L/100km',
-    phanh: 'Đĩa trước ABS, đùm sau',
-    thongSoKyThuat: '124.5cc động cơ i-Get 3 van, Khung thép liền khối kinh điển, Phanh ABS',
+    "id": "XM014",
+    "tenXe": "Yamaha PG-1 Scrambler",
+    "hang": "Yamaha",
+    "phanKhuc": "Xe số",
+    "giaNiemYet": 30437000,
+    "mauSac": "Vàng cát, Xanh rêu, Nâu đất, Đen bạc",
+    "moTa": "Dòng xe số dã ngoại Scrambler cá tính gây sốt giới trẻ, ghi đông cao lốp gai đa địa hình",
+    "hinhAnh": "/images/Xe/yamaha_pg_1.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 10,
+    "dongCo": "113.7cc 4 kỳ làm mát không khí",
+    "congSuat": "8.9 HP / 7.000 rpm",
+    "tieuHaoNhienLieu": "1.69 L/100km",
+    "phanh": "Đĩa trước, tang trống sau",
+    "thongSoKyThuat": "113.7cc làm mát không khí, Lốp gai địa hình khối lớn, Yên đôi rời phong cách bụi bặm",
+    "xuatXu": "Việt Nam"
   },
   {
-    id: 'XM015',
-    tenXe: 'Vespa Sprint S 150 i-Get ABS',
-    hang: 'Piaggio & Vespa',
-    phanKhuc: 'Tay ga',
-    giaNiemYet: 97800000,
-    mauSac: 'Xám Titan, Vàng nhám, Trắng tuyết',
-    moTa: 'Biểu tượng phong cách thời trang Ý với đèn pha LED lục giác góc cạnh, thân xe bằng thép dập nguyên khối',
-    hinhAnh: 'https://images.unsplash.com/photo-1568772585407-9361f9bf3a87?w=800&auto=format&fit=crop&q=80',
-    coTheLaiThu: true,
-    dongCo: '155cc i-Get 3 van',
-    congSuat: '12.7 HP / 7.750 rpm',
-    tieuHaoNhienLieu: '2.25 L/100km',
-    phanh: 'Đĩa trước ABS, đùm sau',
-    thongSoKyThuat: '155cc i-Get 3 van, Đèn pha LED lục giác, Phanh ABS',
+    "id": "XM015",
+    "tenXe": "Yamaha Sirius FI",
+    "hang": "Yamaha",
+    "phanKhuc": "Xe số",
+    "giaNiemYet": 21100000,
+    "mauSac": "Đỏ đen, Đen nhám, Xám đen, Xanh bạc",
+    "moTa": "Xe số quốc dân của Yamaha, tăng tốc nhạy bén và cực kỳ bền bỉ trên mọi nẻo đường",
+    "hinhAnh": "/images/Xe/yamaha_sirius_fi.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 14,
+    "dongCo": "115cc phun xăng điện tử FI",
+    "congSuat": "8.7 HP / 7.000 rpm",
+    "tieuHaoNhienLieu": "1.65 L/100km",
+    "phanh": "Đĩa trước, tang trống sau",
+    "thongSoKyThuat": "115cc FI phun xăng điện tử, Động cơ bốc, Tiết kiệm nhiên liệu vượt trội",
+    "xuatXu": "Việt Nam"
   },
   {
-    id: 'XM016',
-    tenXe: 'Piaggio Liberty 125 S ABS',
-    hang: 'Piaggio & Vespa',
-    phanKhuc: 'Tay ga',
-    giaNiemYet: 57700000,
-    mauSac: 'Đen mờ Nero, Đỏ bóng Rosso, Trắng Bianco',
-    moTa: 'Thiết kế bánh lớn 16 inch đậm chất Urban thanh lịch thời thượng, phanh ABS bánh trước an toàn',
-    hinhAnh: 'https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=800&auto=format&fit=crop&q=80',
-    coTheLaiThu: true,
-    dongCo: '124.5cc động cơ i-Get',
-    congSuat: '10.2 HP / 7.600 rpm',
-    tieuHaoNhienLieu: '2.19 L/100km',
-    phanh: 'Đĩa trước ABS, đùm sau',
-    thongSoKyThuat: '124.5cc động cơ i-Get hiện đại, Bánh trước 16 inch vượt chướng ngại vật êm ái',
+    "id": "XM016",
+    "tenXe": "Yamaha Janus 125",
+    "hang": "Yamaha",
+    "phanKhuc": "Tay ga",
+    "giaNiemYet": 28600000,
+    "mauSac": "Xanh đen, Trắng ngọc trai, Đỏ nhung",
+    "moTa": "Thiết kế trẻ trung năng động dành cho sinh viên và giới trẻ đô thị năng động",
+    "hinhAnh": "/images/Xe/yamaha_janus_125.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 8,
+    "dongCo": "125cc Blue Core 4 thì làm mát không khí",
+    "congSuat": "9.4 HP / 8.000 rpm",
+    "tieuHaoNhienLieu": "1.87 L/100km",
+    "phanh": "Đĩa trước, tang trống sau",
+    "thongSoKyThuat": "125cc Blue Core, Khóa thông minh SmartKey, Cốp rộng 14L, Đồng hồ LCD",
+    "xuatXu": "Việt Nam"
   },
+  {
+    "id": "XM017",
+    "tenXe": "Yamaha FreeGo 125",
+    "hang": "Yamaha",
+    "phanKhuc": "Tay ga",
+    "giaNiemYet": 34100000,
+    "mauSac": "Đỏ đen, Xám đen nhám, Xanh rêu",
+    "moTa": "Tay ga thể thao trang bị phanh ABS giá tốt nhất phân khúc, nắp bình xăng trước tiện lợi",
+    "hinhAnh": "/images/Xe/yamaha_freego_125.png",
+    "coTheLaiThu": true,
+    "soLuong": 6,
+    "dongCo": "125cc Blue Core làm mát không khí",
+    "congSuat": "9.5 HP / 8.000 rpm",
+    "tieuHaoNhienLieu": "2.03 L/100km",
+    "phanh": "Đĩa trước ABS, tang trống sau",
+    "thongSoKyThuat": "125cc Blue Core, Phanh ABS bánh trước, Cốp 25L, Nắp xăng ngoài tiện lợi",
+    "xuatXu": "Việt Nam"
+  },
+  {
+    "id": "XM018",
+    "tenXe": "Yamaha Latte 125",
+    "hang": "Yamaha",
+    "phanKhuc": "Tay ga",
+    "giaNiemYet": 38300000,
+    "mauSac": "Trắng tinh khôi, Đỏ đô, Bạc ánh kim",
+    "moTa": "Cốp xe cực đại 37L đáy phẳng, khóa thông minh SmartKey cùng trọng lượng nhẹ chỉ 100kg",
+    "hinhAnh": "/images/Xe/yamaha_latte_125.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 5,
+    "dongCo": "125cc Blue Core êm ái",
+    "congSuat": "8.3 HP / 6.500 rpm",
+    "tieuHaoNhienLieu": "1.80 L/100km",
+    "phanh": "Đĩa trước, tang trống sau",
+    "thongSoKyThuat": "125cc Blue Core, Cốp 37L đáy phẳng cực đại, SmartKey, Nắp xăng trước",
+    "xuatXu": "Việt Nam"
+  },
+  {
+    "id": "XM019",
+    "tenXe": "Yamaha Jupiter Finn",
+    "hang": "Yamaha",
+    "phanKhuc": "Xe số",
+    "giaNiemYet": 27700000,
+    "mauSac": "Xám bạc, Xanh ánh kim, Đỏ đen",
+    "moTa": "Xe số gia đình cao cấp đầu tiên trang bị hệ thống phanh kết hợp UBS chống trượt bánh",
+    "hinhAnh": "/images/Xe/yamaha_jupiter_finn.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 6,
+    "dongCo": "113.7cc FI làm mát không khí",
+    "congSuat": "9.0 HP / 7.000 rpm",
+    "tieuHaoNhienLieu": "1.64 L/100km",
+    "phanh": "Phanh kết hợp UBS an toàn",
+    "thongSoKyThuat": "113.7cc FI, Phanh kết hợp UBS, Hộc để đồ phía trước, Tiết kiệm xăng 1.64L/100km",
+    "xuatXu": "Việt Nam"
+  },
+  {
+    "id": "XM020",
+    "tenXe": "Yamaha YZF-R15 V4",
+    "hang": "Yamaha",
+    "phanKhuc": "Xe côn tay",
+    "giaNiemYet": 78000000,
+    "mauSac": "Xanh GP R-Series, Đen bóng Metallic",
+    "moTa": "Siêu phẩm sportbike trang bị hệ thống sang số nhanh Quickshifter và kiểm soát lực kéo TCS",
+    "hinhAnh": "/images/Xe/yamaha_yzf_r15_v4.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 4,
+    "dongCo": "155cc VVA, 4 van SOHC làm mát chất lỏng",
+    "congSuat": "18.4 HP / 10.000 rpm",
+    "tieuHaoNhienLieu": "2.30 L/100km",
+    "phanh": "Đĩa trước sau, ABS 2 kênh, Quickshifter",
+    "thongSoKyThuat": "155cc VVA, Quickshifter 1 chiều, Kiểm soát lực kéo TCS, Phanh ABS 2 kênh",
+    "xuatXu": "Indonesia"
+  },
+  {
+    "id": "XM021",
+    "tenXe": "Vespa 946 Dragon",
+    "hang": "Piaggio & Vespa",
+    "phanKhuc": "Tay ga",
+    "giaNiemYet": 458000000,
+    "mauSac": "Vàng ánh kim họa tiết Rồng huyền thoại",
+    "moTa": "Kiệt tác tay ga giới hạn toàn cầu tôn vinh năm Giáp Thìn, thân xe đúc nhôm thủ công tinh xảo",
+    "hinhAnh": "/images/Xe/vespa_946_dragon.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 2,
+    "dongCo": "155cc 3V i-Get làm mát gió cưỡng bức",
+    "congSuat": "12.7 HP / 7.750 rpm",
+    "tieuHaoNhienLieu": "2.40 L/100km",
+    "phanh": "Đĩa trước sau, ABS 2 kênh, kiểm soát lực kéo ASR",
+    "thongSoKyThuat": "155cc 3V i-Get, Thân xe nguyên khối đúc nhôm thủ công, ABS 2 kênh, Chống trượt ASR",
+    "xuatXu": "Nhập khẩu (Ý)"
+  },
+  {
+    "id": "XM022",
+    "tenXe": "Vespa GTS Super Sport 150",
+    "hang": "Piaggio & Vespa",
+    "phanKhuc": "Tay ga",
+    "giaNiemYet": 137000000,
+    "mauSac": "Trắng Innocente, Cam Tramonto, Đen bóng",
+    "moTa": "Khung xe lớn bệ vệ đầm chắc, tem thể thao tương phản cá tính cùng màn hình đồng hồ hiện đại",
+    "hinhAnh": "/images/Xe/vespa_gts_super_sport_150.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 4,
+    "dongCo": "155cc i-Get 4 van làm mát dung dịch",
+    "congSuat": "15.6 HP / 8.250 rpm",
+    "tieuHaoNhienLieu": "2.50 L/100km",
+    "phanh": "Đĩa trước sau đường kính lớn, ABS 2 kênh",
+    "thongSoKyThuat": "155cc i-Get 4V, Phanh ABS 2 kênh, Khóa thông minh SmartKey, Màn hình LCD",
+    "xuatXu": "Việt Nam"
+  },
+  {
+    "id": "XM023",
+    "tenXe": "Vespa GTS Touring 300",
+    "hang": "Piaggio & Vespa",
+    "phanKhuc": "Tay ga",
+    "giaNiemYet": 179000000,
+    "mauSac": "Xanh Rêu Foresta, Xám Materia",
+    "moTa": "Động cơ HPE 300cc mạnh nhất của Vespa, kính chắn gió và baga chở đồ chuyên đi tour xa",
+    "hinhAnh": "/images/Xe/vespa_gts_touring_300.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 3,
+    "dongCo": "278cc HPE hiệu năng cao 4 van",
+    "congSuat": "23.8 HP / 8.250 rpm",
+    "tieuHaoNhienLieu": "3.20 L/100km",
+    "phanh": "Đĩa trước sau ABS 2 kênh, kiểm soát ASR",
+    "thongSoKyThuat": "278cc HPE 23.8 mã lực, ABS 2 kênh, Kính chắn gió touring, Baga sau cao cấp",
+    "xuatXu": "Việt Nam"
+  },
+  {
+    "id": "XM024",
+    "tenXe": "Vespa Primavera 125 ABS",
+    "hang": "Piaggio & Vespa",
+    "phanKhuc": "Tay ga",
+    "giaNiemYet": 77800000,
+    "mauSac": "Trắng mây, Xanh biển sâu, Cam đào, Hồng",
+    "moTa": "Biểu tượng thời trang nước Ý với đèn pha tròn cổ điển, thân thép liền khối quyến rũ",
+    "hinhAnh": "/images/Xe/vespa_primavera_125.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 7,
+    "dongCo": "124.5cc i-Get 3 van",
+    "congSuat": "10.6 HP / 7.700 rpm",
+    "tieuHaoNhienLieu": "2.38 L/100km",
+    "phanh": "Đĩa trước ABS, tang trống sau",
+    "thongSoKyThuat": "124.5cc i-Get 3V, Phanh ABS trước, Đèn Full LED 2 tầng, Cổng sạc USB cốp trước",
+    "xuatXu": "Việt Nam"
+  },
+  {
+    "id": "XM025",
+    "tenXe": "Vespa Sei Giorni II",
+    "hang": "Piaggio & Vespa",
+    "phanKhuc": "Tay ga",
+    "giaNiemYet": 199000000,
+    "mauSac": "Xám mờ Sei Giorni thể thao số 47",
+    "moTa": "Phiên bản kỷ niệm chiến thắng giải đua 6 ngày lịch sử, đèn pha gắn dè trước độc bản",
+    "hinhAnh": "/images/Xe/vespa_sei_giorni_ii.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 2,
+    "dongCo": "278cc HPE 4 thì làm mát dung dịch",
+    "congSuat": "23.8 HP / 8.250 rpm",
+    "tieuHaoNhienLieu": "3.15 L/100km",
+    "phanh": "Đĩa trước sau ABS 2 kênh",
+    "thongSoKyThuat": "278cc HPE, Đèn pha fano basso dè trước kinh điển, Yên đơn thể thao phong cách cổ",
+    "xuatXu": "Nhập khẩu (Ý)"
+  },
+  {
+    "id": "XM026",
+    "tenXe": "Vespa Sprint S 125",
+    "hang": "Piaggio & Vespa",
+    "phanKhuc": "Tay ga",
+    "giaNiemYet": 81300000,
+    "mauSac": "Đen nhám, Xám xi măng, Vàng mờ, Đỏ bóng",
+    "moTa": "Đèn pha lục lăng thể thao góc cạnh nam tính, đường viền đỏ nổi bật phong cách thành thị",
+    "hinhAnh": "/images/Xe/vespa_sprint_s_125.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 9,
+    "dongCo": "124.5cc i-Get xi-lanh đơn",
+    "congSuat": "10.6 HP / 7.700 rpm",
+    "tieuHaoNhienLieu": "2.40 L/100km",
+    "phanh": "Đĩa trước ABS, tang trống sau",
+    "thongSoKyThuat": "124.5cc i-Get, Phanh ABS trước, Đèn pha lục giác LED, Mâm 12 inch thể thao",
+    "xuatXu": "Việt Nam"
+  },
+  {
+    "id": "XM027",
+    "tenXe": "Piaggio Beverly 400",
+    "hang": "Piaggio & Vespa",
+    "phanKhuc": "Tay ga",
+    "giaNiemYet": 235000000,
+    "mauSac": "Đen nhám Meteora, Cam Arancio, Bạc Argento",
+    "moTa": "Maxi-scooter bánh lớn đẳng cấp thượng lưu, công suất 35.4 mã lực bức phá mọi hành trình",
+    "hinhAnh": "/images/Xe/piaggio_beverly_400.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 3,
+    "dongCo": "399cc hpe thế hệ mới",
+    "congSuat": "35.4 HP / 7.500 rpm",
+    "tieuHaoNhienLieu": "3.70 L/100km",
+    "phanh": "Đĩa đôi trước sau ABS & ASR",
+    "thongSoKyThuat": "399cc hpe 35.4 HP, Phanh ABS 2 kênh, Khóa Keyless, Đồng hồ 5.5 inch LCD",
+    "xuatXu": "Nhập khẩu (Ý)"
+  },
+  {
+    "id": "XM028",
+    "tenXe": "Piaggio Liberty 125 S",
+    "hang": "Piaggio & Vespa",
+    "phanKhuc": "Tay ga",
+    "giaNiemYet": 57700000,
+    "mauSac": "Xám titan, Trắng tuyết, Đen nhám",
+    "moTa": "Mẫu xe ga bánh lớn thanh thoát, phanh ABS chống bó cứng an toàn khi đi trời mưa trơn trượt",
+    "hinhAnh": "/images/Xe/piaggio_liberty_125_s.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 8,
+    "dongCo": "124.5cc i-Get 3 van",
+    "congSuat": "10.2 HP / 7.600 rpm",
+    "tieuHaoNhienLieu": "2.42 L/100km",
+    "phanh": "Đĩa trước ABS, tang trống sau",
+    "thongSoKyThuat": "124.5cc i-Get 3 van, Phanh ABS bánh trước, Bánh lớn 16 inch vượt chướng ngại êm ái",
+    "xuatXu": "Việt Nam"
+  },
+  {
+    "id": "XM029",
+    "tenXe": "Piaggio Medley S 150",
+    "hang": "Piaggio & Vespa",
+    "phanKhuc": "Tay ga",
+    "giaNiemYet": 95300000,
+    "mauSac": "Nâu mờ Terra, Đen bóng Lucido, Trắng",
+    "moTa": "Tay ga bánh lớn cao cấp trang bị động cơ 16.2 mã lực, cốp cực lớn 36L và hệ thống ngắt Start-Stop",
+    "hinhAnh": "/images/Xe/piaggio_medley_s_150.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 5,
+    "dongCo": "155cc i-Get 4 van làm mát dung dịch",
+    "congSuat": "16.2 HP / 8.750 rpm",
+    "tieuHaoNhienLieu": "2.30 L/100km",
+    "phanh": "Đĩa trước sau ABS 2 kênh",
+    "thongSoKyThuat": "155cc i-Get 4V 16.2 HP, Phanh ABS 2 kênh, Start-Stop RISS, Kết nối Piaggio MIA",
+    "xuatXu": "Việt Nam"
+  },
+  {
+    "id": "XM030",
+    "tenXe": "Piaggio Zip 100",
+    "hang": "Piaggio & Vespa",
+    "phanKhuc": "Tay ga",
+    "giaNiemYet": 36000000,
+    "mauSac": "Đỏ tươi, Trắng tinh khôi, Đen bóng",
+    "moTa": "Xe ga nhỏ gọn linh hoạt nhất của Piaggio, chiều cao yên điều chỉnh 3 nấc phù hợp phái đẹp",
+    "hinhAnh": "/images/Xe/piaggio_zip_100.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 6,
+    "dongCo": "96cc 4 thì làm mát gió",
+    "congSuat": "5.7 HP / 6.750 rpm",
+    "tieuHaoNhienLieu": "2.20 L/100km",
+    "phanh": "Đĩa trước, tang trống sau",
+    "thongSoKyThuat": "96cc 4 thì, Yên xe chỉnh 3 mức độ cao, Trọng lượng nhẹ chỉ 89kg luồn lách phố hẹp",
+    "xuatXu": "Việt Nam"
+  },
+  {
+    "id": "XM031",
+    "tenXe": "Suzuki Raider R150",
+    "hang": "Suzuki",
+    "phanKhuc": "Xe côn tay",
+    "giaNiemYet": 51190000,
+    "mauSac": "Xanh đen MotoGP, Đỏ đen thể thao",
+    "moTa": "Ông hoàng tốc độ phân khúc 150cc, động cơ DOHC thuần túy bốc hàng đầu phân khúc",
+    "hinhAnh": "/images/Xe/suzuki_raider_r150.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 8,
+    "dongCo": "147.3cc DOHC 4 van két nước lớn",
+    "congSuat": "18.5 HP / 10.000 rpm",
+    "tieuHaoNhienLieu": "2.27 L/100km",
+    "phanh": "Đĩa trước & sau",
+    "thongSoKyThuat": "147.3cc DOHC 4 van làm mát két nước lớn, Công suất cực đại 18.5 mã lực",
+    "xuatXu": "Việt Nam"
+  },
+  {
+    "id": "XM032",
+    "tenXe": "Suzuki Satria F150",
+    "hang": "Suzuki",
+    "phanKhuc": "Xe côn tay",
+    "giaNiemYet": 53490000,
+    "mauSac": "Xanh Titan, Trắng đỏ, Đen mờ",
+    "moTa": "Mẫu xe côn tay Hyper Underbone nhập khẩu nguyên chiếc từ Indonesia, gia tốc cực kỳ ấn tượng",
+    "hinhAnh": "/images/Xe/suzuki_satria_f150.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 7,
+    "dongCo": "147.3cc DOHC làm mát dung dịch",
+    "congSuat": "18.5 HP / 10.000 rpm",
+    "tieuHaoNhienLieu": "2.27 L/100km",
+    "phanh": "Đĩa trước sau kiểu lượn sóng",
+    "thongSoKyThuat": "147.3cc DOHC, Phun xăng điện tử Fi, Đồng hồ kỹ thuật số Full LCD",
+    "xuatXu": "Indonesia"
+  },
+  {
+    "id": "XM033",
+    "tenXe": "Suzuki Burgman Street 125",
+    "hang": "Suzuki",
+    "phanKhuc": "Tay ga",
+    "giaNiemYet": 48600000,
+    "mauSac": "Vàng đồng, Xám mờ, Đen bóng",
+    "moTa": "Thiết kế maxi-scooter bệ vệ chuẩn Châu Âu, sàn để chân rộng rãi cho tư thế ngồi duỗi thẳng chân",
+    "hinhAnh": "/images/Xe/suzuki_burgman_street_125.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 5,
+    "dongCo": "124.3cc công nghệ SEP siêu êm",
+    "congSuat": "8.7 HP / 6.750 rpm",
+    "tieuHaoNhienLieu": "1.96 L/100km",
+    "phanh": "Đĩa trước CBS, tang trống sau",
+    "thongSoKyThuat": "124.3cc động cơ SEP, Thiết kế Maxi-Scooter phong cách Châu Âu bề thế",
+    "xuatXu": "Nhập khẩu (Ấn Độ)"
+  },
+  {
+    "id": "XM034",
+    "tenXe": "Suzuki GSX-R150",
+    "hang": "Suzuki",
+    "phanKhuc": "Xe côn tay",
+    "giaNiemYet": 71500000,
+    "mauSac": "Xanh đen GP Ecstar, Đen vành đỏ",
+    "moTa": "Sportbike 150cc mạnh nhất phân khúc với 19.2 mã lực và khóa thông minh chống trộm tiện ích",
+    "hinhAnh": "/images/Xe/suzuki_gsx_r150.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 4,
+    "dongCo": "147.3cc DOHC 4 van làm mát két nước",
+    "congSuat": "19.2 HP / 10.500 rpm",
+    "tieuHaoNhienLieu": "2.43 L/100km",
+    "phanh": "Đĩa trước sau ABS, SmartKey",
+    "thongSoKyThuat": "147.3cc DOHC 19.2 HP, Phanh ABS trước sau, Khóa thông minh SmartKey, Đèn pha LED",
+    "xuatXu": "Indonesia"
+  },
+  {
+    "id": "XM035",
+    "tenXe": "Suzuki GSX-S150",
+    "hang": "Suzuki",
+    "phanKhuc": "Xe côn tay",
+    "giaNiemYet": 54400000,
+    "mauSac": "Đen mờ Titan, Xanh đen",
+    "moTa": "Naked bike đường phố gọn gàng mạnh mẽ, tư thế lái thẳng lưng thoải mái di chuyển trong đô thị",
+    "hinhAnh": "/images/Xe/suzuki_gsx_s150.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 5,
+    "dongCo": "147.3cc DOHC làm mát chất lỏng",
+    "congSuat": "19.2 HP / 10.500 rpm",
+    "tieuHaoNhienLieu": "2.35 L/100km",
+    "phanh": "Đĩa trước sau hình lượn sóng",
+    "thongSoKyThuat": "147.3cc DOHC 19.2 mã lực, Khung sườn kim cương siêu cứng vững, Màn hình LCD",
+    "xuatXu": "Indonesia"
+  },
+  {
+    "id": "XM036",
+    "tenXe": "Suzuki V-Strom 250SX",
+    "hang": "Suzuki",
+    "phanKhuc": "Xe côn tay",
+    "giaNiemYet": 132900000,
+    "mauSac": "Vàng Champion, Cam Pearl, Đen bóng",
+    "moTa": "Mẫu xe phượt Adventure đa dụng, khoảng sáng gầm 205mm vượt địa hình đèo dốc xuất sắc",
+    "hinhAnh": "/images/Xe/suzuki_v_strom_250sx.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 3,
+    "dongCo": "249cc SOCS làm mát bằng dầu",
+    "congSuat": "26.5 HP / 9.300 rpm",
+    "tieuHaoNhienLieu": "3.10 L/100km",
+    "phanh": "Đĩa trước sau ABS 2 kênh",
+    "thongSoKyThuat": "249cc SOCS làm mát bằng dầu, Phanh ABS 2 kênh, Kính chắn gió cao, Cổng sạc USB",
+    "xuatXu": "Nhập khẩu (Ấn Độ)"
+  },
+  {
+    "id": "XM037",
+    "tenXe": "Suzuki Address 110",
+    "hang": "Suzuki",
+    "phanKhuc": "Tay ga",
+    "giaNiemYet": 28290000,
+    "mauSac": "Đỏ đen, Xanh đen, Trắng bạc",
+    "moTa": "Tay ga thanh thoát trọng lượng siêu nhẹ 97kg, cốp chứa đồ 20.6L rộng rãi cho chị em phụ nữ",
+    "hinhAnh": "/images/Xe/suzuki_address_110.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 6,
+    "dongCo": "113cc SEP tiết kiệm xăng",
+    "congSuat": "9.1 HP / 8.000 rpm",
+    "tieuHaoNhienLieu": "1.86 L/100km",
+    "phanh": "Đĩa trước, tang trống sau",
+    "thongSoKyThuat": "113cc SEP làm mát không khí, Cốp xe 20.6L chứa vừa mũ full-face, Sàn để chân rộng",
+    "xuatXu": "Việt Nam"
+  },
+  {
+    "id": "XM038",
+    "tenXe": "Suzuki Avenis 125",
+    "hang": "Suzuki",
+    "phanKhuc": "Tay ga",
+    "giaNiemYet": 39000000,
+    "mauSac": "Trắng mờ, Xanh neon thể thao, Đen bóng",
+    "moTa": "Mẫu xe ga thể thao góc cạnh, nắp bình xăng đặt ngoài đuôi xe độc đáo không cần mở cốp",
+    "hinhAnh": "/images/Xe/suzuki_avenis_125.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 5,
+    "dongCo": "124.3cc SEP thế hệ mới",
+    "congSuat": "8.7 HP / 6.750 rpm",
+    "tieuHaoNhienLieu": "1.95 L/100km",
+    "phanh": "Đĩa trước CBS, tang trống sau",
+    "thongSoKyThuat": "124.3cc SEP, Nắp bình xăng phía sau đuôi xe, Đồng hồ điện tử, Đèn LED đôi",
+    "xuatXu": "Nhập khẩu (Ấn Độ)"
+  },
+  {
+    "id": "XM039",
+    "tenXe": "Suzuki GD110HU",
+    "hang": "Suzuki",
+    "phanKhuc": "Xe côn tay",
+    "giaNiemYet": 27900000,
+    "mauSac": "Đen mờ cổ điển, Đỏ đen",
+    "moTa": "Dòng xe côn tay backbone cổ điển hoài niệm, bình xăng giọt nước phía trước dễ độ phong cách Cafe Racer",
+    "hinhAnh": "/images/Xe/suzuki_gd110hu.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 6,
+    "dongCo": "112.8cc 4 kỳ xi-lanh đơn",
+    "congSuat": "8.0 HP / 8.000 rpm",
+    "tieuHaoNhienLieu": "1.75 L/100km",
+    "phanh": "Tang trống trước sau",
+    "thongSoKyThuat": "112.8cc côn tay 4 số, Bình xăng giọt nước 9.2L, Phuộc sau 5 cấp độ tải trọng",
+    "xuatXu": "Việt Nam"
+  },
+  {
+    "id": "XM040",
+    "tenXe": "Suzuki Impulse 125",
+    "hang": "Suzuki",
+    "phanKhuc": "Tay ga",
+    "giaNiemYet": 31990000,
+    "mauSac": "Xanh mờ, Đen mờ vàng, Trắng xanh",
+    "moTa": "Tay ga thể thao phong cách mạnh mẽ, vành đúc 16 inch lớn di chuyển êm ái qua gờ giảm tốc",
+    "hinhAnh": "/images/Xe/suzuki_impulse_125.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 5,
+    "dongCo": "124cc phun xăng điện tử DCP-FI",
+    "congSuat": "9.2 HP / 8.000 rpm",
+    "tieuHaoNhienLieu": "2.34 L/100km",
+    "phanh": "Đĩa trước, tang trống sau",
+    "thongSoKyThuat": "124cc DCP-FI, Vành đúc 16 inch bề thế, Cốp xe rộng rãi, Đèn đuôi lấy cảm hứng GSX",
+    "xuatXu": "Việt Nam"
+  },
+  {
+    "id": "XM041",
+    "tenXe": "SYM Attila 125",
+    "hang": "SYM",
+    "phanKhuc": "Tay ga",
+    "giaNiemYet": 33700000,
+    "mauSac": "Trắng thanh lịch, Đỏ mận, Đen mờ",
+    "moTa": "Dòng xe ga huyền thoại gắn liền với phụ nữ Việt Nam, nắp bình xăng dời lên trước tiện lợi",
+    "hinhAnh": "/images/Xe/sym_attila_125.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 8,
+    "dongCo": "124.6cc E-Power làm mát không khí",
+    "congSuat": "10.3 HP / 8.500 rpm",
+    "tieuHaoNhienLieu": "1.99 L/100km",
+    "phanh": "Đĩa trước CBS, tang trống sau",
+    "thongSoKyThuat": "124.6cc E-Power phun xăng điện tử, Đèn LED toàn phần, Cổng sạc USB trước",
+    "xuatXu": "Việt Nam"
+  },
+  {
+    "id": "XM042",
+    "tenXe": "SYM Tuscany 150",
+    "hang": "SYM",
+    "phanKhuc": "Tay ga",
+    "giaNiemYet": 45000000,
+    "mauSac": "Xanh ngọc, Trắng ngọc trai, Xám xi măng",
+    "moTa": "Phong cách cổ điển nước Ý quý phái, khóa thông minh Smartkey cùng màn hình kỹ thuật số sang trọng",
+    "hinhAnh": "/images/Xe/sym_tuscany_150.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 6,
+    "dongCo": "149.6cc làm mát không khí",
+    "congSuat": "11.5 HP / 8.000 rpm",
+    "tieuHaoNhienLieu": "2.45 L/100km",
+    "phanh": "Đĩa trước sau CBS an toàn",
+    "thongSoKyThuat": "149.6cc 4 thì, Phanh đĩa CBS 2 bánh, Khóa thông minh SmartKey, Màn hình LCD màu",
+    "xuatXu": "Việt Nam"
+  },
+  {
+    "id": "XM043",
+    "tenXe": "SYM Shark 50",
+    "hang": "SYM",
+    "phanKhuc": "Tay ga",
+    "giaNiemYet": 24500000,
+    "mauSac": "Xanh nhám, Trắng, Đen mờ",
+    "moTa": "Xe ga 50cc phong cách thể thao cho học sinh cấp 3, không yêu cầu giấy phép lái xe A1",
+    "hinhAnh": "/images/Xe/sym_shark_50.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 10,
+    "dongCo": "49.5cc không cần bằng lái",
+    "congSuat": "3.3 HP / 8.000 rpm",
+    "tieuHaoNhienLieu": "1.97 L/100km",
+    "phanh": "Đĩa trước, tang trống sau",
+    "thongSoKyThuat": "49.5cc làm mát không khí, Không cần bằng lái, Nắp bình xăng phía trước, Cốp lớn",
+    "xuatXu": "Việt Nam"
+  },
+  {
+    "id": "XM044",
+    "tenXe": "SYM Priti 50",
+    "hang": "SYM",
+    "phanKhuc": "Tay ga",
+    "giaNiemYet": 26000000,
+    "mauSac": "Hồng Pastel, Xanh bạc hà, Trắng sữa",
+    "moTa": "Dòng xe ga mini dễ thương trọng lượng siêu nhẹ 93kg dành riêng cho các bạn nữ sinh",
+    "hinhAnh": "/images/Xe/sym_priti_50.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 8,
+    "dongCo": "49.5cc êm ái bền bỉ",
+    "congSuat": "3.3 HP / 8.000 rpm",
+    "tieuHaoNhienLieu": "1.81 L/100km",
+    "phanh": "Đĩa trước, tang trống sau",
+    "thongSoKyThuat": "49.5cc 4 thì siêu êm, Trọng lượng 93kg, Gương xoay thời trang, Cốp xe tiện dụng",
+    "xuatXu": "Việt Nam"
+  },
+  {
+    "id": "XM045",
+    "tenXe": "SYM Star SR 170",
+    "hang": "SYM",
+    "phanKhuc": "Xe côn tay",
+    "giaNiemYet": 52400000,
+    "mauSac": "Đỏ đen thể thao, Xanh đen",
+    "moTa": "Dung tích động cơ 174.5cc lớn nhất phân khúc Underbone phổ thông, trang bị phanh chống bó cứng ABS",
+    "hinhAnh": "/images/Xe/sym_star_sr_170.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 5,
+    "dongCo": "174.5cc Ecotech 4 van làm mát dung dịch",
+    "congSuat": "15.0 HP / 8.500 rpm",
+    "tieuHaoNhienLieu": "2.30 L/100km",
+    "phanh": "Đĩa trước ABS, đĩa sau",
+    "thongSoKyThuat": "174.5cc Ecotech 4V, Phanh ABS trước, Hộp số 6 cấp, Khung sườn gia cường thể thao",
+    "xuatXu": "Việt Nam"
+  },
+  {
+    "id": "XM046",
+    "tenXe": "SYM Galaxy 125",
+    "hang": "SYM",
+    "phanKhuc": "Xe số",
+    "giaNiemYet": 25200000,
+    "mauSac": "Đỏ đen, Đen nhám vành đúc",
+    "moTa": "Xe số thể thao nam tính với hộc chứa đồ phía trước cùng cốp xe tiện ích",
+    "hinhAnh": "/images/Xe/sym_galaxy_125.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 7,
+    "dongCo": "124.6cc E-Power bền bỉ",
+    "congSuat": "9.9 HP / 8.500 rpm",
+    "tieuHaoNhienLieu": "1.70 L/100km",
+    "phanh": "Đĩa trước, tang trống sau",
+    "thongSoKyThuat": "124.6cc E-Power, Vành đúc thể thao, Hộc đồ đầu xe, Đèn định vị LED sắc sảo",
+    "xuatXu": "Việt Nam"
+  },
+  {
+    "id": "XM047",
+    "tenXe": "SYM Elegant 110",
+    "hang": "SYM",
+    "phanKhuc": "Xe số",
+    "giaNiemYet": 16700000,
+    "mauSac": "Đỏ đen, Xanh đen, Đen mờ",
+    "moTa": "Mẫu xe số kinh tế giá rẻ nhất thị trường, tiết kiệm xăng bền bỉ cho người lao động",
+    "hinhAnh": "/images/Xe/sym_elegant_110.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 12,
+    "dongCo": "110cc làm mát không khí",
+    "congSuat": "7.2 HP / 7.500 rpm",
+    "tieuHaoNhienLieu": "1.68 L/100km",
+    "phanh": "Tang trống trước sau",
+    "thongSoKyThuat": "110cc bền bỉ, Tiêu hao 1.68L/100km, Khung sườn thép chịu lực cao",
+    "xuatXu": "Việt Nam"
+  },
+  {
+    "id": "XM048",
+    "tenXe": "SYM Passing 125",
+    "hang": "SYM",
+    "phanKhuc": "Tay ga",
+    "giaNiemYet": 26200000,
+    "mauSac": "Đen nhám, Đỏ đen thể thao",
+    "moTa": "Xe ga đường phố năng động, tay lái linh hoạt và thiết kế đèn pha đôi mắt cú hầm hố",
+    "hinhAnh": "/images/Xe/sym_passing_125.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 6,
+    "dongCo": "124.6cc 4 thì làm mát gió",
+    "congSuat": "8.8 HP / 8.000 rpm",
+    "tieuHaoNhienLieu": "2.10 L/100km",
+    "phanh": "Đĩa trước, tang trống sau",
+    "thongSoKyThuat": "124.6cc phun xăng điện tử, Đèn pha đôi mắt cú, Cốp rộng, Trọng lượng nhẹ",
+    "xuatXu": "Việt Nam"
+  },
+  {
+    "id": "XM049",
+    "tenXe": "SYM Angela 50",
+    "hang": "SYM",
+    "phanKhuc": "Xe số",
+    "giaNiemYet": 17500000,
+    "mauSac": "Hồng trắng, Xanh trắng ngọc, Đỏ trắng",
+    "moTa": "Xe số nữ tính thanh nhã cho học sinh nữ, cốp xe để vừa nón bảo hiểm nửa đầu",
+    "hinhAnh": "/images/Xe/sym_angela_50.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 9,
+    "dongCo": "49.5cc không cần bằng lái A1",
+    "congSuat": "2.8 HP / 7.500 rpm",
+    "tieuHaoNhienLieu": "1.55 L/100km",
+    "phanh": "Tang trống trước sau",
+    "thongSoKyThuat": "49.5cc êm ái, Không cần bằng lái A1, Hộc đồ trước tiện lợi, Mức tiêu hao 1.55L/100km",
+    "xuatXu": "Việt Nam"
+  },
+  {
+    "id": "XM050",
+    "tenXe": "SYM Abelo 110",
+    "hang": "SYM",
+    "phanKhuc": "Xe số",
+    "giaNiemYet": 17200000,
+    "mauSac": "Đen đỏ, Xanh bạc, Trắng đen",
+    "moTa": "Mẫu xe số gia đình tiện dụng, yên xe êm ái cùng hệ thống đèn halogen chiếu sáng vượt trội",
+    "hinhAnh": "/images/Xe/sym_abelo_110.jpg",
+    "coTheLaiThu": true,
+    "soLuong": 8,
+    "dongCo": "110cc 4 kỳ làm mát gió",
+    "congSuat": "7.5 HP / 7.500 rpm",
+    "tieuHaoNhienLieu": "1.65 L/100km",
+    "phanh": "Tang trống trước sau",
+    "thongSoKyThuat": "110cc 4 thì, Phuộc giảm xóc dầu êm ái, Đồng hồ hiển thị rõ nét, Tiết kiệm nhiên liệu",
+    "xuatXu": "Việt Nam"
+  }
 ];
+
+const DELETED_VEHICLES_KEY = 'crm_catalog_deleted_ids';
+
+function getDeletedVehicleIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(DELETED_VEHICLES_KEY);
+    if (raw) return new Set(JSON.parse(raw));
+  } catch {}
+  return new Set();
+}
+
+function addDeletedVehicleId(id: string, name?: string) {
+  try {
+    const set = getDeletedVehicleIds();
+    set.add(id);
+    if (name) set.add(name.toLowerCase().trim());
+    localStorage.setItem(DELETED_VEHICLES_KEY, JSON.stringify(Array.from(set)));
+  } catch {}
+}
 
 export const catalogVehicleApi = {
   getAllSync(): CatalogVehicle[] {
+    const deletedIds = getDeletedVehicleIds();
     try {
       const cached = localStorage.getItem(VEHICLE_STORAGE_KEY);
       if (cached) {
         const parsed: CatalogVehicle[] = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.filter(v => !deletedIds.has(v.id) && !deletedIds.has((v.tenXe || '').toLowerCase().trim()));
+        }
       }
     } catch {}
-    return DEFAULT_CATALOG_VEHICLES;
+    return DEFAULT_CATALOG_VEHICLES.filter(v => !deletedIds.has(v.id) && !deletedIds.has((v.tenXe || '').toLowerCase().trim()));
   },
 
   async getAll(): Promise<CatalogVehicle[]> {
-    // 1. Đọc cache localStorage trước để giữ các thay đổi của người dùng (ẩn/hiện, số lượng tồn kho, trạng thái kinh doanh)
-    const localMap = new Map<string, CatalogVehicle>();
-    let existingList: CatalogVehicle[] = [];
+    const deletedIds = getDeletedVehicleIds();
+    let localList: CatalogVehicle[] = [];
     try {
       const cached = localStorage.getItem(VEHICLE_STORAGE_KEY);
       if (cached) {
-        existingList = JSON.parse(cached);
-        if (Array.isArray(existingList)) {
-          existingList.forEach(v => {
-            if (v.id) localMap.set(v.id, v);
-            if (v.tenXe) localMap.set(v.tenXe.toLowerCase().trim(), v);
-          });
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          localList = parsed;
         }
       }
     } catch {}
 
+    // Khởi tạo ban đầu nếu cache rỗng
+    if (localList.length === 0) {
+      localList = [...DEFAULT_CATALOG_VEHICLES];
+      try {
+        localStorage.setItem(VEHICLE_STORAGE_KEY, JSON.stringify(localList));
+      } catch {}
+    }
+
+    // Lọc bỏ các xe trong blacklist đã bị xóa
+    localList = localList.filter(v => !deletedIds.has(v.id) && !deletedIds.has((v.tenXe || '').toLowerCase().trim()));
+
+    // Dọn dẹp triệt để trùng lặp trong localList theo ID và tên xe
+    const seenIds = new Set<string>();
+    const seenNames = new Set<string>();
+    localList = localList.filter(v => {
+      if (seenIds.has(v.id)) return false;
+      const cleanName = (v.tenXe || '').toLowerCase().trim();
+      if (cleanName && seenNames.has(cleanName)) return false;
+      seenIds.add(v.id);
+      if (cleanName) seenNames.add(cleanName);
+      return true;
+    });
+
     try {
       const res = await fetchWithTimeout(`${API_BASE_URL}/XeMau`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      if (!Array.isArray(data) || data.length === 0) throw new Error('Empty from server');
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          let hasChange = false;
+          data.forEach((item: any) => {
+            const key = (item.tenXe || '').toLowerCase().trim();
+            if (deletedIds.has(key)) return;
 
-      const mapped: CatalogVehicle[] = data.map((item: any) => {
-        const id = item.maXe ? (item.maXe < 10 ? `XM00${item.maXe}` : `XM0${item.maXe}`) : `XM${Date.now()}`;
-        const foundDefault = DEFAULT_CATALOG_VEHICLES.find(
-          df => df.id === id || df.tenXe.toLowerCase().trim() === (item.tenXe || '').toLowerCase().trim()
-        );
-        const local = localMap.get(id) || localMap.get((item.tenXe || '').toLowerCase().trim());
+            // Tìm đối chiếu theo tên hoặc maXe trong localList
+            const matched = localList.find(v => {
+              if (item.maXe && v.maXe === item.maXe) return true;
+              const vKey = (v.tenXe || '').toLowerCase().trim();
+              return vKey === key || (key.length > 5 && (vKey.includes(key) || key.includes(vKey)));
+            });
 
-        return {
-          id,
-          maXe: item.maXe,
-          tenXe: item.tenXe,
-          hang: item.hangXe || local?.hang || foundDefault?.hang || 'Honda',
-          phanKhuc: item.loaiXe || local?.phanKhuc || foundDefault?.phanKhuc || 'Tay ga',
-          giaNiemYet: Number(item.giaNiemYet) || local?.giaNiemYet || foundDefault?.giaNiemYet || 0,
-          mauSac: item.mauSac || local?.mauSac || foundDefault?.mauSac || 'Đen bóng, Đỏ đen, Trắng bạc',
-          moTa: item.thongSoKyThuat || local?.moTa || foundDefault?.moTa || 'Mẫu xe chính hãng phân phối tại Motoshop',
-          hinhAnh: item.hinhAnh || local?.hinhAnh || foundDefault?.hinhAnh || 'https://images.unsplash.com/photo-1568772585407-9361f9bf3a87?w=800&auto=format&fit=crop&q=80',
-          coTheLaiThu: local?.coTheLaiThu !== undefined ? local.coTheLaiThu : (item.coTheLaiThu !== false),
-          soLuong: local?.soLuong !== undefined ? local.soLuong : (item.soLuong ?? foundDefault?.soLuong ?? 12),
-          ncc: local?.ncc || item.ncc || foundDefault?.ncc || `${item.hangXe || foundDefault?.hang || 'Honda'} Việt Nam`,
-          namSanXuat: local?.namSanXuat || item.namSanXuat || foundDefault?.namSanXuat || 2025,
-          xuatXu: local?.xuatXu || item.xuatXu || foundDefault?.xuatXu || 'Việt Nam',
-          vat: local?.vat ?? item.vat ?? foundDefault?.vat ?? 10,
-          loaiDongCo: local?.loaiDongCo || item.loaiDongCo || foundDefault?.loaiDongCo || foundDefault?.dongCo || '4 kỳ, 1 xi lanh, làm mát bằng dung dịch',
-          dungTichXiLanh: local?.dungTichXiLanh || item.dungTichXiLanh || foundDefault?.dungTichXiLanh || '156.9 cc',
-          tieuThuNhienLieu: local?.tieuThuNhienLieu || item.tieuThuNhienLieu || foundDefault?.tieuThuNhienLieu || foundDefault?.tieuHaoNhienLieu || '2.20 L/100km',
-          khoiLuong: local?.khoiLuong || item.khoiLuong || foundDefault?.khoiLuong || '130 kg',
-          kichThuoc: local?.kichThuoc || item.kichThuoc || foundDefault?.kichThuoc || '2.090 x 739 x 1.129 mm',
-          doCaoYen: local?.doCaoYen || item.doCaoYen || foundDefault?.doCaoYen || '790 mm',
-          dungTichBinhXang: local?.dungTichBinhXang || item.dungTichBinhXang || foundDefault?.dungTichBinhXang || '7.0 L',
-          heThongPhanh: local?.heThongPhanh || item.heThongPhanh || foundDefault?.heThongPhanh || foundDefault?.phanh || 'Phanh đĩa trước & sau, tích hợp ABS',
-          kichCoLop: local?.kichCoLop || item.kichCoLop || foundDefault?.kichCoLop || 'Trước: 100/80-16, Sau: 120/80-16',
-          dongCo: local?.dongCo || foundDefault?.dongCo || item.thongSoKyThuat?.split(',')[0] || '150cc eSP+',
-          congSuat: local?.congSuat || foundDefault?.congSuat || '15 HP / 8.000 rpm',
-          tieuHaoNhienLieu: local?.tieuHaoNhienLieu || foundDefault?.tieuHaoNhienLieu || '2.1 L/100km',
-          phanh: local?.phanh || foundDefault?.phanh || 'Phanh đĩa ABS trước',
-          thongSoKyThuat: item.thongSoKyThuat || local?.thongSoKyThuat || foundDefault?.thongSoKyThuat || '',
-          trangThaiHienThi: local?.trangThaiHienThi || item.trangThaiHienThi || foundDefault?.trangThaiHienThi || 'Hien',
-          trangThaiKinhDoanh: local?.trangThaiKinhDoanh || item.trangThaiKinhDoanh || foundDefault?.trangThaiKinhDoanh || 'DangKinhDoanh',
-          ngayTao: local?.ngayTao || item.ngayTao || foundDefault?.ngayTao || new Date().toISOString().split('T')[0],
-        };
-      });
-
-      // Hợp nhất danh mục cơ sở với các xe từ backend và giữ các thay đổi trên máy
-      const combinedMap = new Map<string, CatalogVehicle>();
-      DEFAULT_CATALOG_VEHICLES.forEach(v => {
-        const local = localMap.get(v.id) || localMap.get(v.tenXe.toLowerCase().trim());
-        combinedMap.set(v.tenXe.toLowerCase().trim(), { ...v, ...(local || {}) });
-      });
-      mapped.forEach(v => {
-        const key = v.tenXe.toLowerCase().trim();
-        const existing = combinedMap.get(key);
-        combinedMap.set(key, { ...(existing || {}), ...v });
-      });
-      // Giữ lại các xe người dùng tự thêm mới
-      existingList.forEach(v => {
-        const key = (v.tenXe || '').toLowerCase().trim();
-        if (key && !combinedMap.has(key)) {
-          combinedMap.set(key, v);
+            if (matched) {
+              if (item.maXe && !matched.maXe) {
+                matched.maXe = item.maXe;
+                hasChange = true;
+              }
+            } else {
+              // Xe mới hoàn toàn từ Backend -> cấp ID duy nhất không bao giờ trùng XM001-XM050
+              const maxNum = localList.reduce((max, v) => {
+                const n = parseInt(v.id.replace(/\D/g, ''), 10);
+                return isNaN(n) ? max : Math.max(max, n);
+              }, 50);
+              const newId = `XM${String(maxNum + 1).padStart(3, '0')}`;
+              const newVeh: CatalogVehicle = {
+                id: newId,
+                maXe: item.maXe,
+                tenXe: item.tenXe,
+                hang: item.hangXe || 'Honda',
+                phanKhuc: item.loaiXe || 'Xe ga',
+                giaNiemYet: Number(item.giaNiemYet) || 0,
+                mauSac: item.mauSac || 'Tiêu chuẩn',
+                moTa: item.thongSoKyThuat || 'Mẫu xe chính hãng',
+                hinhAnh: (item.hinhAnh && !item.hinhAnh.includes('unsplash')) ? item.hinhAnh : '/images/Xe/honda_vision_2024.jpg',
+                coTheLaiThu: item.coTheLaiThu !== false,
+                soLuong: 10,
+                ncc: `${item.hangXe || 'Honda'} Việt Nam`,
+                namSanXuat: 2025,
+                xuatXu: 'Việt Nam',
+                vat: 10,
+                loaiDongCo: '4 kỳ, 1 xi lanh',
+                trangThaiHienThi: 'Hien',
+                trangThaiKinhDoanh: 'DangKinhDoanh',
+                ngayTao: new Date().toISOString().split('T')[0],
+              };
+              localList.unshift(newVeh);
+              hasChange = true;
+            }
+          });
+          if (hasChange) {
+            localStorage.setItem(VEHICLE_STORAGE_KEY, JSON.stringify(localList));
+          }
         }
-      });
+      }
+    } catch {}
 
-      const finalCatalog = Array.from(combinedMap.values());
-      localStorage.setItem(VEHICLE_STORAGE_KEY, JSON.stringify(finalCatalog));
-      return finalCatalog;
-    } catch (err) {
-      console.warn('[catalogVehicleApi.getAll] Fallback to cached or local catalog:', err);
-      if (existingList.length > 0) return existingList;
-      return DEFAULT_CATALOG_VEHICLES;
-    }
+    return localList;
   },
 
   async create(data: Omit<CatalogVehicle, 'id'>): Promise<{ success: boolean; vehicle: CatalogVehicle }> {
+    let loaiXeBackend = data.phanKhuc || 'Xe ga';
+    if (loaiXeBackend === 'Tay ga') loaiXeBackend = 'Xe ga';
+    else if (loaiXeBackend === 'Côn tay') loaiXeBackend = 'Xe côn tay';
+
     let newMaXe: number | undefined;
     try {
       const res = await fetchWithTimeout(`${API_BASE_URL}/XeMau`, {
@@ -2617,7 +3761,7 @@ export const catalogVehicleApi = {
         body: JSON.stringify({
           tenXe: data.tenXe,
           hangXe: data.hang,
-          loaiXe: data.phanKhuc,
+          loaiXe: loaiXeBackend,
           giaNiemYet: data.giaNiemYet,
           thongSoKyThuat: data.thongSoKyThuat || data.moTa || '',
           mauSac: data.mauSac,
@@ -2633,7 +3777,16 @@ export const catalogVehicleApi = {
       console.warn('[catalogVehicleApi.create] Backend call failed, saving locally:', err);
     }
 
-    const newId = newMaXe ? (newMaXe < 10 ? `XM00${newMaXe}` : `XM0${newMaXe}`) : `XM${Date.now()}`;
+    let curList: CatalogVehicle[] = [];
+    try {
+      const cached = localStorage.getItem(VEHICLE_STORAGE_KEY);
+      if (cached) curList = JSON.parse(cached);
+    } catch {}
+    const maxNum = (curList.length > 0 ? curList : DEFAULT_CATALOG_VEHICLES).reduce((max, v) => {
+      const n = parseInt(v.id.replace(/\D/g, ''), 10);
+      return isNaN(n) ? max : Math.max(max, n);
+    }, 50);
+    const newId = `XM${String(maxNum + 1).padStart(3, '0')}`;
     const newVehicle: CatalogVehicle = {
       ...data,
       id: newId,
@@ -2659,9 +3812,16 @@ export const catalogVehicleApi = {
 
     try {
       const cached = localStorage.getItem(VEHICLE_STORAGE_KEY);
-      const list: CatalogVehicle[] = cached ? JSON.parse(cached) : [...DEFAULT_CATALOG_VEHICLES];
+      let list: CatalogVehicle[] = cached ? JSON.parse(cached) : [...DEFAULT_CATALOG_VEHICLES];
       list.unshift(newVehicle);
       localStorage.setItem(VEHICLE_STORAGE_KEY, JSON.stringify(list));
+
+      const delSet = getDeletedVehicleIds();
+      if (delSet.has(newId) || delSet.has((newVehicle.tenXe || '').toLowerCase().trim())) {
+        delSet.delete(newId);
+        if (newVehicle.tenXe) delSet.delete(newVehicle.tenXe.toLowerCase().trim());
+        localStorage.setItem(DELETED_VEHICLES_KEY, JSON.stringify(Array.from(delSet)));
+      }
     } catch {}
 
     window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'vehicle_catalog' } }));
@@ -2669,7 +3829,6 @@ export const catalogVehicleApi = {
   },
 
   async update(id: string, data: Partial<CatalogVehicle>): Promise<{ success: boolean }> {
-    // 1. Cập nhật ngay trong localStorage để phản hồi tức thì
     try {
       const cached = localStorage.getItem(VEHICLE_STORAGE_KEY);
       let list: CatalogVehicle[] = cached ? JSON.parse(cached) : [...DEFAULT_CATALOG_VEHICLES];
@@ -2682,9 +3841,12 @@ export const catalogVehicleApi = {
       localStorage.setItem(VEHICLE_STORAGE_KEY, JSON.stringify(list));
     } catch {}
 
-    // 2. Chỉ gửi PUT lên backend nếu có đầy đủ tên xe
     const maXe = data.maXe || parseInt(id.replace(/\D/g, ''), 10);
     if (!isNaN(maXe) && maXe > 0 && data.tenXe) {
+      let loaiXeBackend = data.phanKhuc || 'Xe ga';
+      if (loaiXeBackend === 'Tay ga') loaiXeBackend = 'Xe ga';
+      else if (loaiXeBackend === 'Côn tay') loaiXeBackend = 'Xe côn tay';
+
       try {
         await fetchWithTimeout(`${API_BASE_URL}/XeMau/${maXe}`, {
           method: 'PUT',
@@ -2692,7 +3854,7 @@ export const catalogVehicleApi = {
           body: JSON.stringify({
             tenXe: data.tenXe,
             hangXe: data.hang,
-            loaiXe: data.phanKhuc,
+            loaiXe: loaiXeBackend,
             giaNiemYet: data.giaNiemYet,
             thongSoKyThuat: data.thongSoKyThuat || data.moTa || '',
             mauSac: data.mauSac,
@@ -2710,6 +3872,20 @@ export const catalogVehicleApi = {
   },
 
   async delete(id: string): Promise<{ success: boolean }> {
+    let deletedName = '';
+    try {
+      const cached = localStorage.getItem(VEHICLE_STORAGE_KEY);
+      if (cached) {
+        const list: CatalogVehicle[] = JSON.parse(cached);
+        const target = list.find(v => v.id === id);
+        if (target) deletedName = target.tenXe;
+        const filtered = list.filter(v => v.id !== id);
+        localStorage.setItem(VEHICLE_STORAGE_KEY, JSON.stringify(filtered));
+      }
+    } catch {}
+
+    addDeletedVehicleId(id, deletedName);
+
     const maXe = parseInt(id.replace(/\D/g, ''), 10);
     if (!isNaN(maXe) && maXe > 0) {
       try {
@@ -2720,15 +3896,6 @@ export const catalogVehicleApi = {
         console.warn('[catalogVehicleApi.delete] Backend call failed, deleting locally:', err);
       }
     }
-
-    try {
-      const cached = localStorage.getItem(VEHICLE_STORAGE_KEY);
-      if (cached) {
-        const list: CatalogVehicle[] = JSON.parse(cached);
-        const filtered = list.filter(v => v.id !== id);
-        localStorage.setItem(VEHICLE_STORAGE_KEY, JSON.stringify(filtered));
-      }
-    } catch {}
 
     window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'vehicle_catalog' } }));
     return { success: true };
@@ -2777,10 +3944,13 @@ export const feedbackApi = {
             const cId = item.maKH ? (item.maKH < 10 ? `KH00${item.maKH}` : `KH0${item.maKH}`) : 'KH001';
             const mockMatch = mockFeedbacks.find(f => f.id === id || f.customerId === cId);
 
-            const pName = item.tenPhuTung || item.tenXe || item.productName || mockMatch?.productName;
-            const pType: 'PhuTung' | 'XeMau' | 'DichVu' = item.tenPhuTung
+            const isBikeContent = (item.noiDung || '').toLowerCase().includes('xe') || (item.tenXe != null);
+            const isPartContent = (item.noiDung || '').toLowerCase().includes('phụ') || (item.tenPhuTung != null);
+
+            const pName = item.tenPhuTung || item.tenXe || (isBikeContent ? 'Honda SH 160i ABS 2025' : isPartContent ? 'Phụ tùng chính hãng Motoshop' : (item.productName || mockMatch?.productName));
+            const pType: 'PhuTung' | 'XeMau' | 'DichVu' = item.tenPhuTung || isPartContent
               ? 'PhuTung'
-              : item.tenXe
+              : item.tenXe || isBikeContent
               ? 'XeMau'
               : mockMatch?.productType || 'DichVu';
 
@@ -2827,9 +3997,16 @@ export const feedbackApi = {
             try {
               const localList: Feedback[] = JSON.parse(cached);
               localList.forEach(lf => {
-                const existingIdx = mapped.findIndex(m => m.id === lf.id);
+                const existingIdx = mapped.findIndex(m => m.id === lf.id || (parseInt(m.id.replace(/\D/g, ''), 10) > 0 && parseInt(m.id.replace(/\D/g, ''), 10) === parseInt(lf.id.replace(/\D/g, ''), 10)));
                 if (existingIdx !== -1) {
-                  mapped[existingIdx] = { ...mapped[existingIdx], ...lf };
+                  mapped[existingIdx] = {
+                    ...mapped[existingIdx],
+                    ...lf,
+                    productName: lf.productName || mapped[existingIdx].productName,
+                    productType: lf.productType || mapped[existingIdx].productType,
+                    productId: lf.productId || mapped[existingIdx].productId,
+                    hinhAnhDinhKem: (lf.hinhAnhDinhKem && lf.hinhAnhDinhKem.length > 0) ? lf.hinhAnhDinhKem : mapped[existingIdx].hinhAnhDinhKem,
+                  };
                 } else {
                   mapped.unshift(lf);
                 }
@@ -2865,13 +4042,38 @@ export const feedbackApi = {
     productName?: string;
     productImage?: string;
     productType?: 'PhuTung' | 'XeMau' | 'DichVu';
+    orderId?: string;
     hinhAnhDinhKem?: string[];
   }): Promise<{ success: boolean; feedback: Feedback }> {
     const maKhInt = parseInt(data.customerId.replace(/\D/g, ''), 10) || 1;
     let newMaPH: number | undefined;
 
-    const maPhuTung = data.productType === 'PhuTung' && data.productId ? parseInt(data.productId.replace(/\D/g, ''), 10) : null;
-    const maXe = data.productType === 'XeMau' && data.productId ? parseInt(data.productId.replace(/\D/g, ''), 10) : null;
+    let finalProductId = data.productId;
+    let finalProductType = data.productType;
+
+    // Tự động phân giải ID xe hoặc phụ tùng nếu chưa có hoặc nếu ID chưa đúng định dạng chuẩn
+    if ((!finalProductId || (!finalProductId.startsWith('PT') && !finalProductId.startsWith('XM'))) && data.productName) {
+      const matchBike = catalogVehicleApi.getAllSync().find(v =>
+        v.tenXe.toLowerCase().includes(data.productName!.toLowerCase()) ||
+        data.productName!.toLowerCase().includes(v.tenXe.toLowerCase())
+      );
+      if (matchBike) {
+        finalProductId = matchBike.id;
+        finalProductType = 'XeMau';
+      } else {
+        const matchPart = mockParts.find(p =>
+          p.tenSanPham.toLowerCase().includes(data.productName!.toLowerCase()) ||
+          data.productName!.toLowerCase().includes(p.tenSanPham.toLowerCase())
+        );
+        if (matchPart) {
+          finalProductId = matchPart.id;
+          finalProductType = 'PhuTung';
+        }
+      }
+    }
+
+    const maPhuTung = finalProductType === 'PhuTung' && finalProductId ? parseInt(finalProductId.replace(/\D/g, ''), 10) : null;
+    const maXe = finalProductType === 'XeMau' && finalProductId ? parseInt(finalProductId.replace(/\D/g, ''), 10) : null;
 
     try {
       const res = await fetchWithTimeout(`${API_BASE_URL}/PhanHoi`, {
@@ -2884,7 +4086,7 @@ export const feedbackApi = {
           diemDanhGia: data.diemDanhGia,
           noiDung: data.noiDung,
           tenSanPham: data.productName,
-          loaiDoiTuong: data.productType,
+          loaiDoiTuong: finalProductType,
           hinhAnhDinhKem: data.hinhAnhDinhKem || [],
         }),
       });
@@ -2899,7 +4101,7 @@ export const feedbackApi = {
     const id = newMaPH ? (newMaPH < 10 ? `PH00${newMaPH}` : `PH0${newMaPH}`) : `PH${Date.now().toString().slice(-4)}`;
     
     // ĐG11: Xóa biển số xe khỏi xeDangDung nếu có
-    const cleanedXe = (data.xeDangDung || (data.productType === 'XeMau' ? data.productName : undefined))?.replace(/\s*\([^)]*\)/g, '').trim();
+    const cleanedXe = (data.xeDangDung || (finalProductType === 'XeMau' ? data.productName : undefined))?.replace(/\s*\([^)]*\)/g, '').trim();
 
     const newFb: Feedback = {
       id,
@@ -2912,13 +4114,14 @@ export const feedbackApi = {
       noiDung: data.noiDung,
       diemDanhGia: data.diemDanhGia,
       ngayGui: new Date().toISOString().split('T')[0],
-      loaiDanhGia: data.loaiDanhGia || (data.productType ? 'SanPham' : 'DichVu'),
+      loaiDanhGia: data.loaiDanhGia || (finalProductType === 'DichVu' ? 'DichVu' : 'SanPham'),
       trangThai: 'ChoXuLy',
       loaiNhan: data.loaiNhan || (data.diemDanhGia <= 3 ? 'KhieuNai' : 'DanhGia'),
-      productId: data.productId,
+      productId: finalProductId,
       productName: data.productName,
       productImage: data.productImage,
-      productType: data.productType || 'SanPham' as any,
+      productType: finalProductType || 'SanPham' as any,
+      orderId: data.orderId,
       hinhAnhDinhKem: data.hinhAnhDinhKem || [],
       editCount: 0,
     };
@@ -2934,11 +4137,15 @@ export const feedbackApi = {
 
     const isComplaint = newFb.loaiNhan === 'KhieuNai';
     addAdminNotification({
+      category: 'review',
       type: 'feedback_received',
       title: isComplaint ? '⚠️ Khiếu nại từ khách hàng' : '⭐ Đánh giá mới từ khách hàng',
       message: `${newFb.hoTen} (${newFb.diemDanhGia}⭐ - ${newFb.productName || 'Sản phẩm'}): "${newFb.noiDung.slice(0, 50)}${newFb.noiDung.length > 50 ? '...' : ''}"`,
       linkPage: 'feedback',
-      meta: newFb,
+      meta: {
+        ...newFb,
+        feedbackId: newFb.id,
+      },
     });
 
     window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'feedback' } }));
@@ -3403,6 +4610,59 @@ export const surveyApi = {
     return newSurvey;
   },
 
+  createWarrantyServiceSurvey(claim: any, customerId?: string): Survey {
+    const custId = claim.customerId || customerId || 'KH001';
+    const bikeName = claim.xeBienSo || 'Xe máy';
+    const surveyId = `KS-BH-${claim.id}`;
+
+    const existing = surveyApi.getAll().find(s => s.id === surveyId);
+    if (existing) return existing;
+
+    const newSurvey = surveyApi.create({
+      id: surveyId,
+      title: `Khảo sát chất lượng dịch vụ bảo hành: ${bikeName} (#${claim.id})`,
+      description: `Yêu cầu bảo hành #${claim.id} của quý khách đã hoàn tất. Chúng tôi trân trọng mời quý khách dành 1 phút đánh giá chất lượng sửa chữa và thái độ phục vụ của kỹ thuật viên.`,
+      targetCustomerId: custId,
+      targetCustomerTier: 'ALL',
+      targetCustomerIds: [custId],
+      questions: [
+        {
+          id: 'q1',
+          text: 'Sau khi nhận lại xe, quý khách đánh giá chất lượng vận hành và khắc phục sự cố thế nào?',
+          opts: ['Rất hài lòng - Xe chạy rất êm, dứt điểm sự cố', 'Hài lòng - Sự cố đã được xử lý', 'Tạm ổn', 'Chưa hài lòng - Còn hiện tượng lạ'],
+        },
+        {
+          id: 'q2',
+          text: 'Thái độ phục vụ và tay nghề kỹ thuật của kỹ thuật viên phụ trách?',
+          opts: ['Nhiệt tình, tay nghề cao, giải thích rõ ràng', 'Lịch sự, chu đáo', 'Bình thường', 'Cần cải thiện thái độ phục vụ'],
+        },
+        {
+          id: 'q3',
+          text: 'Thời gian hoàn tất bảo hành và bàn giao xe có đúng như hẹn không?',
+          opts: ['Đúng hẹn hoặc sớm hơn dự kiến', 'Chậm trễ một chút nhưng có thông báo', 'Chậm trễ không thông báo'],
+        },
+        {
+          id: 'q4',
+          text: 'Quý khách đánh giá chung bao nhiêu điểm / sao cho dịch vụ bảo hành của chúng tôi?',
+          opts: ['⭐⭐⭐⭐⭐ (5 sao - Xuất sắc)', '⭐⭐⭐⭐ (4 sao - Tốt)', '⭐⭐⭐ (3 sao - Khá)', '⭐⭐ (2 sao - Cần cải thiện)'],
+        },
+      ],
+    });
+
+    addCustomerNotification({
+      customerId: custId,
+      category: 'survey',
+      icon: '📝',
+      title: 'Khảo sát chất lượng dịch vụ bảo hành',
+      message: `Mời quý khách đánh giá dịch vụ bảo hành xe ${bikeName} (${claim.id}) để giúp chúng tôi hoàn thiện chất lượng phục vụ.`,
+      page: 'dashboard',
+      tab: 'surveys',
+      targetId: newSurvey.id,
+    });
+
+    return newSurvey;
+  },
+
   getResponses(surveyId?: string): SurveyResponse[] {
     try {
       const cached = localStorage.getItem(SURVEY_RESPONSE_KEY);
@@ -3488,6 +4748,46 @@ export const insuranceApi = {
     all.unshift(newContract);
     localStorage.setItem(INSURANCE_STORAGE_KEY, JSON.stringify(all));
 
+    // BH05: Tích lũy chi tiêu bảo hiểm vào hồ sơ khách hàng
+    if (newContract.customerId && newContract.trangThai === 'HieuLuc') {
+      const insPrice = newContract.tongTien || newContract.phiBaoHiem || 0;
+      const cIdNum = parseInt(newContract.customerId.replace(/\D/g, ''), 10);
+      const custObj = mockCustomers.find(c => {
+        if (c.id === newContract.customerId) return true;
+        const num = parseInt(c.id.replace(/\D/g, ''), 10);
+        return !isNaN(cIdNum) && !isNaN(num) && cIdNum === num;
+      });
+      if (custObj) {
+        custObj.tongChiTieu = (custObj.tongChiTieu || 0) + insPrice;
+      }
+      try {
+        const cached = localStorage.getItem('crm_custom_customers');
+        if (cached) {
+          const list: Customer[] = JSON.parse(cached);
+          const idx = list.findIndex(c => {
+            if (c.id === newContract.customerId) return true;
+            const num = parseInt(c.id.replace(/\D/g, ''), 10);
+            return !isNaN(cIdNum) && !isNaN(num) && cIdNum === num;
+          });
+          if (idx !== -1) {
+            list[idx].tongChiTieu = (list[idx].tongChiTieu || 0) + insPrice;
+            localStorage.setItem('crm_custom_customers', JSON.stringify(list));
+          }
+        }
+
+        // BH05: Cập nhật trực tiếp phiên đăng nhập hiện tại nếu trùng khớp
+        const curRaw = localStorage.getItem('crm_current_customer');
+        if (curRaw) {
+          const cur: Customer = JSON.parse(curRaw);
+          const curNum = parseInt(cur.id.replace(/\D/g, ''), 10);
+          if (cur.id === newContract.customerId || (!isNaN(cIdNum) && !isNaN(curNum) && cIdNum === curNum) || (cur.soDienThoai && cur.soDienThoai === newContract.soDienThoai)) {
+            cur.tongChiTieu = (cur.tongChiTieu || 0) + insPrice;
+            localStorage.setItem('crm_current_customer', JSON.stringify(cur));
+          }
+        }
+      } catch {}
+    }
+
     // Send admin notification
     addAdminNotification({
       type: 'insurance_registered',
@@ -3524,6 +4824,15 @@ export const insuranceApi = {
     const all = insuranceApi.getAll();
     const old = all.find(c => c.id === oldContractId);
     if (!old) return { success: false, message: 'Không tìm thấy hợp đồng bảo hiểm cũ để gia hạn!' };
+
+    // Kiểm tra hợp đồng còn hiệu lực thì KHÔNG CHO GIA HẠN
+    const todayStr = new Date().toISOString().split('T')[0];
+    if (old.trangThai === 'HieuLuc' && old.ngayKetThuc >= todayStr) {
+      return {
+        success: false,
+        message: `⚠️ KHÔNG THỂ GIA HẠN: Hợp đồng ${old.soGCN} (${old.tenGoi}) của xe ${old.bienSo} vẫn đang CÒN HIỆU LỰC đến ngày ${old.ngayKetThuc.split('-').reverse().join('/')}. Theo quy định, chỉ được phép gia hạn khi hợp đồng đã hết hiệu lực!`
+      };
+    }
 
     // Tính ngày bắt đầu và kết thúc mới
     let startD = new Date();
@@ -3567,6 +4876,46 @@ export const insuranceApi = {
 
     all.unshift(newContract);
     localStorage.setItem(INSURANCE_STORAGE_KEY, JSON.stringify(all));
+
+    // BH05: Tích lũy chi tiêu gia hạn bảo hiểm vào hồ sơ khách hàng
+    if (newContract.customerId) {
+      const insPrice = newContract.tongTien || newContract.phiBaoHiem || 0;
+      const cIdNum = parseInt(newContract.customerId.replace(/\D/g, ''), 10);
+      const custObj = mockCustomers.find(c => {
+        if (c.id === newContract.customerId) return true;
+        const num = parseInt(c.id.replace(/\D/g, ''), 10);
+        return !isNaN(cIdNum) && !isNaN(num) && cIdNum === num;
+      });
+      if (custObj) {
+        custObj.tongChiTieu = (custObj.tongChiTieu || 0) + insPrice;
+      }
+      try {
+        const cached = localStorage.getItem('crm_custom_customers');
+        if (cached) {
+          const list: Customer[] = JSON.parse(cached);
+          const idx = list.findIndex(c => {
+            if (c.id === newContract.customerId) return true;
+            const num = parseInt(c.id.replace(/\D/g, ''), 10);
+            return !isNaN(cIdNum) && !isNaN(num) && cIdNum === num;
+          });
+          if (idx !== -1) {
+            list[idx].tongChiTieu = (list[idx].tongChiTieu || 0) + insPrice;
+            localStorage.setItem('crm_custom_customers', JSON.stringify(list));
+          }
+        }
+
+        // BH05: Cập nhật trực tiếp phiên đăng nhập hiện tại nếu trùng khớp
+        const curRaw = localStorage.getItem('crm_current_customer');
+        if (curRaw) {
+          const cur: Customer = JSON.parse(curRaw);
+          const curNum = parseInt(cur.id.replace(/\D/g, ''), 10);
+          if (cur.id === newContract.customerId || (!isNaN(cIdNum) && !isNaN(curNum) && cIdNum === curNum) || (cur.soDienThoai && cur.soDienThoai === newContract.soDienThoai)) {
+            cur.tongChiTieu = (cur.tongChiTieu || 0) + insPrice;
+            localStorage.setItem('crm_current_customer', JSON.stringify(cur));
+          }
+        }
+      } catch {}
+    }
 
     // Send customer notification
     if (newContract.customerId) {
@@ -3939,25 +5288,103 @@ export const warrantyApi = {
       localStorage.setItem(WARRANTY_APPTS_STORAGE_KEY, JSON.stringify(updated));
     } catch {}
 
-    // Thông báo cho Admin
+    // Đồng bộ tức thì sang danh sách Yêu cầu bảo hành bên Admin (Tab 2: YÊU CẦU BẢO HÀNH)
+    const existingClaims = this.getAdminClaims();
+    const nextSeq = 156 + existingClaims.length + 1;
+    const adminClaimId = `YCBH${nextSeq.toString().padStart(5, '0')}`;
+
+    const newAdminClaim: AdminWarrantyClaim = {
+      id: adminClaimId,
+      ngayGui: `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`,
+      khachHang: data.hoTenKH,
+      soDienThoai: data.soDienThoai,
+      xeBienSo: `${data.tenXe} - ${data.bienSo}`,
+      noiDung: data.moTaChiTiet || (data.vanDeGapPhai && data.vanDeGapPhai.join(', ')) || 'Yêu cầu kiểm tra bảo hành xe',
+      nhanVienPhuTrach: 'Chờ phân công',
+      trangThai: 'ChoXuLy',
+      currentStep: 1,
+      customerId: data.customerId,
+      vehicleId: data.vehicleId,
+      maLichHen: newId,
+      ngayHen: data.ngayHen,
+      gioHen: data.gioHen,
+      chiNhanh: data.chiNhanh,
+
+      // Dữ liệu sẵn sàng cho Bước 1 đối chiếu (Ảnh 3)
+      b1_khachDaDenShowroom: false,
+      b1_xacNhanDungXeBienSo: true,
+      b1_bienSoThucTe: data.bienSo,
+      b1_soKmHienTai: data.odoKhachBao || 0,
+      b1_ghiChuNgoaiQuan: data.moTaChiTiet || '',
+      b1_dayDuGiayTo: false,
+      b1_hinhAnhKhachGui: data.hinhAnhKhachHang || [],
+
+      // Dữ liệu gợi ý cho Bước 2 (Ảnh 4)
+      b2_heThongSuCo: data.vanDeGapPhai || ['Khac'],
+      b2_chiTietLoi: data.moTaChiTiet || '',
+      b2_deXuatHuongXuLy: 'Tiếp nhận xe, kiểm tra kỹ thuật chi tiết tại xưởng.',
+      b2_phuTungDuKien: [],
+      b2_hinhAnhKiemTra: data.hinhAnhKhachHang || [],
+
+      // Dữ liệu Bước 3 (Ảnh 5)
+      b3_cheDoBaoHanh: 'MienPhi',
+      b3_hangMucChiPhi: [],
+      b3_tongChiPhi: 0,
+      b3_chiPhiBaoHanhChiTra: 0,
+      b3_khachThanhToan: 0,
+      b3_thoiGianHoanThanhDuKien: `${d.toISOString().split('T')[0]}T17:00`,
+      b3_ktvPhuTrach: 'Nguyễn Văn Hùng',
+    };
+
+    const updatedClaims = [newAdminClaim, ...existingClaims];
+    try {
+      localStorage.setItem('crm_admin_warranty_claims', JSON.stringify(updatedClaims));
+    } catch {}
+
+    // Lưu một bản ghi lịch hẹn chờ xác nhận vào crm_appointments_cache
+    try {
+      const cachedRaw = localStorage.getItem('crm_appointments_cache');
+      let cachedAppts: any[] = cachedRaw ? JSON.parse(cachedRaw) : [];
+      const apptItem = {
+        id: newId,
+        customerId: data.customerId,
+        hoTenKH: data.hoTenKH,
+        soDienThoai: data.soDienThoai,
+        loaiDichVu: 'BaoHanh',
+        ngayHen: data.ngayHen,
+        gioHen: data.gioHen,
+        trangThai: 'ChoXacNhan',
+        ghiChu: data.moTaChiTiet || (data.vanDeGapPhai && data.vanDeGapPhai.join(', ')) || 'Yêu cầu kiểm tra bảo hành xe',
+        tenXe: data.tenXe,
+        bienSo: data.bienSo,
+        nhanVienPhuTrach: 'Chờ phân công',
+        createdDate: newAppt.ngayTao,
+      };
+      cachedAppts = [apptItem, ...cachedAppts.filter(a => a.id !== newId)];
+      localStorage.setItem('crm_appointments_cache', JSON.stringify(cachedAppts));
+    } catch {}
+
+    window.dispatchEvent(new CustomEvent('crm-admin-notification', { detail: { type: 'warranty_claim_created', claimId: adminClaimId } }));
+
+    // Thông báo cho Admin (TB02)
     addAdminNotification({
       category: 'system',
       type: 'warranty_request_created',
-      title: 'Yêu cầu bảo hành mới',
+      title: '🛡️ Yêu cầu bảo hành mới',
       message: `Khách hàng ${data.hoTenKH} vừa gửi yêu cầu bảo hành ${newId} cho xe ${data.tenXe} (${data.bienSo}).`,
       linkPage: 'warranty',
-      meta: { appointmentId: newId },
+      meta: { appointmentId: newId, claimId: adminClaimId, id: adminClaimId },
     });
 
     // Thông báo cho Khách hàng
     addCustomerNotification({
       customerId: data.customerId,
-      category: 'system',
+      category: 'appointment',
       icon: '🔧',
       title: 'Yêu cầu kiểm tra bảo hành đã gửi',
       message: `Yêu cầu kiểm tra bảo hành ${newId} cho xe ${data.tenXe} đã được gửi thành công. Showroom sẽ sớm liên hệ xác nhận.`,
       page: 'dashboard',
-      tab: 'vehicles',
+      tab: 'appts',
       targetId: newId,
     });
 
@@ -3965,28 +5392,82 @@ export const warrantyApi = {
   },
 
   /**
-   * Nhân viên xác nhận lịch hẹn (Ảnh 4: Chuyển sang DaXacNhan)
+   * Nhân viên xác nhận lịch hẹn (Ảnh 4: Chuyển sang DaXacNhan & gửi lịch về cho khách)
    */
-  async confirmAppointment(id: string): Promise<boolean> {
-    const all = this.getAppointments();
-    const appt = all.find(a => a.id === id);
-    if (!appt) return false;
+  async confirmAppointment(claimOrApptId: string): Promise<boolean> {
+    // 1. Cập nhật trong AdminWarrantyClaims
+    const allClaims = this.getAdminClaims();
+    const claim = allClaims.find(c => c.id === claimOrApptId || c.maLichHen === claimOrApptId);
+    if (claim) {
+      claim.trangThai = 'DaXacNhan';
+      if (claim.nhanVienPhuTrach === 'Chờ phân công') {
+        claim.nhanVienPhuTrach = 'Nguyễn Văn Hùng';
+      }
+      try {
+        localStorage.setItem('crm_admin_warranty_claims', JSON.stringify(allClaims));
+      } catch {}
+    }
 
-    appt.trangThai = 'DaXacNhan';
+    // 2. Cập nhật trong WarrantyAppointments
+    const allAppts = this.getAppointments();
+    const appt = allAppts.find(a => a.id === claimOrApptId || (claim && a.id === claim.maLichHen));
+    if (appt) {
+      appt.trangThai = 'DaXacNhan';
+      try {
+        localStorage.setItem(WARRANTY_APPTS_STORAGE_KEY, JSON.stringify(allAppts));
+      } catch {}
+    }
+
+    // 3. Cập nhật trong crm_appointments_cache (Tab 2 Lịch hẹn của khách hàng)
+    const targetId = appt?.id || claim?.maLichHen || claimOrApptId;
     try {
-      localStorage.setItem(WARRANTY_APPTS_STORAGE_KEY, JSON.stringify(all));
+      const cachedRaw = localStorage.getItem('crm_appointments_cache');
+      let cachedAppts: any[] = cachedRaw ? JSON.parse(cachedRaw) : [];
+      let found = false;
+      cachedAppts = cachedAppts.map(a => {
+        if (a.id === targetId || a.id === claimOrApptId || (claim && a.id === claim.maLichHen)) {
+          found = true;
+          return { ...a, trangThai: 'DaXacNhan', nhanVienPhuTrach: claim?.nhanVienPhuTrach || 'Nguyễn Văn Hùng' };
+        }
+        return a;
+      });
+      if (!found && (appt || claim)) {
+        cachedAppts.unshift({
+          id: targetId,
+          customerId: appt?.customerId || claim?.customerId || 'KH001',
+          hoTenKH: appt?.hoTenKH || claim?.khachHang || 'Khách hàng',
+          soDienThoai: appt?.soDienThoai || claim?.soDienThoai || '',
+          loaiDichVu: 'BaoHanh',
+          ngayHen: appt?.ngayHen || claim?.ngayHen || new Date().toISOString().split('T')[0],
+          gioHen: appt?.gioHen || claim?.gioHen || '09:00',
+          trangThai: 'DaXacNhan',
+          ghiChu: appt?.moTaChiTiet || claim?.noiDung || 'Bảo hành sửa chữa xe',
+          tenXe: appt?.tenXe || claim?.xeBienSo?.split('-')[0]?.trim() || 'Xe máy',
+          bienSo: appt?.bienSo || claim?.b1_bienSoThucTe || claim?.xeBienSo?.split('-')[1]?.trim() || '29F1-234.56',
+          nhanVienPhuTrach: claim?.nhanVienPhuTrach || 'Nguyễn Văn Hùng',
+        });
+      }
+      localStorage.setItem('crm_appointments_cache', JSON.stringify(cachedAppts));
     } catch {}
 
+    const custId = appt?.customerId || claim?.customerId || 'KH001';
+    const bike = appt?.tenXe || claim?.xeBienSo || 'phương tiện';
+    const timeStr = appt ? `${appt.gioHen} ngày ${appt.ngayHen}` : claim?.ngayHen ? `${claim.gioHen || '09:00'} ngày ${claim.ngayHen}` : 'giờ hẹn đã chọn';
+    const branch = appt?.chiNhanh || claim?.chiNhanh || 'Showroom Ủy Quyền Motoshop';
+
     addCustomerNotification({
-      customerId: appt.customerId,
-      category: 'system',
+      customerId: custId,
+      category: 'appointment',
       icon: '✅',
       title: 'Lịch hẹn bảo hành đã được xác nhận',
-      message: `Yêu cầu ${appt.id} đã được xác nhận. Vui lòng mang xe ${appt.tenXe} đến ${appt.chiNhanh} lúc ${appt.gioHen} ngày ${appt.ngayHen}.`,
+      message: `Yêu cầu bảo hành #${claimOrApptId} cho xe ${bike} đã được xác nhận. Vui lòng mang xe đến ${branch} lúc ${timeStr}.`,
       page: 'dashboard',
-      tab: 'vehicles',
-      targetId: appt.id,
+      tab: 'appts',
+      targetId: claimOrApptId,
     });
+
+    window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'appointment_confirmed' } }));
+    window.dispatchEvent(new CustomEvent('crm-admin-notification', { detail: { type: 'warranty_claim_updated' } }));
 
     return true;
   },
@@ -4373,8 +5854,269 @@ export const warrantyApi = {
 
     return { success: false, message: 'Không tìm thấy thông tin phương tiện để gia hạn.' };
   },
+
+  /**
+   * Quản lý danh sách giao dịch gia hạn bảo hành (Ảnh 1)
+   */
+  getExtensionTransactions(): WarrantyExtensionTransaction[] {
+    try {
+      const raw = localStorage.getItem('crm_admin_warranty_extensions');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    localStorage.setItem('crm_admin_warranty_extensions', JSON.stringify(mockWarrantyExtensionTransactions));
+    return mockWarrantyExtensionTransactions;
+  },
+
+  createExtensionTransaction(tx: Omit<WarrantyExtensionTransaction, 'id'>): WarrantyExtensionTransaction {
+    const list = this.getExtensionTransactions();
+    const newId = `MĐJ${(list.length + 1).toString().padStart(5, '0')}`;
+    const newTx: WarrantyExtensionTransaction = { id: newId, ...tx };
+    const updated = [newTx, ...list];
+    try {
+      localStorage.setItem('crm_admin_warranty_extensions', JSON.stringify(updated));
+    } catch {}
+    window.dispatchEvent(new CustomEvent('crm-admin-notification', { detail: { type: 'warranty_extended_admin' } }));
+    return newTx;
+  },
+
+  /**
+   * Quản lý danh sách yêu cầu bảo hành 6 bước (Ảnh 2 - 8)
+   */
+  getAdminClaims(): AdminWarrantyClaim[] {
+    try {
+      const raw = localStorage.getItem('crm_admin_warranty_claims');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    localStorage.setItem('crm_admin_warranty_claims', JSON.stringify(mockAdminWarrantyClaims));
+    return mockAdminWarrantyClaims;
+  },
+
+  getAdminClaimById(id: string): AdminWarrantyClaim | undefined {
+    const all = this.getAdminClaims();
+    return all.find(c => c.id.toLowerCase() === id.toLowerCase());
+  },
+
+  updateAdminClaim(updatedClaim: AdminWarrantyClaim): void {
+    const all = this.getAdminClaims();
+    const idx = all.findIndex(c => c.id === updatedClaim.id);
+    let updated: AdminWarrantyClaim[];
+    if (idx >= 0) {
+      updated = [...all];
+      updated[idx] = updatedClaim;
+    } else {
+      updated = [updatedClaim, ...all];
+    }
+    try {
+      localStorage.setItem('crm_admin_warranty_claims', JSON.stringify(updated));
+    } catch {}
+    window.dispatchEvent(new CustomEvent('crm-admin-notification', { detail: { type: 'warranty_claim_updated' } }));
+  },
+
+  /**
+   * Hoàn tất hồ sơ yêu cầu bảo hành:
+   * 1. Cập nhật claim -> HoanThanh
+   * 2. Đổi cuộc hẹn bảo hành -> DaHoanThanh (biến mất khỏi Tab 2 Lịch hẹn, xuất hiện ở Tab 3 Lịch sử dịch vụ)
+   * 3. Ghi vào Sổ bảo hành điện tử của xe
+   * 4. Tự động tạo bài khảo sát dịch vụ bảo hành xe (KS-BH-...)
+   * 5. Gửi thông báo đến khách hàng & kích hoạt làm mới giao diện
+   */
+  async completeAdminWarrantyClaim(claim: AdminWarrantyClaim): Promise<boolean> {
+    let resolvedCustomerId = claim.customerId;
+    if (!resolvedCustomerId) {
+      try {
+        const savedCust = localStorage.getItem('crm_current_customer');
+        if (savedCust) {
+          const parsed = JSON.parse(savedCust);
+          if (parsed?.id) resolvedCustomerId = parsed.id;
+        }
+      } catch {}
+    }
+    if (!resolvedCustomerId) resolvedCustomerId = 'KH001';
+
+    const updatedClaim: AdminWarrantyClaim = {
+      ...claim,
+      customerId: resolvedCustomerId,
+      trangThai: 'HoanThanh',
+      currentStep: 6,
+      b6_daCapNhatLichSu: true,
+      b6_daGuiTinNhan: true,
+    };
+    this.updateAdminClaim(updatedClaim);
+
+    // 1. Cập nhật trong crm_appointments_cache (Đổi sang DaHoanThanh)
+    try {
+      const cachedRaw = localStorage.getItem('crm_appointments_cache');
+      let cachedAppts: any[] = cachedRaw ? JSON.parse(cachedRaw) : [];
+      let found = false;
+      const targetId = claim.maLichHen || claim.id;
+
+      cachedAppts = cachedAppts.map(a => {
+        const isMatch =
+          a.id === targetId ||
+          a.id === claim.maLichHen ||
+          a.id === claim.id ||
+          (claim.maLichHen && a.maLichHen === claim.maLichHen) ||
+          (resolvedCustomerId && a.customerId === resolvedCustomerId && a.loaiDichVu === 'BaoHanh' && a.trangThai !== 'DaHoanThanh');
+        if (isMatch) {
+          found = true;
+          return {
+            ...a,
+            trangThai: 'DaHoanThanh',
+            customerId: resolvedCustomerId,
+            nhanVienPhuTrach: claim.nhanVienPhuTrach || claim.b3_ktvPhuTrach || 'Nguyễn Văn Hùng',
+          };
+        }
+        return a;
+      });
+
+      if (!found) {
+        cachedAppts.unshift({
+          id: targetId,
+          customerId: resolvedCustomerId,
+          hoTenKH: claim.khachHang,
+          soDienThoai: claim.soDienThoai,
+          loaiDichVu: 'BaoHanh',
+          ngayHen: claim.ngayHen || new Date().toISOString().split('T')[0],
+          gioHen: claim.gioHen || '09:00',
+          trangThai: 'DaHoanThanh',
+          ghiChu: claim.noiDung || claim.b2_chiTietLoi || 'Bảo hành sửa chữa xe',
+          tenXe: claim.xeBienSo?.split('-')[0]?.trim() || 'Xe máy',
+          bienSo: claim.b1_bienSoThucTe || claim.xeBienSo?.split('-')[1]?.trim() || '29F1-234.56',
+          nhanVienPhuTrach: claim.nhanVienPhuTrach || claim.b3_ktvPhuTrach || 'Nguyễn Văn Hùng',
+          maLichHen: claim.maLichHen,
+        });
+      }
+      localStorage.setItem('crm_appointments_cache', JSON.stringify(cachedAppts));
+    } catch {}
+
+    // 2. Cập nhật trong crm_warranty_appointments nếu có
+    try {
+      const allW = this.getAppointments();
+      const matchedW = allW.find(w => w.id === claim.maLichHen || w.id === claim.id);
+      if (matchedW) {
+        matchedW.trangThai = 'HoanTat';
+        matchedW.inPhieuLoai = (claim.b3_khachThanhToan || 0) > 0 ? 'HoaDonSuaChua' : 'PhieuBaoHanh';
+        matchedW.ngayHoanTat = new Date().toLocaleDateString('vi-VN');
+        localStorage.setItem(WARRANTY_APPTS_STORAGE_KEY, JSON.stringify(allW));
+      }
+    } catch {}
+
+    // 3. Ghi vào Sổ bảo hành điện tử của xe
+    const vehicleId = claim.vehicleId || 'XE001';
+    const allRecords = this.getWarrantyRecords(vehicleId);
+    this.addWarrantyRecord({
+      id: `WREC-${Date.now().toString().slice(-4)}`,
+      vehicleId,
+      lanThu: allRecords.length + 1,
+      ngayThucHien: new Date().toLocaleDateString('vi-VN'),
+      noiDung: claim.noiDung || claim.b2_chiTietLoi || 'Bảo hành thay thế linh kiện',
+      chiPhi: claim.b3_khachThanhToan || 0,
+      loaiChiPhi: (claim.b3_khachThanhToan || 0) > 0 ? 'CoPhi' : 'BaoHanh',
+      trangThai: 'HoanThanh',
+      chiNhanh: claim.chiNhanh || 'Showroom Ủy Quyền Motoshop',
+      maLichHen: claim.maLichHen || claim.id,
+      soKm: claim.b1_soKmHienTai || 12450,
+      kyThuatVien: claim.nhanVienPhuTrach || claim.b3_ktvPhuTrach || 'Nguyễn Văn Hùng',
+      chiTietLinhKien: (claim.b2_phuTungDuKien && claim.b2_phuTungDuKien.length > 0)
+        ? claim.b2_phuTungDuKien.map(p => p.ten)
+        : ['Búa côn sau (Ba càng)', 'Chuông nồi sau'],
+    });
+
+    // 4. Tự động tạo bài khảo sát dịch vụ bảo hành xe (KS-BH-...)
+    try {
+      surveyApi.createWarrantyServiceSurvey(updatedClaim, claim.customerId);
+    } catch (err) {
+      console.warn('Lỗi tạo khảo sát bảo hành:', err);
+    }
+
+    // 5. Gửi thông báo đến khách hàng (KS01, TB01)
+    addCustomerNotification({
+      customerId: claim.customerId || 'KH001',
+      category: 'survey',
+      icon: '📋',
+      title: '📋 Khảo sát chất lượng Dịch vụ Bảo hành',
+      message: `Hồ sơ bảo hành xe ${claim.xeBienSo} (#${claim.id}) đã hoàn tất. Vui lòng dành 1 phút đánh giá chất lượng tại Tab Khảo sát.`,
+      page: 'dashboard',
+      tab: 'surveys',
+      targetId: claim.id,
+    });
+
+    // 6. Phát sự kiện cập nhật
+    window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'warranty_claim_completed' } }));
+    window.dispatchEvent(new CustomEvent('crm-admin-notification', { detail: { type: 'warranty_claim_completed', claimId: claim.id } }));
+
+    return true;
+  },
 };
 
 
+// ── SYSTEM API (DỌN DẸP & KHÔI PHỤC DỮ LIỆU DEMO 1-CLICK) ──
+export const systemApi = {
+  async resetDemoData(): Promise<{ success: boolean; message: string; data?: any }> {
+    // 1. Dọn dẹp toàn bộ dữ liệu phát sinh trong quá trình demo/test ở localStorage
+    const keysToRemove = [
+      'crm_orders_cache',
+      'crm_appointments_cache',
+      'crm_feedbacks',
+      'crm_admin_warranty_claims',
+      'crm_admin_warranty_extensions',
+      'crm_warranty_appointments',
+      'crm_chat_messages',
+      'crm_live_chat_channel',
+      'crm_admin_notifications',
+      'crm_survey_responses',
+      'crm_insurance_contracts',
+      'crm_warranty_records',
+      'crm_admin_highlight',
+      'crm_client_highlight',
+    ];
+    keysToRemove.forEach(k => {
+      try { localStorage.removeItem(k); } catch {}
+    });
 
+    // Làm sạch danh sách xe của khách hàng: xóa xe lái thử, giữ lại xe chính chủ chuẩn
+    try {
+      const vRaw = localStorage.getItem('crm_customer_vehicles');
+      if (vRaw) {
+        const vList = JSON.parse(vRaw);
+        if (Array.isArray(vList)) {
+          const cleaned = vList.filter((v: any) => {
+            const bs = (v.bienSo || '').toUpperCase();
+            return !bs.includes('LÁI-THỬ') && !bs.includes('LAI-THU') && !bs.includes('XE-LÁI');
+          });
+          localStorage.setItem('crm_customer_vehicles', JSON.stringify(cleaned));
+        }
+      }
+    } catch {}
+    // Khôi phục 50 xe mẫu showroom chuẩn hình ảnh local
+    try {
+      localStorage.setItem('crm_catalog_vehicles', JSON.stringify(DEFAULT_CATALOG_VEHICLES));
+    } catch {}
+
+    // 2. Gọi backend reset demo nếu backend đang chạy
+    let backendResult: any = null;
+    try {
+      const res = await fetchWithTimeout(`${API_BASE_URL}/System/reset-demo`, { method: 'POST' });
+      if (res.ok) {
+        backendResult = await res.json();
+      }
+    } catch {
+      // Backend offline hoặc chạy chế độ client thuần
+    }
+
+    // 3. Bắn event đồng bộ toàn hệ thống
+    window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'system_reset' } }));
+
+    return backendResult || {
+      success: true,
+      message: 'Đã dọn dẹp sạch sẽ dữ liệu rác và khôi phục dữ liệu mẫu chuẩn (Phương án 2) thành công!',
+    };
+  },
+};
 

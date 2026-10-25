@@ -83,27 +83,61 @@ export default function PartsStore({ currentCustomer, onRequireLogin }: Props = 
   const [isEditingReview, setIsEditingReview] = useState(false);
   const [reviewToast, setReviewToast] = useState<string | null>(null);
 
+  // Helper kiểm tra đánh giá có thuộc về phụ tùng tương ứng hay không
+  const isMatchPartReview = (r: ProductReview, partId: string, partName: string) => {
+    if (r.targetId) {
+      if (r.targetId === partId) return true;
+      const rNum = r.targetId.replace(/\D/g, '');
+      const pNum = partId.replace(/\D/g, '');
+      if (rNum && pNum && parseInt(rNum, 10) === parseInt(pNum, 10)) return true;
+    }
+    const rName = (r.productName || '').toLowerCase().trim();
+    const name = partName.toLowerCase().trim();
+    if (rName && name) {
+      if (rName.includes(name) || name.includes(rName)) return true;
+      const rClean = rName.replace(/chính hãng|cao cấp|nhập khẩu|100%|\(|\)/gi, '').trim();
+      const pClean = name.replace(/chính hãng|cao cấp|nhập khẩu|100%|\(|\)/gi, '').trim();
+      if (rClean && pClean && (rClean.includes(pClean) || pClean.includes(rClean))) return true;
+    }
+    // Fallback: nếu r.targetId là '1' hoặc 'PT001' hoặc 'PT01' và partId là 'PT001'
+    if ((!r.targetId || r.targetId === '1' || r.targetId === 'PT001' || r.targetId === 'PT01') && (partId === 'PT001' || partId === 'PT01' || partId === '1')) return true;
+    return false;
+  };
+
   // Sync reviews from feedbackApi (ĐG04, ĐG09)
   useEffect(() => {
     const syncReviews = async () => {
       try {
         const feedbacks = await feedbackApi.getAll();
         const partFeedbacks: ProductReview[] = feedbacks
-          .filter(f => f.productType === 'PhuTung' || f.productId?.startsWith('PT'))
-          .map(f => ({
-            id: f.id,
-            targetId: f.productId || '',
-            customerId: f.customerId,
-            tenKhachHang: f.hoTen,
-            soDienThoai: f.soDienThoai,
-            soSao: f.diemDanhGia,
-            ngayDanhGia: f.ngayGui,
-            noiDung: f.noiDung,
-            daMua: true,
-            editCount: f.editCount || 0,
-            productName: f.productName,
-            hinhAnhDinhKem: f.hinhAnhDinhKem || [],
-          }));
+          .filter(f => f.productType === 'PhuTung' || f.productId?.startsWith('PT') || f.productName?.toLowerCase().includes('nhớt') || f.productName?.toLowerCase().includes('lọc') || f.productName?.toLowerCase().includes('bugi') || f.productName?.toLowerCase().includes('phanh') || f.productName?.toLowerCase().includes('lốp') || f.productName?.toLowerCase().includes('ắc quy') || f.productName?.toLowerCase().includes('bình'))
+          .map(f => {
+            let targetId = f.productId || '';
+            if (!targetId || !targetId.startsWith('PT')) {
+              const foundPart = mockParts.find(p =>
+                (f.productName && p.tenSanPham.toLowerCase().includes(f.productName.toLowerCase())) ||
+                (f.productName && f.productName.toLowerCase().includes(p.tenSanPham.toLowerCase())) ||
+                (targetId && targetId.replace(/\D/g, '') && targetId.replace(/\D/g, '') === p.id.replace(/\D/g, ''))
+              );
+              if (foundPart) {
+                targetId = foundPart.id;
+              }
+            }
+            return {
+              id: f.id,
+              targetId: targetId || (mockParts[0]?.id ?? 'PT001'),
+              customerId: f.customerId,
+              tenKhachHang: f.hoTen,
+              soDienThoai: f.soDienThoai,
+              soSao: f.diemDanhGia,
+              ngayDanhGia: f.ngayGui,
+              noiDung: f.noiDung,
+              daMua: true,
+              editCount: f.editCount || 0,
+              productName: f.productName,
+              hinhAnhDinhKem: f.hinhAnhDinhKem || [],
+            };
+          });
 
         setAllReviews(prev => {
           const merged = [...prev];
@@ -111,7 +145,7 @@ export default function PartsStore({ currentCustomer, onRequireLogin }: Props = 
             const idx = merged.findIndex(m => m.id === pf.id);
             if (idx !== -1) {
               merged[idx] = { ...merged[idx], ...pf };
-            } else if (pf.targetId) {
+            } else {
               merged.unshift(pf);
             }
           });
@@ -323,7 +357,7 @@ export default function PartsStore({ currentCustomer, onRequireLogin }: Props = 
   const customerReviews = useMemo(() => {
     if (!currentCustomer || !selectedPart) return [];
     return allReviews.filter(r =>
-      r.targetId === selectedPart.id &&
+      isMatchPartReview(r, selectedPart.id, selectedPart.tenSanPham) &&
       (
         r.customerId === currentCustomer.id ||
         (r.soDienThoai && currentCustomer.soDienThoai && r.soDienThoai.replace(/\D/g, '') === currentCustomer.soDienThoai.replace(/\D/g, '')) ||
@@ -416,7 +450,7 @@ export default function PartsStore({ currentCustomer, onRequireLogin }: Props = 
   };
 
   const selectedPartReviews = selectedPart
-    ? allReviews.filter(r => r.targetId === selectedPart.id)
+    ? allReviews.filter(r => isMatchPartReview(r, selectedPart.id, selectedPart.tenSanPham))
     : [];
 
   // ─────────────────────────────────────────────────────────────
@@ -1121,7 +1155,7 @@ export default function PartsStore({ currentCustomer, onRequireLogin }: Props = 
                               onClick={() => {
                                 setReviewMediaFiles(prev => [
                                   ...prev,
-                                  selectedPart.hinhAnh || 'https://images.unsplash.com/photo-1486006920555-c77dce18193b?w=600&auto=format&fit=crop&q=80'
+                                  selectedPart.hinhAnh || '/images/phutung/vo_michelin_city_grip.webp'
                                 ]);
                               }}
                               className="px-2.5 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-semibold rounded-xl border border-zinc-200 cursor-pointer transition flex items-center gap-1"

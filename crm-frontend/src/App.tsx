@@ -19,6 +19,7 @@ import StaffRolesPage from './pages/admin/StaffRoles';
 import InsurancePage from './pages/admin/Insurance';
 import PromotionsPage from './pages/admin/Promotions';
 import { WarrantyPage } from './pages/admin/Warranty';
+import LicensePlateApproval from './pages/admin/LicensePlateApproval';
 
 // Customer pages
 import PartsStore from './pages/customer/PartsStore';
@@ -29,7 +30,7 @@ import VehiclesShowroom from './pages/customer/VehiclesShowroom';
 import SurveyTaking from './pages/customer/SurveyTaking';
 
 type Mode = 'admin' | 'customer' | null;
-type AdminPage = 'dashboard' | 'sales' | 'promotions' | 'appointments' | 'warranty' | 'insurance' | 'customers' | 'feedback' | 'reports' | 'parts' | 'vehicles' | 'suppliers' | 'staff';
+type AdminPage = 'dashboard' | 'sales' | 'promotions' | 'appointments' | 'warranty' | 'insurance' | 'customers' | 'feedback' | 'reports' | 'parts' | 'vehicles' | 'suppliers' | 'staff' | 'license-plates';
 type CustomerPage = 'store' | 'vehicles' | 'booking' | 'dashboard' | 'checkout' | 'survey';
 
 
@@ -147,6 +148,7 @@ export default function App() {
   });
   const [selectedVehicleForBooking, setSelectedVehicleForBooking] = useState<string | undefined>(undefined);
   const [vehicleOrderPreFill, setVehicleOrderPreFill] = useState<Appointment | null>(null);
+  const [preFillSource, setPreFillSource] = useState<'appointments' | null>(null);
   
   const [currentCustomer, setCurrentCustomerState] = useState<Customer | null>(() => {
     try {
@@ -222,6 +224,33 @@ export default function App() {
     };
     window.addEventListener('crm-staff-change', handleStaffChange);
     return () => window.removeEventListener('crm-staff-change', handleStaffChange);
+  }, []);
+
+  // KH01, BH05, BH09: Đồng bộ thông tin khách hàng (Avatar, Chi tiêu, Khóa tài khoản) giữa các tab và modules
+  useEffect(() => {
+    const handleCustomerChange = () => {
+      try {
+        const saved = localStorage.getItem('crm_current_customer');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed.trangThai === 'BiKhoa') {
+            alert('⚠️ Tài khoản khách hàng của bạn vừa bị KHÓA bởi Quản trị viên!');
+            localStorage.removeItem('crm_current_customer');
+            setCurrentCustomerState(null);
+            return;
+          }
+          setCurrentCustomerState(parsed);
+        } else {
+          setCurrentCustomerState(null);
+        }
+      } catch {}
+    };
+    window.addEventListener('crm-data-refresh', handleCustomerChange);
+    window.addEventListener('storage', handleCustomerChange);
+    return () => {
+      window.removeEventListener('crm-data-refresh', handleCustomerChange);
+      window.removeEventListener('storage', handleCustomerChange);
+    };
   }, []);
 
   const setAdminPage = (p: AdminPage) => {
@@ -309,7 +338,17 @@ export default function App() {
           <SalesPage
             currentStaff={currentStaff}
             initialPreFillVehicleOrder={vehicleOrderPreFill}
-            onClearPreFill={() => setVehicleOrderPreFill(null)}
+            onClearPreFill={() => {
+              setVehicleOrderPreFill(null);
+              setPreFillSource(null);
+            }}
+            onCancelPreFill={() => {
+              setVehicleOrderPreFill(null);
+              if (preFillSource === 'appointments') {
+                setAdminPage('appointments');
+              }
+              setPreFillSource(null);
+            }}
           />
         )}
         {adminPage === 'promotions' && <PromotionsPage />}
@@ -318,12 +357,14 @@ export default function App() {
             currentStaff={currentStaff}
             onNavigateToCreateVehicleOrder={(appt) => {
               setVehicleOrderPreFill(appt);
+              setPreFillSource('appointments');
               setAdminPage('sales');
             }}
           />
         )}
         {adminPage === 'warranty' && <WarrantyPage />}
         {adminPage === 'insurance' && <InsurancePage />}
+        {adminPage === 'license-plates' && <LicensePlateApproval />}
         {adminPage === 'customers' && <CustomersPage />}
         {adminPage === 'feedback' && <FeedbackPage currentStaff={currentStaff} />}
         {adminPage === 'reports' && <ReportsPage />}
@@ -372,6 +413,7 @@ export default function App() {
             initialVehicleId={selectedVehicleForBooking}
             currentCustomer={currentCustomer}
             onCustomerChange={setCurrentCustomer}
+            onNavigateToDashboard={() => setCustomerPage('dashboard')}
           />
         )}
         {customerPage === 'dashboard' && (

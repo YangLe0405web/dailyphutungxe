@@ -261,7 +261,22 @@ export function getCustomerNotifications(customerId: string): CustomerNotificati
     const raw = localStorage.getItem(key);
     if (raw) {
       const parsed: CustomerNotification[] = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        // Tự động làm sạch các thông báo bị trùng lặp (deduplication)
+        const seen = new Set<string>();
+        const deduped: CustomerNotification[] = [];
+        for (const notif of parsed) {
+          const signature = `${notif.category || ''}_${notif.targetId || ''}_${(notif.title || '').trim()}`;
+          if (!seen.has(signature)) {
+            seen.add(signature);
+            deduped.push(notif);
+          }
+        }
+        if (deduped.length !== parsed.length) {
+          saveCustomerNotifications(customerId, deduped);
+        }
+        return deduped;
+      }
     }
   } catch {}
 
@@ -313,6 +328,16 @@ export function addCustomerNotification(
   const current = getCustomerNotifications(item.customerId);
   const now = new Date();
   const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')} hôm nay`;
+
+  // Kiểm tra trùng lặp: Nếu thông báo cùng sự kiện/tiêu đề đã tồn tại thì không thêm trùng
+  const incomingSig = `${item.category || ''}_${item.targetId || ''}_${(item.title || '').trim()}`;
+  const existing = current.find(n => {
+    const existingSig = `${n.category || ''}_${n.targetId || ''}_${(n.title || '').trim()}`;
+    return incomingSig === existingSig;
+  });
+  if (existing) {
+    return existing;
+  }
 
   let icon = item.icon || '🔔';
   if (!item.icon) {

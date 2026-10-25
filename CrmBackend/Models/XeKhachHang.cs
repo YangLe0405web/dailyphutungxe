@@ -26,6 +26,7 @@ namespace CrmBackend.Models
     {
         public int MaKH { get; set; }
         public int? MaXe { get; set; }
+        public string? TenXe { get; set; }
         public string BienSoXe { get; set; } = "";
         public string? SoKhung { get; set; }
         public string? SoMay { get; set; }
@@ -37,5 +38,11 @@ namespace CrmBackend.Models
     public class GiaHanBaoHanhDto
     {
         public DateTime HanBaoHanhMoi { get; set; }
+    }
+
+    // ── DTO duyệt biển số xe (PUT) ──
+    public class DuyetBienSoDto
+    {
+        public string BienSoXe { get; set; } = "";
     }
 }

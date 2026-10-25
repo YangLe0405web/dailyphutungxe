@@ -81,6 +81,9 @@ namespace CrmBackend.Controllers
 
         // PUT: api/LichHen/trang-thai/1 -> Cập nhật trạng thái linh hoạt
         [HttpPut("trang-thai/{maLich}")]
+        [HttpPatch("trang-thai/{maLich}")]
+        [HttpPut("{maLich}/trang-thai")]
+        [HttpPatch("{maLich}/trang-thai")]
         public async Task<IActionResult> UpdateTrangThai(int maLich, [FromBody] LichHenUpdateDto dto)
         {
             var sql = @"

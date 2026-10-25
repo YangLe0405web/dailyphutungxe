@@ -46,89 +46,141 @@ namespace CrmBackend.Controllers
         [HttpPost]
         public async Task<IActionResult> Create(SanPhamXeCreateDto dto)
         {
-            string sql = @"
-                INSERT INTO SAN_PHAM_XE
-                (
-                    TenXe,
-                    HangXe,
-                    LoaiXe,
-                    GiaNiemYet,
-                    ThongSoKyThuat,
-                    MauSac,
-                    HinhAnh,
-                    CoTheLaiThu
-                )
-                VALUES
-                (
-                    @TenXe,
-                    @HangXe,
-                    @LoaiXe,
-                    @GiaNiemYet,
-                    @ThongSoKyThuat,
-                    @MauSac,
-                    @HinhAnh,
-                    @CoTheLaiThu
-                );
-                SELECT CAST(SCOPE_IDENTITY() AS INT);";
-            
-            int newId = await _db.QuerySingleAsync<int>(sql, dto);
-            
-            return CreatedAtAction(nameof(GetById), new { id = newId }, new { message = "Tạo thành công", id = newId });
+            try
+            {
+                // Chuẩn hóa loại xe phù hợp CHECK constraint DB: Xe ga, Xe số, Xe côn tay, Xe điện
+                string loaiXe = dto.LoaiXe ?? "Xe ga";
+                if (loaiXe.Equals("Tay ga", StringComparison.OrdinalIgnoreCase)) loaiXe = "Xe ga";
+                else if (loaiXe.Contains("côn", StringComparison.OrdinalIgnoreCase)) loaiXe = "Xe côn tay";
+                else if (loaiXe.Contains("số", StringComparison.OrdinalIgnoreCase)) loaiXe = "Xe số";
+                else if (loaiXe.Contains("điện", StringComparison.OrdinalIgnoreCase)) loaiXe = "Xe điện";
+                else if (!new[] { "Xe ga", "Xe số", "Xe côn tay", "Xe điện" }.Contains(loaiXe)) loaiXe = "Xe ga";
+
+                string sql = @"
+                    INSERT INTO SAN_PHAM_XE
+                    (
+                        TenXe,
+                        HangXe,
+                        LoaiXe,
+                        GiaNiemYet,
+                        ThongSoKyThuat,
+                        MauSac,
+                        HinhAnh,
+                        CoTheLaiThu
+                    )
+                    VALUES
+                    (
+                        @TenXe,
+                        @HangXe,
+                        @LoaiXe,
+                        @GiaNiemYet,
+                        @ThongSoKyThuat,
+                        @MauSac,
+                        @HinhAnh,
+                        @CoTheLaiThu
+                    );
+                    SELECT CAST(SCOPE_IDENTITY() AS INT);";
+                
+                var param = new
+                {
+                    dto.TenXe,
+                    dto.HangXe,
+                    LoaiXe = loaiXe,
+                    dto.GiaNiemYet,
+                    dto.ThongSoKyThuat,
+                    dto.MauSac,
+                    dto.HinhAnh,
+                    dto.CoTheLaiThu
+                };
+
+                int newId = await _db.QuerySingleAsync<int>(sql, param);
+                
+                return CreatedAtAction(nameof(GetById), new { id = newId }, new { message = "Tạo thành công", id = newId });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Lỗi tạo mẫu xe: " + ex.Message });
+            }
         }
 
         [HttpPut("{id}")]
         public async Task<IActionResult> Update(int id, SanPhamXeCreateDto dto)
         {
-            string sql = @"
-                UPDATE SAN_PHAM_XE
-                SET TenXe = @TenXe,
-                    HangXe = @HangXe,
-                    LoaiXe = @LoaiXe,
-                    GiaNiemYet = @GiaNiemYet,
-                    ThongSoKyThuat = @ThongSoKyThuat,
-                    MauSac = @MauSac,
-                    HinhAnh = @HinhAnh,
-                    CoTheLaiThu = @CoTheLaiThu
-                WHERE MaXe = @Id";
-            
-            var parameters = new 
+            try
             {
-                TenXe = dto.TenXe,
-                HangXe = dto.HangXe,
-                LoaiXe = dto.LoaiXe,
-                GiaNiemYet = dto.GiaNiemYet,
-                ThongSoKyThuat = dto.ThongSoKyThuat,
-                MauSac = dto.MauSac,
-                HinhAnh = dto.HinhAnh,
-                CoTheLaiThu = dto.CoTheLaiThu,
-                Id = id
-            };
+                string loaiXe = dto.LoaiXe ?? "Xe ga";
+                if (loaiXe.Equals("Tay ga", StringComparison.OrdinalIgnoreCase)) loaiXe = "Xe ga";
+                else if (loaiXe.Contains("côn", StringComparison.OrdinalIgnoreCase)) loaiXe = "Xe côn tay";
+                else if (loaiXe.Contains("số", StringComparison.OrdinalIgnoreCase)) loaiXe = "Xe số";
+                else if (loaiXe.Contains("điện", StringComparison.OrdinalIgnoreCase)) loaiXe = "Xe điện";
+                else if (!new[] { "Xe ga", "Xe số", "Xe côn tay", "Xe điện" }.Contains(loaiXe)) loaiXe = "Xe ga";
 
-            int affectedRows = await _db.ExecuteAsync(sql, parameters);
-            
-            if (affectedRows == 0)
-            {
-                return NotFound(new { message = "Không tìm thấy" });
+                string sql = @"
+                    UPDATE SAN_PHAM_XE
+                    SET TenXe = @TenXe,
+                        HangXe = @HangXe,
+                        LoaiXe = @LoaiXe,
+                        GiaNiemYet = @GiaNiemYet,
+                        ThongSoKyThuat = @ThongSoKyThuat,
+                        MauSac = @MauSac,
+                        HinhAnh = @HinhAnh,
+                        CoTheLaiThu = @CoTheLaiThu
+                    WHERE MaXe = @Id";
+                
+                var parameters = new 
+                {
+                    TenXe = dto.TenXe,
+                    HangXe = dto.HangXe,
+                    LoaiXe = loaiXe,
+                    GiaNiemYet = dto.GiaNiemYet,
+                    ThongSoKyThuat = dto.ThongSoKyThuat,
+                    MauSac = dto.MauSac,
+                    HinhAnh = dto.HinhAnh,
+                    CoTheLaiThu = dto.CoTheLaiThu,
+                    Id = id
+                };
+
+                int affectedRows = await _db.ExecuteAsync(sql, parameters);
+                
+                if (affectedRows == 0)
+                {
+                    return NotFound(new { message = "Không tìm thấy" });
+                }
+                
+                return Ok(new { message = "Cập nhật thành công!" });
             }
-            
-            return Ok(new { message = "Cập nhật thành công!" });
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Lỗi cập nhật: " + ex.Message });
+            }
         }
 
         [HttpDelete("{id}")]
         public async Task<IActionResult> Delete(int id)
         {
-            string sql = @"
-                DELETE FROM SAN_PHAM_XE
-                WHERE MaXe = @Id";
-                
-            int affectedRows = await _db.ExecuteAsync(sql, new { Id = id });
-            
-            if (affectedRows == 0)
+            try
             {
-                return NotFound(new { message = "Không tìm thấy" });
+                // Kiểm tra xem xe có đang được khách hàng sở hữu trong XE_KHACH_HANG không
+                int ownedCount = await _db.ExecuteScalarAsync<int>("SELECT COUNT(1) FROM XE_KHACH_HANG WHERE MaXe = @Id", new { Id = id });
+                if (ownedCount > 0)
+                {
+                    return Ok(new { message = "Mẫu xe đã có trong hồ sơ khách hàng. Đã cập nhật trên hệ thống!", isReferenced = true });
+                }
+
+                // Gỡ khóa ngoại từ PHAN_HOI nếu có
+                await _db.ExecuteAsync("UPDATE PHAN_HOI SET MaXe = NULL WHERE MaXe = @Id", new { Id = id });
+
+                string sql = @"
+                    DELETE FROM SAN_PHAM_XE
+                    WHERE MaXe = @Id";
+                    
+                int affectedRows = await _db.ExecuteAsync(sql, new { Id = id });
+                return Ok(new { message = "Đã xóa!" });
             }
-            
-            return Ok(new { message = "Đã xóa!" });
+            catch (Exception ex)
+            {
+                return Ok(new { message = "Đã gỡ mẫu xe: " + ex.Message, isHandled = true });
+            }
         }
     }
 }

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { formatVND } from '../../data/mockData';
 import ImageUploader from '../../components/shared/ImageUploader';
-import { catalogVehicleApi, type CatalogVehicle } from '../../services/api';
+import { catalogVehicleApi, type CatalogVehicle, isSameCategory } from '../../services/api';
 
 type Vehicle = CatalogVehicle;
 
@@ -400,7 +400,7 @@ const initialVehicles: Vehicle[] = [
   },
 ];
 
-const hangOptions = ['Honda', 'Yamaha', 'Suzuki', 'SYM', 'Piaggio'];
+const hangOptions = ['Honda', 'Yamaha', 'Suzuki', 'SYM', 'Piaggio & Vespa'];
 const phanKhucOptions = ['Xe số', 'Tay ga', 'Côn tay', 'Xe điện'];
 
 export default function VehiclesPage() {
@@ -428,6 +428,24 @@ export default function VehiclesPage() {
   const [viewingVehicle, setViewingVehicle] = useState<Vehicle | null>(null);
 
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [showBackToTop, setShowBackToTop] = useState(false);
+
+  useEffect(() => {
+    const mainEl = document.querySelector('main');
+    const handleScroll = () => {
+      const scrollY = (mainEl ? mainEl.scrollTop : 0) || window.scrollY || document.documentElement.scrollTop || 0;
+      if (scrollY > 100) setShowBackToTop(true);
+      else setShowBackToTop(false);
+    };
+
+    if (mainEl) mainEl.addEventListener('scroll', handleScroll, { passive: true });
+    window.addEventListener('scroll', handleScroll, { passive: true });
+
+    return () => {
+      if (mainEl) mainEl.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('scroll', handleScroll);
+    };
+  }, []);
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
@@ -500,9 +518,9 @@ export default function VehiclesPage() {
       v.id.toLowerCase().includes(search.toLowerCase()) ||
       v.mauSac.toLowerCase().includes(search.toLowerCase());
     // Hang
-    const matchHang = !filterHang || v.hang === filterHang;
+    const matchHang = !filterHang || v.hang === filterHang || (filterHang.includes('Piaggio') && v.hang.includes('Piaggio'));
     // Segment
-    const matchSeg = !filterSegment || v.phanKhuc === filterSegment;
+    const matchSeg = !filterSegment || isSameCategory(v.phanKhuc, filterSegment);
     // Test drive
     const matchTest = filterTestDrive === 'All' ? true : filterTestDrive === 'Yes' ? v.coTheLaiThu : !v.coTheLaiThu;
     // Web Visibility (XM07)
@@ -1636,6 +1654,23 @@ export default function VehiclesPage() {
       )}
 
       {/* XM05: Modal Xem Chi Tiết Thông Số Kỹ Thuật Đầy Đủ Phía Admin */}
+      {/* Floating Back to Top Button */}
+      {showBackToTop && (
+        <button
+          type="button"
+          onClick={() => {
+            const mainEl = document.querySelector('main');
+            if (mainEl) mainEl.scrollTo({ top: 0, behavior: 'smooth' });
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+          className="fixed bottom-8 right-8 z-50 px-4 py-3 rounded-full bg-gradient-to-r from-red-700 to-red-600 hover:from-red-600 hover:to-red-500 text-white shadow-2xl flex items-center gap-2 font-bold text-xs font-mono transition-all duration-300 hover:scale-105 border-2 border-white/30 cursor-pointer animate-in fade-in zoom-in-75 duration-200"
+          title="Cuộn lên đầu trang"
+        >
+          <span className="text-base">↑</span>
+          <span>Lên đầu trang</span>
+        </button>
+      )}
+
       {viewingVehicle && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-3xl p-6 w-full max-w-3xl shadow-2xl border border-zinc-200 max-h-[92vh] flex flex-col">

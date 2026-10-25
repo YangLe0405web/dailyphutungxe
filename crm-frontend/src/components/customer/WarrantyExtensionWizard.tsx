@@ -24,15 +24,12 @@ export default function WarrantyExtensionWizard({
 
   // ── STEP 1: XÁC NHẬN THÔNG TIN & MINH CHỨNG ──
   const [currentOdo, setCurrentOdo] = useState<number>(12500);
-  const [requestDate, setRequestDate] = useState<string>(() => {
+  const [requestDate] = useState<string>(() => {
     return new Date().toISOString().split('T')[0];
   });
-  const [evidenceImages, setEvidenceImages] = useState<string[]>([
-    'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=500&auto=format&fit=crop&q=60', // ODO
-    'https://images.unsplash.com/photo-1568772585407-9361f9bf3a87?w=500&auto=format&fit=crop&q=60', // Xe nghiêng
-    'https://images.unsplash.com/photo-1449426468159-d96dbf08f19f?w=500&auto=format&fit=crop&q=60', // Xe trực diện
-  ]);
-  const [isCommitChecked, setIsCommitChecked] = useState<boolean>(true);
+  const [evidenceImages, setEvidenceImages] = useState<string[]>([]);
+  const [isCommitChecked, setIsCommitChecked] = useState<boolean>(false);
+  const [errors, setErrors] = useState<{ odo?: string; evidence?: string; commit?: string }>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ── STEP 2: THẨM ĐỊNH LỊCH SỬ DỊCH VỤ ──
@@ -65,7 +62,8 @@ export default function WarrantyExtensionWizard({
           alert('Tối đa 4 file minh chứng ODO!');
           return;
         }
-        setEvidenceImages([...evidenceImages, reader.result]);
+        setEvidenceImages(prev => [...prev, reader.result as string]);
+        setErrors(prev => ({ ...prev, evidence: undefined }));
       }
     };
     reader.readAsDataURL(file);
@@ -73,7 +71,25 @@ export default function WarrantyExtensionWizard({
   };
 
   const handleRemoveImage = (index: number) => {
-    setEvidenceImages(evidenceImages.filter((_, i) => i !== index));
+    setEvidenceImages(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // Validate bước 1 trước khi sang bước 2 (GHBH04)
+  const handleGoToStep2 = () => {
+    const errs: { odo?: string; evidence?: string; commit?: string } = {};
+    if (!currentOdo || currentOdo <= 0) {
+      errs.odo = 'Vui lòng nhập số km hiện tại (ODO) hợp lệ và lớn hơn 0!';
+    }
+    if (evidenceImages.length === 0) {
+      errs.evidence = 'Vui lòng tải lên ít nhất 1 ảnh minh chứng đồng hồ xe để xác nhận số km!';
+    }
+    if (!isCommitChecked) {
+      errs.commit = 'Vui lòng tích xác nhận cam kết tính trung thực của thông tin!';
+    }
+    setErrors(errs);
+    if (Object.keys(errs).length === 0) {
+      setCurrentStep(2);
+    }
   };
 
   // Hoàn tất thanh toán và kích hoạt bảo hành
@@ -282,7 +298,7 @@ export default function WarrantyExtensionWizard({
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Nhập số KM hiện tại */}
+                {/* Nhập số KM hiện tại (GHBH01) */}
                 <div>
                   <label className="block text-xs font-bold text-zinc-800 mb-1 font-mono uppercase">
                     NHẬP SỐ KM HIỆN TẠI (ODO) *
@@ -292,16 +308,29 @@ export default function WarrantyExtensionWizard({
                       type="number"
                       min={0}
                       value={currentOdo}
-                      onChange={(e) => setCurrentOdo(Number(e.target.value) || 0)}
-                      className="w-full p-3 pr-12 rounded-xl border border-zinc-300 text-sm font-bold font-mono focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                      onChange={(e) => {
+                        const val = Number(e.target.value) || 0;
+                        setCurrentOdo(val);
+                        if (val > 0 && errors.odo) {
+                          setErrors(prev => ({ ...prev, odo: undefined }));
+                        }
+                      }}
+                      className={`w-full p-3 pr-12 rounded-xl border text-sm font-black font-mono text-black bg-white focus:outline-none transition ${
+                        errors.odo ? 'border-red-500 ring-1 ring-red-500' : 'border-zinc-300 focus:border-red-600 focus:ring-1 focus:ring-red-600'
+                      }`}
                     />
-                    <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-400 font-mono">
+                    <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-500 font-mono">
                       km
                     </span>
                   </div>
+                  {errors.odo && (
+                    <p className="mt-1 text-xs text-red-600 font-semibold flex items-center gap-1">
+                      <span>⚠️</span> {errors.odo}
+                    </p>
+                  )}
                 </div>
 
-                {/* Ngày gửi yêu cầu */}
+                {/* Ngày gửi yêu cầu (GHBH01, GHBH02) */}
                 <div>
                   <label className="block text-xs font-bold text-zinc-800 mb-1 font-mono uppercase">
                     NGÀY KHÁCH HÀNG GỬI YÊU CẦU
@@ -309,13 +338,14 @@ export default function WarrantyExtensionWizard({
                   <input
                     type="date"
                     value={requestDate}
-                    onChange={(e) => setRequestDate(e.target.value)}
-                    className="w-full p-3 rounded-xl border border-zinc-300 text-xs font-bold font-mono focus:outline-none focus:border-red-600"
+                    readOnly
+                    disabled
+                    className="w-full p-3 rounded-xl border border-zinc-200 text-sm font-black font-mono text-black bg-zinc-100 cursor-not-allowed select-none opacity-100"
                   />
                 </div>
               </div>
 
-              {/* Hình ảnh/video minh chứng ODO */}
+              {/* Hình ảnh/video minh chứng ODO (GHBH03) */}
               <div className="space-y-2">
                 <div className="flex flex-wrap items-center justify-between gap-1 text-xs">
                   <span className="font-bold text-zinc-900 uppercase font-mono">
@@ -324,32 +354,68 @@ export default function WarrantyExtensionWizard({
                   <span className="text-[11px] text-zinc-400">(Tối đa 4 file, dưới 50MB, png, jpg, mp4)</span>
                 </div>
 
-                {/* Preview thumbnails */}
-                <div className="grid grid-cols-3 gap-3">
-                  {evidenceImages.map((img, idx) => (
-                    <div key={idx} className="relative group rounded-xl overflow-hidden border border-zinc-200 aspect-video bg-zinc-100 flex items-center justify-center">
-                      <img src={img} alt={`Minh chứng ${idx + 1}`} className="w-full h-full object-cover" />
+                {/* Ghi chú minh chứng ODO */}
+                <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-300 text-xs font-semibold text-amber-900 flex items-center gap-2">
+                  <span className="text-base">📌</span>
+                  <span>Ảnh minh chứng đồng hồ xe để xác nhận đúng số km đã chạy</span>
+                </div>
+
+                {/* Preview thumbnails / Upload zone */}
+                {evidenceImages.length === 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`w-full p-6 rounded-2xl border-2 border-dashed transition flex flex-col items-center justify-center gap-2 cursor-pointer ${
+                      errors.evidence
+                        ? 'border-red-400 bg-red-50/50 hover:bg-red-50 text-red-700'
+                        : 'border-zinc-300 hover:border-red-600 bg-zinc-50 hover:bg-red-50/20 text-zinc-600 hover:text-red-700'
+                    }`}
+                  >
+                    <div className="w-12 h-12 rounded-full bg-white shadow-sm flex items-center justify-center text-2xl border border-zinc-200">
+                      📷
+                    </div>
+                    <div className="text-center">
+                      <div className="text-xs font-bold uppercase tracking-wider font-mono">
+                        + Tải ảnh minh chứng đồng hồ xe (ODO)
+                      </div>
+                      <div className="text-[11px] text-zinc-400 mt-0.5">
+                        Bấm để chọn ảnh từ máy hoặc kéo thả file vào đây (PNG, JPG, MP4 &lt; 50MB)
+                      </div>
+                    </div>
+                  </button>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {evidenceImages.map((img, idx) => (
+                      <div key={idx} className="relative group rounded-xl overflow-hidden border border-zinc-200 aspect-video bg-zinc-100 flex items-center justify-center">
+                        <img src={img} alt={`Minh chứng ${idx + 1}`} className="w-full h-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveImage(idx)}
+                          className="absolute top-1 right-1 w-5 h-5 rounded-full bg-red-600 text-white flex items-center justify-center text-xs font-bold shadow-md cursor-pointer hover:bg-red-700"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+
+                    {evidenceImages.length < 4 && (
                       <button
                         type="button"
-                        onClick={() => handleRemoveImage(idx)}
-                        className="absolute top-1 right-1 w-5 h-5 rounded-full bg-red-600 text-white flex items-center justify-center text-xs font-bold shadow-md cursor-pointer hover:bg-red-700"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="rounded-xl border-2 border-dashed border-zinc-300 hover:border-red-600 bg-zinc-50 hover:bg-red-50/30 text-xs font-bold text-zinc-500 hover:text-red-700 transition flex flex-col items-center justify-center gap-1 aspect-video cursor-pointer"
                       >
-                        ✕
+                        <span className="text-lg">📷</span>
+                        <span>+ Thêm ảnh</span>
                       </button>
-                    </div>
-                  ))}
+                    )}
+                  </div>
+                )}
 
-                  {evidenceImages.length < 4 && (
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="rounded-xl border-2 border-dashed border-zinc-300 hover:border-red-600 bg-zinc-50 hover:bg-red-50/30 text-xs font-bold text-zinc-500 hover:text-red-700 transition flex flex-col items-center justify-center gap-1 aspect-video cursor-pointer"
-                    >
-                      <span className="text-lg">📷</span>
-                      <span>+ Thêm ảnh</span>
-                    </button>
-                  )}
-                </div>
+                {errors.evidence && (
+                  <p className="mt-1 text-xs text-red-600 font-semibold flex items-center gap-1">
+                    <span>⚠️</span> {errors.evidence}
+                  </p>
+                )}
 
                 <input
                   type="file"
@@ -360,20 +426,34 @@ export default function WarrantyExtensionWizard({
                 />
               </div>
 
-              {/* Cam kết thông tin */}
-              <label className="p-3.5 rounded-2xl bg-zinc-50 border border-zinc-200 text-xs text-zinc-700 cursor-pointer flex items-start gap-3 select-none">
-                <input
-                  type="checkbox"
-                  checked={isCommitChecked}
-                  onChange={(e) => setIsCommitChecked(e.target.checked)}
-                  className="w-4 h-4 rounded text-red-600 accent-red-600 mt-0.5 shrink-0 cursor-pointer"
-                />
-                <span className="leading-relaxed">
-                  Tôi xin cam kết số km đã khai và hình ảnh/video minh chứng cung cấp là chính xác, trung thực. Nếu có sai sót, tôi hoàn toàn chịu trách nhiệm.
-                </span>
-              </label>
+              {/* Cam kết thông tin (GHBH04) */}
+              <div className="space-y-1">
+                <label className={`p-3.5 rounded-2xl border text-xs text-zinc-700 cursor-pointer flex items-start gap-3 select-none transition ${
+                  errors.commit ? 'bg-red-50/50 border-red-300' : 'bg-zinc-50 border-zinc-200'
+                }`}>
+                  <input
+                    type="checkbox"
+                    checked={isCommitChecked}
+                    onChange={(e) => {
+                      setIsCommitChecked(e.target.checked);
+                      if (e.target.checked && errors.commit) {
+                        setErrors(prev => ({ ...prev, commit: undefined }));
+                      }
+                    }}
+                    className="w-4 h-4 rounded text-red-600 accent-red-600 mt-0.5 shrink-0 cursor-pointer"
+                  />
+                  <span className="leading-relaxed">
+                    Tôi xin cam kết số km đã khai và hình ảnh/video minh chứng cung cấp là chính xác, trung thực. Nếu có sai sót, tôi hoàn toàn chịu trách nhiệm.
+                  </span>
+                </label>
+                {errors.commit && (
+                  <p className="text-xs text-red-600 font-semibold flex items-center gap-1 px-1">
+                    <span>⚠️</span> {errors.commit}
+                  </p>
+                )}
+              </div>
 
-              {/* Nút hành động */}
+              {/* Nút hành động (GHBH04) */}
               <div className="flex items-center justify-end gap-3 pt-3">
                 <button
                   type="button"
@@ -384,9 +464,8 @@ export default function WarrantyExtensionWizard({
                 </button>
                 <button
                   type="button"
-                  disabled={!isCommitChecked || currentOdo <= 0 || evidenceImages.length === 0}
-                  onClick={() => setCurrentStep(2)}
-                  className="px-7 py-2.5 rounded-xl text-xs font-bold bg-red-700 hover:bg-red-800 disabled:bg-zinc-300 text-white transition shadow-md cursor-pointer flex items-center gap-1.5"
+                  onClick={handleGoToStep2}
+                  className="px-7 py-2.5 rounded-xl text-xs font-bold bg-red-700 hover:bg-red-800 text-white transition shadow-md hover:shadow-lg cursor-pointer flex items-center gap-1.5"
                   style={{ fontFamily: 'var(--font-display)', letterSpacing: '0.04em' }}
                 >
                   <span>Tiếp theo →</span>

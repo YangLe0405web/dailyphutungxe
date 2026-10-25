@@ -375,11 +375,20 @@ export default function CustomerLayout({ children, activePage, onNavigate, onHom
                                   key={n.id}
                                   onClick={() => {
                                     markCustomerNotifAsRead(currentCustomer.id, n.id);
-                                    const hlType = (n.tab === 'vehicles' || (n.title && n.title.includes('Phương tiện')) || (n.title && n.title.includes('Biển số')))
-                                      ? 'vehicle'
-                                      : n.category === 'appointment' ? 'appointment'
-                                      : n.category === 'survey' ? 'survey'
-                                      : 'order';
+                                    let hlType = 'order';
+                                    if (n.tab === 'vehicles' || (n.title && n.title.includes('Phương tiện')) || (n.title && n.title.includes('Biển số'))) {
+                                      hlType = 'vehicle';
+                                    } else if (n.category === 'appointment' || n.tab === 'appts' || (n.title && n.title.includes('Lịch hẹn'))) {
+                                      hlType = 'appointment';
+                                    } else if (n.category === 'survey' || n.tab === 'surveys' || (n.title && n.title.includes('Khảo sát'))) {
+                                      hlType = 'survey';
+                                    } else if (n.category === 'review' || n.tab === 'reviews' || (n.title && n.title.includes('Đánh giá'))) {
+                                      hlType = 'review';
+                                    } else if ((n.tab as any) === 'warranty' || (n.title && n.title.toLowerCase().includes('bảo hành'))) {
+                                      hlType = 'warranty';
+                                    } else if (n.category === 'order' || n.tab === 'orders') {
+                                      hlType = 'order';
+                                    }
                                     sessionStorage.setItem('crm_client_highlight', JSON.stringify({
                                       type: hlType,
                                       id: n.targetId,

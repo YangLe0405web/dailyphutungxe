@@ -11,7 +11,7 @@ import {
   type NotificationCategory,
   type AdminNotification,
 } from '../services/notifications';
-import { chatApi, formatCustomerId, type ChatMessage } from '../services/api';
+import { chatApi, formatCustomerId, type ChatMessage, systemApi, vehicleApi } from '../services/api';
 
 type NavGroup = { group: string; items: { key: string; label: string; icon: ReactNode; allowedRoles?: AdminRole[] }[] };
 
@@ -26,7 +26,7 @@ const nav: NavGroup[] = [
       { key: 'sales', label: 'Quản lý đơn hàng', icon: <I icon="package" />, allowedRoles: ['SuperAdmin', 'NhanVienBanHang'] },
       { key: 'promotions', label: 'Chương trình khuyến mãi', icon: <I icon="tag" />, allowedRoles: ['SuperAdmin', 'NhanVienBanHang'] },
       { key: 'appointments', label: 'Lịch hẹn dịch vụ', icon: <I icon="calendar" /> },
-      { key: 'warranty', label: 'Yêu cầu bảo hành', icon: <I icon="wrench" /> },
+      { key: 'warranty', label: 'Quản lý bảo hành', icon: <I icon="wrench" /> },
       { key: 'insurance', label: 'Bảo hiểm xe', icon: <I icon="shield-check" />, allowedRoles: ['SuperAdmin', 'NhanVienBanHang'] },
     ],
   },
@@ -47,6 +47,7 @@ const nav: NavGroup[] = [
     group: 'CRM',
     items: [
       { key: 'customers', label: 'Khách hàng', icon: <I icon="users" />, allowedRoles: ['SuperAdmin', 'NhanVienBanHang'] },
+      { key: 'license-plates', label: 'Phê duyệt biển số', icon: <I icon="shield-check" />, allowedRoles: ['SuperAdmin', 'NhanVienBanHang'] },
       { key: 'feedback', label: 'Phản hồi & Khiếu nại', icon: <I icon="message" />, allowedRoles: ['SuperAdmin', 'NhanVienBanHang'] },
     ],
   },
@@ -139,6 +140,53 @@ export default function AdminLayout({
   const [activeChatMessages, setActiveChatMessages] = useState<ChatMessage[]>([]);
   const [chatInputText, setChatInputText] = useState('');
   const [unreadChatTotal, setUnreadChatTotal] = useState(0);
+
+  // Thống kê số lượng biển số xe đang chờ duyệt
+  const [pendingPlatesCount, setPendingPlatesCount] = useState(0);
+
+  useEffect(() => {
+    const loadPendingPlatesCount = async () => {
+      try {
+        const vehicles = await vehicleApi.getAll();
+        const count = vehicles.filter(v => 
+          v.trangThaiDuyetBienSo === 'ChoDuyet' || 
+          (v.bienSoChoDuyet && v.trangThaiDuyetBienSo !== 'DaDuyet')
+        ).length;
+        setPendingPlatesCount(count);
+      } catch {}
+    };
+
+    loadPendingPlatesCount();
+    window.addEventListener('crm-vehicles-updated', loadPendingPlatesCount);
+    window.addEventListener('crm-notifications-updated', loadPendingPlatesCount);
+    window.addEventListener('crm-data-refresh', loadPendingPlatesCount);
+    return () => {
+      window.removeEventListener('crm-vehicles-updated', loadPendingPlatesCount);
+      window.removeEventListener('crm-notifications-updated', loadPendingPlatesCount);
+      window.removeEventListener('crm-data-refresh', loadPendingPlatesCount);
+    };
+  }, []);
+
+  // Demo Reset Modal State (Phương án 2)
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+  const [resetSuccessToast, setResetSuccessToast] = useState<string | null>(null);
+
+  const handleResetDemo = async () => {
+    setIsResetting(true);
+    try {
+      const res = await systemApi.resetDemoData();
+      setIsResetting(false);
+      setShowResetModal(false);
+      setResetSuccessToast(res.message || 'Khôi phục dữ liệu mẫu chuẩn (Phương án 2) thành công!');
+      setTimeout(() => {
+        window.location.reload();
+      }, 1500);
+    } catch (e: any) {
+      setIsResetting(false);
+      alert('Lỗi khi reset: ' + e.message);
+    }
+  };
   const [unreadByCustomer, setUnreadByCustomer] = useState<Record<string, number>>({});
   const [chatSearchQuery, setChatSearchQuery] = useState('');
   const adminChatScrollRef = useRef<HTMLDivElement>(null);
@@ -205,6 +253,50 @@ export default function AdminLayout({
     };
     window.addEventListener('crm-chat-update', handleCustomChat);
 
+    // KẾT NỐI TRỰC TIẾP TỪ QUẢN LÝ LỊCH HẸN SANG TRUNG TÂM CSKH TRỰC TUYẾN (LIVE CHAT)
+    const handleOpenLiveChatFromAppt = (e: any) => {
+      const { customerId, customerName, phone, prefillMessage } = e.detail || {};
+      if (!customerId) return;
+      const cleanId = formatCustomerId(customerId);
+
+      setChatConversations(prev => {
+        const existingIdx = prev.findIndex(c => formatCustomerId(c.customerId) === cleanId);
+        if (existingIdx >= 0) {
+          const updated = [...prev];
+          updated[existingIdx] = {
+            ...updated[existingIdx],
+            customerName: customerName || updated[existingIdx].customerName,
+            phone: phone || updated[existingIdx].phone,
+          };
+          return updated;
+        } else {
+          return [
+            {
+              customerId: cleanId,
+              customerName: customerName || `Khách hàng (${cleanId})`,
+              phone: phone,
+              lastMessage: 'Chưa có tin nhắn',
+              lastSentAt: '',
+              totalMessages: 0,
+              lastSender: '',
+            },
+            ...prev,
+          ];
+        }
+      });
+
+      setSelectedChatCustId(cleanId);
+      if (prefillMessage) {
+        setChatInputText(prefillMessage);
+      }
+      setChatModalOpen(true);
+      setUnreadChatTotal(0);
+      setTimeout(() => {
+        adminChatScrollRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+    };
+    window.addEventListener('crm-open-admin-livechat', handleOpenLiveChatFromAppt);
+
     const interval = setInterval(async () => {
       refreshConversations();
       if (selectedChatCustId && chatModalOpen) {
@@ -222,6 +314,7 @@ export default function AdminLayout({
 
     return () => {
       window.removeEventListener('crm-chat-update', handleCustomChat);
+      window.removeEventListener('crm-open-admin-livechat', handleOpenLiveChatFromAppt);
       clearInterval(interval);
     };
   }, [selectedChatCustId, chatModalOpen]);
@@ -293,11 +386,20 @@ export default function AdminLayout({
       targetPage = 'parts';
     } else if (n.type?.includes('appointment') || n.title?.toLowerCase().includes('lịch hẹn')) {
       targetPage = 'appointments';
+    } else if (n.linkPage === 'warranty' || n.type?.includes('warranty') || n.title?.toLowerCase().includes('bảo hành')) {
+      targetPage = 'warranty';
+    } else if (n.linkPage === 'insurance' || n.type?.includes('insurance') || n.title?.toLowerCase().includes('bảo hiểm')) {
+      targetPage = 'insurance';
+    } else if (n.linkPage === 'license-plates' || n.type?.includes('license_plate') || n.title?.toLowerCase().includes('biển số') || n.message?.toLowerCase().includes('biển số')) {
+      targetPage = 'license-plates';
     }
 
     // 2. Trích xuất targetId và keyword
     let targetId = '';
-    if (n.meta?.id) targetId = String(n.meta.id);
+    if (n.meta?.claimId) targetId = String(n.meta.claimId);
+    else if (n.meta?.appointmentId) targetId = String(n.meta.appointmentId);
+    else if (n.meta?.feedbackId) targetId = String(n.meta.feedbackId);
+    else if (n.meta?.id) targetId = String(n.meta.id);
     else if (n.meta?.orderId) targetId = String(n.meta.orderId);
     else if (n.meta?.maDon) targetId = `DH${String(n.meta.maDon).padStart(3, '0')}`;
     else if (n.meta?.maLich) targetId = `LH${String(n.meta.maLich).padStart(3, '0')}`;
@@ -305,7 +407,7 @@ export default function AdminLayout({
     else if (n.meta?.productId) targetId = String(n.meta.productId);
 
     if (!targetId) {
-      const match = (n.title + ' ' + n.message).match(/#(DH\d+|LH\d+|KH\d+|PT\d+|XM\d+|[A-Za-z0-9_-]+)/i);
+      const match = (n.title + ' ' + n.message).match(/#(YCBH\d+|DH\d+|LH\d+|KH\d+|PT\d+|XM\d+|BH-[A-Za-z0-9_-]+|[A-Za-z0-9_-]+)/i);
       if (match && match[1]) {
         targetId = match[1];
       }
@@ -372,9 +474,12 @@ export default function AdminLayout({
                 )}
                 {visibleItems.map(item => {
                   const active = activePage === item.key;
+                  const isLicensePlate = item.key === 'license-plates';
+                  const showBadge = isLicensePlate && pendingPlatesCount > 0;
+
                   return (
                     <button key={item.key} onClick={() => onNavigate(item.key)}
-                      className="flex items-center gap-3 w-full transition-all text-left"
+                      className="flex items-center gap-3 w-full transition-all text-left relative"
                       style={{
                         padding: collapsed ? '9px 20px' : '9px 16px',
                         background: active ? 'var(--color-red-700)' : 'transparent',
@@ -386,8 +491,22 @@ export default function AdminLayout({
                       onMouseEnter={e => { if (!active) { (e.currentTarget as HTMLButtonElement).style.background = 'var(--color-zinc-800)'; (e.currentTarget as HTMLButtonElement).style.color = 'white'; } }}
                       onMouseLeave={e => { if (!active) { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--color-zinc-400)'; } }}
                     >
-                      <span className="shrink-0">{item.icon}</span>
-                      {!collapsed && <span>{item.label}</span>}
+                      <span className="shrink-0 relative">
+                        {item.icon}
+                        {collapsed && showBadge && (
+                          <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                        )}
+                      </span>
+                      {!collapsed && (
+                        <div className="flex items-center justify-between flex-1 min-w-0">
+                          <span className="truncate">{item.label}</span>
+                          {showBadge && (
+                            <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500 text-zinc-950 font-mono shrink-0 shadow-xs">
+                              {pendingPlatesCount}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </button>
                   );
                 })}
@@ -460,6 +579,16 @@ export default function AdminLayout({
           </div>
 
           <div className="flex items-center gap-3">
+            {/* Nút Reset Demo 1-Click (Phương án 2) */}
+            <button
+              onClick={() => setShowResetModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-bold transition shadow-xs cursor-pointer active:scale-95"
+              title="Khôi phục hệ thống về trạng thái ban đầu sạch rác, giữ tài khoản và sản phẩm (Phương án 2)"
+            >
+              <span className="text-sm">🧹</span>
+              <span>Reset Demo</span>
+            </button>
+
             {/* Live Chat CSKH Support (ĐG07) */}
             <div className="relative">
               <button
@@ -685,7 +814,8 @@ export default function AdminLayout({
                         return (
                           <div
                             key={n.id}
-                            className={`p-4 rounded-2xl border transition-all duration-150 flex gap-3.5 group relative ${
+                            onClick={() => handleViewNotificationDetail(n)}
+                            className={`p-4 rounded-2xl border transition-all duration-150 flex gap-3.5 group relative cursor-pointer hover:scale-[1.01] ${
                               isUnread
                                 ? 'bg-white border-red-200/90 shadow-sm ring-1 ring-red-400/20'
                                 : 'bg-white/90 border-zinc-200/80 hover:border-zinc-300 hover:shadow-2xs'
@@ -838,6 +968,88 @@ export default function AdminLayout({
           {children}
         </main>
       </div>
+
+      {/* Toast thông báo khôi phục thành công */}
+      {resetSuccessToast && (
+        <div className="fixed top-6 right-6 z-50 bg-emerald-600 text-white px-5 py-3 rounded-xl shadow-xl flex items-center gap-3 animate-fade-in text-sm font-medium">
+          <span className="text-xl">🎉</span>
+          <div>
+            <div className="font-bold">Đã khôi phục dữ liệu thành công!</div>
+            <div className="text-xs text-emerald-100">{resetSuccessToast} Đang tải lại trang...</div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Xác nhận Reset Dữ Liệu Demo 1-Click (Phương án 2) */}
+      {showResetModal && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-zinc-200 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-xl bg-amber-100 border border-amber-300 flex items-center justify-center text-2xl shrink-0">
+                🧹
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-zinc-900">
+                  Khôi phục Dữ liệu Ban đầu (Demo Phương án 2)
+                </h3>
+                <p className="text-xs text-zinc-500 mt-1">
+                  Đưa toàn bộ hệ thống về trạng thái mới nghiệm thu, dọn sạch rác phát sinh khi test để chuẩn bị cho buổi bảo vệ đồ án.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 p-3.5 bg-zinc-50 rounded-xl border border-zinc-200 text-xs space-y-2">
+              <div className="flex items-center gap-2 text-emerald-700 font-semibold">
+                <span>✅</span>
+                <span>GIỮ NGUYÊN 100%:</span>
+                <span className="text-zinc-600 font-normal">Tất cả tài khoản Admin, Nhân viên, Khách hàng &amp; Toàn bộ Xe mẫu, Phụ tùng, Nhà cung cấp.</span>
+              </div>
+              <div className="flex items-center gap-2 text-red-600 font-semibold">
+                <span>🧹</span>
+                <span>XÓA SẠCH:</span>
+                <span className="text-zinc-600 font-normal">Đơn hàng test, lịch hẹn rác, phản hồi, yêu cầu bảo hành &amp; thông báo phát sinh.</span>
+              </div>
+              <div className="flex items-center gap-2 text-blue-700 font-semibold">
+                <span>⭐</span>
+                <span>DỮ LIỆU MINH HỌA (PA2):</span>
+                <span className="text-zinc-600 font-normal">Tạo 2 đơn hàng mẫu (Xe + Phụ tùng), 2 lịch hẹn mẫu và 2 đánh giá 5★ để biểu đồ thống kê có dữ liệu minh họa chuẩn.</span>
+              </div>
+            </div>
+
+            <div className="mt-6 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                disabled={isResetting}
+                onClick={() => setShowResetModal(false)}
+                className="px-4 py-2 rounded-xl border border-zinc-200 text-xs font-semibold text-zinc-700 hover:bg-zinc-100 transition cursor-pointer"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                disabled={isResetting}
+                onClick={handleResetDemo}
+                className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition flex items-center gap-2 shadow-xs cursor-pointer disabled:opacity-50"
+              >
+                {isResetting ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4 text-white" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                    </svg>
+                    <span>Đang dọn dẹp hệ thống...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>🧹</span>
+                    <span>Xác nhận Khôi phục Demo</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Floating live toast */}
       {liveToast && (
