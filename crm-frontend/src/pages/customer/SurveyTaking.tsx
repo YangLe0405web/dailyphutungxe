@@ -7,7 +7,7 @@ import {
   formatSurveyDateTime,
   surveyStatusLabels,
 } from '../../data/mockData';
-import { surveyApi, feedbackApi } from '../../services/api';
+import { surveyApi, feedbackApi, appointmentApi, orderApi } from '../../services/api';
 
 interface SurveyTakingProps {
   currentCustomer: Customer | null;
@@ -50,8 +50,30 @@ export default function SurveyTaking({
     const all = surveyApi.getAll();
     const custTier = getCustomerTier(currentCustomer.tongChiTieu).tier;
 
+    const myAppts = appointmentApi.getAllSync().filter(a => a.customerId === currentCustomer.id);
+    const myOrders = orderApi.getAllSync().filter(o => o.customerId === currentCustomer.id);
+
     // KS02: Hiển thị đầy đủ các bài khảo sát mà khách hàng đủ điều kiện tham gia
     const eligible = all.filter(s => {
+      const lower = (s.title + ' ' + (s.description || '')).toLowerCase();
+      const isBaoDuong = lower.includes('bảo dưỡng') || lower.includes('sửa chữa') || lower.includes('kỹ thuật') || lower.includes('bảo hành');
+      const isMuaXe = lower.includes('mua xe') || lower.includes('bàn giao xe') || lower.includes('xe mới');
+
+      // KS01: Khảo sát bảo dưỡng CHỈ hiển thị sau khi khách hàng đã hoàn tất dịch vụ bảo dưỡng/sửa chữa
+      if (isBaoDuong) {
+        const hasCompletedMaintenance = myAppts.some(a =>
+          (a.trangThai === 'DaHoanThanh' || a.trangThai === 'HoanThanh') &&
+          (a.loaiDichVu === 'BaoDuong' || a.loaiDichVu === 'SuaChua' || a.loaiDichVu === 'BaoHanh')
+        );
+        if (!hasCompletedMaintenance) return false;
+      }
+
+      if (isMuaXe) {
+        const hasXeOrder = myOrders.some(o => (o.loaiDon === 'Xe' || !!o.thongTinXe) && (o.trangThai === 'HoanThanh' || o.trangThai === 'DaGiao'));
+        const hasDeliveryAppt = myAppts.some(a => a.loaiDichVu === 'NhanXe' && (a.trangThai === 'DaHoanThanh' || a.trangThai === 'HoanThanh'));
+        if (!hasXeOrder && !hasDeliveryAppt) return false;
+      }
+
       if (s.targetCustomerId === currentCustomer.id) return true;
       if (s.targetCustomerIds && s.targetCustomerIds.includes(currentCustomer.id)) return true;
       if (s.targetCustomerId === 'ALL' || !s.targetCustomerId) {

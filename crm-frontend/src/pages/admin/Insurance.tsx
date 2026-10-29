@@ -11,6 +11,7 @@ import {
   type InsurancePackageType,
 } from '../../data/mockData';
 import { insuranceApi, customerApi, vehicleApi } from '../../services/api';
+import { matchVietnameseSearch } from '../../utils/vietnameseSearch';
 import RenewInsuranceModal from '../../components/customer/RenewInsuranceModal';
 
 export default function InsurancePage() {
@@ -96,10 +97,10 @@ export default function InsurancePage() {
     const q = customerSearch.toLowerCase().trim();
     return customers.filter(
       c =>
-        c.soDienThoai.includes(q) ||
-        c.email.toLowerCase().includes(q) ||
-        c.hoTen.toLowerCase().includes(q) ||
-        c.id.toLowerCase().includes(q)
+        matchVietnameseSearch(c.soDienThoai, customerSearch) ||
+        (c.email ? matchVietnameseSearch(c.email, customerSearch) : false) ||
+        matchVietnameseSearch(c.hoTen, customerSearch) ||
+        matchVietnameseSearch(c.id, customerSearch)
     );
   }, [customerSearch, customers]);
 
@@ -307,12 +308,12 @@ export default function InsurancePage() {
     const q = search.toLowerCase().trim();
     return contracts.filter(c => {
       const matchSearch =
-        !q ||
-        c.soGCN.toLowerCase().includes(q) ||
-        c.hoTenKH.toLowerCase().includes(q) ||
-        c.soDienThoai.includes(q) ||
-        c.bienSo.toLowerCase().includes(q) ||
-        c.tenXe.toLowerCase().includes(q);
+        !search.trim() ||
+        matchVietnameseSearch(c.soGCN, search) ||
+        matchVietnameseSearch(c.hoTenKH, search) ||
+        matchVietnameseSearch(c.soDienThoai, search) ||
+        matchVietnameseSearch(c.bienSo, search) ||
+        matchVietnameseSearch(c.tenXe, search);
       const matchStatus = statusFilter === 'All' || c.trangThai === statusFilter;
       const matchPackage = packageFilter === 'All' || c.packageType === packageFilter;
       return matchSearch && matchStatus && matchPackage;

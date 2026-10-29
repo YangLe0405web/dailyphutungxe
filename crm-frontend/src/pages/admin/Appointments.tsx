@@ -1,3 +1,4 @@
+import { matchVietnameseSearch } from '../../utils/vietnameseSearch';
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   mockAppointments,
@@ -8,7 +9,7 @@ import {
   type StaffAccount,
   formatVND,
 } from '../../data/mockData';
-import { appointmentApi } from '../../services/api';
+import { appointmentApi, orderApi } from '../../services/api';
 
 const apptStatuses: { key: AppointmentStatus; label: string; color: string; bg: string }[] = [
   { key: 'ChoXacNhan', label: 'Chờ xác nhận', color: '#d97706', bg: '#fef3c7' },
@@ -409,6 +410,23 @@ export default function AppointmentsPage({
     const updatedTimeline = [...currentTimeline, newTlItem];
 
     appointmentApi.updateStatus(id, status, lyDoTuChoi);
+
+    // Đồng bộ trạng thái đơn hàng nếu là lịch nhận xe mới
+    const targetA = appointments.find(a => a.id === id);
+    if (targetA && (targetA.loaiDichVu === 'NhanXe' || targetA.maDonHangXe)) {
+      const matchedO = allOrders.find(o =>
+        (targetA.maDonHangXe && o.id === targetA.maDonHangXe) ||
+        (targetA.maLichHen && (o.maLichHen === targetA.maLichHen || o.thongTinXe?.maLichHen === targetA.maLichHen)) ||
+        (targetA.id && parseInt(o.id.replace(/\D/g, ''), 10) === parseInt(targetA.id.replace(/\D/g, ''), 10))
+      );
+      if (matchedO) {
+        if (status === 'DaXacNhan' && (matchedO.trangThai === 'ChoDuyet' || matchedO.trangThai === 'ChoKhachXacNhanNgayNhan')) {
+          orderApi.updateStatus(matchedO.id, 'ChoGiaoXe');
+        } else if (status === 'DaHoanThanh' && matchedO.trangThai !== 'HoanThanh') {
+          orderApi.updateStatus(matchedO.id, 'HoanThanh');
+        }
+      }
+    }
     setAppointments(as =>
       as.map(a =>
         a.id === id
@@ -469,6 +487,18 @@ export default function AppointmentsPage({
 
     await appointmentApi.updateStatus(acceptModalAppt.id, 'DaXacNhan');
     await appointmentApi.assignStaff(acceptModalAppt.id, finalStaff);
+
+    // Nếu là lịch hẹn nhận xe mới, đồng bộ trạng thái đơn hàng tương ứng sang "Chờ giao xe"
+    if (acceptModalAppt.loaiDichVu === 'NhanXe' || acceptModalAppt.maDonHangXe) {
+      const matchedO = allOrders.find(o =>
+        (acceptModalAppt.maDonHangXe && o.id === acceptModalAppt.maDonHangXe) ||
+        (acceptModalAppt.maLichHen && (o.maLichHen === acceptModalAppt.maLichHen || o.thongTinXe?.maLichHen === acceptModalAppt.maLichHen)) ||
+        (acceptModalAppt.id && parseInt(o.id.replace(/\D/g, ''), 10) === parseInt(acceptModalAppt.id.replace(/\D/g, ''), 10))
+      );
+      if (matchedO && (matchedO.trangThai === 'ChoDuyet' || matchedO.trangThai === 'ChoKhachXacNhanNgayNhan')) {
+        await orderApi.updateStatus(matchedO.id, 'ChoGiaoXe');
+      }
+    }
     setAppointments(as =>
       as.map(a =>
         a.id === acceptModalAppt.id
@@ -670,25 +700,46 @@ export default function AppointmentsPage({
     setCurrentPage(1);
   }, [apptSearch, apptStatusFilter, apptSvcFilter, apptFromDate, apptToDate]);
 
+  const allOrders = useMemo(() => {
+    try {
+      return orderApi.getAllSync();
+    } catch {
+      return [];
+    }
+  }, [appointments]);
+
   // Filtered & Sorted Appointments (Ưu tiên cuộc hẹn 'ChoXacNhan' lên đầu danh sách)
   const filteredAppointments = useMemo(() => {
     const list = appointments.filter(a => {
-      // Ẩn lịch hẹn nhận xe đã hoàn tất (đã chuyển giao sang đơn hàng hoặc đã nhận xe) khỏi bảng lịch hẹn dịch vụ
-      if (a.loaiDichVu === 'NhanXe' && a.trangThai === 'DaHoanThanh' && apptStatusFilter !== 'DaHoanThanh') {
-        return false;
+      // Nghiệp vụ Lịch hẹn nhận xe mới:
+      if (a.loaiDichVu === 'NhanXe') {
+        // 1. Sau khi hoàn tất hoặc đã hủy: Biến mất hoàn toàn khỏi danh sách lịch hẹn
+        if (a.trangThai === 'DaHoanThanh' || a.trangThai === 'HoanThanh' || a.trangThai === 'DaHuy') {
+          return false;
+        }
+
+        // 2. Chỉ ẩn khi đơn xe tương ứng đã hoàn tất (HoanThanh / DaGiao) hoặc Đã hủy
+        const matchedOrder = allOrders.find(o =>
+          (a.maDonHangXe && a.maDonHangXe === o.id) ||
+          (a.maLichHen && (a.maLichHen === o.maLichHen || a.maLichHen === o.thongTinXe?.maLichHen)) ||
+          (o.id && a.id && parseInt(o.id.replace(/\D/g, ''), 10) === parseInt(a.id.replace(/\D/g, ''), 10))
+        );
+        if (matchedOrder && (matchedOrder.trangThai === 'HoanThanh' || matchedOrder.trangThai === 'DaGiao' || matchedOrder.trangThai === 'DaHuy')) {
+          return false;
+        }
       }
+
       if (apptStatusFilter !== 'ALL' && a.trangThai !== apptStatusFilter) return false;
       if (apptSvcFilter !== 'ALL' && a.loaiDichVu !== apptSvcFilter) return false;
       if (apptFromDate && a.ngayHen < apptFromDate) return false;
       if (apptToDate && a.ngayHen > apptToDate) return false;
       if (apptSearch.trim()) {
-        const q = apptSearch.toLowerCase();
-        const matchId = a.id.toLowerCase().includes(q);
-        const matchName = a.hoTenKH.toLowerCase().includes(q);
-        const matchPhone = a.soDienThoai.toLowerCase().includes(q);
-        const matchVehicle = (a.tenXe || '').toLowerCase().includes(q);
-        const matchPlate = (a.bienSo || '').toLowerCase().includes(q);
-        const matchLich = (a.maLichHen || '').toLowerCase().includes(q);
+        const matchId = matchVietnameseSearch(a.id, apptSearch);
+        const matchName = matchVietnameseSearch(a.hoTenKH, apptSearch);
+        const matchPhone = matchVietnameseSearch(a.soDienThoai, apptSearch);
+        const matchVehicle = matchVietnameseSearch(a.tenXe || '', apptSearch);
+        const matchPlate = matchVietnameseSearch(a.bienSo || '', apptSearch);
+        const matchLich = matchVietnameseSearch(a.maLichHen || '', apptSearch);
         if (!matchId && !matchName && !matchPhone && !matchVehicle && !matchPlate && !matchLich) return false;
       }
       return true;
@@ -705,14 +756,30 @@ export default function AppointmentsPage({
       }
       return (b.gioHen || '').localeCompare(a.gioHen || '');
     });
-  }, [appointments, apptStatusFilter, apptSvcFilter, apptFromDate, apptToDate, apptSearch]);
+  }, [appointments, apptStatusFilter, apptSvcFilter, apptFromDate, apptToDate, apptSearch, allOrders]);
 
   // KPI stats (chỉ đếm lịch hẹn đang hoạt động, không bao gồm lịch nhận xe đã hoàn tất)
-  const activeAppts = appointments.filter(a => !(a.loaiDichVu === 'NhanXe' && a.trangThai === 'DaHoanThanh'));
+  const activeAppts = useMemo(() => {
+    return appointments.filter(a => {
+      if (a.loaiDichVu === 'NhanXe') {
+        if (a.trangThai === 'DaHoanThanh' || a.trangThai === 'HoanThanh' || a.trangThai === 'DaHuy') return false;
+        const matchedOrder = allOrders.find(o =>
+          (a.maDonHangXe && a.maDonHangXe === o.id) ||
+          (a.maLichHen && (a.maLichHen === o.maLichHen || a.maLichHen === o.thongTinXe?.maLichHen)) ||
+          (o.id && a.id && parseInt(o.id.replace(/\D/g, ''), 10) === parseInt(a.id.replace(/\D/g, ''), 10))
+        );
+        if (matchedOrder && (matchedOrder.trangThai === 'HoanThanh' || matchedOrder.trangThai === 'DaGiao' || matchedOrder.trangThai === 'DaHuy')) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [appointments, allOrders]);
+
   const totalCount = activeAppts.length;
   const pendingCount = activeAppts.filter(a => a.trangThai === 'ChoXacNhan').length;
   const confirmedCount = activeAppts.filter(a => a.trangThai === 'DaXacNhan').length;
-  const pickupCount = appointments.filter(a => a.loaiDichVu === 'NhanXe' && a.trangThai !== 'DaHoanThanh').length;
+  const pickupCount = activeAppts.filter(a => a.loaiDichVu === 'NhanXe').length;
 
   // LH19: Tính toán phân trang
   const totalPages = Math.max(1, Math.ceil(filteredAppointments.length / pageSize));
@@ -834,10 +901,10 @@ export default function AppointmentsPage({
                 className="w-full px-3 py-1.5 text-xs rounded-xl border border-zinc-300 focus:outline-none focus:border-red-600 bg-white"
               >
                 <option value="ALL">Tất cả loại dịch vụ</option>
-                <option value="SuaChua">⚙️ Sửa chữa phụ tùng</option>
-                <option value="BaoDuong">🔧 Bảo dưỡng định kỳ</option>
-                <option value="LaiThu">🏍️ Lái thử xe mẫu</option>
                 <option value="NhanXe">🎁 Bàn giao nhận xe mới</option>
+                <option value="LaiThu">🏍️ Lái thử xe mới</option>
+                <option value="BaoHanh">🛡️ Kiểm tra bảo hành</option>
+                <option value="BaoDuong">🔧 Bảo dưỡng định kỳ</option>
               </select>
             </div>
 
@@ -997,7 +1064,16 @@ export default function AppointmentsPage({
                             )}
                           </div>
                         )}
-                        {a.loaiDichVu !== 'SuaChua' && a.loaiDichVu !== 'BaoDuong' && a.loaiDichVu !== 'LaiThu' && a.loaiDichVu !== 'NhanXe' && (
+                        {a.loaiDichVu === 'BaoHanh' && (
+                          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-rose-100/90 text-rose-900 border border-rose-200/60 shadow-2xs">
+                            <span className="text-sm">🛡️</span>
+                            <div className="text-left leading-tight">
+                              <span className="text-xs font-bold block">Kiểm tra</span>
+                              <span className="text-[10px] text-rose-700 block">bảo hành</span>
+                            </div>
+                          </div>
+                        )}
+                        {a.loaiDichVu !== 'SuaChua' && a.loaiDichVu !== 'BaoDuong' && a.loaiDichVu !== 'LaiThu' && a.loaiDichVu !== 'NhanXe' && a.loaiDichVu !== 'BaoHanh' && (
                           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-zinc-100 text-zinc-800 text-xs font-semibold">
                             <span>📌</span> {a.loaiDichVu}
                           </div>
@@ -1314,8 +1390,21 @@ export default function AppointmentsPage({
 
             {getMonthDaysGrid(currentCalendarDate).map((cell, idx) => {
               // LH06: Tự động xóa/ẩn lịch hẹn đã hủy trên Calendar
-              // LH12: Calendar chỉ hiển thị các lịch hẹn đã được xác nhận (DaXacNhan)
-              const dayAppts = appointments.filter(a => a.ngayHen === cell.dateStr && a.trangThai === 'DaXacNhan');
+              // LH12: Calendar chỉ hiển thị các lịch hẹn đã được xác nhận (DaXacNhan) và chưa hoàn tất đơn xe
+              const dayAppts = appointments.filter(a => {
+                if (a.ngayHen !== cell.dateStr || a.trangThai !== 'DaXacNhan') return false;
+                if (a.loaiDichVu === 'NhanXe') {
+                  const matchedOrder = allOrders.find(o =>
+                    (a.maDonHangXe && a.maDonHangXe === o.id) ||
+                    (a.maLichHen && (a.maLichHen === o.maLichHen || a.maLichHen === o.thongTinXe?.maLichHen)) ||
+                    (o.id && a.id && parseInt(o.id.replace(/\D/g, ''), 10) === parseInt(a.id.replace(/\D/g, ''), 10))
+                  );
+                  if (matchedOrder && (matchedOrder.trangThai === 'HoanThanh' || matchedOrder.trangThai === 'DaGiao' || matchedOrder.trangThai === 'DaHuy')) {
+                    return false;
+                  }
+                }
+                return true;
+              });
               const hasAppts = dayAppts.length > 0;
 
               return (
@@ -1749,10 +1838,11 @@ export default function AppointmentsPage({
                     className="w-full p-2.5 rounded-xl border border-zinc-300 bg-zinc-100 text-zinc-600 font-semibold cursor-not-allowed shadow-inner focus:outline-none"
                     title="LH26: Loại dịch vụ được cố định từ khi đăng ký lịch hẹn, không được phép thay đổi"
                   >
-                    <option value="SuaChua">⚙️ Sửa chữa phụ tùng</option>
-                    <option value="BaoDuong">🔧 Bảo dưỡng định kỳ</option>
-                    <option value="LaiThu">🏍️ Lái thử xe mới</option>
                     <option value="NhanXe">🎁 Bàn giao nhận xe mới</option>
+                    <option value="LaiThu">🏍️ Lái thử xe mới</option>
+                    <option value="BaoHanh">🛡️ Kiểm tra bảo hành</option>
+                    <option value="BaoDuong">🔧 Bảo dưỡng định kỳ</option>
+                    <option value="SuaChua">⚙️ Sửa chữa phụ tùng</option>
                   </select>
                   <p className="text-[11px] text-zinc-500 mt-1 italic">
                     ℹ️ LH26: Loại dịch vụ được cố định từ lúc tạo lịch, chỉ được hiệu chỉnh thông tin khách hàng, xe và thời gian.

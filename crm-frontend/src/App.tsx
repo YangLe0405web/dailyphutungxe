@@ -153,7 +153,15 @@ export default function App() {
   const [currentCustomer, setCurrentCustomerState] = useState<Customer | null>(() => {
     try {
       const saved = localStorage.getItem('crm_current_customer');
-      return saved ? JSON.parse(saved) : null;
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.email && /@gmail\.com@gmail\.com/i.test(parsed.email)) {
+          parsed.email = parsed.email.replace(/@gmail\.com@gmail\.com/gi, '@gmail.com');
+          localStorage.setItem('crm_current_customer', JSON.stringify(parsed));
+        }
+        return parsed;
+      }
+      return null;
     } catch {
       return null;
     }
@@ -184,6 +192,9 @@ export default function App() {
     }
     setCurrentCustomerState(c);
     if (c) {
+      if (c.email && /@gmail\.com@gmail\.com/i.test(c.email)) {
+        c.email = c.email.replace(/@gmail\.com@gmail\.com/gi, '@gmail.com');
+      }
       localStorage.setItem('crm_current_customer', JSON.stringify(c));
     } else {
       localStorage.removeItem('crm_current_customer');
@@ -303,10 +314,13 @@ export default function App() {
         }
       }
     };
+    const handleNavCheckout = () => setCustomerPage('checkout');
+    window.addEventListener('crm-navigate-checkout', handleNavCheckout);
     window.addEventListener('crm-customer-change', handleCustomerChange);
     window.addEventListener('storage', handleStorage);
 
     return () => {
+      window.removeEventListener('crm-navigate-checkout', handleNavCheckout);
       window.removeEventListener('hashchange', handleHashChange);
       window.removeEventListener('crm-customer-change', handleCustomerChange);
       window.removeEventListener('storage', handleStorage);
@@ -406,6 +420,7 @@ export default function App() {
           <PartsStore
             currentCustomer={currentCustomer}
             onRequireLogin={() => window.dispatchEvent(new CustomEvent('crm-open-login'))}
+            onNavigateToCheckout={() => setCustomerPage('checkout')}
           />
         )}
         {customerPage === 'booking' && (
@@ -421,6 +436,8 @@ export default function App() {
             currentCustomer={currentCustomer}
             onNavigateToShowroom={() => setCustomerPage('vehicles')}
             onNavigateToSurvey={() => setCustomerPage('survey')}
+            onNavigateToCheckout={() => setCustomerPage('checkout')}
+            onNavigateToStore={() => setCustomerPage('store')}
             onCustomerChange={setCurrentCustomer}
           />
         )}

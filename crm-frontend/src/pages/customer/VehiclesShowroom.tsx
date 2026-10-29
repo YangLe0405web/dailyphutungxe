@@ -452,7 +452,7 @@ function BuyVehicleOnlineModal({
         ngayDatCoc: new Date().toISOString().split('T')[0],
         soTienConLai: remainingAmount,
         phuongThucThanhToan: 'ChuyenKhoan',
-        trangThaiDonHang: 'ChoGiaoXe',
+        trangThaiDonHang: 'ChoDuyet',
         hinhThucGiao: deliveryMethod,
         ngayGiaoXe: pickupDate,
         khungGioGiao: pickupTime,
@@ -468,7 +468,7 @@ function BuyVehicleOnlineModal({
         diaChiGiao: finalDeliveryPlace,
         kenhBan: 'Online',
         trangThaiThanhToan: paymentOption === 'deposit' ? 'DaCoc' : 'DaThanhToan',
-        trangThai: 'ChoGiaoXe',
+        trangThai: 'ChoDuyet',
         tongTien: payNowAmount,
         phuongThucThanhToan: 'ChuyenKhoan',
         ghiChu: `[Khách đặt online - ${deliveryMethod === 'HomeDelivery' ? 'GIAO TẬN NƠI' : 'TẠI SHOWROOM'}]: ${vehicle.tenXe} (${selectedColor}, ${selectedVersion.label}) - ${
@@ -1508,6 +1508,7 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
               editCount: f.editCount || 0,
               productName: f.productName || f.xeDangDung || 'Honda SH 160i ABS 2025',
               hinhAnhDinhKem: f.hinhAnhDinhKem || [],
+              phanHoiShowroom: f.phanHoiCuaShop || f.ghiChuXuLy,
             };
           });
 

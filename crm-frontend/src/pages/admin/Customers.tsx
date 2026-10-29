@@ -18,6 +18,7 @@ import {
   formatVND,
 } from '../../data/mockData';
 import { customerApi, vehicleApi, orderApi, appointmentApi, feedbackApi, insuranceApi } from '../../services/api';
+import { matchVietnameseSearch } from '../../utils/vietnameseSearch';
 import ImageUploader from '../../components/shared/ImageUploader';
 import { VIETNAM_LOCATIONS } from '../../data/vietnamLocations';
 
@@ -842,7 +843,8 @@ function Customer360Modal({
   const handleApproveVehicle = async (vId: string) => {
     setApprovingVehicleId(vId);
     try {
-      await vehicleApi.approveVehicle(vId);
+      const targetV = vehicles.find(x => x.id === vId);
+      await vehicleApi.approveVehicle(vId, targetV);
       setVehicles(prev => prev.map(x => x.id === vId ? { ...x, trangThaiDuyet: 'DaDuyet', trangThaiDuyetBienSo: 'DaDuyet', bienSo: x.bienSoChoDuyet || x.bienSo } : x));
       window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'vehicle_approved', vehicleId: vId } }));
     } finally {
@@ -1344,28 +1346,60 @@ function Customer360Modal({
                           </div>
                         )}
 
-                        {/* Banner 1: Trạng thái chờ duyệt biển số xe (Chế độ chỉ xem) */}
+                        {/* Banner 1: Trạng thái chờ duyệt biển số xe kèm nút Phê duyệt */}
                         {isCuaHang && v.trangThaiDuyetBienSo === 'ChoDuyet' && (
                           <div className="p-3.5 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-between flex-wrap gap-2.5">
                             <div className="text-xs text-blue-950">
                               <strong>Yêu cầu cấp biển số mới:</strong> Khách hàng đề xuất biển số{' '}
                               <strong className="text-red-700 font-mono font-bold text-sm">{v.bienSoChoDuyet}</strong> kèm ảnh cà vẹt xe.
                             </div>
-                            <span className="px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-100 text-blue-800 border border-blue-300 font-mono">
-                              ⏳ Đang chờ duyệt biển số
-                            </span>
+                            <div className="flex items-center gap-2">
+                              {v.anhCaVet && (
+                                <button
+                                  type="button"
+                                  onClick={() => setPreviewCaVetUrl(v.anhCaVet!)}
+                                  className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-white text-zinc-700 border border-zinc-300 hover:bg-zinc-100 flex items-center gap-1 cursor-pointer"
+                                >
+                                  <span>👁️</span> Xem Cà vẹt
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                disabled={approvingPlateId === v.id}
+                                onClick={() => handleApprovePlate(v.id)}
+                                className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+                              >
+                                <span>✓</span> {approvingPlateId === v.id ? 'Đang duyệt...' : `Phê duyệt biển số (${v.bienSoChoDuyet})`}
+                              </button>
+                            </div>
                           </div>
                         )}
 
-                        {/* Banner 2: Trạng thái xe ngoài hệ thống chờ duyệt (Chế độ chỉ xem) */}
+                        {/* Banner 2: Trạng thái xe ngoài hệ thống chờ duyệt kèm nút Phê duyệt */}
                         {!isCuaHang && isChoDuyet && (
                           <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-between flex-wrap gap-2.5">
                             <div className="text-xs text-amber-950">
                               <strong>Hồ sơ xe chờ duyệt:</strong> Xe do khách hàng tự đăng ký kèm ảnh cà vẹt xe.
                             </div>
-                            <span className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300 font-mono">
-                              ⏳ Đang chờ đối chiếu hồ sơ
-                            </span>
+                            <div className="flex items-center gap-2">
+                              {v.anhCaVet && (
+                                <button
+                                  type="button"
+                                  onClick={() => setPreviewCaVetUrl(v.anhCaVet!)}
+                                  className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-white text-zinc-700 border border-zinc-300 hover:bg-zinc-100 flex items-center gap-1 cursor-pointer"
+                                >
+                                  <span>👁️</span> Xem Cà vẹt
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                disabled={approvingVehicleId === v.id}
+                                onClick={() => handleApproveVehicle(v.id)}
+                                className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+                              >
+                                <span>✓</span> {approvingVehicleId === v.id ? 'Đang duyệt...' : 'Phê duyệt xe & Cà vẹt'}
+                              </button>
+                            </div>
                           </div>
                         )}
 
@@ -1605,7 +1639,12 @@ export default function CustomersPage() {
       const matchStatus = filterStatus === 'All' || c.trangThai === filterStatus;
       const tierInfo = getCustomerTier(c.tongChiTieu);
       const matchTier = filterTier === 'All' || tierInfo.tier === filterTier;
-      const matchSearch = !q || c.hoTen.toLowerCase().includes(q) || c.email.toLowerCase().includes(q) || c.soDienThoai.includes(q);
+      const matchSearch =
+        !search.trim() ||
+        matchVietnameseSearch(c.hoTen, search) ||
+        matchVietnameseSearch(c.email, search) ||
+        matchVietnameseSearch(c.soDienThoai, search) ||
+        matchVietnameseSearch(c.id, search);
       return matchStatus && matchTier && matchSearch;
     });
   }, [customers, search, filterStatus, filterTier]);
@@ -1707,7 +1746,8 @@ export default function CustomersPage() {
   async function handleDeleteCustomer(id: string) {
     const numId = parseInt(id.replace(/\D/g, ''), 10);
     if (!isNaN(numId)) {
-      await customerApi.deleteCustomer(numId);
+      const targetCust = customers.find(c => c.id === id || parseInt(c.id.replace(/\D/g, ''), 10) === numId);
+      await customerApi.deleteCustomer(numId, { phone: targetCust?.soDienThoai, email: targetCust?.email });
     }
     const updated = customers.filter(c => c.id !== id);
     setCustomers(updated);

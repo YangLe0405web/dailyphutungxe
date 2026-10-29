@@ -14,6 +14,32 @@ import {
 
 type CustomerPage = 'store' | 'vehicles' | 'booking' | 'dashboard' | 'checkout' | 'survey';
 
+export interface PinnedChatContext {
+  title?: string;
+  productName: string;
+  productImage?: string;
+  orderId?: string;
+  rating?: number;
+  comment?: string;
+}
+
+function formatChatTime(val?: string | Date) {
+  if (!val) return '00:16';
+  const str = String(val).trim();
+  if (str.includes('T') || (str.includes('-') && str.includes(':'))) {
+    try {
+      const d = new Date(str);
+      if (!isNaN(d.getTime())) {
+        return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+      }
+    } catch {}
+  }
+  if (str.length >= 5 && str.includes(':')) {
+    return str.slice(0, 5);
+  }
+  return str;
+}
+
 interface Props {
   children: React.ReactNode;
   activePage: CustomerPage;
@@ -51,11 +77,28 @@ export default function CustomerLayout({ children, activePage, onNavigate, onHom
     }
   };
 
-  // Web Live Chat Widget States (ĐG07)
+  // Web Live Chat Widget States (ĐG07 & Ảnh 2 Mockup)
   const [chatOpen, setChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [unreadChatCount, setUnreadChatCount] = useState(0);
+  const [pinnedContext, setPinnedContext] = useState<PinnedChatContext | null>(() => {
+    try {
+      const activeId = localStorage.getItem('crm_current_customer_id') || 'KH032';
+      const saved = chatApi.getPinnedContext(activeId);
+      if (saved) return saved;
+      const generic = localStorage.getItem('crm_chat_pinned_context');
+      if (generic) return JSON.parse(generic);
+    } catch {}
+    return {
+      title: '📌 ĐANG THẢO LUẬN VỀ ĐÁNH GIÁ CỦA BẠN',
+      productName: 'Nhớt Motul 7100 4T 10W40 1L (100% Tổng Hợp Ester)',
+      productImage: '/images/phutung/motul_7100.png',
+      orderId: 'Đơn hàng: #DH01001',
+      rating: 2,
+      comment: 'Nhớt giao tới bị rỉ nắp, chảy ướt cả hộp',
+    };
+  });
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -78,6 +121,9 @@ export default function CustomerLayout({ children, activePage, onNavigate, onHom
     const handleIncomingMessage = (msg: ChatMessage) => {
       if (!msg) return;
       if (formatCustomerId(msg.customerId) === custId) {
+        if (msg.pinnedContext !== undefined) {
+          setPinnedContext(msg.pinnedContext);
+        }
         setChatMessages(prev => {
           if (!prev.some(m => m.id === msg.id)) {
             return [...prev, msg];
@@ -93,15 +139,51 @@ export default function CustomerLayout({ children, activePage, onNavigate, onHom
     // 2. Cross-tab listener via BroadcastChannel
     if (channel) {
       channel.onmessage = (e) => {
-        if (e.data) handleIncomingMessage(e.data);
+        if (!e.data) return;
+        if (e.data.type === 'sync_pinned_context') {
+          const syncId = formatCustomerId(e.data.customerId);
+          if (syncId === custId) {
+            setPinnedContext(e.data.pinnedContext || null);
+            if (e.data.pinnedContext) {
+              setChatOpen(true);
+            }
+          }
+          return;
+        }
+        handleIncomingMessage(e.data);
       };
     }
+
+    // Dynamic pinned context listener in same window
+    const handleSyncPinned = (e: any) => {
+      if (!e.detail) return;
+      if (formatCustomerId(e.detail.customerId) === custId) {
+        setPinnedContext(e.detail.pinnedContext || null);
+        if (e.detail.pinnedContext) {
+          setChatOpen(true);
+        }
+      }
+    };
+    window.addEventListener('crm-sync-pinned-context', handleSyncPinned);
 
     // 3. Local tab CustomEvent
     const handleChatUpdate = (e: any) => {
       handleIncomingMessage(e.detail as ChatMessage);
     };
     window.addEventListener('crm-chat-update', handleChatUpdate);
+
+    const handleOpenChat = (e: any) => {
+      setChatOpen(true);
+      setUnreadChatCount(0);
+      if (e.detail?.pinnedContext) {
+        setPinnedContext(e.detail.pinnedContext);
+        chatApi.syncPinnedContext(custId, e.detail.pinnedContext);
+      }
+      if (e.detail?.prefillMessage) {
+        setChatInput(e.detail.prefillMessage);
+      }
+    };
+    window.addEventListener('crm-open-chat', handleOpenChat);
 
     // 4. Polling backend every 2 seconds for cross-browser sync
     const interval = setInterval(async () => {
@@ -123,6 +205,8 @@ export default function CustomerLayout({ children, activePage, onNavigate, onHom
 
     return () => {
       window.removeEventListener('crm-chat-update', handleChatUpdate);
+      window.removeEventListener('crm-open-chat', handleOpenChat);
+      window.removeEventListener('crm-sync-pinned-context', handleSyncPinned);
       clearInterval(interval);
     };
   }, [currentCustomer, chatOpen]);
@@ -145,6 +229,7 @@ export default function CustomerLayout({ children, activePage, onNavigate, onHom
       sender: 'customer',
       senderName: custName,
       content: chatInput.trim(),
+      pinnedContext: pinnedContext,
     });
 
     setChatMessages(prev => {
@@ -389,15 +474,20 @@ export default function CustomerLayout({ children, activePage, onNavigate, onHom
                                     } else if (n.category === 'order' || n.tab === 'orders') {
                                       hlType = 'order';
                                     }
+                                    const targetSubTab = hlType === 'review'
+                                      ? (n.title && n.title.toLowerCase().includes('chờ đánh giá') ? 'ChoDanhGia' : 'DaDanhGia')
+                                      : undefined;
                                     sessionStorage.setItem('crm_client_highlight', JSON.stringify({
                                       type: hlType,
                                       id: n.targetId,
+                                      subTab: targetSubTab,
                                       notifId: n.id,
                                     }));
                                     window.dispatchEvent(new CustomEvent('crm-client-highlight-trigger', {
                                       detail: {
                                         type: hlType,
                                         id: n.targetId,
+                                        subTab: targetSubTab,
                                       }
                                     }));
                                     if (n.page === 'booking') {
@@ -768,49 +858,150 @@ export default function CustomerLayout({ children, activePage, onNavigate, onHom
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse ml-0.5"></span>
             </button>
           ) : (
-            <div className="bg-white rounded-3xl shadow-2xl border border-zinc-200 w-[92vw] sm:w-[380px] h-[480px] flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200">
+            <div className="bg-[#121214] text-white rounded-3xl shadow-2xl border border-zinc-800 w-[92vw] sm:w-[410px] h-[580px] flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200">
               {/* Chat Header */}
-              <div className="p-4 bg-zinc-950 text-white flex items-center justify-between shrink-0">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-9 h-9 rounded-full bg-red-700 text-white font-bold flex items-center justify-center text-sm font-mono shrink-0">
+              <div className="p-4 bg-zinc-950 text-white flex items-center justify-between shrink-0 border-b border-zinc-800/80">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-red-700 text-white font-extrabold flex items-center justify-center text-sm font-mono shrink-0 shadow-md">
                     CS
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="font-extrabold text-xs text-white">CSKH MOTOSHOP</span>
+                      <span className="font-extrabold text-sm text-white tracking-wide">CSKH MOTOSHOP</span>
                       <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                      <span className="text-[10px] text-emerald-400 font-mono">Sẵn sàng 24/7</span>
+                      <span className="text-xs text-emerald-400 font-semibold">Sẵn sàng 24/7</span>
                     </div>
-                    <div className="text-[10px] text-zinc-400 font-mono">Tư vấn phụ tùng & xe máy trực tuyến</div>
+                    <div className="text-xs text-zinc-400 mt-0.5">Tư vấn phụ tùng & xe máy trực tuyến</div>
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => setChatOpen(false)}
-                  className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center text-xs font-bold transition"
+                  className="w-8 h-8 rounded-full bg-zinc-800/90 hover:bg-zinc-700 text-zinc-300 hover:text-white flex items-center justify-center text-sm font-bold transition cursor-pointer"
+                  title="Đóng chat"
                 >
                   ✕
                 </button>
               </div>
 
               {/* Chat Identity Sub-header */}
-              <div className="px-4 py-1.5 bg-zinc-900 border-b border-zinc-800 text-[10px] text-zinc-300 flex items-center justify-between shrink-0">
-                <span className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                  <span>Tài khoản: <strong>{currentCustomer.hoTen} ({formatCustomerId(currentCustomer.id)})</strong></span>
+              <div className="px-4 py-2 bg-[#18181b] border-b border-zinc-800/80 text-xs text-zinc-300 flex items-center justify-between shrink-0">
+                <span className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                  <span className="text-zinc-400">Tài khoản: <strong className="text-white font-bold">{currentCustomer.hoTen} ({formatCustomerId(currentCustomer.id)})</strong></span>
                 </span>
-                <span className="font-mono text-zinc-400">Kênh hỗ trợ trực tuyến</span>
+                <span className="text-zinc-400 font-mono text-[11px]">Kênh hỗ trợ trực tuyến</span>
+              </div>
+
+              {/* Quick Account Switcher for Testing */}
+              <div className="px-3 py-1.5 bg-zinc-950/90 border-b border-zinc-800/80 flex items-center gap-1.5 text-[11px] overflow-x-auto scrollbar-none shrink-0">
+                <span className="text-zinc-500 font-medium shrink-0">👤 Đổi tài khoản test:</span>
+                {[
+                  { id: 'KH032', name: 'Nguyễn Thị Mầu', phone: '0911223456' },
+                  { id: 'KH030', name: 'Lê Thị Test', phone: '0987452131' },
+                  { id: 'KH1004', name: 'Lan Phương', phone: '0918100400' },
+                  { id: 'KH001', name: 'Nguyễn Văn An', phone: '0901234567' },
+                ].map(acc => {
+                  const isCurrent = formatCustomerId(currentCustomer.id) === acc.id;
+                  return (
+                    <button
+                      key={acc.id}
+                      type="button"
+                      onClick={() => {
+                        const newCust: Customer = {
+                          id: acc.id,
+                          hoTen: acc.name,
+                          soDienThoai: acc.phone,
+                          email: `${acc.id.toLowerCase()}@motoshop.vn`,
+                          diaChi: 'Hà Nội / TP.HCM',
+                          ngaySinh: '1995-01-01',
+                          gioiTinh: 'Nu',
+                          trangThai: 'HoatDong',
+                          ngayDangKy: '2024-01-01',
+                          soXe: 'XE001',
+                          tongChiTieu: 15000000,
+                        };
+                        try {
+                          localStorage.setItem('crm_current_customer', JSON.stringify(newCust));
+                        } catch {}
+                        onCustomerChange?.(newCust);
+                        window.dispatchEvent(new CustomEvent('crm-customer-change', { detail: { customer: newCust } }));
+                        chatApi.getMessages(acc.id).then(setChatMessages);
+                      }}
+                      className={`px-2 py-0.5 rounded text-[10px] font-medium shrink-0 transition cursor-pointer ${
+                        isCurrent
+                          ? 'bg-red-700 text-white font-bold shadow-2xs'
+                          : 'bg-zinc-800/90 text-zinc-400 hover:text-white hover:bg-zinc-700'
+                      }`}
+                    >
+                      {acc.name} ({acc.id})
+                    </button>
+                  );
+                })}
               </div>
 
               {/* Chat Messages Body */}
-              <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-zinc-50">
-                <div className="text-center py-2">
-                  <span className="text-[10px] bg-zinc-200/70 text-zinc-600 px-3 py-1 rounded-full font-mono">
+              <div className="flex-1 p-4 overflow-y-auto space-y-3.5 bg-[#121214]">
+                {/* Session Pill */}
+                <div className="text-center py-1">
+                  <span className="text-xs bg-zinc-900 border border-zinc-800 text-zinc-400 px-3.5 py-1.5 rounded-full inline-block font-medium">
                     Hôm nay · Trò chuyện trực tiếp với CSKH Showroom
                   </span>
                 </div>
+
+                {/* Pinned Discussion Card (Ảnh 2 Mockup) */}
+                {pinnedContext && (
+                  <div className="border border-amber-600/35 bg-[#1c1917]/75 rounded-2xl p-3.5 my-1 text-left relative shadow-sm">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-amber-400 font-bold text-xs uppercase tracking-wider flex items-center gap-1.5">
+                        {pinnedContext.title || '📌 ĐANG THẢO LUẬN VỀ ĐÁNH GIÁ CỦA BẠN'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                        setPinnedContext(null);
+                        chatApi.syncPinnedContext(currentCustomer ? formatCustomerId(currentCustomer.id) : 'KH032', null);
+                      }}
+                        className="text-zinc-500 hover:text-zinc-300 text-xs p-1"
+                        title="Bỏ ghim"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <img
+                        src={pinnedContext.productImage || '/images/phutung/motul_7100.png'}
+                        alt={pinnedContext.productName}
+                        className="w-16 h-16 rounded-xl bg-white p-1 object-contain shrink-0 border border-zinc-700"
+                        onError={(e: any) => { e.target.src = '/images/phutung/motul_7100.png'; }}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <h5 className="font-bold text-white text-xs sm:text-sm leading-snug line-clamp-2">
+                          {pinnedContext.productName}
+                        </h5>
+                        <div className="text-zinc-400 text-xs mt-0.5">
+                          {pinnedContext.orderId || 'Đơn hàng: #DH01001'}
+                        </div>
+                        <div className="flex items-center gap-1 text-xs mt-1 text-amber-400 font-semibold">
+                          <span>{pinnedContext.rating || 2}/5 Sao</span>
+                          <span className="tracking-widest text-sm">
+                            {'★'.repeat(pinnedContext.rating || 2)}
+                            <span className="text-zinc-600">{'★'.repeat(Math.max(0, 5 - (pinnedContext.rating || 2)))}</span>
+                          </span>
+                        </div>
+                        {pinnedContext.comment && (
+                          <div className="mt-1.5 text-xs text-zinc-300 italic bg-zinc-950/70 p-2 rounded-xl border border-zinc-800 leading-relaxed">
+                            💬 "{pinnedContext.comment}"
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Messages List */}
                 {chatMessages.length === 0 ? (
-                  <div className="text-center py-10 text-zinc-400 text-xs">
+                  <div className="text-center py-10 text-zinc-500 text-xs">
                     Chưa có tin nhắn nào. Hãy gửi lời chào để bắt đầu trao đổi với tư vấn viên!
                   </div>
                 ) : (
@@ -821,14 +1012,14 @@ export default function CustomerLayout({ children, activePage, onNavigate, onHom
                         key={m.id}
                         className={`flex flex-col ${isCustomer ? 'items-end' : 'items-start'}`}
                       >
-                        <div className="text-[10px] text-zinc-400 font-mono mb-0.5 px-1">
-                          {m.senderName} · {m.sentAt}
+                        <div className={`text-xs text-zinc-400 mb-1 px-1 font-medium ${isCustomer ? 'text-right' : 'text-left'}`}>
+                          {isCustomer ? 'Bạn' : m.senderName} · {formatChatTime(m.sentAt)}
                         </div>
                         <div
-                          className={`max-w-[82%] rounded-2xl px-3.5 py-2 text-xs leading-relaxed ${
+                          className={`max-w-[85%] rounded-2xl px-4 py-3 text-xs sm:text-sm leading-relaxed ${
                             isCustomer
-                              ? 'bg-red-700 text-white rounded-tr-xs shadow-xs'
-                              : 'bg-white text-zinc-900 border border-zinc-200 rounded-tl-xs shadow-2xs'
+                              ? 'bg-red-800 text-white rounded-tr-xs shadow-md'
+                              : 'bg-zinc-200 text-zinc-900 rounded-tl-xs shadow-md font-normal'
                           }`}
                         >
                           {m.content}
@@ -840,39 +1031,40 @@ export default function CustomerLayout({ children, activePage, onNavigate, onHom
                 <div ref={chatEndRef} />
               </div>
 
-              {/* Quick Prompts */}
-              <div className="px-3 py-1.5 bg-white border-t border-zinc-100 flex items-center gap-1.5 overflow-x-auto text-[11px] shrink-0 scrollbar-none">
+              {/* Quick Prompts (Ảnh 2 Mockup) */}
+              <div className="px-3 py-2 bg-[#18181b] border-t border-zinc-800/80 flex items-center gap-2 overflow-x-auto text-xs shrink-0 scrollbar-none">
                 {[
                   'Tôi muốn hỏi về phụ tùng',
                   'Tư vấn lịch bảo dưỡng xe',
-                  'Hỗ trợ bảo hành đổi mới',
+                  'Hỗ trợ bảo hành',
                 ].map(p => (
                   <button
                     key={p}
                     type="button"
                     onClick={() => setChatInput(p)}
-                    className="px-2.5 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-700 shrink-0 transition"
+                    className="px-3.5 py-1.5 rounded-xl bg-zinc-800/90 hover:bg-zinc-700 text-zinc-300 hover:text-white shrink-0 transition text-xs font-medium border border-zinc-700/60 cursor-pointer shadow-xs whitespace-nowrap"
                   >
                     {p}
                   </button>
                 ))}
               </div>
 
-              {/* Input Bar */}
-              <form onSubmit={handleSendChat} className="p-3 bg-white border-t border-zinc-200 flex items-center gap-2 shrink-0">
+              {/* Input Bar (Ảnh 2 Mockup) */}
+              <form onSubmit={handleSendChat} className="p-3 bg-[#18181b] border-t border-zinc-800 flex items-center gap-2 shrink-0">
                 <input
                   type="text"
                   placeholder="Nhập tin nhắn gửi tới tư vấn viên..."
                   value={chatInput}
                   onChange={e => setChatInput(e.target.value)}
-                  className="flex-1 px-3.5 py-2.5 rounded-xl border border-zinc-300 text-xs focus:outline-none focus:border-red-600 font-medium"
+                  className="flex-1 px-4 py-2.5 rounded-xl bg-zinc-800/90 border border-zinc-700 text-white placeholder-zinc-500 text-xs sm:text-sm focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600 font-normal transition"
                 />
                 <button
                   type="submit"
-                  className="px-4 py-2.5 bg-red-700 hover:bg-red-800 text-white font-bold rounded-xl text-xs transition cursor-pointer shadow-sm flex items-center gap-1"
+                  disabled={!chatInput.trim()}
+                  className="px-4 py-2.5 bg-red-800 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl text-xs sm:text-sm transition cursor-pointer shadow-md flex items-center gap-1.5 shrink-0"
                 >
                   <span>Gửi</span>
-                  <span>➢</span>
+                  <span className="text-sm">➢</span>
                 </button>
               </form>
             </div>

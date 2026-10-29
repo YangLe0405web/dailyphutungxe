@@ -1,3 +1,4 @@
+import { matchVietnameseSearch } from '../utils/vietnameseSearch';
 import React, { useState, useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import type { AdminRole, StaffAccount } from '../data/mockData';
@@ -11,7 +12,7 @@ import {
   type NotificationCategory,
   type AdminNotification,
 } from '../services/notifications';
-import { chatApi, formatCustomerId, type ChatMessage, systemApi, vehicleApi } from '../services/api';
+import { chatApi, formatCustomerId, type ChatMessage, type PinnedChatContext, systemApi, vehicleApi } from '../services/api';
 
 type NavGroup = { group: string; items: { key: string; label: string; icon: ReactNode; allowedRoles?: AdminRole[] }[] };
 
@@ -138,6 +139,7 @@ export default function AdminLayout({
   const [chatConversations, setChatConversations] = useState<Array<{ customerId: string; customerName: string; lastMessage: string; lastSentAt: string; totalMessages: number; lastSender: string; phone?: string }>>([]);
   const [selectedChatCustId, setSelectedChatCustId] = useState<string>('KH001');
   const [activeChatMessages, setActiveChatMessages] = useState<ChatMessage[]>([]);
+  const [activePinnedContext, setActivePinnedContext] = useState<PinnedChatContext | null>(null);
   const [chatInputText, setChatInputText] = useState('');
   const [unreadChatTotal, setUnreadChatTotal] = useState(0);
 
@@ -205,8 +207,15 @@ export default function AdminLayout({
     refreshConversations();
 
     const channel = chatApi.getBroadcastChannel();
-    const handleIncomingChat = (msg: ChatMessage) => {
+    const handleIncomingChat = (msg: any) => {
       if (!msg) return;
+      if (msg.type === 'sync_pinned_context') {
+        const syncId = formatCustomerId(msg.customerId);
+        if (formatCustomerId(selectedChatCustId) === syncId) {
+          setActivePinnedContext(msg.pinnedContext || null);
+        }
+        return;
+      }
       refreshConversations();
 
       const msgCustId = formatCustomerId(msg.customerId);
@@ -237,7 +246,8 @@ export default function AdminLayout({
             timestamp: Date.now(),
             read: false,
             linkPage: 'feedback',
-          });
+            data: { customerId: msgCustId, customerName: msg.senderName },
+          } as any);
         }
       }
     };
@@ -357,6 +367,7 @@ export default function AdminLayout({
       sender: 'staff',
       senderName: currentStaff?.hoTen || 'CSKH Showroom Motoshop',
       content: chatInputText.trim(),
+      pinnedContext: activePinnedContext,
     });
 
     setActiveChatMessages(prev => {
@@ -785,8 +796,8 @@ export default function AdminLayout({
                         const matchCat = selectedNotifCategory === 'all' || n.category === selectedNotifCategory;
                         const matchUnread = !unreadOnly || !n.read;
                         const matchSearch = !searchNotif.trim() ||
-                          n.title.toLowerCase().includes(searchNotif.toLowerCase()) ||
-                          n.message.toLowerCase().includes(searchNotif.toLowerCase());
+                          matchVietnameseSearch(n.title, searchNotif) ||
+                          matchVietnameseSearch(n.message, searchNotif);
                         return matchCat && matchUnread && matchSearch;
                       });
 
@@ -1076,7 +1087,17 @@ export default function AdminLayout({
               <div className="mt-2.5 flex items-center gap-2">
                 <button
                   onClick={() => {
-                    onNavigate(liveToast.linkPage);
+                    if (liveToast.type === 'chat_message' && (liveToast as any).data?.customerId) {
+                      const targetCustId = (liveToast as any).data.customerId;
+                      const targetName = (liveToast as any).data.customerName;
+                      setSelectedChatCustId(targetCustId);
+                      setChatModalOpen(true);
+                      window.dispatchEvent(new CustomEvent('crm-open-feedback-chat', {
+                        detail: { customerId: targetCustId, customerName: targetName }
+                      }));
+                    } else {
+                      onNavigate(liveToast.linkPage);
+                    }
                     setLiveToast(null);
                   }}
                   className="px-3 py-1 bg-red-700 hover:bg-red-800 text-white text-[11px] font-bold rounded-lg transition cursor-pointer shadow-xs"
@@ -1150,8 +1171,7 @@ export default function AdminLayout({
                     chatConversations
                       .filter(c => {
                         if (!chatSearchQuery.trim()) return true;
-                        const q = chatSearchQuery.toLowerCase();
-                        return c.customerName.toLowerCase().includes(q) || c.customerId.toLowerCase().includes(q);
+                        return matchVietnameseSearch(c.customerName, chatSearchQuery) || matchVietnameseSearch(c.customerId, chatSearchQuery);
                       })
                       .map(conv => {
                         const cleanConvId = formatCustomerId(conv.customerId);
@@ -1222,6 +1242,41 @@ export default function AdminLayout({
                     </div>
                   </div>
                 </div>
+
+                {/* Pinned Product Context Card if Customer is asking about a Product */}
+                {activePinnedContext && (
+                  <div className="p-3 bg-amber-50/90 border-b border-amber-200 shrink-0 text-xs shadow-2xs">
+                    <div className="flex items-start gap-3">
+                      <img
+                        src={activePinnedContext.productImage || '/images/phutung/motul_7100.png'}
+                        alt={activePinnedContext.productName}
+                        className="w-14 h-14 rounded-xl bg-white p-1 object-contain shrink-0 border border-amber-300 shadow-2xs"
+                        onError={(e: any) => { e.target.src = '/images/phutung/motul_7100.png'; }}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="font-bold text-xs text-amber-950 truncate">
+                            {activePinnedContext.title || '📌 ĐANG THẢO LUẬN VỀ SẢN PHẨM'}
+                          </span>
+                          <span className="text-amber-500 font-bold text-xs shrink-0">
+                            {'★'.repeat(activePinnedContext.rating || 5)}
+                          </span>
+                        </div>
+                        <div className="font-bold text-zinc-900 text-xs mt-0.5 truncate">
+                          {activePinnedContext.productName}
+                        </div>
+                        <div className="text-[11px] text-zinc-500 font-mono mt-0.5 flex items-center gap-2">
+                          <span>{activePinnedContext.orderId || 'Sản phẩm Motoshop'}</span>
+                        </div>
+                        {activePinnedContext.comment && (
+                          <div className="mt-1 text-[11px] text-zinc-700 italic bg-white/90 p-1.5 rounded-lg border border-amber-200 leading-snug">
+                            💬 "{activePinnedContext.comment}"
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Messages Body */}
                 <div className="flex-1 p-5 overflow-y-auto space-y-3 bg-zinc-50/60">

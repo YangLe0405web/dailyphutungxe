@@ -6,6 +6,7 @@ import {
   formatVND,
 } from '../../data/mockData';
 import { warrantyApi } from '../../services/api';
+import { matchVietnameseSearch } from '../../utils/vietnameseSearch';
 
 const PRESET_PARTS = [
   { ten: 'Búa côn sau (Ba càng)', donGia: 450000, tinhTrang: 'Đã có sẵn' },
@@ -162,13 +163,12 @@ export const WarrantyPage: React.FC = () => {
     return extensionList.filter(item => {
       if (extSourceFilter !== 'TatCa' && item.nguon !== extSourceFilter) return false;
       if (extSearchTerm.trim()) {
-        const q = extSearchTerm.toLowerCase();
         const match =
-          item.id.toLowerCase().includes(q) ||
-          item.khachHang.toLowerCase().includes(q) ||
-          item.soDienThoai.includes(q) ||
-          item.xeBienSo.toLowerCase().includes(q) ||
-          item.goiGiaHan.toLowerCase().includes(q);
+          matchVietnameseSearch(item.id, extSearchTerm) ||
+          matchVietnameseSearch(item.khachHang, extSearchTerm) ||
+          matchVietnameseSearch(item.soDienThoai, extSearchTerm) ||
+          matchVietnameseSearch(item.xeBienSo, extSearchTerm) ||
+          matchVietnameseSearch(item.goiGiaHan, extSearchTerm);
         if (!match) return false;
       }
       return true;
@@ -236,13 +236,12 @@ export const WarrantyPage: React.FC = () => {
       if (claimStatusFilter !== 'TatCa' && item.trangThai !== claimStatusFilter) return false;
       if (claimStaffFilter !== 'TatCa' && item.nhanVienPhuTrach !== claimStaffFilter) return false;
       if (claimSearchTerm.trim()) {
-        const q = claimSearchTerm.toLowerCase();
         const match =
-          item.id.toLowerCase().includes(q) ||
-          item.khachHang.toLowerCase().includes(q) ||
-          item.soDienThoai.includes(q) ||
-          item.xeBienSo.toLowerCase().includes(q) ||
-          item.noiDung.toLowerCase().includes(q);
+          matchVietnameseSearch(item.id, claimSearchTerm) ||
+          matchVietnameseSearch(item.khachHang, claimSearchTerm) ||
+          matchVietnameseSearch(item.soDienThoai, claimSearchTerm) ||
+          matchVietnameseSearch(item.xeBienSo, claimSearchTerm) ||
+          matchVietnameseSearch(item.noiDung, claimSearchTerm);
         if (!match) return false;
       }
       return true;
