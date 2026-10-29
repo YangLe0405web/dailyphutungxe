@@ -150,6 +150,9 @@ function DynamicSurveyTab({
 
     // KS02: Hiển thị bài khảo sát mà khách đủ điều kiện theo ngữ cảnh
     const eligible = all.filter(s => {
+      // Loại bỏ bài khảo sát mẫu KS002 và các bài dummy
+      if (s.id === 'KS002' || s.id.startsWith('KS-XE-DH-XE-001') || s.id.startsWith('KS-XE-DH-XE-002')) return false;
+
       // KS08: Khảo sát phải đang diễn ra, chưa hết hạn và đã đến ngày bắt đầu
       const liveStatus = s.status || computeSurveyStatus(s);
       if (liveStatus !== 'DangDienRa') return false;
@@ -1784,12 +1787,7 @@ export default function CustomerDashboard({
 
       // Nghiệp vụ Lịch nhận xe mới:
       if (a.loaiDichVu === 'NhanXe') {
-        // 1. Sau khi hoàn tất (bàn giao xe thành công) -> Tự động biến mất khỏi Tab Lịch hẹn
-        if (a.trangThai === 'DaHoanThanh' || a.trangThai === 'HoanThanh') {
-          return false;
-        }
-
-        // 2. Nếu đơn hàng xe tương ứng đang Chờ duyệt hoặc Chờ khách xác nhận ngày nhận (hoặc chưa xác nhận)
+        // 1. Nếu đơn hàng xe tương ứng đang Chờ duyệt hoặc Chờ khách xác nhận ngày nhận
         // -> CHƯA HIỂN THỊ trong mục Lịch hẹn cho đến khi khách hàng xác nhận!
         const matchedOrder = myOrders.find(o =>
           (a.maDonHangXe && a.maDonHangXe === o.id) ||
@@ -1799,10 +1797,15 @@ export default function CustomerDashboard({
           if (matchedOrder.trangThai === 'ChoDuyet' || matchedOrder.trangThai === 'ChoKhachXacNhanNgayNhan') {
             return false;
           }
-          if (matchedOrder.trangThai === 'HoanThanh' || matchedOrder.trangThai === 'DaGiao' || matchedOrder.trangThai === 'DaHuy') {
+          if (matchedOrder.trangThai === 'DaHuy') {
             return false;
           }
         }
+        if (a.trangThai === 'DaHuy' || a.trangThai === 'TuChoi') {
+          return false;
+        }
+        // Sau khi hoàn thành đơn: VẪN HIỆN LÊN LỊCH BIỂU NHƯNG LÀM MỜ (isDone ? 'opacity-40 line-through' : '')
+        return true;
       }
 
       return true;
@@ -3039,7 +3042,8 @@ export default function CustomerDashboard({
                                               setConfirmedPickupOrderIds(prev => ({ ...prev, [order.id]: true }));
                                               await orderApi.confirmVehiclePickupDate(order.id, pickupDate, pickupTime);
                                               setAllOrders(orderApi.getAllSync());
-                                              appointmentApi.getAll().then(d => { if (d) setAllAppts(d); });
+                                              const freshAppts = await appointmentApi.getAll();
+                                              if (freshAppts) setAllAppts(freshAppts);
                                               alert(`✓ Bạn đã xác nhận ngày nhận xe thành công (${pickupDate} lúc ${pickupTime})!\nLịch hẹn nhận xe đã xuất hiện trong mục "Lịch hẹn" của bạn và Lịch biểu Showroom.`);
                                             }}
                                             className="px-4 py-2 rounded-xl text-xs font-black bg-emerald-600 hover:bg-emerald-500 text-white shadow transition cursor-pointer flex items-center gap-1.5"
@@ -4241,7 +4245,7 @@ export default function CustomerDashboard({
                           });
                         }
                       }
-                      if (o.items && o.items.length > 0) {
+                      if (o.loaiDon !== 'Xe' && !o.thongTinXe && !String(o.id).includes('XE') && o.items && o.items.length > 0) {
                         o.items.forEach((it: any, idx: number) => {
                           const name = it.tenSanPham || it.tenPhuTung || `Phụ tùng #${idx + 1}`;
                           const partId = (it as any).id || (it as any).maPhuTung || undefined;

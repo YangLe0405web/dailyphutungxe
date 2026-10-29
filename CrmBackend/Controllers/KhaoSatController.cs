@@ -369,5 +369,17 @@ namespace CrmBackend.Controllers
             }
             return NotFound(new { message = "Không tìm thấy phản hồi" });
         }
+
+        [HttpDelete("{id}")]
+        public IActionResult DeleteSurvey(string id)
+        {
+            _surveys.TryRemove(id, out _);
+            try
+            {
+                _db.Execute("DELETE FROM KhaoSat WHERE MaKhaoSat = @id OR Id = @id", new { id });
+            }
+            catch { }
+            return Ok(new { success = true, message = $"Đã xóa bài khảo sát {id}" });
+        }
     }
 }

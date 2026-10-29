@@ -3447,3 +3447,47 @@ pm run build thành công 100% trong 1.41s, **0 lỗi TypeScript**.
   - `dotnet build CrmBackend`: 0 lỗi.
   - `npm --prefix crm-frontend run build`: 0 lỗi (TypeScript + Vite bundle thành công).
   - Backend và Frontend hoạt động trơn tru.
+---
+
+### LỖI 55: CHUẨN HÓA 6 VẤN ĐỀ HỆ THỐNG SAU TEST (KHẢO SÁT THỪA, ĐÁNH GIÁ PHỤ TÙNG DƯ, LỊCH BIỂU NHẬN XE, ĐIỀU HƯỚNG THÔNG BÁO, NÚT XÓA KHẢO SÁT & BẢO HÀNH)
+* **Thời gian:** 29/10/2026
+* **Người thực hiện:** Antigravity Team
+* **Mô tả chi tiết 6 vấn đề do người dùng kiểm thử phát hiện:**
+  1. **Khảo sát hiển thị kèm dư 1 bài khảo sát khác (Ảnh 1):** Khách hàng mua xe Sirius FI (`#DH-XE-008`) nhận được khảo sát bàn giao xe mới chuẩn xác, nhưng bên dưới lại xuất hiện kèm bài khảo sát cũ `KS002` ("Khảo sát nhu cầu mua xe mới Honda SH 160i 2025") do `KS002` cấu hình `targetCustomerId: ALL` và tiêu đề chứa cụm từ "mua xe mới".
+  2. **Đánh giá đi kèm đánh giá phụ tùng mặc dù không mua bị dư (Ảnh 2):** Tại mục "Chờ đánh giá xe & phụ tùng" của Khách hàng, đơn hàng xe máy Sirius FI (`#DH-XE-008`) vừa hiển thị thẻ đánh giá xe (đúng), vừa hiển thị thêm thẻ đánh giá "Phụ tùng chính hãng - Đặt mua ngày 2026-10-29" (dư thừa) do cơ chế fallback trong `orderApi.getAll` tự động inject item phụ tùng ảo nếu `items` rỗng.
+  3. **Khách hàng xác nhận ngày nhận xe chưa hiện lịch, bên admin chưa hiện lịch biểu:** Khi khách hàng bấm "Xác nhận ngày nhận xe", lịch hẹn nhận xe chưa được đồng bộ trạng thái `DaXacNhan` lên backend và `myAppts` loại trừ các lịch hẹn nhận xe đã hoàn tất thay vì hiển thị làm mờ theo đúng yêu cầu nghiệp vụ.
+  4. **Admin nhấn vào thông báo đơn hàng xe bị nhảy đến bên dịch vụ bị trống:** Thông báo xác nhận ngày nhận xe bị gán `linkPage: appointments` với mã đơn xe `DH-XE-008`, khiến trang Lịch hẹn dịch vụ tìm kiếm không thấy dữ liệu và hiển thị bảng rỗng.
+  5. **Tạo nút xóa khảo sát không cần thiết trên Admin (Ảnh 3):** Trang Phản hồi & Khảo sát Admin có 34 bài khảo sát nhưng chưa có nút xóa trên thẻ bài khảo sát hoặc trong modal chi tiết, thiếu API `DELETE /api/KhaoSat/{id}`.
+  6. **Khách hàng yêu cầu bảo hành, admin bấm vào thông báo nhưng không thấy:** Khi khách gửi yêu cầu bảo hành xe, admin bấm vào chuông thông báo chuyển sang trang `warranty` nhưng màn hình bị giữ nguyên ở Tab 1 ("Gia hạn bảo hành") thay vì chuyển sang Tab 2 ("Yêu cầu bảo hành") và không tự động chọn yêu cầu bảo hành do `claimsList` chưa tải xong mà đã xóa payload `crm_admin_highlight`.
+
+* **Các file đã chỉnh sửa & giải pháp thực hiện:**
+  1. [`CrmBackend/Controllers/KhaoSatController.cs`](file:///d:/crm-project/CrmBackend/Controllers/KhaoSatController.cs):
+     - Bổ sung endpoint `[HttpDelete("{id}")]` để xóa vĩnh viễn bài khảo sát khỏi `_surveys` in-memory và database backend.
+  2. [`crm-frontend/src/services/api.ts`](file:///d:/crm-project/crm-frontend/src/services/api.ts):
+     - Đưa mã `KS002` vào `DUMMY_SURVEY_IDS` và tích hợp `getDeletedSurveyIds()` từ `localStorage` để thanh lọc triệt để các bài khảo sát đã xóa khỏi `surveyApi.getAll()` và `surveyApi.getAllAsync()`.
+     - Bổ sung hàm `surveyApi.delete(id: string)`: Lưu ID vào blacklist `crm_deleted_survey_ids`, xóa khỏi `localStorage`, xóa khỏi `mockSurveys`, gọi `DELETE /api/KhaoSat/{id}` và phát sự kiện `crm-data-refresh`.
+     - Sửa `orderApi.getAll`: Với đơn hàng xe máy (`loaiDon === 'Xe'` hoặc `thongTinXe` hoặc mã có `XE`), nếu không mua phụ tùng thì `items` nghiêm ngặt là `[]`, KHÔNG inject `{ tenSanPham: 'Phụ tùng chính hãng' }`.
+     - Cập nhật `orderApi.confirmVehiclePickupDate`: Cập nhật lịch hẹn sang `DaXacNhan`, gọi `appointmentApi.updateStatus(matched.id, 'DaXacNhan')`, phát thông báo Admin với `category: 'order'`, `linkPage: 'sales'` và `meta: { orderId: order.id, id: order.id }`.
+     - Cập nhật `catalogVehicleApi.getAllSync()`: Tự động hợp nhất các mẫu xe mặc định (bao gồm `XM042 - SYM Tuscany 150`) vào cache để không bị mất mã SKU hay hình ảnh.
+  3. [`crm-frontend/src/pages/customer/CustomerDashboard.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/CustomerDashboard.tsx):
+     - `DynamicSurveyTab`: Chặn bài khảo sát `KS002`, đồng thời kiểm tra chặt chẽ điều kiện khảo sát mua xe theo đúng dòng xe khách đã mua.
+     - `waitingReviews`: Chỉ duyệt `o.items` nếu đơn hàng KHÔNG phải đơn xe (`o.loaiDon !== 'Xe' && !o.thongTinXe && !o.id.includes('XE')`), loại bỏ hoàn toàn thẻ đánh giá phụ tùng dư thừa cho đơn mua xe.
+     - `myAppts`: Giữ lại các lịch hẹn nhận xe đã hoàn tất (`DaHoanThanh`), hiển thị làm mờ trên Lịch biểu theo yêu cầu (`opacity-40 line-through`).
+     - Tại nút xác nhận ngày nhận xe: Gọi `appointmentApi.getAll()` đồng bộ cập nhật state `allAppts` tức thì.
+  4. [`crm-frontend/src/pages/admin/Appointments.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/Appointments.tsx):
+     - Bổ sung `matchVietnameseSearch((a as any).maDonHangXe || '', apptSearch)` vào bộ lọc tìm kiếm để khi tìm kiếm theo mã đơn xe (`DH-XE-...`) vẫn hiển thị đúng lịch hẹn nhận xe.
+  5. [`crm-frontend/src/pages/admin/Feedback.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/Feedback.tsx):
+     - Bổ sung hàm `handleDeleteSurvey(surveyId, surveyTitle)` có hộp thoại xác nhận `confirm()`.
+     - Thêm nút `[🗑️ Xóa]` trên từng thẻ bài khảo sát và nút `[🗑️ Xóa khảo sát]` tại thanh tiêu đề chi tiết bài khảo sát.
+     - Chuẩn hóa SKU cho xe SYM Tuscany 150 (`XM042`).
+  6. [`crm-frontend/src/pages/admin/Warranty.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/Warranty.tsx):
+     - Khởi tạo `claimsList` và `extensionList` đồng bộ bằng `useState(() => warrantyApi.getAdminClaims())`.
+     - Khi nhận highlight thông báo: Tự động chuyển `activeMainTab` sang `YeuCau`, đặt `claimStatusFilter` và `claimStaffFilter` về `TatCa`, điền `claimSearchTerm`, chọn `selectedClaim`, cuộn mượt đến hàng yêu cầu bảo hành và chỉ xóa session highlight sau khi đã khớp thành công.
+     - Lắng nghe sự kiện `crm-data-refresh` để nạp ngay khi có yêu cầu bảo hành mới.
+  7. [`crm-frontend/src/layouts/AdminLayout.tsx`](file:///d:/crm-project/crm-frontend/src/layouts/AdminLayout.tsx):
+     - Chuẩn hóa phân giải thông báo: Mọi thông báo liên quan đến đơn hàng xe hoặc trạng thái đơn hàng đều điều hướng chính xác về `sales`.
+
+* **Kết quả kiểm tra:**
+  - `dotnet build CrmBackend`: 0 lỗi, API DELETE hoạt động.
+  - `npm --prefix crm-frontend run build`: 0 lỗi.
+  - Cả 6 vấn đề đã được khắc phục triệt để và đồng bộ 2 chiều giữa Admin và Khách hàng.

@@ -739,7 +739,8 @@ export default function AppointmentsPage({
         const matchVehicle = matchVietnameseSearch(a.tenXe || '', apptSearch);
         const matchPlate = matchVietnameseSearch(a.bienSo || '', apptSearch);
         const matchLich = matchVietnameseSearch(a.maLichHen || '', apptSearch);
-        if (!matchId && !matchName && !matchPhone && !matchVehicle && !matchPlate && !matchLich) return false;
+        const matchDonXe = matchVietnameseSearch((a as any).maDonHangXe || '', apptSearch);
+        if (!matchId && !matchName && !matchPhone && !matchVehicle && !matchPlate && !matchLich && !matchDonXe) return false;
       }
       return true;
     });

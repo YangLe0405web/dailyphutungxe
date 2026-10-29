@@ -644,6 +644,19 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
     setSelectedResponseItem(defResp);
   };
 
+  const handleDeleteSurvey = async (surveyId: string, surveyTitle?: string) => {
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa bài khảo sát "${surveyTitle || surveyId}"?\nThao tác này sẽ xóa vĩnh viễn bài khảo sát và các phản hồi liên quan.`)) {
+      return;
+    }
+    await surveyApi.delete(surveyId);
+    setSurveys(prev => prev.filter(s => s.id !== surveyId));
+    if (selectedSurveyDetail?.id === surveyId) {
+      setSelectedSurveyDetail(null);
+    }
+    setToast(`✓ Đã xóa thành công bài khảo sát ${surveyId}`);
+    setTimeout(() => setToast(null), 3000);
+  };
+
   const handleMarkSurveyResponseHandled = async (respId: string) => {
     try {
       if ((surveyApi as any).markResponseHandled) {
@@ -991,7 +1004,7 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
                   const fN = (f.productName || f.xeDangDung || '').toLowerCase().trim();
                   return fN.includes(cN) || cN.includes(fN);
                 }) : null;
-                const sku = (f.productId && f.productId !== 'XM-HD01' ? f.productId : catMatch?.id) || f.productId || (isVehicle ? 'XM001' : 'PT001');
+                const sku = (catMatch?.id || (f.productId && f.productId !== 'XM-HD01' ? f.productId : null)) || (cleanProductTitle.toLowerCase().includes('tuscany') ? 'XM042' : null) || f.productId || (isVehicle ? 'XM001' : 'PT001');
                 const thumbnail = getProductThumbnail(f);
                 const isHighlighted = highlightTargetId && (
                   f.id === highlightTargetId ||
@@ -1377,14 +1390,24 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
                   </span>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => setSelectedSurveyDetail(null)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-zinc-700 bg-zinc-50 hover:bg-zinc-100 border border-zinc-300 shadow-2xs transition flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
-                >
-                  <span>←</span>
-                  <span>Quay lại danh sách</span>
-                </button>
+                <div className="flex items-center gap-2 self-start sm:self-auto">
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteSurvey(s.id, s.title)}
+                    className="px-3.5 py-2 rounded-xl text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                  >
+                    <span>🗑️</span>
+                    <span>Xóa khảo sát</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedSurveyDetail(null)}
+                    className="px-4 py-2 rounded-xl text-xs font-bold text-zinc-700 bg-zinc-50 hover:bg-zinc-100 border border-zinc-300 shadow-2xs transition flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <span>←</span>
+                    <span>Quay lại danh sách</span>
+                  </button>
+                </div>
               </div>
 
               {/* Header Card Khảo sát chi tiết */}
@@ -1973,10 +1996,19 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
                           <button
                             type="button"
                             onClick={() => setEditingSurvey(s)}
-                            className="px-3 py-1.5 rounded-lg text-xs font-bold text-zinc-700 bg-white hover:bg-zinc-50 border border-zinc-200 transition flex items-center gap-1 cursor-pointer"
+                            className="px-2.5 py-1.5 rounded-lg text-xs font-bold text-zinc-700 bg-white hover:bg-zinc-50 border border-zinc-200 transition flex items-center gap-1 cursor-pointer"
                           >
                             <span>✏️</span>
-                            <span>Chỉnh sửa</span>
+                            <span>Sửa</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteSurvey(s.id, s.title)}
+                            className="px-2.5 py-1.5 rounded-lg text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 transition flex items-center gap-1 cursor-pointer"
+                            title="Xóa bài khảo sát này"
+                          >
+                            <span>🗑️</span>
+                            <span>Xóa</span>
                           </button>
                         </div>
                       </div>

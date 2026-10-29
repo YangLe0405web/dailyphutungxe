@@ -1744,7 +1744,9 @@ export const orderApi = {
                   }))
                 : (matchedExisting?.items && matchedExisting.items.length > 0
                     ? matchedExisting.items
-                    : [{ tenSanPham: 'Phụ tùng chính hãng', soLuong: 1, donGia: item.tongTien || 0 }]),
+                    : (matchedExisting?.loaiDon === 'Xe' || matchedExisting?.thongTinXe || (item.id && String(item.id).includes('XE')))
+                        ? []
+                        : [{ tenSanPham: 'Phụ tùng chính hãng', soLuong: 1, donGia: item.tongTien || 0 }]),
               maNV: matchedExisting?.maNV,
               tenNV: matchedExisting?.tenNV,
               phuongThucThanhToan: item.phuongThucThanhToan || matchedExisting?.phuongThucThanhToan || 'TienMat',
@@ -2747,6 +2749,10 @@ async delete(orderIdOrNum: string | number): Promise<boolean> {
       );
 
       if (matched) {
+        matched.trangThai = 'DaXacNhan';
+        matched.ngayHen = pickupDate;
+        matched.gioHen = pickupTime.split(' - ')[0] || pickupTime;
+        await appointmentApi.updateStatus(matched.id, 'DaXacNhan');
         await appointmentApi.updateDetails(matched.id, {
           ngayHen: pickupDate,
           gioHen: pickupTime.split(' - ')[0] || pickupTime,
@@ -2791,10 +2797,11 @@ async delete(orderIdOrNum: string | number): Promise<boolean> {
     // Thông báo cho Admin
     addAdminNotification({
       type: 'order_status',
+      category: 'order',
       title: '📅 Khách hàng đã xác nhận ngày nhận xe',
       message: `Khách hàng ${order.hoTenKH} đã xác nhận ngày nhận xe cho đơn #${order.id} vào ngày ${pickupDate} lúc ${pickupTime}. Lịch biểu Showroom đã được cập nhật!`,
-      linkPage: 'appointments',
-      meta: order,
+      linkPage: 'sales',
+      meta: { ...order, orderId: order.id, id: order.id },
     });
 
     window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'order_status_updated', orderId: order.id, status: 'ChoGiaoXe' } }));
@@ -4485,7 +4492,9 @@ export const catalogVehicleApi = {
       if (cached) {
         const parsed: CatalogVehicle[] = JSON.parse(cached);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.filter(v => !deletedIds.has(v.id) && !deletedIds.has((v.tenXe || '').toLowerCase().trim()));
+          const existingIds = new Set(parsed.map(p => p.id));
+          const merged = [...parsed, ...DEFAULT_CATALOG_VEHICLES.filter(d => !existingIds.has(d.id))];
+          return merged.filter(v => !deletedIds.has(v.id) && !deletedIds.has((v.tenXe || '').toLowerCase().trim()));
         }
       }
     } catch {}
@@ -4500,7 +4509,8 @@ export const catalogVehicleApi = {
       if (cached) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          localList = parsed;
+          const existingIds = new Set(parsed.map((p: any) => p.id));
+          localList = [...parsed, ...DEFAULT_CATALOG_VEHICLES.filter(d => !existingIds.has(d.id))];
         }
       }
     } catch {}
@@ -5451,13 +5461,27 @@ const SURVEY_RESPONSE_KEY = 'crm_survey_responses';
 
 // Danh sách các mã khảo sát mock/dummy cần loại bỏ triệt để
 const DUMMY_SURVEY_IDS = new Set([
+  'KS002',
   'KS-XE-DH-XE-001', 'KS-XE-DH-XE-002', 'KS-XE-DH-XE-003', 'KS-XE-DH-XE-004',
   'KS-XE-DH-XE-0003', 'KS-XE-DH-XE-0004', 'KS-BD-LH001', 'KS-BD-LH002', 'KS-BD-LH003'
 ]);
 const DUMMY_RESPONSE_IDS = new Set(['RESP-001', 'RESP-002', 'RESP-003']);
 
+function getDeletedSurveyIds(): Set<string> {
+  const set = new Set<string>();
+  try {
+    const cached = localStorage.getItem('crm_deleted_survey_ids');
+    if (cached) {
+      const arr = JSON.parse(cached);
+      if (Array.isArray(arr)) arr.forEach((id: string) => set.add(id));
+    }
+  } catch {}
+  return set;
+}
+
 export const surveyApi = {
   getAll(): Survey[] {
+    const deletedIds = getDeletedSurveyIds();
     let list: Survey[] = [];
     try {
       const cached = localStorage.getItem(SURVEY_STORAGE_KEY);
@@ -5468,15 +5492,15 @@ export const surveyApi = {
     } catch {}
 
     // Thanh lọc triệt để các bài khảo sát mẫu không liên quan khỏi danh sách
-    list = list.filter(s => !DUMMY_SURVEY_IDS.has(s.id));
+    list = list.filter(s => !DUMMY_SURVEY_IDS.has(s.id) && !deletedIds.has(s.id));
 
     if (list.length === 0) {
-      list = [...mockSurveys.filter(s => !DUMMY_SURVEY_IDS.has(s.id))];
+      list = [...mockSurveys.filter(s => !DUMMY_SURVEY_IDS.has(s.id) && !deletedIds.has(s.id))];
       localStorage.setItem(SURVEY_STORAGE_KEY, JSON.stringify(list));
     } else {
       // Merge any new surveys from mockSurveys if missing
       mockSurveys.forEach(ms => {
-        if (DUMMY_SURVEY_IDS.has(ms.id)) return;
+        if (DUMMY_SURVEY_IDS.has(ms.id) || deletedIds.has(ms.id)) return;
         const existing = list.find(s => s.id === ms.id);
         if (!existing) {
           list.push(ms);
@@ -5504,13 +5528,14 @@ export const surveyApi = {
   },
 
   async getAllAsync(): Promise<Survey[]> {
+    const deletedIds = getDeletedSurveyIds();
     try {
       const res = await fetchWithTimeout(`${API_BASE_URL}/KhaoSat`);
       if (res.ok) {
         const beList = await res.json();
         if (Array.isArray(beList) && beList.length > 0) {
           const mapped: Survey[] = beList
-            .filter((item: any) => !DUMMY_SURVEY_IDS.has(item.id || item.Id))
+            .filter((item: any) => !DUMMY_SURVEY_IDS.has(item.id || item.Id) && !deletedIds.has(item.id || item.Id))
             .map((item: any) => ({
             id: item.id || item.Id,
             title: item.title || item.Title,
@@ -5638,6 +5663,37 @@ export const surveyApi = {
 
     window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'surveys', id } }));
     return merged;
+  },
+
+  delete(id: string): boolean {
+    const deleted = getDeletedSurveyIds();
+    deleted.add(id);
+    try {
+      localStorage.setItem('crm_deleted_survey_ids', JSON.stringify(Array.from(deleted)));
+    } catch {}
+
+    try {
+      const cached = localStorage.getItem(SURVEY_STORAGE_KEY);
+      if (cached) {
+        const parsed: Survey[] = JSON.parse(cached);
+        const filtered = parsed.filter(s => s.id !== id);
+        localStorage.setItem(SURVEY_STORAGE_KEY, JSON.stringify(filtered));
+      }
+    } catch {}
+
+    const mIdx = mockSurveys.findIndex(s => s.id === id);
+    if (mIdx !== -1) {
+      mockSurveys.splice(mIdx, 1);
+    }
+
+    try {
+      fetchWithTimeout(`${API_BASE_URL}/KhaoSat/${id}`, {
+        method: 'DELETE',
+      }).catch(err => console.warn('[surveyApi.delete] backend DELETE failed:', err));
+    } catch {}
+
+    window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'surveys', deletedId: id } }));
+    return true;
   },
 
   createVehiclePurchaseSurvey(order: any, customer?: any): Survey {

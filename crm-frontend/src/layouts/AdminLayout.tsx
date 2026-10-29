@@ -387,7 +387,7 @@ export default function AdminLayout({
 
     // 1. Phân giải trang đích chuẩn xác
     let targetPage = n.linkPage || 'sales';
-    if (n.category === 'order' || n.category === 'payment') {
+    if (n.category === 'order' || n.category === 'payment' || n.type?.includes('order') || n.title?.toLowerCase().includes('đơn hàng') || n.title?.toLowerCase().includes('đơn xe')) {
       targetPage = 'sales';
     } else if (n.category === 'review' || n.category === 'survey') {
       targetPage = 'feedback';
