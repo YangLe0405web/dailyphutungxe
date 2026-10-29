@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { vehicleApi, customerApi } from '../../services/api';
+import { matchVietnameseSearch } from '../../utils/vietnameseSearch';
 import {
   type Vehicle,
   type Customer,
@@ -27,6 +28,7 @@ export default function LicensePlateApproval() {
 
   // Toast notification
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const [highlightId, setHighlightId] = useState<string | null>(null);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
     setToast({ message, type });
@@ -60,6 +62,32 @@ export default function LicensePlateApproval() {
     };
   }, []);
 
+  // Lắng nghe highlight từ Trung tâm thông báo Admin
+  useEffect(() => {
+    const handleHighlight = (payload?: any) => {
+      let data = payload;
+      if (!data) {
+        try {
+          const raw = sessionStorage.getItem('crm_admin_highlight');
+          if (raw) data = JSON.parse(raw);
+        } catch {}
+      }
+      if (data && (data.page === 'license-plates' || !data.page)) {
+        const tid = String(data.targetId || data.keyword || '');
+        if (tid) {
+          setHighlightId(tid);
+          setSearch(tid);
+          setTimeout(() => setHighlightId(null), 8000);
+        }
+      }
+    };
+
+    handleHighlight();
+    const onEvt = (e: any) => handleHighlight(e.detail);
+    window.addEventListener('crm-admin-highlight-target', onEvt);
+    return () => window.removeEventListener('crm-admin-highlight-target', onEvt);
+  }, []);
+
   // Map khách hàng nhanh
   const customerMap = useMemo(() => {
     const map = new Map<string, Customer>();
@@ -74,24 +102,28 @@ export default function LicensePlateApproval() {
   // Danh sách xe có liên quan đến quy trình cấp / duyệt biển số hoặc xe mới đăng ký
   const plateRecords = useMemo(() => {
     return vehicles.filter(v => {
-      // 1. Xe có biển số đang chờ duyệt
-      if (v.bienSoChoDuyet || v.trangThaiDuyetBienSo === 'ChoDuyet') return true;
-      // 2. Xe có trạng thái chờ duyệt hoặc bị từ chối
-      if (v.trangThaiDuyet === 'ChoDuyet' || v.trangThaiDuyetBienSo === 'TuChoi') return true;
+      // 1. Xe có biển số đang chờ duyệt, đã duyệt hoặc bị từ chối
+      if (v.bienSoChoDuyet || v.trangThaiDuyetBienSo === 'ChoDuyet' || v.trangThaiDuyetBienSo === 'DaDuyet' || v.trangThaiDuyetBienSo === 'TuChoi') return true;
+      // 2. Xe có trạng thái duyệt xe
+      if (v.trangThaiDuyet === 'ChoDuyet' || v.trangThaiDuyet === 'DaDuyet' || v.trangThaiDuyet === 'TuChoi') return true;
       // 3. Xe mua tại cửa hàng đang trong trạng thái chờ cập nhật biển số
       if (v.trangThaiDuyetBienSo === 'ChoCapNhat') return true;
       // 4. Hoặc xe có đính kèm ảnh cà vẹt
       if (v.anhCaVet) return true;
+      // 5. Xe ngoài hệ thống
+      if (v.nguonGoc === 'NgoaiHeThong') return true;
+      // 6. Xe đã có biển số thực tế
+      if (v.bienSo && v.bienSo !== 'Chưa có biển số' && !v.bienSo.includes('Chưa có')) return true;
       return false;
     });
   }, [vehicles]);
 
   // Thống kê KPI Cards
   const stats = useMemo(() => {
-    const pendingPlates = plateRecords.filter(v => v.trangThaiDuyetBienSo === 'ChoDuyet' || (v.bienSoChoDuyet && v.trangThaiDuyetBienSo !== 'DaDuyet')).length;
-    const pendingOutside = plateRecords.filter(v => v.nguonGoc === 'NgoaiHeThong' && (v.trangThaiDuyet === 'ChoDuyet' || v.trangThaiDuyetBienSo === 'ChoDuyet')).length;
-    const approvedTotal = plateRecords.filter(v => v.trangThaiDuyetBienSo === 'DaDuyet').length;
-    const rejectedTotal = plateRecords.filter(v => v.trangThaiDuyetBienSo === 'TuChoi').length;
+    const pendingPlates = plateRecords.filter(v => (v.trangThaiDuyetBienSo === 'ChoDuyet' || Boolean(v.bienSoChoDuyet) || v.trangThaiDuyetBienSo === 'ChoCapNhat') && v.trangThaiDuyetBienSo !== 'DaDuyet' && v.trangThaiDuyetBienSo !== 'TuChoi').length;
+    const pendingOutside = plateRecords.filter(v => v.nguonGoc === 'NgoaiHeThong' && ((v.trangThaiDuyet === 'ChoDuyet' || v.trangThaiDuyetBienSo === 'ChoDuyet') && v.trangThaiDuyetBienSo !== 'TuChoi')).length;
+    const approvedTotal = plateRecords.filter(v => v.trangThaiDuyetBienSo === 'DaDuyet' || (v.trangThaiDuyet === 'DaDuyet' && v.bienSo && v.bienSo !== 'Chưa có biển số')).length;
+    const rejectedTotal = plateRecords.filter(v => v.trangThaiDuyetBienSo === 'TuChoi' || v.trangThaiDuyet === 'TuChoi').length;
     return { pendingPlates, pendingOutside, approvedTotal, rejectedTotal };
   }, [plateRecords]);
 
@@ -105,14 +137,14 @@ export default function LicensePlateApproval() {
 
       // Search match
       const matchSearch =
-        !q ||
-        v.id.toLowerCase().includes(q) ||
-        v.tenXe.toLowerCase().includes(q) ||
-        (v.bienSo || '').toLowerCase().includes(q) ||
-        (v.bienSoChoDuyet || '').toLowerCase().includes(q) ||
-        (v.soKhung || '').toLowerCase().includes(q) ||
-        custName.includes(q) ||
-        custPhone.includes(q);
+        !search.trim() ||
+        matchVietnameseSearch(v.id, search) ||
+        matchVietnameseSearch(v.tenXe, search) ||
+        matchVietnameseSearch(v.bienSo || '', search) ||
+        matchVietnameseSearch(v.bienSoChoDuyet || '', search) ||
+        matchVietnameseSearch(v.soKhung || '', search) ||
+        (custName ? matchVietnameseSearch(custName, search) : false) ||
+        (custPhone ? matchVietnameseSearch(custPhone, search) : false);
 
       // Source match
       const matchSource =
@@ -125,11 +157,11 @@ export default function LicensePlateApproval() {
       // Status match
       let matchStatus = true;
       if (filterStatus === 'ChoDuyet') {
-        matchStatus = v.trangThaiDuyetBienSo === 'ChoDuyet' || Boolean(v.bienSoChoDuyet && v.trangThaiDuyetBienSo !== 'DaDuyet');
+        matchStatus = (v.trangThaiDuyetBienSo === 'ChoDuyet' || Boolean(v.bienSoChoDuyet) || v.trangThaiDuyetBienSo === 'ChoCapNhat') && v.trangThaiDuyetBienSo !== 'DaDuyet' && v.trangThaiDuyetBienSo !== 'TuChoi';
       } else if (filterStatus === 'DaDuyet') {
-        matchStatus = v.trangThaiDuyetBienSo === 'DaDuyet';
+        matchStatus = v.trangThaiDuyetBienSo === 'DaDuyet' || Boolean(v.trangThaiDuyet === 'DaDuyet' && v.bienSo && v.bienSo !== 'Chưa có biển số');
       } else if (filterStatus === 'TuChoi') {
-        matchStatus = v.trangThaiDuyetBienSo === 'TuChoi';
+        matchStatus = v.trangThaiDuyetBienSo === 'TuChoi' || v.trangThaiDuyet === 'TuChoi';
       }
 
       return matchSearch && matchSource && matchStatus;
@@ -152,6 +184,19 @@ export default function LicensePlateApproval() {
     try {
       await vehicleApi.approveLicensePlate(vehicle.id);
       showToast(`✓ Đã phê duyệt thành công biển số ${proposedPlate} cho xe ${vehicle.tenXe}!`);
+      setVehicles(prev =>
+        prev.map(v =>
+          (v.id === vehicle.id || parseInt(v.id.replace(/\D/g, ''), 10) === parseInt(vehicle.id.replace(/\D/g, ''), 10))
+            ? {
+                ...v,
+                bienSo: proposedPlate,
+                bienSoChoDuyet: undefined,
+                trangThaiDuyetBienSo: 'DaDuyet',
+                trangThaiDuyet: 'DaDuyet',
+              }
+            : v
+        )
+      );
       loadData();
     } catch (err: any) {
       showToast(`Lỗi phê duyệt biển số: ${err.message || 'Không thể cập nhật'}`, 'error');
@@ -170,7 +215,15 @@ export default function LicensePlateApproval() {
 
     setIsSubmitting(true);
     try {
-      await vehicleApi.rejectLicensePlate(rejectingVehicle.id, rejectReason.trim());
+      await vehicleApi.rejectLicensePlate(rejectingVehicle.id, rejectReason.trim(), rejectingVehicle);
+      // Cập nhật ngay lập tức vào state vehicles để phản ánh tức thì trên bảng
+      setVehicles(prev =>
+        prev.map(v =>
+          v.id === rejectingVehicle.id
+            ? { ...v, trangThaiDuyetBienSo: 'TuChoi', lyDoTuChoiBienSo: rejectReason.trim() }
+            : v
+        )
+      );
       showToast(`⛔ Đã từ chối biển số của xe ${rejectingVehicle.tenXe} kèm phản hồi lý do tới khách hàng.`);
       setRejectingVehicle(null);
       setRejectReason('');
@@ -235,7 +288,7 @@ export default function LicensePlateApproval() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Card 1: Chờ duyệt biển số */}
         <div
-          onClick={() => setFilterStatus('ChoDuyet')}
+          onClick={() => { setFilterStatus('ChoDuyet'); setFilterSource('All'); }}
           className={`p-5 rounded-2xl border transition cursor-pointer select-none ${
             filterStatus === 'ChoDuyet'
               ? 'bg-gradient-to-br from-blue-900 to-blue-950 text-white border-blue-700 shadow-md ring-2 ring-blue-500'
@@ -258,7 +311,7 @@ export default function LicensePlateApproval() {
 
         {/* Card 2: Xe ngoài hệ thống */}
         <div
-          onClick={() => { setFilterSource('NgoaiHeThong'); setFilterStatus('ChoDuyet'); }}
+          onClick={() => { setFilterSource('NgoaiHeThong'); setFilterStatus('All'); }}
           className={`p-5 rounded-2xl border transition cursor-pointer select-none ${
             filterSource === 'NgoaiHeThong'
               ? 'bg-gradient-to-br from-amber-900 to-amber-950 text-white border-amber-700 shadow-md ring-2 ring-amber-500'
@@ -267,7 +320,7 @@ export default function LicensePlateApproval() {
         >
           <div className="flex items-center justify-between">
             <span className={`text-[11px] font-bold uppercase tracking-wider ${filterSource === 'NgoaiHeThong' ? 'text-amber-200' : 'text-amber-700'}`}>
-              Xe ngoài chờ xác minh
+              Xe ngoài hệ thống
             </span>
             <span className="text-xl">📋</span>
           </div>
@@ -281,7 +334,7 @@ export default function LicensePlateApproval() {
 
         {/* Card 3: Đã phê duyệt */}
         <div
-          onClick={() => setFilterStatus('DaDuyet')}
+          onClick={() => { setFilterStatus('DaDuyet'); setFilterSource('All'); }}
           className={`p-5 rounded-2xl border transition cursor-pointer select-none ${
             filterStatus === 'DaDuyet'
               ? 'bg-gradient-to-br from-emerald-900 to-emerald-950 text-white border-emerald-700 shadow-md ring-2 ring-emerald-500'
@@ -304,7 +357,7 @@ export default function LicensePlateApproval() {
 
         {/* Card 4: Bị từ chối */}
         <div
-          onClick={() => setFilterStatus('TuChoi')}
+          onClick={() => { setFilterStatus('TuChoi'); setFilterSource('All'); }}
           className={`p-5 rounded-2xl border transition cursor-pointer select-none ${
             filterStatus === 'TuChoi'
               ? 'bg-gradient-to-br from-red-900 to-red-950 text-white border-red-700 shadow-md ring-2 ring-red-500'
@@ -366,8 +419,8 @@ export default function LicensePlateApproval() {
           >
             <option value="All">Trạng thái: Tất cả</option>
             <option value="ChoDuyet">⏳ Chờ phê duyệt ({stats.pendingPlates})</option>
-            <option value="DaDuyet">✅ Đã phê duyệt</option>
-            <option value="TuChoi">⛔ Bị từ chối</option>
+            <option value="DaDuyet">✅ Đã phê duyệt ({stats.approvedTotal})</option>
+            <option value="TuChoi">⛔ Bị từ chối ({stats.rejectedTotal})</option>
           </select>
 
           {(search || filterSource !== 'All' || filterStatus !== 'All') && (
@@ -409,15 +462,31 @@ export default function LicensePlateApproval() {
               ) : (
                 filteredRecords.map(v => {
                   const cust = customerMap.get(v.customerId) || customerMap.get(String(parseInt(v.customerId.replace(/\D/g, ''), 10)));
-                  const isChoDuyet = v.trangThaiDuyetBienSo === 'ChoDuyet' || (v.bienSoChoDuyet && v.trangThaiDuyetBienSo !== 'DaDuyet');
                   const isDaDuyet = v.trangThaiDuyetBienSo === 'DaDuyet';
                   const isTuChoi = v.trangThaiDuyetBienSo === 'TuChoi';
+                  const isChoDuyet = !isDaDuyet && !isTuChoi && (v.trangThaiDuyetBienSo === 'ChoDuyet' || Boolean(v.bienSoChoDuyet));
                   const isCuaHang = v.nguonGoc === 'CuaHang';
                   const currentPlate = v.bienSo || 'Chưa có biển số';
                   const proposedPlate = v.bienSoChoDuyet || v.bienSo;
 
+                  const isHighlighted = Boolean(
+                    highlightId && (
+                      v.id === highlightId ||
+                      v.bienSo === highlightId ||
+                      v.bienSoChoDuyet === highlightId ||
+                      (v.id && highlightId && parseInt(v.id.replace(/\D/g, ''), 10) === parseInt(highlightId.replace(/\D/g, ''), 10))
+                    )
+                  );
+
                   return (
-                    <tr key={v.id} className="hover:bg-zinc-50/80 transition">
+                    <tr
+                      key={v.id}
+                      className={`transition ${
+                        isHighlighted
+                          ? 'bg-amber-100/90 ring-2 ring-amber-500 font-semibold animate-pulse'
+                          : 'hover:bg-zinc-50/80'
+                      }`}
+                    >
                       {/* Mã xe */}
                       <td className="p-3.5 text-center">
                         <span className="font-mono font-bold text-red-700 bg-red-50 border border-red-200 px-2 py-1 rounded-md text-[11px]">
@@ -797,7 +866,7 @@ export default function LicensePlateApproval() {
               >
                 Đóng
               </button>
-              {(viewingDetailVehicle.trangThaiDuyetBienSo === 'ChoDuyet' || viewingDetailVehicle.bienSoChoDuyet) && (
+              {(!['DaDuyet', 'TuChoi'].includes(viewingDetailVehicle.trangThaiDuyetBienSo || '') && (viewingDetailVehicle.trangThaiDuyetBienSo === 'ChoDuyet' || viewingDetailVehicle.bienSoChoDuyet)) && (
                 <button
                   type="button"
                   onClick={() => {

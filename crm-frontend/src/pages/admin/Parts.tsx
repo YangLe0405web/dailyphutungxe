@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { formatVND, Part } from '../../data/mockData';
 import { partApi, promotionApi } from '../../services/api';
+import { matchVietnameseSearch } from '../../utils/vietnameseSearch';
 import ImageUploader from '../../components/shared/ImageUploader';
 
 // Danh mục chuẩn hóa
@@ -122,10 +123,11 @@ export default function PartsPage() {
       // Search by ID, Name, Brand, Supplier
       const matchSearch =
         !search.trim() ||
-        p.id.toLowerCase().includes(search.toLowerCase()) ||
-        p.tenSanPham.toLowerCase().includes(search.toLowerCase()) ||
-        p.thuongHieu.toLowerCase().includes(search.toLowerCase()) ||
-        (p.nhaCungCap && p.nhaCungCap.toLowerCase().includes(search.toLowerCase()));
+        matchVietnameseSearch(p.id, search) ||
+        matchVietnameseSearch(p.tenSanPham, search) ||
+        matchVietnameseSearch(p.thuongHieu, search) ||
+        (p.nhaCungCap ? matchVietnameseSearch(p.nhaCungCap, search) : false) ||
+        ((p as any).maPhuTung ? matchVietnameseSearch(String((p as any).maPhuTung), search) : false);
 
       const matchCat = !filterCat || p.danhMuc === filterCat;
       const matchBrand = !filterBrand || p.thuongHieu === filterBrand;

@@ -1,3 +1,4 @@
+import { matchVietnameseSearch } from '../../utils/vietnameseSearch';
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   type Supplier,
@@ -222,12 +223,12 @@ export default function SuppliersPage({ currentStaff }: SuppliersPageProps) {
     return suppliers.filter(s => {
       const q = supplierSearch.trim().toLowerCase();
       const matchSearch =
-        !q ||
-        s.id.toLowerCase().includes(q) ||
-        s.tenNhaCungCap.toLowerCase().includes(q) ||
-        s.soDienThoai.includes(q) ||
-        s.email.toLowerCase().includes(q) ||
-        s.maSoThue.includes(q);
+        !supplierSearch.trim() ||
+        matchVietnameseSearch(s.id, supplierSearch) ||
+        matchVietnameseSearch(s.tenNhaCungCap, supplierSearch) ||
+        matchVietnameseSearch(s.soDienThoai, supplierSearch) ||
+        (s.email ? matchVietnameseSearch(s.email, supplierSearch) : false) ||
+        matchVietnameseSearch(s.maSoThue, supplierSearch);
       const matchStatus = supplierStatusFilter === 'All' || s.trangThai === supplierStatusFilter;
       return matchSearch && matchStatus;
     });
@@ -252,11 +253,11 @@ export default function SuppliersPage({ currentStaff }: SuppliersPageProps) {
       // 1. Text search
       const q = receiptSearch.trim().toLowerCase();
       const matchSearch =
-        !q ||
-        r.id.toLowerCase().includes(q) ||
-        r.tenNhaCungCap.toLowerCase().includes(q) ||
-        r.nguoiLap.toLowerCase().includes(q) ||
-        (r.nguoiGiaoHang && r.nguoiGiaoHang.toLowerCase().includes(q));
+        !receiptSearch.trim() ||
+        matchVietnameseSearch(r.id, receiptSearch) ||
+        matchVietnameseSearch(r.tenNhaCungCap, receiptSearch) ||
+        matchVietnameseSearch(r.nguoiLap, receiptSearch) ||
+        (r.nguoiGiaoHang ? matchVietnameseSearch(r.nguoiGiaoHang, receiptSearch) : false);
 
       // 2. Supplier
       const matchSupplier = receiptSupplierFilter === 'All' || r.nhaCungCapId === receiptSupplierFilter;

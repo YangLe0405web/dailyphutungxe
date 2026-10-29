@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { matchVietnameseSearch } from '../../utils/vietnameseSearch';
 import {
   mockCustomers,
   mockVehicles,
@@ -30,6 +31,7 @@ import {
   EXTENDED_WARRANTY_PACKAGES,
   type WarrantyRecord,
   type Feedback,
+  type Part,
   mockParts,
 } from '../../data/mockData';
 import {
@@ -42,6 +44,12 @@ import {
   insuranceApi,
   warrantyApi,
   addAdminNotification,
+  chatApi,
+  formatCustomerId,
+  type PinnedChatContext,
+  DEFAULT_CATALOG_VEHICLES,
+  catalogVehicleApi,
+  partApi,
 } from '../../services/api';
 import ImageUploader from '../../components/shared/ImageUploader';
 import { WarrantyDetailView, WarrantyClaimFormView, ExtendedWarrantyModal } from '../../components/customer/WarrantyViews';
@@ -49,11 +57,14 @@ import WarrantyExtensionWizard from '../../components/customer/WarrantyExtension
 import OnlineInsurancePurchaseView from '../../components/customer/OnlineInsurancePurchaseView';
 import RenewInsuranceModal from '../../components/customer/RenewInsuranceModal';
 import { showroomVehicles } from './VehiclesShowroom';
+import { useCart } from '../../contexts/CartContext';
 
 interface CustomerDashboardProps {
   currentCustomer: Customer | null;
   onNavigateToShowroom?: () => void;
   onNavigateToSurvey?: () => void;
+  onNavigateToCheckout?: () => void;
+  onNavigateToStore?: () => void;
   onCustomerChange?: (c: Customer | null) => void;
 }
 
@@ -67,6 +78,7 @@ const SVC_LABELS: Record<string, string> = {
 
 const orderStatusConfig: Record<OrderStatus, { label: string; color: string; bg: string }> = {
   ChoDuyet: { label: 'Chờ duyệt', color: '#d97706', bg: '#fef3c7' },
+  ChoKhachXacNhanNgayNhan: { label: 'Chờ bạn xác nhận ngày nhận', color: '#ea580c', bg: '#ffedd5' },
   DaXacNhan: { label: 'Đã xác nhận', color: '#0284c7', bg: '#e0f2fe' },
   DangGiao: { label: 'Đang giao', color: '#2563eb', bg: '#dbeafe' },
   DaGiao: { label: 'Đã giao tới nhà', color: '#059669', bg: '#d1fae5' },
@@ -134,12 +146,46 @@ function DynamicSurveyTab({
   const loadSurveys = () => {
     const all = surveyApi.getAll();
     const custTier = getCustomerTier(customer.tongChiTieu).tier;
+    const now = Date.now();
 
     // KS02: Hiển thị bài khảo sát mà khách đủ điều kiện theo ngữ cảnh
     const eligible = all.filter(s => {
-      if (s.targetCustomerId === customer.id) return true;
-      if (s.targetCustomerIds && s.targetCustomerIds.includes(customer.id)) return true;
+      // Loại bỏ bài khảo sát mẫu KS002 và các bài dummy
+      if (s.id === 'KS002' || s.id.startsWith('KS-XE-DH-XE-001') || s.id.startsWith('KS-XE-DH-XE-002')) return false;
+
+      // KS08: Khảo sát phải đang diễn ra, chưa hết hạn và đã đến ngày bắt đầu
+      const liveStatus = s.status || computeSurveyStatus(s);
+      if (liveStatus !== 'DangDienRa') return false;
+      if (s.endDate && new Date(s.endDate).getTime() < now) return false;
+      if (s.startDate && new Date(s.startDate).getTime() > now) return false;
+
+      const cNum = parseInt(customer.id.replace(/\D/g, ''), 10);
+      if (s.targetCustomerId && s.targetCustomerId !== 'ALL') {
+        const sNum = parseInt(s.targetCustomerId.replace(/\D/g, ''), 10);
+        const matchId = s.targetCustomerId === customer.id || (!isNaN(cNum) && !isNaN(sNum) && cNum === sNum);
+        const matchIds = s.targetCustomerIds && s.targetCustomerIds.some(id => id === customer.id || parseInt(id.replace(/\D/g, ''), 10) === cNum);
+        return matchId || !!matchIds;
+      }
+      if (s.targetCustomerIds && s.targetCustomerIds.length > 0) {
+        return s.targetCustomerIds.some(id => id === customer.id || parseInt(id.replace(/\D/g, ''), 10) === cNum);
+      }
       if (s.targetCustomerId === 'ALL' || !s.targetCustomerId) {
+        // Kiểm tra nếu bài khảo sát gắn với mã đơn hàng cụ thể trong tiêu đề (#DH-...)
+        const orderMatch = (s.title + ' ' + (s.description || '')).match(/#(DH-[A-Z0-9-]+)/i);
+        if (orderMatch && orderMatch[1]) {
+          const ordId = orderMatch[1];
+          const hasThisOrder = myOrders.some(o => o.id === ordId);
+          if (!hasThisOrder) return false;
+        }
+
+        // Kiểm tra nếu bài khảo sát gắn với mã lịch hẹn cụ thể trong tiêu đề (#LH-...)
+        const apptMatch = (s.title + ' ' + (s.description || '')).match(/#(LH-[A-Z0-9-]+)/i);
+        if (apptMatch && apptMatch[1]) {
+          const apptId = apptMatch[1];
+          const hasThisAppt = myAppts.some(a => a.id === apptId || (a as any).maLichHen === apptId);
+          if (!hasThisAppt) return false;
+        }
+
         if (s.targetCustomerTier && s.targetCustomerTier !== 'ALL' && s.targetCustomerTier !== custTier) {
           return false;
         }
@@ -149,15 +195,18 @@ function DynamicSurveyTab({
         const isBaoDuong = lower.includes('bảo dưỡng') || lower.includes('sửa chữa') || lower.includes('kỹ thuật') || lower.includes('bảo hành');
         const isMuaXe = lower.includes('mua xe') || lower.includes('bàn giao xe') || lower.includes('xe mới');
 
+        // KS01: Khảo sát bảo dưỡng CHỈ hiển thị sau khi khách hàng đã hoàn tất dịch vụ bảo dưỡng/sửa chữa
         if (isBaoDuong) {
-          const hasVehicles = myVehicles.length > 0;
-          const hasAppt = myAppts.some(a => a.trangThai === 'DaHoanThanh' || a.trangThai === 'HoanThanh');
-          if (!hasVehicles && !hasAppt) return false;
+          const hasCompletedMaintenance = myAppts.some(a =>
+            (a.trangThai === 'DaHoanThanh' || a.trangThai === 'HoanThanh') &&
+            (a.loaiDichVu === 'BaoDuong' || a.loaiDichVu === 'SuaChua' || a.loaiDichVu === 'BaoHanh')
+          );
+          if (!hasCompletedMaintenance) return false;
         }
 
         if (isMuaXe) {
-          const hasXeOrder = myOrders.some(o => o.loaiDon === 'Xe' || !!o.thongTinXe);
-          const hasDeliveryAppt = myAppts.some(a => a.loaiDichVu === 'NhanXe');
+          const hasXeOrder = myOrders.some(o => (o.loaiDon === 'Xe' || !!o.thongTinXe) && (o.trangThai === 'HoanThanh' || o.trangThai === 'DaGiao'));
+          const hasDeliveryAppt = myAppts.some(a => a.loaiDichVu === 'NhanXe' && (a.trangThai === 'DaHoanThanh' || a.trangThai === 'HoanThanh'));
           if (!hasXeOrder && !hasDeliveryAppt) return false;
         }
 
@@ -169,8 +218,9 @@ function DynamicSurveyTab({
     setActiveSurveys(eligible);
 
     const responses = surveyApi.getResponses();
+    const custPhone = customer.soDienThoai ? customer.soDienThoai.replace(/\D/g, '') : '';
     const done = responses
-      .filter(r => r.customerId === customer.id)
+      .filter(r => r.customerId === customer.id || (custPhone && r.soDienThoai && r.soDienThoai.replace(/\D/g, '') === custPhone))
       .map(r => r.surveyId);
     setCompletedIds(done);
   };
@@ -993,9 +1043,186 @@ export default function CustomerDashboard({
   currentCustomer,
   onNavigateToShowroom,
   onNavigateToSurvey,
+  onNavigateToCheckout,
+  onNavigateToStore,
   onCustomerChange,
 }: CustomerDashboardProps) {
+  const { add: addToCart, clear: clearCart } = useCart();
+  const [reorderToast, setReorderToast] = useState<{ show: boolean; message: string; count: number } | null>(null);
   const [activeTab, setActiveTab] = useState<number>(0);
+
+  // Helper lấy ảnh đại diện phụ tùng
+  const getPartThumbnail = (item: { tenSanPham: string; maPhuTung?: number; hinhAnh?: string }) => {
+    if (item.hinhAnh) return item.hinhAnh;
+    if (item.maPhuTung) {
+      const num = item.maPhuTung;
+      const pIdStr = num < 10 ? `PT00${num}` : `PT0${num}`;
+      const p = mockParts.find(x => x.id === pIdStr);
+      if (p?.hinhAnh) return p.hinhAnh;
+    }
+    const match = mockParts.find(x => 
+      x.tenSanPham.toLowerCase().includes(item.tenSanPham.toLowerCase()) || 
+      item.tenSanPham.toLowerCase().includes(x.tenSanPham.toLowerCase())
+    );
+    if (match?.hinhAnh) return match.hinhAnh;
+    return '/images/phutung/motul_7100.png';
+  };
+
+  // Hàm xử lý Mua lại đơn hàng phụ tùng: Thêm sản phẩm vào giỏ hàng -> Chuyển đến trang thanh toán để đặt hàng bình thường
+  const [reorderLoading, setReorderLoading] = useState(false);
+
+  const handleReorder = (order: Order) => {
+    if (!order.items || order.items.length === 0) {
+      alert('Đơn hàng không có sản phẩm phụ tùng nào để mua lại.');
+      return;
+    }
+
+    setReorderLoading(true);
+    try {
+      // 1. Làm sạch giỏ hàng cũ trước khi nạp đơn mua lại này
+      clearCart();
+      try {
+        sessionStorage.removeItem('crm_direct_checkout_item');
+      } catch {}
+
+      const allFreshParts = partApi.getAllSync();
+      let addedCount = 0;
+
+      for (const it of order.items) {
+        let matchedPart = allFreshParts.find(p =>
+          (it.maPhuTung && parseInt(p.id.replace(/\D/g, ''), 10) === it.maPhuTung) ||
+          p.tenSanPham.toLowerCase() === it.tenSanPham.toLowerCase() ||
+          p.tenSanPham.toLowerCase().includes(it.tenSanPham.toLowerCase()) ||
+          it.tenSanPham.toLowerCase().includes(p.tenSanPham.toLowerCase())
+        );
+
+        if (!matchedPart) {
+          const safeNum = (it.maPhuTung && it.maPhuTung > 0 && it.maPhuTung < 1000) ? it.maPhuTung : 1;
+          const fallbackId = safeNum < 10 ? `PT00${safeNum}` : `PT0${safeNum}`;
+          matchedPart = {
+            id: fallbackId,
+            tenSanPham: it.tenSanPham || 'Phụ tùng chính hãng',
+            thuongHieu: 'Chính hãng',
+            giaGoc: it.donGia || 50000,
+            giaKhuyenMai: null,
+            soLuongTon: 99,
+            danhMuc: 'Phụ tùng thay thế',
+            moTa: it.tenSanPham || 'Phụ tùng chính hãng',
+            hinhAnh: '/images/phutung/motul_7100.png',
+            rating: 5,
+            luotDanh: 10,
+          };
+        }
+
+        if (matchedPart) {
+          const success = addToCart(matchedPart, it.soLuong || 1);
+          if (success) addedCount += (it.soLuong || 1);
+        }
+      }
+
+      if (addedCount > 0) {
+        // Đóng modal chi tiết nếu đang mở
+        setSelectedOrderDetail(null);
+
+        // Hiển thị thông báo Toast nổi
+        setReorderToast({
+          show: true,
+          message: `✓ Đã thêm ${addedCount} món phụ tùng từ đơn #${order.id} vào giỏ hàng! Đang chuyển đến trang thanh toán...`,
+          count: addedCount,
+        });
+
+        // Tự động chuyển khách hàng đến trang Giỏ hàng / Thanh toán (Checkout)
+        setTimeout(() => {
+          setReorderToast(null);
+          if (onNavigateToCheckout) {
+            onNavigateToCheckout();
+          } else {
+            window.dispatchEvent(new CustomEvent('crm-navigate-checkout'));
+          }
+        }, 700);
+      } else {
+        alert('Không thể thêm sản phẩm vào giỏ hàng do lỗi tồn kho hoặc sản phẩm không khả dụng!');
+      }
+    } catch (err) {
+      console.error('Lỗi khi thực hiện mua lại:', err);
+      alert('Có lỗi xảy ra khi chuẩn bị giỏ hàng mua lại. Vui lòng thử lại!');
+    } finally {
+      setReorderLoading(false);
+    }
+  };
+
+    // Helper lấy đúng ảnh phương tiện từ xe hoặc catalog đại lý
+  const getVehicleDisplayImage = (v: Vehicle) => {
+    if (v.hinhAnh) return v.hinhAnh;
+    const cleanName = (v.tenXe || '').toLowerCase().trim();
+    if (cleanName.includes('tuscany')) return '/images/Xe/sym_tuscany_150.jpg';
+    if (cleanName.includes('winner')) return '/images/Xe/honda_winner_x.jpg';
+    if (cleanName.includes('vision')) return '/images/Xe/honda_vision_2024.jpg';
+    if (cleanName.includes('exciter')) return '/images/Xe/yamaha_exciter_155_vva.jpg';
+    if (cleanName.includes('grande')) return '/images/Xe/yamaha_grande_hybrid.jpg';
+    if (cleanName.includes('sh mode')) return '/images/Xe/honda_sh_mode_125.jpg';
+    if (cleanName.includes('sh')) return '/images/Xe/honda_sh_160i_abs_2024.jpg';
+    if (cleanName.includes('air blade') || cleanName.includes('airblade')) return '/images/Xe/honda_air_blade_160_abs.jpg';
+    try {
+      const cachedCat = localStorage.getItem('crm_catalog_vehicles');
+      const catList: any[] = cachedCat ? JSON.parse(cachedCat) : (DEFAULT_CATALOG_VEHICLES || []);
+      const found = catList.find(c => {
+        const cName = (c.tenXe || '').toLowerCase().trim();
+        return cleanName && cName && (cleanName.includes(cName) || cName.includes(cleanName));
+      });
+      if (found?.hinhAnh) return found.hinhAnh;
+      const showFound = showroomVehicles.find(sv => cleanName && sv.tenXe.toLowerCase().includes(cleanName));
+      if (showFound?.hinhAnh) return showFound.hinhAnh;
+    } catch {}
+    return 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=800&auto=format&fit=crop&q=80';
+  };
+
+  // Helper tìm hợp đồng bảo hiểm khớp với xe (5 cấp độ nhận diện)
+  const findMatchingInsurance = (v: Vehicle, insurances: InsuranceContract[]): InsuranceContract | undefined => {
+    if (!v || !insurances || insurances.length === 0) return undefined;
+    
+    // 1. Trùng ID xe
+    const matchById = insurances.find(ins => ins.vehicleId === v.id);
+    if (matchById) return matchById;
+
+    // 2. Trùng số khung (VIN)
+    if (v.soKhung && v.soKhung.trim()) {
+      const vVin = v.soKhung.trim().toUpperCase();
+      const matchByVin = insurances.find(ins => ins.soKhung && ins.soKhung.trim().toUpperCase() === vVin);
+      if (matchByVin) return matchByVin;
+    }
+
+    // 3. Trùng biển số xe thực tế
+    const cleanPlate = (plate?: string) => {
+      if (!plate) return '';
+      const upper = plate.trim().toUpperCase();
+      if (upper.includes('CHƯA') || upper.includes('CHỜ') || upper.includes('BẤM') || upper.includes('CHUA CO')) return '';
+      return upper.replace(/[^A-Z0-9]/g, '');
+    };
+    const vPlate = cleanPlate(v.bienSo || v.bienSoChoDuyet);
+    if (vPlate) {
+      const matchByPlate = insurances.find(ins => cleanPlate(ins.bienSo) === vPlate);
+      if (matchByPlate) return matchByPlate;
+    }
+
+    // 4. Trùng tên dòng xe
+    const vName = (v.tenXe || '').toLowerCase().trim();
+    if (vName) {
+      const matchByName = insurances.find(ins => {
+        const insName = (ins.tenXe || '').toLowerCase().trim();
+        return insName && (insName.includes(vName) || vName.includes(insName));
+      });
+      if (matchByName) return matchByName;
+    }
+
+    // 5. Tự động liên kết nếu khách chỉ có 1 xe và 1 hợp đồng bảo hiểm hiệu lực
+    const activeInsList = insurances.filter(ins => ins.trangThai !== 'HetHan' && ins.trangThai !== 'TuChoi');
+    if (activeInsList.length === 1 && myVehicles.length === 1) {
+      return activeInsList[0];
+    }
+
+    return undefined;
+  };
   const [myVehicles, setMyVehicles] = useState<Vehicle[]>([]);
   const [allOrders, setAllOrders] = useState<Order[]>(mockOrders);
   const [allAppts, setAllAppts] = useState<Appointment[]>(mockAppointments);
@@ -1011,6 +1238,12 @@ export default function CustomerDashboard({
   const [serviceSearch, setServiceSearch] = useState('');
 
   const [surveySubTab, setSurveySubTab] = useState<'ChoDanhGia' | 'DaDanhGia' | 'KhaoSatHeThong'>('ChoDanhGia');
+  const [waitingTypeFilter, setWaitingTypeFilter] = useState<'All' | 'XeMau' | 'PhuTung'>('All');
+
+  // Bộ lọc đánh giá của khách hàng (ĐG - Người dùng: số sao, hình ảnh, phân loại)
+  const [myReviewRatingFilter, setMyReviewRatingFilter] = useState<'All' | 5 | 4 | 3 | 2 | 1>('All');
+  const [myReviewHasImageFilter, setMyReviewHasImageFilter] = useState<boolean>(false);
+  const [myReviewTypeFilter, setMyReviewTypeFilter] = useState<'All' | 'PhuTung' | 'XeMau' | 'DichVu'>('All');
 
   // LH06 & LH07: Xem chi tiết & Hủy lịch hẹn khách hàng
   const [selectedApptDetail, setSelectedApptDetail] = useState<Appointment | null>(null);
@@ -1037,6 +1270,18 @@ export default function CustomerDashboard({
   const [showAddVehicleModal, setShowAddVehicleModal] = useState(false);
   const [vehicleFilter, setVehicleFilter] = useState<'TatCa' | 'CuaHang' | 'NgoaiHeThong' | 'DangBaoHanh' | 'CoBaoHiem'>('TatCa');
   const [selectedDetailVehicle, setSelectedDetailVehicle] = useState<Vehicle | null>(null);
+  const [vehicleDetailViewMode, setVehicleDetailViewMode] = useState<'info' | 'serviceHistory'>('info');
+  const [vehicleServiceMonthFilter, setVehicleServiceMonthFilter] = useState<string>('ALL');
+  const [vehicleServiceTypeFilter, setVehicleServiceTypeFilter] = useState<string>('ALL');
+  const [vehicleServicePage, setVehicleServicePage] = useState<number>(1);
+
+  const handleOpenVehicleDetail = (v: Vehicle) => {
+    setSelectedDetailVehicle(v);
+    setVehicleDetailViewMode('info');
+    setVehicleServiceMonthFilter('ALL');
+    setVehicleServiceTypeFilter('ALL');
+    setVehicleServicePage(1);
+  };
   const [selectedWarrantyVehicle, setSelectedWarrantyVehicle] = useState<Vehicle | null>(null);
   const [selectedVehicleWarrantyDetail, setSelectedVehicleWarrantyDetail] = useState<Vehicle | null>(null);
   const [warrantyRecords, setWarrantyRecords] = useState<WarrantyRecord[]>([]);
@@ -1053,6 +1298,7 @@ export default function CustomerDashboard({
     mauSac: 'Đen bóng',
     namSanXuat: '2025',
     anhCaVet: '',
+    hinhAnh: '',
   });
   const [regErrors, setRegErrors] = useState<Record<string, string>>({});
 
@@ -1108,14 +1354,15 @@ export default function CustomerDashboard({
   const [orderCancelToast, setOrderCancelToast] = useState<string | null>(null);
 
   // Review modal
-  const [reviewModalPart, setReviewModalPart] = useState<{ partName: string; orderId: string; productId?: string; productType?: 'PhuTung' | 'XeMau' | 'DichVu' } | null>(null);
+  const [reviewModalPart, setReviewModalPart] = useState<{ partName: string; orderId: string; productId?: string; productImage?: string; productType?: 'PhuTung' | 'XeMau' | 'DichVu'; fromTab?: number } | null>(null);
   const [reviewStars, setReviewStars] = useState(5);
   const [reviewContent, setReviewContent] = useState('');
   const [reviewImages, setReviewImages] = useState<string[]>([]);
-  const [newImageUrl, setNewImageUrl] = useState('');
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const [reviewToast, setReviewToast] = useState<string | null>(null);
   const [myCustomerFeedbacks, setMyCustomerFeedbacks] = useState<Feedback[]>([]);
+
+
 
   // Bảo hiểm
   const [isBuyingOnlineInsurance, setIsBuyingOnlineInsurance] = useState(false);
@@ -1170,6 +1417,10 @@ export default function CustomerDashboard({
       if (curRaw) {
         const cur = JSON.parse(curRaw);
         if (cur.id === currentCustomer.id || cur.email === currentCustomer.email) {
+          if (cur.email && /@gmail\.com@gmail\.com/i.test(cur.email)) {
+            cur.email = cur.email.replace(/@gmail\.com@gmail\.com/gi, '@gmail.com');
+            localStorage.setItem('crm_current_customer', JSON.stringify(cur));
+          }
           if (
             cur.tongChiTieu !== currentCustomer.tongChiTieu ||
             cur.avatar !== currentCustomer.avatar ||
@@ -1182,28 +1433,58 @@ export default function CustomerDashboard({
     } catch {}
 
     orderApi.getAll().then(orders => {
-      if (orders && orders.length > 0) setAllOrders(orders);
+      if (orders && orders.length > 0) {
+        setAllOrders(orders);
+        setSelectedOrderDetail(prev => {
+          if (!prev) return null;
+          const matched = orders.find(o => o.id === prev.id || (parseInt(o.id.replace(/\D/g, ''), 10) === parseInt(prev.id.replace(/\D/g, ''), 10) && o.id.includes('XE') === prev.id.includes('XE')));
+          return matched ? { ...prev, ...matched } : prev;
+        });
+      }
       appointmentApi.getAll().then(data => {
         if (data && data.length > 0) {
           const completedOrderIds = new Set(
             (orders || [])
-              .filter(o => o.trangThai === 'HoanThanh')
+              .filter(o => o.trangThai === 'HoanThanh' || o.trangThai === 'DaGiao')
               .map(o => o.id)
           );
           const completedLichHenCodes = new Set(
             (orders || [])
-              .filter(o => o.trangThai === 'HoanThanh')
+              .filter(o => o.trangThai === 'HoanThanh' || o.trangThai === 'DaGiao')
+              .map(o => o.maLichHen || o.thongTinXe?.maLichHen)
+              .filter(Boolean)
+          );
+
+          const uncompletedOrderIds = new Set(
+            (orders || [])
+              .filter(o => o.trangThai !== 'HoanThanh' && o.trangThai !== 'DaGiao')
+              .map(o => o.id)
+          );
+          const uncompletedLichHenCodes = new Set(
+            (orders || [])
+              .filter(o => o.trangThai !== 'HoanThanh' && o.trangThai !== 'DaGiao')
               .map(o => o.maLichHen || o.thongTinXe?.maLichHen)
               .filter(Boolean)
           );
 
           const syncedAppts = data.map(a => {
-            if (a.loaiDichVu === 'NhanXe' && a.trangThai !== 'DaHoanThanh') {
-              const isMatchedCompleted =
-                (a.maDonHangXe && completedOrderIds.has(a.maDonHangXe)) ||
-                (a.maLichHen && completedLichHenCodes.has(a.maLichHen));
-              if (isMatchedCompleted) {
-                return { ...a, trangThai: 'DaHoanThanh' as const };
+            if (a.loaiDichVu === 'NhanXe') {
+              const isPendingOrder =
+                (a.maDonHangXe && uncompletedOrderIds.has(a.maDonHangXe)) ||
+                (a.maLichHen && uncompletedLichHenCodes.has(a.maLichHen));
+
+              if (isPendingOrder && a.trangThai === 'DaHoanThanh') {
+                // Đơn xe chưa hoàn thành -> Lịch hẹn nhận xe tuyệt đối không thể là Đã hoàn thành, đưa về Chờ xác nhận
+                return { ...a, trangThai: 'ChoXacNhan' as const };
+              }
+
+              if (a.trangThai !== 'DaHoanThanh') {
+                const isMatchedCompleted =
+                  (a.maDonHangXe && completedOrderIds.has(a.maDonHangXe)) ||
+                  (a.maLichHen && completedLichHenCodes.has(a.maLichHen));
+                if (isMatchedCompleted) {
+                  return { ...a, trangThai: 'DaHoanThanh' as const };
+                }
               }
             }
             return a;
@@ -1229,18 +1510,64 @@ export default function CustomerDashboard({
       if (data) {
         const cIdNum = parseInt(currentCustomer.id.replace(/\D/g, ''), 10);
         const custPhone = currentCustomer.soDienThoai ? currentCustomer.soDienThoai.replace(/\D/g, '') : '';
+        // Lấy danh sách các đơn hàng xe của khách hàng này để kiểm tra tiến trình bàn giao
+        const curOrders = orderApi.getAllSync();
+        const pendingVehicleOrders = curOrders.filter(o => {
+          const oCustNum = parseInt(o.customerId.replace(/\D/g, ''), 10);
+          const matchCust = o.customerId === currentCustomer.id || (!isNaN(cIdNum) && !isNaN(oCustNum) && cIdNum === oCustNum);
+          const isXeOrder = o.loaiDon === 'Xe' || !!o.thongTinXe || (o.id && o.id.includes('XE'));
+          return matchCust && isXeOrder && o.trangThai !== 'HoanThanh' && o.trangThai !== 'DaGiao';
+        });
+
+        // Tự động dọn dẹp khỏi cache crm_customer_vehicles nếu xe của đơn chưa hoàn thành bị lọt vào
+        if (pendingVehicleOrders.length > 0) {
+          try {
+            const rawV = localStorage.getItem('crm_customer_vehicles');
+            if (rawV) {
+              const vAll: Vehicle[] = JSON.parse(rawV);
+              const cleaned = vAll.filter(cv => {
+                const isBad = pendingVehicleOrders.some(pOrd => {
+                  const matchCust = cv.customerId === pOrd.customerId || parseInt(cv.customerId.replace(/\D/g, ''), 10) === parseInt(pOrd.customerId.replace(/\D/g, ''), 10);
+                  const vinMatch = pOrd.thongTinXe?.soKhungVIN && cv.soKhung && pOrd.thongTinXe.soKhungVIN === cv.soKhung;
+                  const nameMatch = pOrd.thongTinXe?.tenXe && (cv.tenXe || '').toLowerCase().trim() === pOrd.thongTinXe.tenXe.toLowerCase().trim();
+                  const isChuaCoBien = !cv.bienSo || cv.bienSo === 'Chưa có biển số' || cv.bienSo.includes('Chưa có') || cv.bienSo.startsWith('TAM-');
+                  return matchCust && (vinMatch || (nameMatch && isChuaCoBien));
+                });
+                return !isBad;
+              });
+              if (cleaned.length !== vAll.length) {
+                localStorage.setItem('crm_customer_vehicles', JSON.stringify(cleaned));
+              }
+            }
+          } catch {}
+        }
+
         let vList = data.filter(v => {
           const plate = (v.bienSo || v.bienSoChoDuyet || '').toUpperCase();
           const name = (v.tenXe || '').toUpperCase();
           if (plate.includes('LÁI-THỬ') || plate.includes('LAI-THU') || plate.includes('XE-LÁI') || name.includes('LÁI THỬ') || name.includes('LAI THU')) {
             return false;
           }
-          if (v.customerId === currentCustomer.id) return true;
+          let belongsToCustomer = false;
+          if (v.customerId === currentCustomer.id) belongsToCustomer = true;
           const vNum = parseInt(v.customerId.replace(/\D/g, ''), 10);
-          if (!isNaN(cIdNum) && !isNaN(vNum) && cIdNum === vNum) return true;
-          if (currentCustomer.soXe && currentCustomer.soXe === v.id) return true;
-          if (custPhone && (v as any).soDienThoai && (v as any).soDienThoai.replace(/\D/g, '') === custPhone) return true;
-          return false;
+          if (!isNaN(cIdNum) && !isNaN(vNum) && cIdNum === vNum) belongsToCustomer = true;
+          if (currentCustomer.soXe && currentCustomer.soXe === v.id) belongsToCustomer = true;
+          if (custPhone && (v as any).soDienThoai && (v as any).soDienThoai.replace(/\D/g, '') === custPhone) belongsToCustomer = true;
+          if (!belongsToCustomer) return false;
+
+          // QUY TẮC BẢO VỆ: Nếu xe thuộc đơn mua trực tuyến nhưng đơn đó CHƯA HOÀN THÀNH (đang Chờ duyệt / Chờ giao xe / Đã hủy) -> ẨN KHỎI "Phương tiện của tôi"
+          if (v.nguonGoc === 'CuaHang') {
+            const isUnfinishedOrderBike = pendingVehicleOrders.some(pOrd => {
+              const vinMatch = pOrd.thongTinXe?.soKhungVIN && v.soKhung && pOrd.thongTinXe.soKhungVIN === v.soKhung;
+              const nameMatch = pOrd.thongTinXe?.tenXe && (v.tenXe || '').toLowerCase().trim() === pOrd.thongTinXe.tenXe.toLowerCase().trim();
+              const isChuaCoBien = !v.bienSo || v.bienSo === 'Chưa có biển số' || v.bienSo.includes('Chưa có') || v.bienSo.startsWith('TAM-');
+              return vinMatch || (nameMatch && isChuaCoBien);
+            });
+            if (isUnfinishedOrderBike) return false;
+          }
+
+          return true;
         });
 
         // Chống hiển thị trùng lặp phương tiện của khách hàng (deduplication)
@@ -1259,6 +1586,72 @@ export default function CustomerDashboard({
           seenV.add(key);
           return true;
         });
+
+        // Tự động cấp bảo hiểm cho xe mua từ Showroom nếu chưa có hợp đồng trong danh sách
+        try {
+          const cachedAllIns = insuranceApi.getAll();
+          let allInsList = [...cachedAllIns];
+          let myInsList = insuranceApi.getByCustomerId(currentCustomer.id);
+          let hasNewIns = false;
+
+          dedupedVList.forEach(veh => {
+            if (veh.nguonGoc === 'CuaHang') {
+              const matchedIns = findMatchingInsurance(veh, myInsList);
+              if (!matchedIns) {
+                const matchedOrder = curOrders.find(o => {
+                  const oCustNum = parseInt(o.customerId.replace(/\D/g, ''), 10);
+                  const isMyOrder = o.customerId === currentCustomer.id || (!isNaN(cIdNum) && !isNaN(oCustNum) && cIdNum === oCustNum);
+                  const isCar = (o.thongTinXe?.tenXe || '').toLowerCase().includes((veh.tenXe || '').toLowerCase()) || (veh.tenXe || '').toLowerCase().includes((o.thongTinXe?.tenXe || '').toLowerCase());
+                  return isMyOrder && isCar;
+                });
+
+                const insName = matchedOrder?.thongTinXe?.goiBaoHiem || 'Bảo hiểm TNDS Bắt Buộc (1 Năm)';
+                const is2Y = insName.includes('2 Năm');
+                const isToanDien = insName.includes('Toàn Diện');
+                const todayDate = new Date();
+                const endDate = new Date(todayDate);
+                endDate.setFullYear(todayDate.getFullYear() + (is2Y ? 2 : 1));
+
+                const autoContract: InsuranceContract = {
+                  id: `HD-INS-${Date.now().toString().slice(-5)}-${Math.floor(Math.random() * 1000)}`,
+                  soGCN: `GCN-${Math.floor(100000 + Math.random() * 900000)}`,
+                  vehicleId: veh.id,
+                  customerId: currentCustomer.id,
+                  hoTenKH: currentCustomer.hoTen,
+                  soDienThoai: currentCustomer.soDienThoai,
+                  email: currentCustomer.email || 'khachhang@motoshop.vn',
+                  diaChi: currentCustomer.diaChi || 'TP.HCM',
+                  tenXe: veh.tenXe,
+                  bienSo: veh.bienSo || 'Chưa có biển số',
+                  soKhung: veh.soKhung || '',
+                  soMay: veh.soMay || '',
+                  tenGoi: insName,
+                  packageType: isToanDien ? 'VAT_CHAT_TOAN_DIEN' : 'TNDS_BAT_BUOC',
+                  thoiHanNam: is2Y ? 2 : 1,
+                  nhaBaoHiem: 'Bảo hiểm Quân Đội (MIC)',
+                  ngayBatDau: todayDate.toISOString().split('T')[0],
+                  ngayKetThuc: endDate.toISOString().split('T')[0],
+                  phiBaoHiem: matchedOrder?.thongTinXe?.phiBaoHiem || (isToanDien ? 450000 : is2Y ? 132000 : 66000),
+                  trangThai: 'HieuLuc',
+                  ghiChu: `Hợp đồng bảo hiểm điện tử cấp kèm xe mua tại Showroom Motoshop`,
+                  ngayCap: todayDate.toISOString().split('T')[0],
+                };
+
+                myInsList.unshift(autoContract);
+                allInsList.unshift(autoContract);
+                hasNewIns = true;
+              }
+            }
+          });
+
+          if (hasNewIns) {
+            localStorage.setItem('crm_insurance_contracts', JSON.stringify(allInsList));
+            setMyInsurances(myInsList);
+          }
+        } catch (err) {
+          console.warn('Auto backfill insurance error:', err);
+        }
+
         setMyVehicles(dedupedVList);
       }
     });
@@ -1269,21 +1662,12 @@ export default function CustomerDashboard({
         const custPhone = currentCustomer.soDienThoai ? currentCustomer.soDienThoai.replace(/\D/g, '') : '';
         const myFb = allFb.filter(f => {
           if (f.customerId === currentCustomer.id) return true;
-          const fNum = parseInt(f.customerId.replace(/\D/g, ''), 10);
+          const fNum = parseInt((f.customerId || '').replace(/\D/g, ''), 10);
           if (!isNaN(cIdNum) && !isNaN(fNum) && cIdNum === fNum) return true;
           if (custPhone && f.soDienThoai && f.soDienThoai.replace(/\D/g, '') === custPhone) return true;
-          if (f.hoTen && currentCustomer.hoTen && f.hoTen.toLowerCase().trim() === currentCustomer.hoTen.toLowerCase().trim()) return true;
           return false;
         });
-        setMyCustomerFeedbacks(prev => {
-          const merged = [...myFb];
-          prev.forEach(p => {
-            if (!merged.some(m => m.id === p.id)) {
-              merged.unshift(p);
-            }
-          });
-          return merged;
-        });
+        setMyCustomerFeedbacks(myFb);
       }
     });
   };
@@ -1325,7 +1709,14 @@ export default function CustomerDashboard({
             }
           }
           else if (parsed.type === 'insurance') setActiveTab(4);
-          else if (parsed.type === 'survey') setActiveTab(5);
+          else if (parsed.type === 'review') {
+            setActiveTab(5);
+            setSurveySubTab('ChoDanhGia');
+          }
+          else if (parsed.type === 'survey') {
+            setActiveTab(5);
+            setSurveySubTab('KhaoSatHeThong');
+          }
           sessionStorage.removeItem('crm_client_highlight');
           setTimeout(() => setHighlightTarget(null), 7000);
         } catch {}
@@ -1346,7 +1737,14 @@ export default function CustomerDashboard({
           }
         }
         else if (e.detail.type === 'insurance') setActiveTab(4);
-        else if (e.detail.type === 'survey') setActiveTab(5);
+        else if (e.detail.type === 'review') {
+          setActiveTab(5);
+          setSurveySubTab('ChoDanhGia');
+        }
+        else if (e.detail.type === 'survey') {
+          setActiveTab(5);
+          setSurveySubTab('KhaoSatHeThong');
+        }
         setTimeout(() => setHighlightTarget(null), 7000);
       }
     };
@@ -1380,14 +1778,39 @@ export default function CustomerDashboard({
     const custName = currentCustomer.hoTen ? currentCustomer.hoTen.trim().toLowerCase() : '';
 
     return allAppts.filter(a => {
-      if (a.customerId === currentCustomer.id) return true;
+      let isMine = false;
+      if (a.customerId === currentCustomer.id) isMine = true;
       const aCustNum = parseInt(a.customerId.replace(/\D/g, ''), 10);
-      if (!isNaN(custNum) && !isNaN(aCustNum) && custNum === aCustNum) return true;
-      if (custPhone && a.soDienThoai && a.soDienThoai.replace(/\D/g, '') === custPhone) return true;
-      if (custName && a.hoTenKH && a.hoTenKH.trim().toLowerCase() === custName) return true;
-      return false;
+      if (!isNaN(custNum) && !isNaN(aCustNum) && custNum === aCustNum) isMine = true;
+      if (custPhone && a.soDienThoai && a.soDienThoai.replace(/\D/g, '') === custPhone) isMine = true;
+      if (!isMine) return false;
+
+      // Nghiệp vụ Lịch nhận xe mới:
+      if (a.loaiDichVu === 'NhanXe') {
+        // 1. Nếu đơn hàng xe tương ứng đang Chờ duyệt hoặc Chờ khách xác nhận ngày nhận
+        // -> CHƯA HIỂN THỊ trong mục Lịch hẹn cho đến khi khách hàng xác nhận!
+        const matchedOrder = myOrders.find(o =>
+          (a.maDonHangXe && a.maDonHangXe === o.id) ||
+          (a.maLichHen && (a.maLichHen === o.maLichHen || a.maLichHen === o.thongTinXe?.maLichHen))
+        );
+        if (matchedOrder) {
+          if (matchedOrder.trangThai === 'ChoDuyet' || matchedOrder.trangThai === 'ChoKhachXacNhanNgayNhan') {
+            return false;
+          }
+          if (matchedOrder.trangThai === 'DaHuy') {
+            return false;
+          }
+        }
+        if (a.trangThai === 'DaHuy' || a.trangThai === 'TuChoi') {
+          return false;
+        }
+        // Sau khi hoàn thành đơn: VẪN HIỆN LÊN LỊCH BIỂU NHƯNG LÀM MỜ (isDone ? 'opacity-40 line-through' : '')
+        return true;
+      }
+
+      return true;
     });
-  }, [allAppts, currentCustomer]);
+  }, [allAppts, currentCustomer, myOrders]);
 
   // Upcoming appointments (LH14)
   const upcomingAppts = useMemo(() => {
@@ -1401,6 +1824,33 @@ export default function CustomerDashboard({
       (a.ngayHen === todayStr || a.ngayHen === tomorrowStr)
     );
   }, [myAppts]);
+
+  // Tự động đồng bộ bài khảo sát cho các đơn xe hoặc dịch vụ đã hoàn thành nếu chưa có bài khảo sát
+  useEffect(() => {
+    if (!currentCustomer) return;
+    try {
+      const allSurveys = surveyApi.getAll();
+      myOrders
+        .filter(o => (o.loaiDon === 'Xe' || !!o.thongTinXe) && (o.trangThai === 'HoanThanh' || o.trangThai === 'DaGiao'))
+        .forEach(o => {
+          const sId = `KS-XE-${o.id}`;
+          if (!allSurveys.some(s => s.id === sId)) {
+            surveyApi.createVehiclePurchaseSurvey(o, currentCustomer);
+          }
+        });
+
+      myAppts
+        .filter(a => (a.trangThai === 'DaHoanThanh' || a.trangThai === 'HoanThanh') && (a.loaiDichVu === 'BaoDuong' || a.loaiDichVu === 'SuaChua' || a.loaiDichVu === 'BaoHanh'))
+        .forEach(a => {
+          const sId = `KS-BD-${a.id}`;
+          if (!allSurveys.some(s => s.id === sId)) {
+            surveyApi.createMaintenanceSurvey(a, currentCustomer);
+          }
+        });
+    } catch (e) {
+      console.warn('Lỗi tự động khởi tạo khảo sát:', e);
+    }
+  }, [currentCustomer?.id, myOrders.length, myAppts.length]);
 
   // Real spending & CLV (BH05: Tích lũy cả chi tiêu đơn hàng và bảo hiểm)
   const realCustomerSpending = useMemo(() => {
@@ -1445,7 +1895,8 @@ export default function CustomerDashboard({
       if (vehicleFilter === 'NgoaiHeThong') return v.nguonGoc === 'NgoaiHeThong';
       if (vehicleFilter === 'DangBaoHanh') return v.nguonGoc === 'CuaHang' && v.trangThaiBaoHanh === 'ConHan';
       if (vehicleFilter === 'CoBaoHiem') {
-        return myInsurances.some(ins => (ins.vehicleId === v.id || (v.bienSo && ins.bienSo === v.bienSo)) && ins.trangThai !== 'HetHan' && ins.trangThai !== 'TuChoi');
+        const ins = findMatchingInsurance(v, myInsurances);
+        return !!ins && ins.trangThai !== 'HetHan' && ins.trangThai !== 'TuChoi';
       }
       return true;
     });
@@ -1546,6 +1997,7 @@ export default function CustomerDashboard({
         soMay: regForm.soMay.trim() || undefined,
         trangThaiDuyet: 'ChoDuyet',
         anhCaVet: regForm.anhCaVet,
+        hinhAnh: regForm.hinhAnh || regForm.anhCaVet,
       });
 
       const updatedCust: Customer = { ...currentCustomer, soXe: newV.id };
@@ -1565,6 +2017,7 @@ export default function CustomerDashboard({
         mauSac: 'Đen bóng',
         namSanXuat: String(new Date().getFullYear()),
         anhCaVet: '',
+        hinhAnh: '',
       });
       window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'vehicle_registered' } }));
     } catch (err) {
@@ -1799,13 +2252,47 @@ export default function CustomerDashboard({
     return baseCount + extraCount;
   }, [myAppts, currentCustomer]);
 
+  const isOnlineOrder = (o: any) => {
+    const kb = (o.kenhBan || (o as any).channel || '').toLowerCase();
+    if (kb === 'taiquay' || kb === 'cuahang' || kb === 'offline') return false;
+    return true;
+  };
+
+  const unreviewedOrdersCount = useMemo(() => {
+    let count = 0;
+    if (!currentCustomer) return 0;
+    myOrders
+      .filter(o => isOnlineOrder(o) && (o.trangThai === 'HoanThanh' || o.trangThai === 'DaGiao' || (o as any).trangThaiDonHang === 'HoanThanh'))
+      .forEach(o => {
+        if (o.thongTinXe) {
+          const already = myCustomerFeedbacks.some(f =>
+            (f.orderId && f.orderId === o.id) ||
+            (f.productId && (f.productId === o.id || f.productId === (o.thongTinXe as any)?.vehicleId || f.productId === (o.thongTinXe as any)?.maXe))
+          );
+          if (!already) count++;
+        }
+        if (o.items && o.items.length > 0) {
+          o.items.forEach((it: any, idx: number) => {
+            const name = it.tenSanPham || it.tenPhuTung || `Phụ tùng #${idx + 1}`;
+            const partId = (it as any).id || (it as any).maPhuTung || undefined;
+            const already = myCustomerFeedbacks.some(f =>
+              (f.orderId && f.orderId === o.id && (f.productId === partId || !f.productId)) ||
+              (f.orderId && f.orderId === o.id && f.productName && f.productName.toLowerCase().trim() === name.toLowerCase().trim())
+            );
+            if (!already) count++;
+          });
+        }
+      });
+    return count;
+  }, [myOrders, myCustomerFeedbacks, currentCustomer]);
+
   const sidebarNavItems = [
     { id: 0, label: 'Phương tiện của tôi', count: myVehicles.length, icon: '🏍️' },
     { id: 1, label: 'Đơn mua hàng', count: myOrders.length, icon: '🛍️' },
     { id: 2, label: 'Lịch hẹn', count: myAppts.filter(a => a.trangThai !== 'DaHoanThanh' && a.trangThai !== 'HoanThanh' && a.trangThai !== 'DaHuy' && a.trangThai !== 'TuChoi').length, icon: '📅' },
     { id: 3, label: 'Lịch sử dịch vụ', count: completedServicesCount, icon: '🕒' },
     { id: 4, label: 'Bảo hiểm', count: myInsurances.length, icon: '🛡️' },
-    { id: 5, label: 'Khảo sát & Đánh giá', count: 0, icon: '📝' },
+    { id: 5, label: 'Khảo sát & Đánh giá', count: unreviewedOrdersCount, icon: '📝' },
   ];
 
   return (
@@ -2066,7 +2553,10 @@ export default function CustomerDashboard({
                       { key: 'CuaHang', label: `✓ Mua tại cửa hàng (${myVehicles.filter(v => v.nguonGoc === 'CuaHang').length})` },
                       { key: 'NgoaiHeThong', label: `Xe mua ngoài (${myVehicles.filter(v => v.nguonGoc === 'NgoaiHeThong').length})` },
                       { key: 'DangBaoHanh', label: `Đang bảo hành (${myVehicles.filter(v => v.nguonGoc === 'CuaHang' && v.trangThaiBaoHanh === 'ConHan').length})` },
-                      { key: 'CoBaoHiem', label: `Có bảo hiểm (${myVehicles.filter(v => myInsurances.some(ins => (ins.vehicleId === v.id || (v.bienSo && ins.bienSo === v.bienSo)) && ins.trangThai !== 'HetHan')).length})` },
+                      { key: 'CoBaoHiem', label: `Có bảo hiểm (${myVehicles.filter(v => {
+                        const ins = findMatchingInsurance(v, myInsurances);
+                        return !!ins && ins.trangThai !== 'HetHan' && ins.trangThai !== 'TuChoi';
+                      }).length})` },
                     ].map(f => (
                       <button
                         key={f.key}
@@ -2124,7 +2614,7 @@ export default function CustomerDashboard({
                             return false;
                           }
                         })();
-                        const curIns = myInsurances.find(ins => ins.vehicleId === v.id || (v.bienSo && ins.bienSo === v.bienSo));
+                        const curIns = findMatchingInsurance(v, myInsurances);
                         const hasValidIns = !!curIns && curIns.trangThai !== 'HetHan' && curIns.trangThai !== 'TuChoi';
                         const fallbackImg = 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=800&auto=format&fit=crop&q=80';
 
@@ -2173,7 +2663,7 @@ export default function CustomerDashboard({
 
                                 <div className="w-full h-40 rounded-2xl overflow-hidden bg-zinc-900 relative group">
                                   <img
-                                    src={v.hinhAnh || fallbackImg}
+                                    src={getVehicleDisplayImage(v)}
                                     alt={v.tenXe}
                                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                                     onError={e => { e.currentTarget.src = fallbackImg; }}
@@ -2181,6 +2671,8 @@ export default function CustomerDashboard({
                                   <div className="absolute bottom-2.5 left-2.5 px-2.5 py-1 rounded-lg bg-black/80 backdrop-blur-xs text-white text-[11px] font-mono font-bold">
                                     {v.trangThaiDuyetBienSo === 'ChoDuyet' && v.bienSoChoDuyet ? (
                                       <span className="text-amber-400">⏳ Chờ duyệt: {v.bienSoChoDuyet}</span>
+                                    ) : v.trangThaiDuyetBienSo === 'TuChoi' ? (
+                                      <span className="text-red-400 font-bold">⛔ Bị từ chối: {v.bienSoChoDuyet || v.bienSo}</span>
                                     ) : (
                                       v.bienSo || 'Chưa có biển'
                                     )}
@@ -2194,11 +2686,43 @@ export default function CustomerDashboard({
                                 <div className="text-xs text-zinc-400 font-mono mt-0.5">
                                   {v.trangThaiDuyetBienSo === 'ChoDuyet' && v.bienSoChoDuyet ? (
                                     <span className="text-amber-400 font-bold">{v.bienSoChoDuyet} (Đang chờ duyệt)</span>
+                                  ) : v.trangThaiDuyetBienSo === 'TuChoi' ? (
+                                    <span className="text-red-400 font-bold">{v.bienSoChoDuyet || v.bienSo} (⛔ Bị từ chối)</span>
                                   ) : (
                                     v.bienSo
                                   )} · {v.mauSac || 'Tiêu chuẩn'} · {v.namSanXuat}
                                 </div>
                               </div>
+
+                              {/* Banner bị từ chối duyệt biển số kèm lý do */}
+                              {isCuaHang && v.trangThaiDuyetBienSo === 'TuChoi' && (
+                                <div className="mx-5 mb-3 p-3 rounded-2xl bg-red-950/50 border border-red-700/80 text-xs shadow-md">
+                                  <div className="flex items-center justify-between mb-1.5">
+                                    <div className="text-red-300 font-bold flex items-center gap-1.5">
+                                      <span>⛔ Yêu cầu cấp biển số bị từ chối</span>
+                                    </div>
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-900/90 text-red-200 border border-red-700">
+                                      Bị từ chối
+                                    </span>
+                                  </div>
+                                  {v.lyDoTuChoiBienSo ? (
+                                    <div className="p-2 rounded-xl bg-black/40 text-red-200 text-[11px] mb-2 border border-red-800/40">
+                                      <strong>Lý do từ chối:</strong> {v.lyDoTuChoiBienSo}
+                                    </div>
+                                  ) : null}
+                                  <button
+                                    onClick={() => {
+                                      setUpdatingPlateVehicle(v);
+                                      setNewPlateInput(v.bienSoChoDuyet || '');
+                                      setNewPlateCaVetImg(v.anhCaVet || '');
+                                      setPlateUpdateError(null);
+                                    }}
+                                    className="w-full py-1.5 rounded-xl bg-red-700 hover:bg-red-600 text-white font-bold text-xs cursor-pointer shadow transition flex items-center justify-center gap-1"
+                                  >
+                                    <span>🔄 Cập nhật và gửi lại Biển số & Cà vẹt</span>
+                                  </button>
+                                </div>
+                              )}
 
                               {/* Banner đang chờ duyệt biển số */}
                               {isCuaHang && v.trangThaiDuyetBienSo === 'ChoDuyet' && (
@@ -2264,7 +2788,7 @@ export default function CustomerDashboard({
                               <div className={`grid gap-2 mt-3 text-xs ${isBaoHanhConHan ? 'grid-cols-2' : 'grid-cols-3'}`}>
                                 <button
                                   type="button"
-                                  onClick={() => setSelectedDetailVehicle(v)}
+                                  onClick={() => handleOpenVehicleDetail(v)}
                                   className="py-2 px-2 rounded-xl font-bold bg-[#1e1e24] hover:bg-zinc-800 text-zinc-200 border border-zinc-700 transition cursor-pointer"
                                 >
                                   🔍 Chi tiết
@@ -2422,7 +2946,7 @@ export default function CustomerDashboard({
                     <div className="space-y-4">
                       {filtered.map(order => {
                         const isXe = order.loaiDon === 'Xe' || !!order.thongTinXe;
-                        const isCompleted = order.trangThai === 'HoanThanh';
+                        const isCompleted = order.trangThai === 'HoanThanh' || order.trangThai === 'DaGiao' || (isXe && (order.thongTinXe as any)?.daNhanXe);
                         const cfg = orderStatusConfig[order.trangThai] || { label: order.trangThai, color: '#71717a', bg: '#27272a' };
 
                         return (
@@ -2437,7 +2961,12 @@ export default function CustomerDashboard({
                                 </span>
                                 <span className="text-xs text-zinc-400 font-mono">📅 Ngày đặt: {order.ngayDat}</span>
                               </div>
-                              <StatusBadge {...cfg} />
+                              <div className="flex items-center gap-2">
+                                <span className={`text-[11px] font-bold px-2.5 py-1 rounded-xl border font-mono ${order.trangThaiThanhToan === 'DaThanhToan' ? 'bg-emerald-950/80 text-emerald-400 border-emerald-800' : order.trangThaiThanhToan === 'DaCoc' ? 'bg-amber-950/80 text-amber-400 border-amber-800' : 'bg-zinc-900 text-zinc-400 border-zinc-700'}`}>
+                                  {order.trangThaiThanhToan === 'DaThanhToan' ? '💵 Đã thanh toán' : order.trangThaiThanhToan === 'DaCoc' ? '💵 Đã đặt cọc' : '⏳ Chưa thanh toán (COD)'}
+                                </span>
+                                <StatusBadge {...cfg} />
+                              </div>
                             </div>
 
                             {/* Xe vs Phụ Tùng content */}
@@ -2457,94 +2986,69 @@ export default function CustomerDashboard({
                                     )}
                                   </div>
 
-                                  <button
-                                    type="button"
-                                    onClick={() => setViewingQrData({
-                                      maLichHen: order.maLichHen || `HEN-XE-${order.id.slice(-4)}`,
-                                      maDonHang: order.id,
-                                      tenXe: order.thongTinXe?.tenXe || 'Xe máy chính hãng',
-                                      mauXe: order.thongTinXe?.mauSac,
-                                      phienBan: order.thongTinXe?.phienBan,
-                                      ngayHen: order.thongTinXe?.ngayGiaoXe || order.ngayDat,
-                                      gioHen: order.thongTinXe?.khungGioGiao || '09:00',
-                                      hoTenKH: order.hoTenKH,
-                                      soDienThoai: order.soDienThoai,
-                                      qrCodeUrl: order.qrCodeUrl,
-                                      soTienCoc: order.thongTinXe?.soTienDatCoc,
-                                      daThanhToan100: !order.thongTinXe?.soTienConLai,
-                                      soTienConLai: order.thongTinXe?.soTienConLai,
-                                      tongTien: order.tongTien,
-                                    })}
-                                    className="px-4 py-2.5 rounded-xl text-xs font-bold bg-red-700 hover:bg-red-800 text-white transition cursor-pointer shadow flex items-center gap-2 whitespace-nowrap"
-                                  >
-                                    <span>📱 Mã Nhận Xe & QR Code</span>
-                                  </button>
+                                  {order.trangThai !== 'HoanThanh' && order.trangThai !== 'DaHuy' ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => setViewingQrData({
+                                        maLichHen: order.maLichHen || `HEN-XE-${order.id.slice(-4)}`,
+                                        maDonHang: order.id,
+                                        tenXe: order.thongTinXe?.tenXe || 'Xe máy chính hãng',
+                                        mauXe: order.thongTinXe?.mauSac,
+                                        phienBan: order.thongTinXe?.phienBan,
+                                        ngayHen: order.thongTinXe?.ngayGiaoXe || order.ngayDat,
+                                        gioHen: order.thongTinXe?.khungGioGiao || '09:00',
+                                        hoTenKH: order.hoTenKH,
+                                        soDienThoai: order.soDienThoai,
+                                        qrCodeUrl: order.qrCodeUrl,
+                                        soTienCoc: order.thongTinXe?.soTienDatCoc,
+                                        daThanhToan100: !order.thongTinXe?.soTienConLai,
+                                        soTienConLai: order.thongTinXe?.soTienConLai,
+                                        tongTien: order.tongTien,
+                                      })}
+                                      className="px-4 py-2.5 rounded-xl text-xs font-bold bg-red-700 hover:bg-red-800 text-white transition cursor-pointer shadow flex items-center gap-2 whitespace-nowrap"
+                                    >
+                                      <span>📱 Mã Nhận Xe & QR Code</span>
+                                    </button>
+                                  ) : (
+                                    <div className="px-3.5 py-2 rounded-xl bg-emerald-950/80 border border-emerald-700/80 text-emerald-300 text-xs font-bold flex items-center gap-1.5 shadow-2xs whitespace-nowrap">
+                                      <span>✓</span> <span>Đã nhận xe thành công</span>
+                                    </div>
+                                  )}
                                 </div>
 
                                 {/* Khách hàng xác nhận ngày nhận xe hoặc đổi ngày nhận xe tại Showroom */}
-                                {isXe && (order.trangThai === 'ChoGiaoXe' || order.trangThai === 'DaXacNhan') && (
-                                  <div className="p-3.5 rounded-2xl bg-sky-950/60 border border-sky-800 text-xs text-sky-200 space-y-2">
+                                {isXe && (order.trangThai === 'ChoKhachXacNhanNgayNhan' || order.trangThai === 'ChoGiaoXe' || order.trangThai === 'DaXacNhan') && (
+                                  <div className={`p-4 rounded-2xl border text-xs space-y-3 ${order.trangThai === 'ChoKhachXacNhanNgayNhan' ? 'bg-amber-950/70 border-amber-600/80 text-amber-200 shadow-md' : 'bg-sky-950/60 border-sky-800 text-sky-200'}`}>
                                     <div className="flex items-center justify-between flex-wrap gap-2">
-                                      <div className="font-extrabold flex items-center gap-1.5 text-sky-300">
-                                        <span>🏢</span> <span>LỊCH HẸN NHẬN XE TẠI SHOWROOM</span>
+                                      <div className={`font-extrabold flex items-center gap-1.5 ${order.trangThai === 'ChoKhachXacNhanNgayNhan' ? 'text-amber-300 text-sm' : 'text-sky-300'}`}>
+                                        <span>{order.trangThai === 'ChoKhachXacNhanNgayNhan' ? '🎉' : '🏢'}</span>
+                                        <span>{order.trangThai === 'ChoKhachXacNhanNgayNhan' ? 'ĐƠN XE ĐÃ ĐƯỢC DUYỆT - MỜI XÁC NHẬN NGÀY NHẬN XE' : 'LỊCH HẸN NHẬN XE TẠI SHOWROOM'}</span>
                                       </div>
                                       <span className="text-[11px] font-mono text-zinc-300">
-                                        Ngày nhận: <strong className="text-amber-400">{order.thongTinXe?.ngayGiaoXe || 'Sắp tới'}</strong> ({order.thongTinXe?.khungGioGiao || '09:00'})
+                                        Ngày nhận dự kiến: <strong className="text-amber-400">{order.thongTinXe?.ngayGiaoXe || 'Sắp tới'}</strong> ({order.thongTinXe?.khungGioGiao || '09:00'})
                                       </span>
                                     </div>
-                                    {confirmedPickupOrderIds[order.id] ? (
-                                      <div className="p-2.5 rounded-xl bg-emerald-950/80 border border-emerald-700 text-emerald-300 text-xs font-semibold flex items-center gap-1.5">
-                                        <span>✓</span> <span>Quý khách đã xác nhận ngày nhận xe! Showroom đang chuẩn bị xe mới để bàn giao đúng hẹn cho bạn.</span>
-                                      </div>
-                                    ) : (
+                                    {order.trangThai === 'ChoKhachXacNhanNgayNhan' ? (
                                       <>
-                                        <p className="text-[11px] text-zinc-300">
-                                          Showroom đã tiếp nhận đơn và gửi lịch hẹn. Vui lòng bấm <strong>Xác nhận ngày nhận xe</strong> để hoàn tất lịch hẹn (hoặc Đổi ngày nếu bận):
+                                        <p className="text-[11px] text-amber-100/90 leading-relaxed">
+                                          Showroom Motoshop đã duyệt đơn mua xe <strong>{order.thongTinXe?.tenXe || 'của bạn'}</strong>! Quý khách vui lòng bấm <strong>Xác nhận ngày nhận xe</strong> bên dưới để Showroom kích hoạt lịch hẹn và chuẩn bị bàn giao xe:
                                         </p>
                                         <div className="flex items-center gap-2 pt-1 flex-wrap">
                                           <button
                                             type="button"
                                             onClick={async () => {
+                                              const pickupDate = order.thongTinXe?.ngayGiaoXe || new Date(Date.now() + 86400000).toISOString().split('T')[0];
+                                              const pickupTime = order.thongTinXe?.khungGioGiao || '09:00';
                                               setConfirmedPickupOrderIds(prev => ({ ...prev, [order.id]: true }));
-                                              await orderApi.updateStatus(order.id, 'ChoGiaoXe');
-                                              // Cập nhật lịch hẹn nhận xe sang Đã xác nhận (DaXacNhan) để đồng bộ lên Lịch hẹn & Lịch biểu Admin
-                                              try {
-                                                const allAppts = await appointmentApi.getAll();
-                                                const matched = allAppts.find(a =>
-                                                  (a.maLichHen && (a.maLichHen === order.maLichHen || a.maLichHen === order.thongTinXe?.maLichHen)) ||
-                                                  (a.maDonHangXe && a.maDonHangXe === order.id) ||
-                                                  (a.customerId === currentCustomer.id && a.loaiDichVu === 'NhanXe')
-                                                );
-                                                if (matched) {
-                                                  await appointmentApi.updateStatus(matched.id, 'DaXacNhan');
-                                                } else {
-                                                  const pickupDate = order.thongTinXe?.ngayGiaoXe || new Date().toISOString().split('T')[0];
-                                                  const newApptRes = await appointmentApi.create({
-                                                    customerId: currentCustomer.id,
-                                                    hoTenKH: currentCustomer.hoTen,
-                                                    soDienThoai: currentCustomer.soDienThoai,
-                                                    loaiDichVu: 'NhanXe',
-                                                    ngayHen: pickupDate,
-                                                    gioHen: '09:00',
-                                                    tenXe: order.thongTinXe?.tenXe || 'Xe máy chính hãng',
-                                                    bienSo: order.thongTinXe?.bienSo || 'Chưa có biển số',
-                                                    maLichHen: order.thongTinXe?.maLichHen || order.maLichHen,
-                                                    maDonHangXe: order.id,
-                                                    ghiChu: 'Khách hàng xác nhận nhận xe tại Showroom ngày ' + pickupDate + '. Đơn #' + order.id + '.',
-                                                  });
-                                                  if (newApptRes && newApptRes.appointment) {
-                                                    await appointmentApi.updateStatus(newApptRes.appointment.id, 'DaXacNhan');
-                                                  }
-                                                }
-                                              } catch (err) {
-                                                console.warn('Lỗi cập nhật lịch hẹn khi khách xác nhận:', err);
-                                              }
-                                              window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'customer_confirmed_pickup' } }));
-                                              alert('✓ Bạn đã xác nhận ngày nhận xe thành công! Lịch hẹn đã chuyển sang trạng thái ĐÃ XÁC NHẬN, hiển thị trên Lịch hẹn của bạn và Lịch biểu Showroom. Hẹn gặp bạn tại Showroom vào ngày ' + (order.thongTinXe?.ngayGiaoXe || 'hẹn') + '!');
+                                              await orderApi.confirmVehiclePickupDate(order.id, pickupDate, pickupTime);
+                                              setAllOrders(orderApi.getAllSync());
+                                              const freshAppts = await appointmentApi.getAll();
+                                              if (freshAppts) setAllAppts(freshAppts);
+                                              alert(`✓ Bạn đã xác nhận ngày nhận xe thành công (${pickupDate} lúc ${pickupTime})!\nLịch hẹn nhận xe đã xuất hiện trong mục "Lịch hẹn" của bạn và Lịch biểu Showroom.`);
                                             }}
-                                            className="px-3.5 py-1.5 rounded-xl text-xs font-black bg-emerald-600 hover:bg-emerald-700 text-white shadow transition cursor-pointer flex items-center gap-1"
+                                            className="px-4 py-2 rounded-xl text-xs font-black bg-emerald-600 hover:bg-emerald-500 text-white shadow transition cursor-pointer flex items-center gap-1.5"
                                           >
-                                            <span>✓</span> <span>Xác nhận ngày nhận xe</span>
+                                            <span>✓</span> <span>Xác nhận ngày nhận xe ({order.thongTinXe?.ngayGiaoXe || 'Ngày mai'})</span>
                                           </button>
                                           <button
                                             type="button"
@@ -2552,65 +3056,178 @@ export default function CustomerDashboard({
                                               setChangingDateOrder(order);
                                               setNewPickupDateInput(order.thongTinXe?.ngayGiaoXe || new Date().toISOString().split('T')[0]);
                                             }}
-                                            className="px-3 py-1.5 rounded-xl text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 transition cursor-pointer flex items-center gap-1"
+                                            className="px-3 py-2 rounded-xl text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 transition cursor-pointer flex items-center gap-1.5"
                                           >
-                                            <span>📅</span> <span>Đổi ngày nhận xe</span>
+                                            <span>📅</span> <span>Đổi ngày khác</span>
                                           </button>
                                         </div>
                                       </>
+                                    ) : (
+                                      <div className="p-3 rounded-xl bg-emerald-950/80 border border-emerald-700/80 text-emerald-200 text-xs space-y-1.5 shadow-sm">
+                                        <div className="flex items-center gap-2 font-bold text-emerald-300">
+                                          <span>✓</span> <span>Quý khách đã chốt ngày nhận xe: <strong>{order.thongTinXe?.ngayNhanXacNhan || order.thongTinXe?.ngayGiaoXe || 'Sắp tới'}</strong> ({order.thongTinXe?.gioNhanXacNhan || order.thongTinXe?.khungGioGiao || '09:00'})</span>
+                                        </div>
+                                        <p className="text-[11px] text-emerald-100/80 leading-relaxed">
+                                          Lịch hẹn nhận xe đã được đồng bộ vào hệ thống Showroom. Theo quy định, ngày nhận xe không thể tự thay đổi bằng thao tác thông thường. Nếu có việc bận đột xuất cần đổi lịch, quý khách vui lòng liên hệ Hotline <strong>1900-8888</strong> hoặc nhắn tin CSKH để được nhân viên hỗ trợ đổi lịch.
+                                        </p>
+                                      </div>
                                     )}
                                   </div>
                                 )}
                               </div>
                             ) : (
                               <div className="space-y-2">
-                                {order.items.map((it, idx) => (
-                                  <div key={idx} className="flex justify-between items-center text-xs py-1.5 border-b border-zinc-800/60 last:border-none">
-                                    <span className="text-zinc-200">
-                                      {it.tenSanPham} <span className="text-zinc-500 font-mono">×{it.soLuong}</span>
-                                    </span>
-                                    <div className="flex items-center gap-3">
-                                      <span className="font-mono font-bold text-white">{formatVND(it.donGia * it.soLuong)}</span>
-                                      {isCompleted && (
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            setReviewModalPart({
-                                              partName: it.tenSanPham,
-                                              orderId: order.id,
-                                              productId: (it as any).id || (it as any).maPhuTung,
-                                              productType: 'PhuTung',
-                                            });
-                                            setReviewStars(5);
-                                            setReviewContent('');
-                                            setReviewImages([]);
-                                            setNewImageUrl('');
-                                          }}
-                                          className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-amber-500 hover:bg-amber-600 text-white transition cursor-pointer flex items-center gap-1 shadow-2xs"
-                                        >
-                                          <span>⭐ Đánh giá</span>
-                                        </button>
-                                      )}
+                                {order.items.map((it, idx) => {
+                                  // DG01: Chuẩn hóa productId phụ tùng dưới dạng chuỗi (PT001, PT002...)
+                                  const ptIdNum = it.maPhuTung || (it as any).id;
+                                  let pIdStr: string = '';
+                                  if (ptIdNum) {
+                                    const num = parseInt(String(ptIdNum).replace(/\D/g, ''), 10);
+                                    if (!isNaN(num) && num > 0) {
+                                      pIdStr = num < 10 ? `PT00${num}` : `PT0${num}`;
+                                    }
+                                  }
+                                  if (!pIdStr) {
+                                    const matchedP = mockParts.find(p => p.tenSanPham.toLowerCase().includes(it.tenSanPham.toLowerCase()) || it.tenSanPham.toLowerCase().includes(p.tenSanPham.toLowerCase()));
+                                    pIdStr = matchedP?.id || 'PT001';
+                                  }
+
+                                  // Kiểm tra xem phụ tùng này của đơn hàng đã được đánh giá chưa
+                                  const existingReview = myCustomerFeedbacks.find(f =>
+                                    (f.orderId && f.orderId === order.id && (f.productName?.toLowerCase().trim() === it.tenSanPham.toLowerCase().trim() || f.productId === pIdStr)) ||
+                                    (f.productId && f.productId === pIdStr && f.orderId === order.id) ||
+                                    (f.productName && f.productName.toLowerCase().trim() === it.tenSanPham.toLowerCase().trim() && (f.orderId === order.id || !f.orderId))
+                                  );
+
+                                  return (
+                                    <div key={idx} className="flex flex-col sm:flex-row sm:items-center justify-between text-xs py-2 border-b border-zinc-800/60 last:border-none gap-2">
+                                      <span className="text-zinc-200 font-medium">
+                                        {it.tenSanPham} <span className="text-zinc-500 font-mono">×{it.soLuong}</span>
+                                      </span>
+                                      <div className="flex items-center gap-3 self-end sm:self-auto flex-wrap">
+                                        <span className="font-mono font-bold text-white">{formatVND(it.donGia * it.soLuong)}</span>
+                                        {isCompleted && (
+                                          existingReview ? (
+                                            <div className="flex items-center gap-1.5">
+                                              <span className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-800 flex items-center gap-1 shadow-2xs font-mono">
+                                                <span>✓</span> <span>Đã đánh giá ({existingReview.diemDanhGia}⭐)</span>
+                                              </span>
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  setReviewModalPart({
+                                                    partName: it.tenSanPham,
+                                                    orderId: order.id,
+                                                    productId: pIdStr,
+                                                    productType: 'PhuTung',
+                                                    fromTab: 1,
+                                                  });
+                                                  setReviewStars(existingReview.diemDanhGia);
+                                                  setReviewContent(existingReview.noiDung);
+                                                  setReviewImages(existingReview.hinhAnhDinhKem || []);
+                                                                                                  }}
+                                                className="px-2 py-1 rounded-lg text-[11px] font-bold bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition cursor-pointer border border-zinc-700"
+                                                title="Xem hoặc sửa lại đánh giá"
+                                              >
+                                                ✏️ Sửa
+                                              </button>
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  const custId = currentCustomer ? formatCustomerId(currentCustomer.id) : 'KH032';
+                                                  const pinned: PinnedChatContext = {
+                                                    title: '📌 BẠN ĐANG HỎI VỀ SẢN PHẨM ĐÃ MUA',
+                                                    productName: it.tenSanPham,
+                                                    productImage: '/images/phutung/motul_7100.png',
+                                                    orderId: `Đơn hàng: #${order.id} · SP: ${it.tenSanPham}`,
+                                                    rating: existingReview?.diemDanhGia || 5,
+                                                    comment: `Đã mua x${it.soLuong}. Đánh giá: "${existingReview?.noiDung || 'Hài lòng'}"`,
+                                                  };
+                                                  chatApi.syncPinnedContext(custId, pinned);
+                                                  window.dispatchEvent(new CustomEvent('crm-open-chat', {
+                                                    detail: {
+                                                      pinnedContext: pinned,
+                                                      prefillMessage: `Dạ chào Shop, em muốn trao đổi về sản phẩm "${it.tenSanPham}" trong đơn hàng #${order.id} ạ!`,
+                                                    }
+                                                  }));
+                                                }}
+                                                className="px-2 py-1 rounded-lg text-[11px] font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 transition cursor-pointer flex items-center gap-1"
+                                                title="Nhắn tin với CSKH về sản phẩm này"
+                                              >
+                                                <span>💬</span> <span>Tư vấn</span>
+                                              </button>
+                                            </div>
+                                          ) : (
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setReviewModalPart({
+                                                  partName: it.tenSanPham,
+                                                  orderId: order.id,
+                                                  productId: pIdStr,
+                                                  productType: 'PhuTung',
+                                                  fromTab: 1,
+                                                });
+                                                setReviewStars(5);
+                                                setReviewContent('');
+                                                setReviewImages([]);
+                                                                                              }}
+                                              className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-amber-500 hover:bg-amber-600 text-white transition cursor-pointer flex items-center gap-1 shadow-2xs"
+                                            >
+                                              <span>⭐ Đánh giá</span>
+                                            </button>
+                                          )
+                                        )}
+                                      </div>
                                     </div>
-                                  </div>
-                                ))}
+                                  );
+                                })}
                               </div>
                             )}
 
                             {/* Bottom row: Total & Actions */}
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-zinc-800 text-xs">
                               <div className="text-zinc-400">📍 Giao tới: {order.diaChiGiao}</div>
-                              <div className="flex items-center gap-3 self-end sm:self-auto flex-wrap">
-                                <div className="text-sm font-black font-mono text-red-400">
+                              <div className="flex items-center gap-2.5 self-end sm:self-auto flex-wrap">
+                                <div className="text-sm font-black font-mono text-red-400 mr-2">
                                   {formatVND(order.tongTien)}
                                 </div>
+
+                                {/* Nút MUA LẠI: Hiển thị nổi bật trên tất cả đơn phụ tùng (Theo yêu cầu ảnh 3) */}
+                                {!isXe && (
+                                  <button
+                                    type="button"
+                                    disabled={reorderLoading}
+                                    onClick={() => handleReorder(order)}
+                                    className="px-3.5 py-1.5 rounded-xl font-bold bg-[#27272a] hover:bg-[#3f3f46] text-zinc-200 border border-zinc-700 transition cursor-pointer flex items-center gap-1.5 shadow-sm text-xs disabled:opacity-50"
+                                    title="Mua lại các sản phẩm trong đơn hàng này"
+                                  >
+                                    <span>🔄</span> {reorderLoading ? 'Đang gửi...' : 'Mua lại'}
+                                  </button>
+                                )}
+
+                                {/* Nút Liên hệ hỗ trợ */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    window.dispatchEvent(new CustomEvent('crm-open-chat', {
+                                      detail: {
+                                        prefillMessage: `Dạ chào Shop, em cần hỗ trợ về đơn hàng #${order.id} ạ!`,
+                                      }
+                                    }));
+                                  }}
+                                  className="px-3.5 py-1.5 rounded-xl font-bold bg-[#27272a] hover:bg-[#3f3f46] text-zinc-300 border border-zinc-700 transition cursor-pointer flex items-center gap-1.5 text-xs shadow-sm"
+                                  title="Liên hệ CSKH về đơn hàng này"
+                                >
+                                  <span>💬</span> Liên hệ hỗ trợ
+                                </button>
 
                                 <button
                                   type="button"
                                   onClick={() => setSelectedOrderDetail(order)}
-                                  className="px-3 py-1.5 rounded-xl font-bold bg-zinc-800 hover:bg-zinc-700 text-zinc-200 transition cursor-pointer border border-zinc-700"
+                                  className="px-3.5 py-1.5 rounded-xl font-bold bg-[#27272a] hover:bg-[#3f3f46] text-zinc-200 transition cursor-pointer border border-zinc-700 text-xs shadow-sm"
                                 >
-                                  👁️ Chi tiết
+                                  Xem chi tiết
                                 </button>
 
                                 {/* Khóa hủy đơn: Khách chỉ được hủy đơn khi đang ở trạng thái Chờ duyệt. Khi đã xuất hóa đơn hoặc gửi lịch hẹn thì không hủy được */}
@@ -2625,28 +3242,70 @@ export default function CustomerDashboard({
                                   </button>
                                 )}
 
-                                {isCompleted && isXe && (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const vName = order.thongTinXe?.tenXe || 'Xe máy chính hãng';
-                                      const matchedV = showroomVehicles.find(v => v.tenXe.toLowerCase().includes(vName.toLowerCase()) || vName.toLowerCase().includes(v.tenXe.toLowerCase()));
-                                      setReviewModalPart({
-                                        partName: vName,
-                                        orderId: order.id,
-                                        productId: matchedV?.id || (order.thongTinXe as any)?.vehicleId || 'XM-HD01',
-                                        productType: 'XeMau',
-                                      });
-                                      setReviewStars(5);
-                                      setReviewContent('');
-                                      setReviewImages([]);
-                                      setNewImageUrl('');
-                                    }}
-                                    className="px-3 py-1.5 rounded-xl font-bold bg-amber-500 hover:bg-amber-600 text-white transition cursor-pointer flex items-center gap-1 shadow"
-                                  >
-                                    <span>⭐ Đánh giá xe</span>
-                                  </button>
-                                )}
+                                {isCompleted && isXe && (() => {
+                                  const vName = order.thongTinXe?.tenXe || 'Xe máy chính hãng';
+                                  const catalogList = catalogVehicleApi.getAllSync();
+                                  const matchedV = catalogList.find(v => v.tenXe.toLowerCase().includes(vName.toLowerCase()) || vName.toLowerCase().includes(v.tenXe.toLowerCase())) ||
+                                    showroomVehicles.find(v => v.tenXe.toLowerCase().includes(vName.toLowerCase()) || vName.toLowerCase().includes(v.tenXe.toLowerCase()));
+                                  const vId = matchedV?.id || (order.thongTinXe as any)?.vehicleId || (vName.toLowerCase().includes('tuscany') ? 'XM042' : 'XM-HD01');
+                                  const vImg = order.thongTinXe?.hinhAnh || matchedV?.hinhAnh || (matchedV as any)?.hinhAnhXe || (vName.toLowerCase().includes('tuscany') ? '/images/Xe/sym_tuscany_150.jpg' : '');
+                                  const existingXeReview = myCustomerFeedbacks.find(f =>
+                                    (f.orderId && f.orderId === order.id) ||
+                                    (f.productId && f.productId === vId && f.orderId === order.id) ||
+                                    (f.productName && f.productName.toLowerCase().trim() === vName.toLowerCase().trim() && (f.orderId === order.id || !f.orderId))
+                                  );
+
+                                  if (existingXeReview) {
+                                    return (
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="px-3 py-1.5 rounded-xl font-bold bg-emerald-950 text-emerald-400 border border-emerald-800 text-xs flex items-center gap-1 shadow font-mono">
+                                          <span>✓</span> <span>Đã đánh giá ({existingXeReview.diemDanhGia}⭐)</span>
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setReviewModalPart({
+                                              partName: vName,
+                                              orderId: order.id,
+                                              productId: vId,
+                                              productImage: vImg || existingXeReview.productImage,
+                                              productType: 'XeMau',
+                                              fromTab: 1,
+                                            });
+                                            setReviewStars(existingXeReview.diemDanhGia);
+                                            setReviewContent(existingXeReview.noiDung);
+                                            setReviewImages(existingXeReview.hinhAnhDinhKem || []);
+                                                                                      }}
+                                          className="px-2.5 py-1.5 rounded-xl font-bold bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs transition cursor-pointer border border-zinc-700"
+                                        >
+                                          ✏️ Sửa
+                                        </button>
+                                      </div>
+                                    );
+                                  }
+
+                                  return (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setReviewModalPart({
+                                          partName: vName,
+                                          orderId: order.id,
+                                          productId: vId,
+                                          productImage: vImg,
+                                          productType: 'XeMau',
+                                          fromTab: 1,
+                                        });
+                                        setReviewStars(5);
+                                        setReviewContent('');
+                                        setReviewImages([]);
+                                                                              }}
+                                      className="px-3 py-1.5 rounded-xl font-bold bg-amber-500 hover:bg-amber-600 text-white transition cursor-pointer flex items-center gap-1 shadow"
+                                    >
+                                      <span>⭐ Đánh giá xe</span>
+                                    </button>
+                                  );
+                                })()}
                               </div>
                             </div>
                           </div>
@@ -2711,14 +3370,14 @@ export default function CustomerDashboard({
                           <div key={d} className="font-bold text-red-500 py-1">{d}</div>
                         ))}
                         {Array.from({ length: 31 }, (_, i) => i + 1).map(day => {
-                          // LH06 & LH11: Loại trừ lịch hủy/từ chối, hiển thị rõ ràng từng loại lịch
+                          // LH06 & LH11 & Fix 8: Hiển thị cả lịch đã xác nhận và lịch đã hoàn tất (nhưng làm mờ)
                           const dayAppts = myAppts.filter(a => {
-                            // LH12: Calendar chỉ hiển thị các lịch hẹn Đã xác nhận (DaXacNhan)
-                            if (a.trangThai !== 'DaXacNhan') return false;
+                            if (a.trangThai !== 'DaXacNhan' && a.trangThai !== 'DaHoanThanh' && a.trangThai !== 'HoanThanh') return false;
                             const dNum = parseInt((a.ngayHen || '').split('-')[2] || '0', 10);
                             return dNum === day;
                           });
                           const hasAppt = dayAppts.length > 0;
+                          const hasActiveAppt = dayAppts.some(a => a.trangThai === 'DaXacNhan');
                           const isSelected = selectedCalendarDay === day;
 
                           return (
@@ -2728,22 +3387,27 @@ export default function CustomerDashboard({
                               className={`p-2 rounded-2xl border text-xs font-bold transition flex flex-col justify-start min-h-[74px] sm:min-h-[82px] relative cursor-pointer select-none ${
                                 isSelected
                                   ? 'bg-red-950/60 border-red-500 ring-2 ring-red-500/40 text-white shadow-md'
-                                  : hasAppt
+                                  : hasActiveAppt
                                   ? 'bg-[#1e1416] border-red-600/90 hover:border-red-500 text-white shadow-xs'
+                                  : hasAppt
+                                  ? 'bg-zinc-900/60 border-zinc-700/60 hover:border-zinc-500 text-zinc-400'
                                   : 'bg-[#18181b] border-zinc-800/80 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
                               }`}
                             >
                               <div className="flex items-center justify-between w-full">
-                                <span className={hasAppt ? 'text-white font-extrabold text-xs' : 'text-zinc-400 text-xs'}>{day}</span>
-                                {hasAppt && (
+                                <span className={hasActiveAppt ? 'text-white font-extrabold text-xs' : hasAppt ? 'text-zinc-400 text-xs' : 'text-zinc-500 text-xs'}>{day}</span>
+                                {hasActiveAppt ? (
                                   <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                                )}
+                                ) : hasAppt ? (
+                                  <span className="w-1.5 h-1.5 rounded-full bg-zinc-500" />
+                                ) : null}
                               </div>
 
                               {/* LH11: Hiển thị badge các loại lịch đã đặt trong ngày */}
                               {hasAppt && (
                                 <div className="w-full space-y-1 mt-1.5 overflow-hidden">
                                   {dayAppts.map(appt => {
+                                    const isDone = appt.trangThai === 'DaHoanThanh' || appt.trangThai === 'HoanThanh';
                                     let badgeClass = 'bg-red-950/80 border-red-600/70 text-red-300';
                                     let shortLabel = 'Lái thử';
                                     if (appt.loaiDichVu === 'BaoDuong') {
@@ -2760,13 +3424,17 @@ export default function CustomerDashboard({
                                       shortLabel = 'Nhận xe';
                                     }
 
+                                    if (isDone) {
+                                      badgeClass = 'opacity-50 line-through bg-zinc-900/60 border-zinc-700/60 text-zinc-400';
+                                    }
+
                                     return (
                                       <div
                                         key={appt.id}
-                                        title={`${shortLabel} lúc ${appt.gioHen || '08:30'} - ${appt.tenXe || ''}`}
+                                        title={`${isDone ? '[ĐÃ HOÀN TẤT] ' : ''}${shortLabel} lúc ${appt.gioHen || '08:30'} - ${appt.tenXe || ''}`}
                                         className={`text-[9px] sm:text-[10px] font-mono px-1 py-0.5 rounded border truncate text-center leading-tight shadow-2xs ${badgeClass}`}
                                       >
-                                        {shortLabel} - {appt.gioHen || '08:30'}
+                                        {isDone ? `✓ ${shortLabel}` : `${shortLabel} - ${appt.gioHen || '08:30'}`}
                                       </div>
                                     );
                                   })}
@@ -2794,13 +3462,13 @@ export default function CustomerDashboard({
                             onClick={() => setSelectedCalendarDay(null)}
                             className="text-[11px] font-mono text-zinc-400 hover:text-white underline cursor-pointer"
                           >
-                            Xem tất cả ({myAppts.filter(a => a.trangThai !== 'DaHuy' && a.trangThai !== 'TuChoi' && a.trangThai !== 'DaHoanThanh' && a.trangThai !== 'HoanThanh').length})
+                            Xem tất cả ({myAppts.filter(a => a.trangThai !== 'DaHuy' && a.trangThai !== 'TuChoi').length})
                           </button>
                         )}
                       </div>
 
                       {(() => {
-                        const validAppts = myAppts.filter(a => a.trangThai !== 'DaHuy' && a.trangThai !== 'TuChoi' && a.trangThai !== 'DaHoanThanh' && a.trangThai !== 'HoanThanh');
+                        const validAppts = myAppts.filter(a => a.trangThai !== 'DaHuy' && a.trangThai !== 'TuChoi');
                         const displayedAppts = selectedCalendarDay !== null
                           ? validAppts.filter(a => parseInt((a.ngayHen || '').split('-')[2] || '0', 10) === selectedCalendarDay)
                           : validAppts;
@@ -3118,8 +3786,6 @@ export default function CustomerDashboard({
                       const custPhone = currentCustomer.soDienThoai ? currentCustomer.soDienThoai.replace(/\D/g, '') : '';
                       const cPhone = c.soDienThoai ? c.soDienThoai.replace(/\D/g, '') : '';
                       if (custPhone && cPhone && custPhone === cPhone) return true;
-                      if (c.khachHang && currentCustomer.hoTen && c.khachHang.trim().toLowerCase() === currentCustomer.hoTen.trim().toLowerCase()) return true;
-                      if (c.id === 'YCBH00156' && (currentCustomer.id === 'KH001' || custNum === 1)) return true;
                       return false;
                     });
 
@@ -3157,10 +3823,9 @@ export default function CustomerDashboard({
                     if (serviceHistSubTab === 'BaoHanh' && a.loaiDichVu !== 'BaoHanh') return false;
                     if (serviceHistSubTab === 'NhanXe' && a.loaiDichVu !== 'NhanXe') return false;
                     if (serviceSearch.trim()) {
-                      const q = serviceSearch.toLowerCase();
-                      const matchPlate = (a.bienSo || '').toLowerCase().includes(q);
-                      const matchName = (a.tenXe || '').toLowerCase().includes(q);
-                      const matchId = (a.id || '').toLowerCase().includes(q);
+                      const matchPlate = matchVietnameseSearch(a.bienSo || '', serviceSearch);
+                      const matchName = matchVietnameseSearch(a.tenXe || '', serviceSearch);
+                      const matchId = matchVietnameseSearch(a.id || '', serviceSearch);
                       if (!matchPlate && !matchName && !matchId) return false;
                     }
                     return true;
@@ -3297,7 +3962,7 @@ export default function CustomerDashboard({
                   {/* Grouped by Owned Vehicles (Chuẩn Ảnh 7) */}
                   {(() => {
                     const unlinkedInsurances = myInsurances.filter(
-                      ins => !myVehicles.some(veh => veh.id === ins.vehicleId || (veh.bienSo && ins.bienSo === veh.bienSo))
+                      ins => !myVehicles.some(veh => veh.id === ins.vehicleId || findMatchingInsurance(veh, myInsurances)?.id === ins.id)
                     );
 
                     if (myVehicles.length === 0 && unlinkedInsurances.length === 0) {
@@ -3321,7 +3986,7 @@ export default function CustomerDashboard({
                         {/* 1. Các phương tiện trong hồ sơ */}
                         {myVehicles.map(veh => {
                           const vehInsurances = myInsurances.filter(
-                            ins => ins.vehicleId === veh.id || (veh.bienSo && ins.bienSo === veh.bienSo)
+                            ins => ins.vehicleId === veh.id || findMatchingInsurance(veh, myInsurances)?.id === ins.id
                           );
 
                           return (
@@ -3334,7 +3999,7 @@ export default function CustomerDashboard({
                                 <div className="flex items-center gap-4">
                                   <div className="w-16 h-12 rounded-xl overflow-hidden bg-zinc-900 shrink-0">
                                     <img
-                                      src={veh.hinhAnh || 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=800&auto=format&fit=crop&q=80'}
+                                      src={getVehicleDisplayImage(veh)}
                                       alt={veh.tenXe}
                                       className="w-full h-full object-cover"
                                     />
@@ -3516,9 +4181,9 @@ export default function CustomerDashboard({
                   {/* 3 Sub-tabs */}
                   <div className="flex items-center gap-1 p-1 rounded-2xl bg-[#141416] border border-zinc-800 overflow-x-auto self-start sm:self-auto">
                     {[
-                      { key: 'ChoDanhGia', label: '✍️ Chờ đánh giá' },
+                      { key: 'ChoDanhGia', label: '✍️ Chờ đánh giá xe & phụ tùng' },
                       { key: 'DaDanhGia', label: '☑️ Đã đánh giá' },
-                      { key: 'KhaoSatHeThong', label: '📊 Khảo sát hệ thống' },
+                      { key: 'KhaoSatHeThong', label: '📋 Khảo sát mua xe & Dịch vụ' },
                     ].map(st => (
                       <button
                         key={st.key}
@@ -3533,7 +4198,7 @@ export default function CustomerDashboard({
                   </div>
                 </div>
 
-                {/* Sub-tab 1: Chờ đánh giá (ĐG02: Quét động theo tài khoản) */}
+                {/* Sub-tab 1: Chờ đánh giá (Chỉ đơn hàng mua trên Website) */}
                 {surveySubTab === 'ChoDanhGia' && (() => {
                   const waitingReviews: Array<{
                     id: string;
@@ -3544,101 +4209,84 @@ export default function CustomerDashboard({
                     subTitle: string;
                     type: 'PhuTung' | 'XeMau' | 'DichVu';
                     productId?: string;
+                    image: string;
                   }> = [];
 
-                  // Đơn mua xe hoặc phụ tùng đã hoàn tất
+                  // Chỉ lấy những đơn hàng mua trên Website (loại bỏ đơn tạo tại quầy offline)
+                  const isOnlineOrder = (o: any) => {
+                    const kb = (o.kenhBan || (o as any).channel || '').toLowerCase();
+                    if (kb === 'taiquay' || kb === 'cuahang' || kb === 'offline') return false;
+                    return true;
+                  };
+
+                  // Đơn mua xe hoặc phụ tùng đã HOÀN THÀNH / ĐÃ GIAO (mua trên website)
                   myOrders
-                    .filter(o => o.trangThai === 'HoanThanh' || o.trangThai === 'DaGiao' || (o as any).trangThaiDonHang === 'HoanThanh')
+                    .filter(o => isOnlineOrder(o) && (o.trangThai === 'HoanThanh' || o.trangThai === 'DaGiao' || (o as any).trangThaiDonHang === 'HoanThanh'))
                     .forEach(o => {
                       if (o.thongTinXe) {
                         const name = o.thongTinXe.tenXe || 'Mẫu xe mới';
                         const already = myCustomerFeedbacks.some(f => 
                           (f.orderId && f.orderId === o.id) ||
-                          (f.productId && (f.productId === o.id || f.productId === (o.thongTinXe as any)?.vehicleId)) ||
-                          (f.productName && name && (
-                            f.productName.toLowerCase().trim() === name.toLowerCase().trim() ||
-                            f.productName.toLowerCase().includes(name.toLowerCase()) ||
-                            name.toLowerCase().includes(f.productName.toLowerCase()) ||
-                            f.productName.replace(/abs|cbs|smartkey|2025|2026|\(|\)/gi, '').trim() === name.replace(/abs|cbs|smartkey|2025|2026|\(|\)/gi, '').trim()
-                          ))
+                          (f.productId && (f.productId === o.id || f.productId === (o.thongTinXe as any)?.vehicleId || f.productId === (o.thongTinXe as any)?.maXe))
                         );
                         if (!already) {
+                          const catalogMatch = catalogVehicleApi.getAllSync().find(v => v.tenXe.toLowerCase().includes(name.toLowerCase()) || name.toLowerCase().includes(v.tenXe.toLowerCase()));
+                          const xeImg = o.thongTinXe.hinhAnh || catalogMatch?.hinhAnh || (name.toLowerCase().includes('air') ? '/images/Xe/honda_air_blade_160_abs.jpg' : (name.toLowerCase().includes('tuscany') ? '/images/Xe/sym_tuscany_150.jpg' : '/images/Xe/honda_sh_160i_abs_2024.jpg'));
                           waitingReviews.push({
                             id: `order-xe-${o.id}`,
                             orderId: o.id,
                             badge: 'XE MÁY CHÍNH HÃNG',
                             badgeColor: 'text-purple-400',
                             title: name,
-                            subTitle: `Đơn hàng #${o.id} · Giao nhận xe thành công`,
+                            subTitle: `Đơn hàng #${o.id} · ${o.trangThai === 'HoanThanh' || o.trangThai === 'DaGiao' ? 'Giao nhận xe thành công' : 'Đã mua thành công'}`,
                             type: 'XeMau',
+                            productId: catalogMatch?.id || (o.thongTinXe as any)?.vehicleId,
+                            image: xeImg,
                           });
                         }
                       }
-                      if (o.items && o.items.length > 0) {
+                      if (o.loaiDon !== 'Xe' && !o.thongTinXe && !String(o.id).includes('XE') && o.items && o.items.length > 0) {
                         o.items.forEach((it: any, idx: number) => {
                           const name = it.tenSanPham || it.tenPhuTung || `Phụ tùng #${idx + 1}`;
+                          const partId = (it as any).id || (it as any).maPhuTung || undefined;
                           const already = myCustomerFeedbacks.some(f => 
-                            (f.orderId && f.orderId === o.id) ||
-                            (f.productId && (f.productId === (it.id || o.id))) ||
-                            (f.productName && name && (
-                              f.productName.toLowerCase().trim() === name.toLowerCase().trim() ||
-                              f.productName.toLowerCase().includes(name.toLowerCase()) ||
-                              name.toLowerCase().includes(f.productName.toLowerCase())
-                            ))
+                            (f.orderId && f.orderId === o.id && (f.productId === partId || !f.productId)) ||
+                            (f.orderId && f.orderId === o.id && f.productName && f.productName.toLowerCase().trim() === name.toLowerCase().trim())
                           );
                           if (!already) {
+                            const partImg = it.hinhAnh || (name.toLowerCase().includes('nhớt') ? 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=500' : (name.toLowerCase().includes('phanh') ? 'https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=500' : '/images/phutung/dan_ao_ab_125_den_nham.webp'));
                             waitingReviews.push({
                               id: `order-pt-${o.id}-${idx}`,
                               orderId: o.id,
                               badge: 'SẢN PHẨM PHỤ TÙNG',
                               badgeColor: 'text-blue-400',
                               title: name,
-                              subTitle: `Đơn hàng #${o.id} · Hoàn tất ngày ${o.ngayDat || 'gần đây'}`,
+                              subTitle: `Đơn hàng #${o.id} · Đặt mua ngày ${o.ngayDat || 'gần đây'}`,
                               type: 'PhuTung',
-                              productId: (it as any).id || (it as any).maPhuTung || undefined,
+                              productId: partId,
+                              image: partImg,
                             });
                           }
                         });
                       }
                     });
 
-                  // Lịch hẹn bảo dưỡng/sửa chữa đã hoàn thành
-                  myAppts
-                    .filter(a => a.trangThai === 'DaHoanThanh' || a.trangThai === 'HoanThanh' || (a as any).trangThai === 'DaXong')
-                    .forEach(a => {
-                      const svcName = a.loaiDichVu === 'BaoDuong' ? `Bảo dưỡng định kỳ xe ${a.tenXe || ''}` :
-                        a.loaiDichVu === 'BaoHanh' ? `Bảo hành kỹ thuật xe ${a.tenXe || ''}` :
-                        a.loaiDichVu === 'NhanXe' ? `Bàn giao xe mới ${a.tenXe || ''}` :
-                        `Sửa chữa xe ${a.tenXe || ''}`;
-                      const already = myCustomerFeedbacks.some(f => 
-                        (f.orderId && f.orderId === a.id) ||
-                        (f.productId && f.productId === a.id) ||
-                        (f.productName && svcName && (
-                          f.productName.toLowerCase().trim() === svcName.toLowerCase().trim() ||
-                          f.productName.toLowerCase().includes(svcName.toLowerCase()) ||
-                          svcName.toLowerCase().includes(f.productName.toLowerCase())
-                        ))
-                      );
-                      if (!already) {
-                        waitingReviews.push({
-                          id: `appt-${a.id}`,
-                          orderId: a.id,
-                          badge: a.loaiDichVu === 'BaoDuong' ? 'DỊCH VỤ BẢO DƯỠNG' : a.loaiDichVu === 'BaoHanh' ? 'DỊCH VỤ BẢO HÀNH' : 'DỊCH VỤ SHOWROOM',
-                          badgeColor: 'text-amber-400',
-                          title: svcName,
-                          subTitle: `Lịch hẹn #${a.id} · Đã hoàn tất lúc ${a.gioHen || '09:00'} ngày ${a.ngayHen}`,
-                          type: 'DichVu',
-                        });
-                      }
-                    });
+                  const countWaitingXe = waitingReviews.filter(w => w.type === 'XeMau').length;
+                  const countWaitingPt = waitingReviews.filter(w => w.type === 'PhuTung').length;
+
+                  const displayedWaiting = waitingReviews.filter(w => {
+                    if (waitingTypeFilter === 'XeMau') return w.type === 'XeMau';
+                    if (waitingTypeFilter === 'PhuTung') return w.type === 'PhuTung';
+                    return true;
+                  });
 
                   if (waitingReviews.length === 0) {
                     return (
                       <div className="py-12 text-center rounded-3xl bg-[#141416] border border-zinc-800 text-zinc-500">
                         <div className="text-4xl mb-2">⭐</div>
-                        <h4 className="text-sm font-bold text-zinc-300">Bạn chưa có dịch vụ hoặc sản phẩm nào chờ đánh giá</h4>
+                        <h4 className="text-sm font-bold text-zinc-300">Bạn chưa có đơn hàng nào chờ đánh giá</h4>
                         <p className="text-xs text-zinc-500 mt-1 max-w-md mx-auto">
-                          Khi đơn hàng hoàn tất hoặc sau khi bạn làm dịch vụ tại xưởng Motoshop, các mục chờ đánh giá sẽ hiển thị tại đây.
+                          Chỉ những đơn hàng mua trên Website khi hoàn tất giao hàng thành công sẽ hiển thị tại đây để bạn gửi đánh giá.
                         </p>
                       </div>
                     );
@@ -3646,51 +4294,129 @@ export default function CustomerDashboard({
 
                   return (
                     <div className="space-y-4">
-                      {waitingReviews.map(item => (
-                        <div
-                          key={item.id}
-                          className="p-5 rounded-3xl bg-[#141416] border border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-zinc-700 transition"
+                      {/* Phân chia 2 phần: Đánh giá Xe & Đánh giá Phụ Tùng */}
+                      <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
+                        <button
+                          type="button"
+                          onClick={() => setWaitingTypeFilter('All')}
+                          className={`px-3.5 py-1.5 rounded-xl font-bold transition cursor-pointer text-xs border ${
+                            waitingTypeFilter === 'All'
+                              ? 'bg-red-700 text-white border-red-600 shadow-sm'
+                              : 'bg-[#18181b] text-zinc-400 hover:text-white border-zinc-800'
+                          }`}
                         >
-                          <div className="space-y-1">
-                            <span className={`text-[10px] font-mono font-bold uppercase ${item.badgeColor}`}>
-                              {item.badge}
-                            </span>
-                            <h4 className="font-extrabold text-base text-white">{item.title}</h4>
-                            <div className="text-xs text-zinc-400">{item.subTitle}</div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              let pId = item.productId || item.orderId;
-                              if (item.type === 'XeMau') {
-                                const matchedV = showroomVehicles.find(v => v.tenXe.toLowerCase().includes(item.title.toLowerCase()) || item.title.toLowerCase().includes(v.tenXe.toLowerCase()));
-                                if (matchedV) pId = matchedV.id;
-                              } else if (item.type === 'PhuTung') {
-                                const matchedP = mockParts.find(p => p.tenSanPham.toLowerCase().includes(item.title.toLowerCase()) || item.title.toLowerCase().includes(p.tenSanPham.toLowerCase()));
-                                if (matchedP) pId = matchedP.id;
-                              }
-                              setReviewModalPart({
-                                partName: item.title,
-                                orderId: item.orderId,
-                                productId: pId,
-                                productType: item.type,
-                              });
-                              setReviewStars(5);
-                              setReviewContent('');
-                              setReviewImages([]);
-                              setNewImageUrl('');
-                            }}
-                            className="px-5 py-2.5 rounded-xl bg-red-700 hover:bg-red-800 text-white text-xs font-bold uppercase transition cursor-pointer shadow shrink-0"
-                          >
-                            VIẾT ĐÁNH GIÁ (5★)
-                          </button>
+                          Tất cả ({waitingReviews.length})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setWaitingTypeFilter('XeMau')}
+                          className={`px-3.5 py-1.5 rounded-xl font-bold transition cursor-pointer text-xs border flex items-center gap-1.5 ${
+                            waitingTypeFilter === 'XeMau'
+                              ? 'bg-red-700 text-white border-red-600 shadow-sm'
+                              : 'bg-[#18181b] text-zinc-400 hover:text-white border-zinc-800'
+                          }`}
+                        >
+                          <span>🏍️</span> Đánh giá xe ({countWaitingXe})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setWaitingTypeFilter('PhuTung')}
+                          className={`px-3.5 py-1.5 rounded-xl font-bold transition cursor-pointer text-xs border flex items-center gap-1.5 ${
+                            waitingTypeFilter === 'PhuTung'
+                              ? 'bg-red-700 text-white border-red-600 shadow-sm'
+                              : 'bg-[#18181b] text-zinc-400 hover:text-white border-zinc-800'
+                          }`}
+                        >
+                          <span>⚙️</span> Đánh giá phụ tùng ({countWaitingPt})
+                        </button>
+                      </div>
+
+                      {displayedWaiting.length === 0 ? (
+                        <div className="py-8 text-center rounded-2xl bg-[#141416] border border-zinc-800 text-zinc-500 text-xs">
+                          Không có sản phẩm nào thuộc mục này chờ đánh giá.
                         </div>
-                      ))}
+                      ) : (
+                        displayedWaiting.map(item => {
+                          const isReviewHighlighted = highlightTarget?.type === 'review' && (
+                            !highlightTarget.id ||
+                            item.id === highlightTarget.id ||
+                            item.orderId === highlightTarget.id ||
+                            (highlightTarget.id && item.id.includes(highlightTarget.id))
+                          );
+
+                          return (
+                            <div
+                              key={item.id}
+                              id={`waiting-review-${item.id}`}
+                              className={`p-5 rounded-3xl bg-[#141416] border flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition ${
+                                isReviewHighlighted
+                                  ? 'ring-2 ring-amber-500 bg-amber-950/25 border-amber-500 shadow-lg shadow-amber-500/20 animate-pulse'
+                                  : 'border-zinc-800 hover:border-zinc-700'
+                              }`}
+                            >
+                              <div className="flex items-center gap-3.5 min-w-0">
+                                <img
+                                  src={item.image}
+                                  alt={item.title}
+                                  className="w-14 h-14 rounded-2xl object-contain bg-zinc-900 border border-zinc-700/80 p-1 shrink-0 shadow-sm"
+                                />
+                                <div className="space-y-1 min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className={`text-[10px] font-mono font-bold uppercase ${item.badgeColor}`}>
+                                      {item.badge}
+                                    </span>
+                                    <span className="text-[10px] text-emerald-400 font-bold bg-emerald-950/40 border border-emerald-800/40 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                                      Đã mua trên website
+                                    </span>
+                                  </div>
+                                  <h4 className="font-extrabold text-base text-white truncate">{item.title}</h4>
+                                  <div className="text-xs text-zinc-400">{item.subTitle}</div>
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  let pId = item.productId || item.orderId;
+                                  let pImg = item.image;
+                                  if (item.type === 'XeMau') {
+                                    const matchedV = catalogVehicleApi.getAllSync().find(v => v.tenXe.toLowerCase().includes(item.title.toLowerCase()) || item.title.toLowerCase().includes(v.tenXe.toLowerCase())) ||
+                                      showroomVehicles.find(v => v.tenXe.toLowerCase().includes(item.title.toLowerCase()) || item.title.toLowerCase().includes(v.tenXe.toLowerCase()));
+                                    if (matchedV) {
+                                      pId = matchedV.id;
+                                      pImg = matchedV.hinhAnh || pImg;
+                                    }
+                                  } else if (item.type === 'PhuTung') {
+                                    const matchedP = mockParts.find(p => p.tenSanPham.toLowerCase().includes(item.title.toLowerCase()) || item.title.toLowerCase().includes(p.tenSanPham.toLowerCase()));
+                                    if (matchedP) {
+                                      pId = matchedP.id;
+                                      pImg = matchedP.hinhAnh || pImg;
+                                    }
+                                  }
+                                  setReviewModalPart({
+                                    partName: item.title,
+                                    orderId: item.orderId || '',
+                                    productId: pId,
+                                    productImage: pImg,
+                                    productType: item.type,
+                                  });
+                                  setReviewStars(5);
+                                  setReviewContent('');
+                                  setReviewImages([]);
+                                                                  }}
+                                className="px-5 py-2.5 rounded-xl bg-red-700 hover:bg-red-800 text-white text-xs font-bold uppercase transition cursor-pointer shadow shrink-0"
+                              >
+                                VIẾT ĐÁNH GIÁ (5★)
+                              </button>
+                            </div>
+                          );
+                        })
+                      )}
                     </div>
                   );
                 })()}
 
-                {/* Sub-tab 2: Đã đánh giá (ĐG02: Lọc đúng tài khoản & hỗ trợ hiển thị ảnh) */}
+                {/* Sub-tab 2: Đã đánh giá (Có hình ảnh, Phân loại Xe & Phụ tùng, và Phản hồi của Shop) */}
                 {surveySubTab === 'DaDanhGia' && (() => {
                   if (myCustomerFeedbacks.length === 0) {
                     return (
@@ -3698,79 +4424,278 @@ export default function CustomerDashboard({
                         <div className="text-4xl mb-2">📝</div>
                         <h4 className="text-sm font-bold text-zinc-300">Bạn chưa gửi đánh giá nào</h4>
                         <p className="text-xs text-zinc-500 mt-1 max-w-md mx-auto">
-                          Những đánh giá bạn gửi cho sản phẩm và dịch vụ sẽ được lưu trữ và hiển thị tại đây.
+                          Những đánh giá bạn gửi cho sản phẩm và dịch vụ đã mua trên website sẽ được lưu trữ và hiển thị tại đây.
                         </p>
                       </div>
                     );
                   }
 
+                  const countDaXe = myCustomerFeedbacks.filter(f => f.productType === 'XeMau' || f.xeDangDung || f.productName?.toLowerCase().includes('honda') || f.productName?.toLowerCase().includes('sh') || f.productName?.toLowerCase().includes('xe')).length;
+                  const countDaPt = myCustomerFeedbacks.filter(f => f.productType === 'PhuTung' || (!f.xeDangDung && !f.productType) || f.productName?.toLowerCase().includes('nhớt') || f.productName?.toLowerCase().includes('phụ')).length;
+
+                  const filteredFeedbacks = myCustomerFeedbacks.filter(f => {
+                    if (myReviewRatingFilter !== 'All' && (f.diemDanhGia || 5) !== myReviewRatingFilter) return false;
+                    if (myReviewHasImageFilter && (!f.hinhAnhDinhKem || f.hinhAnhDinhKem.length === 0)) return false;
+                    if (myReviewTypeFilter !== 'All') {
+                      if (myReviewTypeFilter === 'PhuTung') {
+                        const isPart = f.productType === 'PhuTung' || f.productId?.startsWith('PT') || f.productName?.toLowerCase().includes('nhớt') || f.productName?.toLowerCase().includes('lọc') || f.productName?.toLowerCase().includes('bugi') || f.productName?.toLowerCase().includes('phanh');
+                        if (!isPart) return false;
+                      } else if (myReviewTypeFilter === 'XeMau') {
+                        const isVehicle = f.productType === 'XeMau' || f.productId?.startsWith('XM') || f.productId?.startsWith('V') || f.xeDangDung || f.productName?.toLowerCase().includes('honda') || f.productName?.toLowerCase().includes('yamaha') || f.productName?.toLowerCase().includes('sh') || f.productName?.toLowerCase().includes('vision') || f.productName?.toLowerCase().includes('air blade');
+                        if (!isVehicle) return false;
+                      } else if (myReviewTypeFilter === 'DichVu') {
+                        const isService = f.loaiDanhGia === 'DichVu' || f.productType === 'DichVu';
+                        if (!isService) return false;
+                      }
+                    }
+                    return true;
+                  });
+
                   return (
                     <div className="space-y-4">
-                      {myCustomerFeedbacks.map(f => {
-                        const isHighlighted = highlightTarget?.type === 'review' && (
-                          !highlightTarget.id ||
-                          f.id === highlightTarget.id ||
-                          f.id.toLowerCase().includes((highlightTarget.id || '').toLowerCase())
-                        );
+                      {/* BỘ LỌC ĐÁNH GIÁ (Số sao 1-5, Có hình ảnh, Phân loại Xe & Phụ tùng) */}
+                      <div className="p-4 rounded-2xl bg-[#141416] border border-zinc-800 space-y-3 shadow-md">
+                        <div className="flex items-center justify-between flex-wrap gap-2 text-xs">
+                          <span className="font-bold text-zinc-300 flex items-center gap-1.5 uppercase font-mono tracking-wider">
+                            <span>🔍</span> BỘ LỌC ĐÁNH GIÁ CỦA TÔI
+                          </span>
+                          {(myReviewRatingFilter !== 'All' || myReviewHasImageFilter || myReviewTypeFilter !== 'All') && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setMyReviewRatingFilter('All');
+                                setMyReviewHasImageFilter(false);
+                                setMyReviewTypeFilter('All');
+                              }}
+                              className="text-[11px] text-red-400 hover:text-red-300 font-mono underline cursor-pointer"
+                            >
+                              ✕ Xóa tất cả bộ lọc
+                            </button>
+                          )}
+                        </div>
 
-                        return (
-                          <div
-                            key={f.id}
-                            id={`target-review-${f.id}`}
-                            className={`p-5 rounded-3xl bg-[#141416] border space-y-3 transition ${
-                              isHighlighted
-                                ? 'ring-2 ring-red-500 bg-red-950/20 shadow-lg shadow-red-900/30 animate-pulse border-red-500'
-                                : 'border-zinc-800'
+                        {/* Hàng 1: Lọc theo Số sao (1 - 5 sao) */}
+                        <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none text-xs">
+                          <span className="text-[11px] text-zinc-500 font-mono shrink-0">Số sao:</span>
+                          <button
+                            type="button"
+                            onClick={() => setMyReviewRatingFilter('All')}
+                            className={`px-3 py-1.5 rounded-xl font-bold transition cursor-pointer whitespace-nowrap text-xs border ${
+                              myReviewRatingFilter === 'All'
+                                ? 'bg-red-700 text-white border-red-600 shadow-sm'
+                                : 'bg-[#18181b] text-zinc-400 hover:text-white border-zinc-800'
                             }`}
                           >
-                            <div className="flex items-center justify-between flex-wrap gap-2">
-                              <div>
-                                <h4 className="font-extrabold text-sm text-white">{f.productName || 'Sản phẩm / Dịch vụ'}</h4>
-                                <div className="text-[11px] text-zinc-500 font-mono mt-0.5">
-                                  Mã phản hồi: #{f.id} · Gửi ngày: {f.ngayGui || 'Hôm nay'}
+                            Tất cả ({myCustomerFeedbacks.length})
+                          </button>
+                          {[5, 4, 3, 2, 1].map(stars => {
+                            const count = myCustomerFeedbacks.filter(f => (f.diemDanhGia || 5) === stars).length;
+                            return (
+                              <button
+                                key={stars}
+                                type="button"
+                                onClick={() => setMyReviewRatingFilter(stars as any)}
+                                className={`px-3 py-1.5 rounded-xl font-bold transition cursor-pointer whitespace-nowrap text-xs flex items-center gap-1 border ${
+                                  myReviewRatingFilter === stars
+                                    ? 'bg-amber-500 text-zinc-950 border-amber-400 shadow-sm font-extrabold'
+                                    : 'bg-[#18181b] text-zinc-400 hover:text-white border-zinc-800'
+                                }`}
+                              >
+                                <span>{stars}★</span>
+                                <span className="font-mono text-[11px]">({count})</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {/* Hàng 2: Lọc Có hình ảnh & Loại sản phẩm (Đánh giá xe / Phụ tùng) */}
+                        <div className="flex items-center gap-2 flex-wrap text-xs pt-2 border-t border-zinc-800/60">
+                          <span className="text-[11px] text-zinc-500 font-mono shrink-0">Tiêu chí:</span>
+                          <button
+                            type="button"
+                            onClick={() => setMyReviewHasImageFilter(!myReviewHasImageFilter)}
+                            className={`px-3 py-1.5 rounded-xl font-bold transition cursor-pointer text-xs flex items-center gap-1.5 border ${
+                              myReviewHasImageFilter
+                                ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
+                                : 'bg-[#18181b] text-zinc-400 hover:text-white border-zinc-800'
+                            }`}
+                          >
+                            <span>📷</span>
+                            <span>Có hình ảnh</span>
+                            <span className="font-mono text-[11px]">
+                              ({myCustomerFeedbacks.filter(f => f.hinhAnhDinhKem && f.hinhAnhDinhKem.length > 0).length})
+                            </span>
+                          </button>
+
+                          <div className="h-4 w-px bg-zinc-800 mx-1 hidden sm:block" />
+
+                          <span className="text-[11px] text-zinc-500 font-mono shrink-0">Phân loại:</span>
+                          {[
+                            { key: 'All', label: `Tất cả (${myCustomerFeedbacks.length})` },
+                            { key: 'XeMau', label: `🏍️ Đánh giá xe (${countDaXe})` },
+                            { key: 'PhuTung', label: `⚙️ Đánh giá phụ tùng (${countDaPt})` },
+                          ].map(t => (
+                            <button
+                              key={t.key}
+                              type="button"
+                              onClick={() => setMyReviewTypeFilter(t.key as any)}
+                              className={`px-3 py-1.5 rounded-xl font-bold transition cursor-pointer text-xs border ${
+                                myReviewTypeFilter === t.key
+                                  ? 'bg-zinc-200 text-zinc-950 border-zinc-100 font-extrabold shadow'
+                                  : 'bg-[#18181b] text-zinc-400 hover:text-white border-zinc-800'
+                              }`}
+                            >
+                              {t.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Hiển thị kết quả rỗng khi lọc không khớp */}
+                      {filteredFeedbacks.length === 0 ? (
+                        <div className="py-12 text-center rounded-3xl bg-[#141416] border border-zinc-800 text-zinc-500">
+                          <div className="text-3xl mb-2">🔍</div>
+                          <h4 className="text-sm font-bold text-zinc-300">Không tìm thấy đánh giá nào phù hợp</h4>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMyReviewRatingFilter('All');
+                              setMyReviewHasImageFilter(false);
+                              setMyReviewTypeFilter('All');
+                            }}
+                            className="mt-3 px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-bold transition cursor-pointer"
+                          >
+                            Xóa bộ lọc
+                          </button>
+                        </div>
+                      ) : (
+                        filteredFeedbacks.map(f => {
+                          const isHighlighted = highlightTarget?.type === 'review' && (
+                            !highlightTarget.id ||
+                            f.id === highlightTarget.id ||
+                            f.id.toLowerCase().includes((highlightTarget.id || '').toLowerCase())
+                          );
+
+                          const isXe = f.productType === 'XeMau' || (f.productName && f.productName.toLowerCase().includes('xe')) || (f.xeDangDung && !f.productType);
+                          const thumbnail = f.productImage || (isXe ? '/images/Xe/honda_sh_160i_abs_2024.jpg' : (f.productName?.toLowerCase().includes('nhớt') ? 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=500' : (f.productName?.toLowerCase().includes('phanh') ? 'https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=500' : '/images/phutung/dan_ao_ab_125_den_nham.webp')));
+
+                          return (
+                            <div
+                              key={f.id}
+                              id={`target-review-${f.id}`}
+                              className={`p-5 rounded-3xl bg-[#141416] border space-y-3.5 transition-all duration-300 ${
+                                isHighlighted
+                                  ? 'ring-4 ring-red-500 bg-red-950/30 shadow-2xl shadow-red-900/40 border-red-500 animate-pulse'
+                                  : 'border-zinc-800 hover:border-zinc-700'
+                              }`}
+                            >
+                              {/* Thông tin sản phẩm + Đã mua trên website */}
+                              <div className="flex items-center justify-between flex-wrap gap-3">
+                                <div className="flex items-center gap-3.5 min-w-0">
+                                  <img
+                                    src={thumbnail}
+                                    alt={f.productName || 'Sản phẩm'}
+                                    className="w-14 h-14 rounded-2xl object-contain bg-zinc-900 border border-zinc-700/80 p-1 shrink-0 shadow-sm"
+                                  />
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${
+                                        isXe ? 'bg-red-500/20 text-red-400 border-red-500/30' : 'bg-blue-500/20 text-blue-400 border-blue-500/30'
+                                      }`}>
+                                        {isXe ? '🏍️ XE MÁY' : '📦 PHỤ TÙNG'}
+                                      </span>
+                                      <span className="text-[10px] text-emerald-400 font-bold bg-emerald-950/40 border border-emerald-800/40 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                                        Đã mua trên website
+                                      </span>
+                                    </div>
+                                    <h4 className="font-extrabold text-sm text-white mt-1 truncate">{f.productName || 'Sản phẩm Motoshop'}</h4>
+                                    <div className="text-[11px] text-zinc-500 font-mono">
+                                      Mã phản hồi: #{f.id} · Gửi ngày: {f.ngayGui || 'Hôm nay'}
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="text-amber-400 text-sm tracking-wider">
+                                  {'⭐'.repeat(f.diemDanhGia || 5)}
                                 </div>
                               </div>
-                              <div className="text-amber-400 text-sm tracking-wider">
-                                {'⭐'.repeat(f.diemDanhGia || 5)}
+
+                              <p className="text-xs sm:text-sm text-zinc-200 leading-relaxed bg-[#18181b] p-3.5 rounded-2xl border border-zinc-800/80 font-sans">
+                                "{f.noiDung}"
+                              </p>
+
+                              {/* Media hình ảnh đính kèm nếu có */}
+                              {f.hinhAnhDinhKem && f.hinhAnhDinhKem.length > 0 && (
+                                <div className="space-y-1">
+                                  <span className="text-[10px] font-mono text-zinc-400 uppercase font-bold">Hình ảnh đính kèm ({f.hinhAnhDinhKem.length}):</span>
+                                  <div className="flex flex-wrap gap-2 pt-1">
+                                    {f.hinhAnhDinhKem.map((img, i) => (
+                                      <a
+                                        key={i}
+                                        href={img}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="block w-16 h-16 rounded-xl overflow-hidden border border-zinc-700 hover:border-red-500 transition cursor-pointer"
+                                      >
+                                        <img src={img} alt="review" className="w-full h-full object-cover" />
+                                      </a>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Phản hồi từ Showroom / Shop (Nổi bật) */}
+                              {(f.phanHoiCuaShop || f.ghiChuXuLy) && (
+                                <div className="p-3.5 rounded-2xl bg-red-950/25 border border-red-500/35 text-xs text-red-200 shadow-sm">
+                                  <div className="font-bold flex items-center justify-between gap-1.5 text-red-400 mb-1">
+                                    <span className="flex items-center gap-1.5 uppercase font-mono tracking-wider">
+                                      <span>🏢</span> PHẢN HỒI TỪ SHOWROOM MOTOSHOP ({f.nhanVienXuLy || 'CSKH Motoshop'}):
+                                    </span>
+                                    {(f.ngayPhanHoi || f.ngayXuLy) && (
+                                      <span className="text-[10px] text-zinc-400 font-mono font-normal">
+                                        {f.ngayPhanHoi || f.ngayXuLy}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="pl-4 text-zinc-100 leading-relaxed font-sans">{f.phanHoiCuaShop || f.ghiChuXuLy}</div>
+                                </div>
+                              )}
+
+                              {/* Nút liên hệ tư vấn trao đổi về đánh giá */}
+                              <div className="pt-2 flex items-center justify-between flex-wrap gap-2 border-t border-zinc-800/60">
+                                <span className="text-[11px] text-zinc-500 font-mono">
+                                  Cần hỗ trợ tư vấn thêm về đơn hàng hoặc đánh giá này?
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const custId = currentCustomer ? formatCustomerId(currentCustomer.id) : 'KH032';
+                                    const pinned: PinnedChatContext = {
+                                      title: '📌 ĐANG THẢO LUẬN VỀ ĐÁNH GIÁ CỦA BẠN',
+                                      productName: f.productName || 'Phụ tùng / Dịch vụ Motoshop',
+                                      productImage: thumbnail,
+                                      orderId: f.orderId ? `Đơn hàng: #${f.orderId}` : `Mã phản hồi: #${f.id}`,
+                                      rating: f.diemDanhGia || 5,
+                                      comment: f.noiDung || '',
+                                    };
+                                    chatApi.syncPinnedContext(custId, pinned);
+                                    window.dispatchEvent(new CustomEvent('crm-open-chat', {
+                                      detail: {
+                                        pinnedContext: pinned,
+                                        prefillMessage: `Dạ chào Showroom, em cần trao đổi thêm về phản hồi/đánh giá mã #${f.id} của em ạ!`,
+                                      }
+                                    }));
+                                  }}
+                                  className="px-3.5 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+                                >
+                                  <span>💬</span>
+                                  <span>Liên hệ trao đổi với Showroom</span>
+                                </button>
                               </div>
                             </div>
-
-                            <p className="text-xs text-zinc-300 leading-relaxed bg-[#18181b] p-3 rounded-2xl border border-zinc-800/80">
-                              "{f.noiDung}"
-                            </p>
-
-                            {/* ĐG01: Hiển thị hình ảnh đính kèm nếu có */}
-                            {f.hinhAnhDinhKem && f.hinhAnhDinhKem.length > 0 && (
-                              <div className="space-y-1">
-                                <span className="text-[10px] font-mono text-zinc-400 uppercase font-bold">Hình ảnh đính kèm ({f.hinhAnhDinhKem.length}):</span>
-                                <div className="flex flex-wrap gap-2 pt-1">
-                                  {f.hinhAnhDinhKem.map((img, i) => (
-                                    <a
-                                      key={i}
-                                      href={img}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="block w-16 h-16 rounded-xl overflow-hidden border border-zinc-700 hover:border-red-500 transition cursor-pointer"
-                                    >
-                                      <img src={img} alt="review" className="w-full h-full object-cover" />
-                                    </a>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Phản hồi từ Showroom */}
-                            {f.ghiChuXuLy && (
-                              <div className="p-3 rounded-2xl bg-amber-950/20 border border-amber-800/40 text-xs text-amber-200">
-                                <div className="font-bold flex items-center gap-1.5 text-amber-400 mb-0.5">
-                                  <span>💬</span> Phản hồi từ Showroom ({f.nhanVienXuLy || 'CSKH Motoshop'}):
-                                </div>
-                                <div className="pl-4 text-amber-100/90">{f.ghiChuXuLy}</div>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
+                          );
+                        })
+                      )}
                     </div>
                   );
                 })()}
@@ -3969,16 +4894,29 @@ export default function CustomerDashboard({
                 </div>
               </div>
 
-              <div className="pt-2 border-t border-zinc-800">
-                <label className="block text-xs font-bold text-zinc-200 uppercase mb-1 font-mono">
-                  ẢNH CHỤP CÀ VẸT XE (GIẤY ĐĂNG KÝ XE) <span className="text-red-500">*</span>
-                </label>
-                <ImageUploader
-                  value={regForm.anhCaVet}
-                  onChange={url => setRegForm({ ...regForm, anhCaVet: url })}
-                  label="Tải ảnh Cà vẹt xe để đối chiếu"
-                />
-                {regErrors.anhCaVet && <p className="text-[11px] text-red-400 mt-1 font-semibold">⚠️ {regErrors.anhCaVet}</p>}
+              <div className="pt-2 border-t border-zinc-800 space-y-3">
+                <div>
+                  <label className="block text-xs font-bold text-zinc-200 uppercase mb-1 font-mono">
+                    ẢNH CHỤP PHƯƠNG TIỆN THỰC TẾ (ẢNH XE) <span className="text-zinc-400 font-normal">(Tùy chọn)</span>
+                  </label>
+                  <ImageUploader
+                    value={regForm.hinhAnh}
+                    onChange={url => setRegForm({ ...regForm, hinhAnh: url })}
+                    label="Tải ảnh chụp thực tế xe máy của bạn"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-zinc-200 uppercase mb-1 font-mono">
+                    ẢNH CHỤP CÀ VẸT XE (GIẤY ĐĂNG KÝ XE) <span className="text-red-500">*</span>
+                  </label>
+                  <ImageUploader
+                    value={regForm.anhCaVet}
+                    onChange={url => setRegForm({ ...regForm, anhCaVet: url })}
+                    label="Tải ảnh Cà vẹt xe để đối chiếu"
+                  />
+                  {regErrors.anhCaVet && <p className="text-[11px] text-red-400 mt-1 font-semibold">⚠️ {regErrors.anhCaVet}</p>}
+                </div>
               </div>
             </div>
 
@@ -4063,84 +5001,959 @@ export default function CustomerDashboard({
         </div>
       )}
 
-      {/* Modal Xem chi tiết phương tiện */}
-      {selectedDetailVehicle && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-[#18181b] rounded-3xl w-full max-w-lg p-6 shadow-2xl border border-zinc-800 space-y-4 text-white">
-            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-              <h3 className="font-extrabold text-base uppercase">🏍️ CHI TIẾT PHƯƠNG TIỆN</h3>
-              <button onClick={() => setSelectedDetailVehicle(null)} className="text-zinc-400 hover:text-white font-bold">✕</button>
-            </div>
+      {/* Helper mở chi tiết xe chuẩn 2 chế độ (Ảnh 2 & Ảnh 3) */}
+      {selectedDetailVehicle && (() => {
+        // Helpers tính toán thông số xe
+        const getVehicleEngineSpec = (v: Vehicle): string => {
+          if ((v as any).dongCo) return (v as any).dongCo;
+          const name = (v.tenXe || '').toLowerCase();
+          if (name.includes('điện') || name.includes('electric') || name.includes('vinfast') || name.includes('klara') || name.includes('felis') || name.includes('evo') || name.includes('vf')) {
+            return 'Electric (Động cơ điện)';
+          }
+          if (name.includes('160')) return '156.9 cm³ eSP+ 4 van, làm mát bằng dung dịch';
+          if (name.includes('150') || name.includes('155')) return '155 cm³ 4 kỳ, SOHC, VVA';
+          if (name.includes('125')) return '124.8 cm³ eSP, 4 kỳ, 1 xi-lanh';
+          if (name.includes('110')) return '109.2 cm³ eSP, 4 kỳ, làm mát bằng không khí';
+          return 'Xăng 4 kỳ, 1 xi-lanh, phun xăng điện tử PGM-FI';
+        };
 
-            <div className="space-y-2 text-xs">
-              <div className="flex justify-between py-1 border-b border-zinc-800"><span className="text-zinc-400">Tên xe:</span> <strong className="text-white">{selectedDetailVehicle.tenXe}</strong></div>
-              <div className="flex justify-between py-1 border-b border-zinc-800">
-                <span className="text-zinc-400">Biển số:</span>
-                {selectedDetailVehicle.trangThaiDuyetBienSo === 'ChoDuyet' && selectedDetailVehicle.bienSoChoDuyet ? (
-                  <strong className="text-amber-400 font-mono">{selectedDetailVehicle.bienSoChoDuyet} (⏳ Đang chờ duyệt)</strong>
+        const getVehicleVin = (v: Vehicle): string => {
+          if (v.soKhung && v.soKhung.trim()) return v.soKhung.trim();
+          const cleanId = (v.id || '').replace(/\D/g, '') || '88';
+          return `VN7P${cleanId.padStart(13, '8')}`;
+        };
+
+        const getVehicleOdometer = (v: Vehicle): string => {
+          if ((v as any).soKm !== undefined) return `${Number((v as any).soKm).toLocaleString('vi-VN')} km`;
+          if ((v as any).odometer) return `${(v as any).odometer} km`;
+          if ((v as any).soKmDaDi) return `${Number((v as any).soKmDaDi).toLocaleString('vi-VN')} km`;
+          const plate = (v.bienSo || '').toUpperCase().trim();
+          const isChuaBien = !plate || plate === 'CHƯA CÓ BIỂN SỐ' || plate.includes('CHUA CO') || plate.includes('TAM-');
+          if (isChuaBien) return '0 km';
+          const seed = (v.id.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) * 137) % 25000 + 8000;
+          return `${seed.toLocaleString('vi-VN')} km`;
+        };
+
+        // Danh sách dịch vụ xe chuẩn: CHỈ hiển thị lịch sử dịch vụ của CHÍNH XE ĐÓ
+        const getVehicleServicesList = (v: Vehicle) => {
+          const list: any[] = [];
+          const cleanVPlate = (v.bienSo || '').toUpperCase().replace(/[\s\-\.]/g, '');
+          const isChuaCoBien = !cleanVPlate || cleanVPlate === 'CHUACOBIENSO' || cleanVPlate.includes('CHUACO') || cleanVPlate.startsWith('TAM');
+          const vName = (v.tenXe || '').toLowerCase().trim();
+          const vVin = (v.soKhung || '').toUpperCase().trim();
+
+          // Danh sách tổng hợp tất cả lịch hẹn của khách hàng
+          const allApptsPool = appointmentApi.getAllSync();
+          const mergedCustomerAppts = [
+            ...myAppts,
+            ...allApptsPool.filter(a => {
+              const isCust = a.customerId === currentCustomer?.id || 
+                (currentCustomer?.soDienThoai && a.soDienThoai && a.soDienThoai.replace(/\D/g, '') === currentCustomer.soDienThoai.replace(/\D/g, ''));
+              return isCust && !myAppts.some(ma => ma.id === a.id);
+            })
+          ];
+
+          // 1. Từ lịch hẹn hoàn thành của khách hàng (Khớp chính xác xe)
+          mergedCustomerAppts.forEach(a => {
+            if (a.trangThai !== 'DaHoanThanh' && a.trangThai !== 'HoanThanh') return;
+            const cleanAPlate = (a.bienSo || '').toUpperCase().replace(/[\s\-\.]/g, '');
+            const aName = (a.tenXe || '').toLowerCase().trim();
+            const aVin = ((a as any).soKhung || '').toUpperCase().trim();
+
+            const matchPlate = !isChuaCoBien && cleanAPlate && (cleanVPlate === cleanAPlate || cleanAPlate.includes(cleanVPlate) || cleanVPlate.includes(cleanAPlate));
+            const matchVehId = (a as any).vehicleId === v.id;
+            const matchVin = vVin && aVin && vVin === aVin;
+            const matchOrderXe = isChuaCoBien && (a as any).maDonHangXe && myOrders.some(o => o.id === (a as any).maDonHangXe && (o.thongTinXe?.tenXe?.toLowerCase().trim() === vName || o.thongTinXe?.soKhungVIN === vVin));
+            const matchName = vName && aName && (vName.includes(aName) || aName.includes(vName));
+
+            if (matchVehId || matchPlate || matchVin || matchOrderXe || matchName) {
+              const d = a.ngayHen ? new Date(a.ngayHen) : new Date();
+              const formattedDate = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+              const monthYear = `${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+              
+              let loaiBadgeText = 'Bảo dưỡng định kỳ';
+              let loaiKey = a.loaiDichVu || 'BaoDuong';
+              if (a.loaiDichVu === 'BaoDuong') loaiBadgeText = 'Bảo dưỡng (Định kỳ)';
+              else if (a.loaiDichVu === 'SuaChua') loaiBadgeText = 'Sửa chữa phụ tùng';
+              else if (a.loaiDichVu === 'BaoHanh') loaiBadgeText = 'Bảo hành';
+              else if (a.loaiDichVu === 'LaiThu') loaiBadgeText = 'Lái thử';
+              else if (a.loaiDichVu === 'NhanXe') loaiBadgeText = 'Nhận xe mới';
+
+              list.push({
+                id: a.id,
+                ngayDichVu: formattedDate,
+                monthYear,
+                loaiDichVu: loaiKey,
+                loaiBadgeText,
+                nhanVien: a.nhanVienPhuTrach || 'Nguyễn Văn An',
+                chiPhi: (a as any).tongTien || (a.loaiDichVu === 'BaoHanh' ? 0 : 2500000),
+                noiDung: a.ghiChu || 'Kiểm tra và thực hiện dịch vụ xe.',
+                rawDate: d.getTime(),
+              });
+            }
+          });
+
+          // 2. Từ hồ sơ bảo hành hoàn thành của chính xe này
+          try {
+            const adminClaims = warrantyApi.getAdminClaims();
+            adminClaims.forEach(c => {
+              if (c.trangThai !== 'HoanThanh') return;
+              const cleanCPlate = (c.xeBienSo || c.b1_bienSoThucTe || '').toUpperCase().replace(/[\s\-\.]/g, '');
+              const matchVehId = (c as any).vehicleId === v.id;
+              const matchPlate = !isChuaCoBien && cleanCPlate && cleanCPlate.includes(cleanVPlate);
+              if (matchVehId || matchPlate) {
+                const d = c.ngayGui ? new Date(c.ngayGui) : new Date();
+                const formattedDate = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+                const monthYear = `${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+                list.push({
+                  id: c.id,
+                  ngayDichVu: formattedDate,
+                  monthYear,
+                  loaiDichVu: 'BaoHanh',
+                  loaiBadgeText: 'Bảo hành',
+                  nhanVien: c.nhanVienPhuTrach || c.b3_ktvPhuTrach || 'Lê Văn Cường',
+                  chiPhi: 0,
+                  noiDung: c.noiDung || c.b2_chiTietLoi || 'Thay thế phụ tùng bảo hành chính hãng.',
+                  rawDate: d.getTime(),
+                });
+              }
+            });
+          } catch {}
+
+          // 3. CHỈ hiển thị 5 mốc lịch sử dịch vụ mẫu cho ĐÚNG chiếc xe Honda SH 160i nguyên bản có sẵn của KH001 (biển 29-E1 888.88)
+          // TUYỆT ĐỐI KHÔNG inject vào các xe khác hoặc xe mới mua!
+          if (cleanVPlate.includes('29E188888') || cleanVPlate.includes('29E18888') || v.id === 'XE001' || v.id === 'XE01') {
+            const defaultMilestones = [
+              {
+                id: `svc-${v.id}-1`,
+                ngayDichVu: '15/05/2024',
+                monthYear: '05/2024',
+                loaiDichVu: 'BaoDuong',
+                loaiBadgeText: 'Bảo dưỡng (30k km)',
+                nhanVien: 'Nguyễn Văn An',
+                chiPhi: 2500000,
+                noiDung: 'Thay dầu, lọc gió, kiểm tra phanh.',
+                rawDate: new Date('2024-05-15').getTime(),
+              },
+              {
+                id: `svc-${v.id}-2`,
+                ngayDichVu: '22/03/2024',
+                monthYear: '03/2024',
+                loaiDichVu: 'SuaChua',
+                loaiBadgeText: 'Sửa chữa (Tai nạn nhỏ)',
+                nhanVien: 'Trần Thị Bình',
+                chiPhi: 15800000,
+                noiDung: 'Thay cản trước, (Insurance claim).',
+                rawDate: new Date('2024-03-22').getTime(),
+              },
+              {
+                id: `svc-${v.id}-3`,
+                ngayDichVu: '10/01/2024',
+                monthYear: '01/2024',
+                loaiDichVu: 'BaoHanh',
+                loaiBadgeText: 'Bảo hành',
+                nhanVien: 'Lê Văn Cường',
+                chiPhi: 0,
+                noiDung: 'Thay thế cảm biến áp suất lốp.',
+                rawDate: new Date('2024-01-10').getTime(),
+              },
+              {
+                id: `svc-${v.id}-4`,
+                ngayDichVu: '20/10/2023',
+                monthYear: '10/2023',
+                loaiDichVu: 'BaoDuong',
+                loaiBadgeText: 'Bảo dưỡng (20k km)',
+                nhanVien: 'Hoàng Thị Dung',
+                chiPhi: 4200000,
+                noiDung: 'Cấp 2: Thay dầu, lọc dầu, bugi...',
+                rawDate: new Date('2023-10-20').getTime(),
+              },
+              {
+                id: `svc-${v.id}-5`,
+                ngayDichVu: '05/08/2023',
+                monthYear: '08/2023',
+                loaiDichVu: 'SuaChua',
+                loaiBadgeText: 'Sửa chữa (Hệ thống treo)',
+                nhanVien: 'Phạm Minh Đức',
+                chiPhi: 3500000,
+                noiDung: 'Thay giảm xóc sau bên trái.',
+                rawDate: new Date('2023-08-05').getTime(),
+              },
+            ];
+
+            defaultMilestones.forEach(def => {
+              if (!list.some(it => it.ngayDichVu === def.ngayDichVu)) {
+                list.push(def);
+              }
+            });
+          }
+
+          return list.sort((a, b) => b.rawDate - a.rawDate);
+        };
+
+        const allServices = getVehicleServicesList(selectedDetailVehicle);
+
+        // Danh sách các tháng có dịch vụ
+        const availableMonths = Array.from(new Set(allServices.map(s => s.monthYear))).filter(Boolean);
+
+        // Lọc theo tháng và loại dịch vụ
+        const filteredServices = allServices.filter(s => {
+          if (vehicleServiceMonthFilter !== 'ALL' && s.monthYear !== vehicleServiceMonthFilter) return false;
+          if (vehicleServiceTypeFilter !== 'ALL' && s.loaiDichVu !== vehicleServiceTypeFilter) return false;
+          return true;
+        });
+
+        const pageSize = 5;
+        const totalServicePages = Math.max(1, Math.ceil(filteredServices.length / pageSize));
+        const pagedServices = filteredServices.slice((vehicleServicePage - 1) * pageSize, vehicleServicePage * pageSize);
+
+        // Xuất báo cáo in sao kê
+        const handleExportVehicleHistoryReport = () => {
+          const printWin = window.open('', '_blank');
+          if (!printWin) return;
+          const rowsHtml = filteredServices.map(s => `
+            <tr>
+              <td style="padding: 8px; border: 1px solid #ddd; font-family: monospace;">${s.ngayDichVu}</td>
+              <td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">${s.loaiBadgeText}</td>
+              <td style="padding: 8px; border: 1px solid #ddd;">${s.nhanVien}</td>
+              <td style="padding: 8px; border: 1px solid #ddd; text-align: right; font-weight: bold; font-family: monospace;">${s.chiPhi === 0 ? '0 VND' : s.chiPhi.toLocaleString('vi-VN') + ' VND'}</td>
+              <td style="padding: 8px; border: 1px solid #ddd;">${s.noiDung}</td>
+            </tr>
+          `).join('');
+
+          printWin.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <title>Báo cáo Lịch sử Dịch vụ - ${selectedDetailVehicle.tenXe} (${selectedDetailVehicle.bienSo || 'Xe máy'})</title>
+              <style>
+                body { font-family: Arial, sans-serif; padding: 24px; color: #111; line-height: 1.5; }
+                h1 { margin-bottom: 4px; font-size: 20px; text-transform: uppercase; color: #dc2626; }
+                .info-table td { padding: 4px 8px; }
+                table.data-table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 13px; }
+                table.data-table th { background: #f4f4f5; padding: 8px; border: 1px solid #ddd; text-align: left; }
+                .footer { margin-top: 40px; display: flex; justify-content: space-between; }
+              </style>
+            </head>
+            <body>
+              <div style="display: flex; justify-content: space-between; border-bottom: 2px solid #dc2626; padding-bottom: 12px; margin-bottom: 20px;">
+                <div>
+                  <h1>SHOWROOM MOTOSHOP SERVICE</h1>
+                  <p style="margin: 0; font-size: 13px; color: #666;">Hệ thống Chăm sóc & Bảo dưỡng Xe máy Chuyên nghiệp</p>
+                </div>
+                <div style="text-align: right; font-size: 12px; color: #666;">
+                  <p style="margin: 0;">Ngày xuất: ${new Date().toLocaleDateString('vi-VN')}</p>
+                  <p style="margin: 0;">Hotline: 1900 6868</p>
+                </div>
+              </div>
+
+              <h2 style="font-size: 16px; text-transform: uppercase; margin-bottom: 12px;">BÁO CÁO SAO KÊ LỊCH SỬ DỊCH VỤ PHƯƠNG TIỆN</h2>
+              
+              <table class="info-table" style="margin-bottom: 16px; font-size: 13px;">
+                <tr>
+                  <td><strong>Tên phương tiện:</strong></td>
+                  <td>${selectedDetailVehicle.tenXe}</td>
+                  <td style="padding-left: 32px;"><strong>Biển số:</strong></td>
+                  <td><span style="color: #0284c7; font-weight: bold;">${selectedDetailVehicle.bienSo || 'Chưa gắn biển'}</span></td>
+                </tr>
+                <tr>
+                  <td><strong>Số khung (VIN):</strong></td>
+                  <td>${getVehicleVin(selectedDetailVehicle)}</td>
+                  <td style="padding-left: 32px;"><strong>Năm sản xuất:</strong></td>
+                  <td>${selectedDetailVehicle.namSanXuat}</td>
+                </tr>
+                <tr>
+                  <td><strong>Động cơ:</strong></td>
+                  <td>${getVehicleEngineSpec(selectedDetailVehicle)}</td>
+                  <td style="padding-left: 32px;"><strong>Odometer:</strong></td>
+                  <td>${getVehicleOdometer(selectedDetailVehicle)}</td>
+                </tr>
+                <tr>
+                  <td><strong>Chủ xe:</strong></td>
+                  <td>${currentCustomer?.hoTen || 'Khách hàng'}</td>
+                  <td style="padding-left: 32px;"><strong>Số điện thoại:</strong></td>
+                  <td>${currentCustomer?.soDienThoai || 'Chưa cập nhật'}</td>
+                </tr>
+              </table>
+
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Ngày dịch vụ</th>
+                    <th>Loại dịch vụ</th>
+                    <th>Nhân viên phụ trách</th>
+                    <th style="text-align: right;">Chi phí</th>
+                    <th>Nội dung thực hiện</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${rowsHtml}
+                </tbody>
+              </table>
+
+              <div class="footer">
+                <div style="text-align: center;">
+                  <p style="margin-bottom: 60px;"><strong>Khách hàng xác nhận</strong></p>
+                  <p style="color: #888;">(Ký và ghi rõ họ tên)</p>
+                </div>
+                <div style="text-align: center;">
+                  <p style="margin-bottom: 60px;"><strong>Đại diện Showroom Motoshop</strong></p>
+                  <p style="color: #888;">(Ký tên và đóng dấu)</p>
+                </div>
+              </div>
+            </body>
+            </html>
+          `);
+          printWin.document.close();
+          printWin.focus();
+          setTimeout(() => {
+            printWin.print();
+          }, 400);
+        };
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+            {vehicleDetailViewMode === 'info' ? (
+              /* ── ẢNH 2: GIAO DIỆN CHI TIẾT XE CHUẨN 2 CỘT ── */
+              <div className="bg-[#18181b] rounded-3xl w-full max-w-2xl p-6 shadow-2xl border border-zinc-800 space-y-5 text-white">
+                {/* Header */}
+                <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">🚗</span>
+                    <h3 className="font-black text-sm sm:text-base uppercase tracking-wider text-white">
+                      CHI TIẾT XE - {selectedDetailVehicle.tenXe.toUpperCase()} ({selectedDetailVehicle.namSanXuat})
+                    </h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedDetailVehicle(null)}
+                    className="text-zinc-400 hover:text-white font-bold p-1 rounded-lg hover:bg-zinc-800 transition cursor-pointer"
+                    title="Đóng"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {/* Top Tabs Switcher */}
+                <div className="flex items-center gap-2 p-1 rounded-2xl bg-[#121214] border border-zinc-800/80">
+                  <button
+                    type="button"
+                    onClick={() => setVehicleDetailViewMode('info')}
+                    className="px-4 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 bg-red-700 text-white shadow cursor-pointer"
+                  >
+                    <span>🚗</span>
+                    <span>Thông tin phương tiện</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setVehicleDetailViewMode('serviceHistory');
+                      setVehicleServicePage(1);
+                    }}
+                    className="px-4 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 text-zinc-400 hover:text-white hover:bg-zinc-800/60 cursor-pointer"
+                  >
+                    <span>⚡</span>
+                    <span>Lịch sử dịch vụ ({allServices.length})</span>
+                  </button>
+                </div>
+
+                {/* Body 2 Cột */}
+                <div className="flex flex-col sm:flex-row gap-6 items-center sm:items-stretch">
+                  {/* Cột trái: Ảnh xe */}
+                  <div className="w-full sm:w-[45%] flex items-center justify-center p-3 rounded-2xl bg-[#09090b] border border-zinc-800 overflow-hidden group">
+                    <img
+                      src={getVehicleDisplayImage(selectedDetailVehicle)}
+                      alt={selectedDetailVehicle.tenXe}
+                      className="w-full h-52 sm:h-64 object-contain rounded-xl group-hover:scale-105 transition-transform duration-300"
+                    />
+                  </div>
+
+                  {/* Cột phải: Thông số chi tiết */}
+                  <div className="flex-1 space-y-2.5 text-xs text-zinc-300 justify-center flex flex-col">
+                    <div className="flex items-baseline justify-between py-1.5 border-b border-zinc-800/80">
+                      <span className="text-zinc-400 font-medium">Tên xe:</span>
+                      <strong className="text-white text-right font-bold">{selectedDetailVehicle.tenXe}</strong>
+                    </div>
+
+                    <div className="flex items-baseline justify-between py-1.5 border-b border-zinc-800/80">
+                      <span className="text-zinc-400 font-medium">Biển số:</span>
+                      <div className="text-right">
+                        <strong className="text-[#38bdf8] font-mono text-sm font-black tracking-wide">
+                          {selectedDetailVehicle.bienSo || 'Chưa có biển số'}
+                        </strong>
+                        {selectedDetailVehicle.trangThaiDuyetBienSo === 'ChoDuyet' && (
+                          <span className="block text-[10px] text-amber-400 font-semibold mt-0.5">⏳ Đang chờ duyệt</span>
+                        )}
+                        {selectedDetailVehicle.trangThaiDuyetBienSo === 'TuChoi' && (
+                          <span className="block text-[10px] text-red-400 font-semibold mt-0.5">⛔ Bị từ chối</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-baseline justify-between py-1.5 border-b border-zinc-800/80">
+                      <span className="text-zinc-400 font-medium">VIN:</span>
+                      <span className="text-zinc-200 font-mono text-xs font-semibold">{getVehicleVin(selectedDetailVehicle)}</span>
+                    </div>
+
+                    <div className="flex items-baseline justify-between py-1.5 border-b border-zinc-800/80">
+                      <span className="text-zinc-400 font-medium">Động cơ:</span>
+                      <span className="text-zinc-200 text-right font-medium">{getVehicleEngineSpec(selectedDetailVehicle)}</span>
+                    </div>
+
+                    <div className="flex items-baseline justify-between py-1.5 border-b border-zinc-800/80">
+                      <span className="text-zinc-400 font-medium">Số khung:</span>
+                      <span className="text-zinc-200 font-mono text-xs">{selectedDetailVehicle.soKhung || getVehicleVin(selectedDetailVehicle)}</span>
+                    </div>
+
+                    <div className="flex items-baseline justify-between py-1.5 border-b border-zinc-800/80">
+                      <span className="text-zinc-400 font-medium">Năm sản xuất:</span>
+                      <span className="text-zinc-200 font-mono font-semibold">{selectedDetailVehicle.namSanXuat}</span>
+                    </div>
+
+                    <div className="flex items-baseline justify-between py-1.5 border-b border-zinc-800/80">
+                      <span className="text-zinc-400 font-medium">Nguồn gốc:</span>
+                      <span className="text-zinc-200 font-medium">
+                        {selectedDetailVehicle.nguonGoc === 'CuaHang' ? 'Xe mua tại cửa hàng' : 'Xe ngoài hệ thống'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer Buttons */}
+                <div className="flex items-center justify-between pt-3 border-t border-zinc-800">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setVehicleDetailViewMode('serviceHistory');
+                      setVehicleServicePage(1);
+                    }}
+                    className="px-4 py-2.5 rounded-xl bg-red-700 hover:bg-red-800 text-white font-bold text-xs flex items-center gap-1.5 shadow-lg transition cursor-pointer"
+                  >
+                    <span>⚡</span>
+                    <span>Lịch sử dịch vụ</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedDetailVehicle(null)}
+                    className="px-5 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white font-semibold text-xs border border-zinc-700 transition cursor-pointer flex items-center gap-1"
+                  >
+                    <span>✕</span>
+                    <span>Đóng</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* ── ẢNH 3: GIAO DIỆN LỊCH SỬ DỊCH VỤ CỦA XE ĐÓ ── */
+              <div className="bg-[#18181b] rounded-3xl w-full max-w-4xl p-6 shadow-2xl border border-zinc-800 space-y-4 text-white">
+                {/* Header */}
+                <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">🚗</span>
+                    <h3 className="font-black text-sm sm:text-base uppercase tracking-wider text-white">
+                      LỊCH SỬ DỊCH VỤ - {selectedDetailVehicle.tenXe.toUpperCase()} ({selectedDetailVehicle.bienSo || 'CHƯA GẮN BIỂN'})
+                    </h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedDetailVehicle(null)}
+                    className="text-zinc-400 hover:text-white font-bold p-1 rounded-lg hover:bg-zinc-800 transition cursor-pointer"
+                    title="Đóng"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {/* Top Tabs Switcher */}
+                <div className="flex items-center gap-2 p-1 rounded-2xl bg-[#121214] border border-zinc-800/80">
+                  <button
+                    type="button"
+                    onClick={() => setVehicleDetailViewMode('info')}
+                    className="px-4 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 text-zinc-400 hover:text-white hover:bg-zinc-800/60 cursor-pointer"
+                  >
+                    <span>🚗</span>
+                    <span>Thông tin phương tiện</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setVehicleDetailViewMode('serviceHistory');
+                      setVehicleServicePage(1);
+                    }}
+                    className="px-4 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 bg-red-700 text-white shadow cursor-pointer"
+                  >
+                    <span>⚡</span>
+                    <span>Lịch sử dịch vụ ({allServices.length})</span>
+                  </button>
+                </div>
+
+                {/* Summary Info Header */}
+                <div className="flex flex-wrap items-center gap-x-6 gap-y-1.5 text-xs text-zinc-300 font-mono py-1">
+                  <div>Tên xe: <strong className="text-white ml-1">{selectedDetailVehicle.tenXe} ({selectedDetailVehicle.namSanXuat})</strong></div>
+                  <div>Biển số: <strong className="text-[#38bdf8] font-bold ml-1">{selectedDetailVehicle.bienSo || 'Chưa gắn biển'}</strong></div>
+                  <div>Odometer: <strong className="text-emerald-400 font-bold ml-1">{getVehicleOdometer(selectedDetailVehicle)}</strong></div>
+                </div>
+
+                {/* Filter Row */}
+                <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-2xl bg-[#121214] border border-zinc-800/80">
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    {/* Tháng dịch vụ */}
+                    <div className="relative">
+                      <select
+                        value={vehicleServiceMonthFilter}
+                        onChange={e => {
+                          setVehicleServiceMonthFilter(e.target.value);
+                          setVehicleServicePage(1);
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-[#18181b] border border-zinc-700 text-xs text-zinc-200 font-mono focus:outline-none focus:border-red-600 cursor-pointer"
+                      >
+                        <option value="ALL">Tháng dịch vụ: Tất cả 📅</option>
+                        {availableMonths.map(m => (
+                          <option key={m} value={m}>Tháng dịch vụ {m} 📅</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Loại dịch vụ */}
+                    <div className="relative">
+                      <select
+                        value={vehicleServiceTypeFilter}
+                        onChange={e => {
+                          setVehicleServiceTypeFilter(e.target.value);
+                          setVehicleServicePage(1);
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-[#18181b] border border-zinc-700 text-xs text-zinc-200 font-mono focus:outline-none focus:border-red-600 cursor-pointer"
+                      >
+                        <option value="ALL">Loại dịch vụ: Tất cả</option>
+                        <option value="BaoDuong">Bảo dưỡng định kỳ</option>
+                        <option value="SuaChua">Sửa chữa phụ tùng</option>
+                        <option value="BaoHanh">Bảo hành</option>
+                        <option value="LaiThu">Lái thử</option>
+                        <option value="NhanXe">Bàn giao xe mới</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="text-[11px] text-zinc-400 font-mono">
+                    Đang hiển thị <strong>{filteredServices.length}</strong> / {allServices.length} lượt dịch vụ
+                  </div>
+                </div>
+
+                {/* Data Table */}
+                <div className="overflow-x-auto rounded-2xl border border-zinc-800 bg-[#121214]">
+                  <table className="w-full text-left text-xs text-zinc-300">
+                    <thead className="bg-[#18181b] text-zinc-400 uppercase text-[11px] font-mono border-b border-zinc-800">
+                      <tr>
+                        <th className="py-3 px-3.5 font-semibold">Ngày dịch vụ</th>
+                        <th className="py-3 px-3.5 font-semibold">Loại dịch vụ</th>
+                        <th className="py-3 px-3.5 font-semibold">Nhân viên phụ trách</th>
+                        <th className="py-3 px-3.5 font-semibold text-right">Chi phí</th>
+                        <th className="py-3 px-3.5 font-semibold">Nội dung</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-800/80">
+                      {pagedServices.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="py-12 text-center text-zinc-400">
+                            <div className="flex flex-col items-center justify-center gap-2">
+                              <span className="text-3xl">🛠️</span>
+                              <p className="font-bold text-white text-sm">
+                                {allServices.length === 0
+                                  ? 'Xe chưa có lịch sử dịch vụ bảo dưỡng hoặc sửa chữa nào'
+                                  : 'Không có lượt dịch vụ nào phù hợp với bộ lọc đã chọn.'}
+                              </p>
+                              {allServices.length === 0 && (
+                                <p className="text-xs text-zinc-500 max-w-md">
+                                  Xe mới hoặc chưa từng phát sinh dịch vụ nào tại xưởng Motoshop. Hãy đặt lịch bảo dưỡng định kỳ mốc đầu tiên (1.000 km) để đảm bảo quyền lợi bảo hành chính hãng!
+                                </p>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ) : (
+                        pagedServices.map((svc, idx) => {
+                          let badgeClass = 'bg-[#14532d]/40 text-[#4ade80] border-[#22c55e]/40';
+                          if (svc.loaiDichVu === 'SuaChua') {
+                            badgeClass = 'bg-[#7c2d12]/40 text-[#fb923c] border-[#f97316]/40';
+                          } else if (svc.loaiDichVu === 'BaoHanh') {
+                            badgeClass = 'bg-[#1e3a8a]/40 text-[#60a5fa] border-[#3b82f6]/40';
+                          } else if (svc.loaiDichVu === 'LaiThu') {
+                            badgeClass = 'bg-[#581c87]/40 text-[#c084fc] border-[#a855f7]/40';
+                          }
+
+                          return (
+                            <tr key={idx} className="hover:bg-zinc-800/40 transition">
+                              <td className="py-3 px-3.5 font-mono text-zinc-200 whitespace-nowrap">
+                                {svc.ngayDichVu}
+                              </td>
+                              <td className="py-3 px-3.5 whitespace-nowrap">
+                                <span className={`px-2.5 py-1 rounded-md text-[11px] font-bold border inline-block ${badgeClass}`}>
+                                  {svc.loaiBadgeText}
+                                </span>
+                              </td>
+                              <td className="py-3 px-3.5 font-medium text-white whitespace-nowrap">
+                                {svc.nhanVien}
+                              </td>
+                              <td className="py-3 px-3.5 font-mono font-bold text-white text-right whitespace-nowrap">
+                                {svc.chiPhi === 0 ? '0 VND' : `${svc.chiPhi.toLocaleString('vi-VN')} VND`}
+                              </td>
+                              <td className="py-3 px-3.5 text-zinc-300 text-[11px] max-w-xs">
+                                {svc.noiDung}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Pagination */}
+                {totalServicePages > 1 && (
+                  <div className="flex items-center justify-between text-xs font-mono text-zinc-400 pt-1">
+                    <button
+                      type="button"
+                      disabled={vehicleServicePage <= 1}
+                      onClick={() => setVehicleServicePage(p => Math.max(1, p - 1))}
+                      className="px-3 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed text-zinc-300 cursor-pointer"
+                    >
+                      Previous
+                    </button>
+                    <div className="flex items-center gap-1.5">
+                      {Array.from({ length: totalServicePages }, (_, i) => i + 1).map(p => (
+                        <button
+                          key={p}
+                          type="button"
+                          onClick={() => setVehicleServicePage(p)}
+                          className={`w-7 h-7 rounded-lg text-xs font-bold transition cursor-pointer ${
+                            vehicleServicePage === p ? 'bg-blue-600 text-white shadow' : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300'
+                          }`}
+                        >
+                          {p}
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      disabled={vehicleServicePage >= totalServicePages}
+                      onClick={() => setVehicleServicePage(p => Math.min(totalServicePages, p + 1))}
+                      className="px-3 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed text-zinc-300 cursor-pointer"
+                    >
+                      Next
+                    </button>
+                  </div>
+                )}
+
+                {/* Footer Buttons */}
+                <div className="flex items-center justify-between pt-3 border-t border-zinc-800">
+                  <button
+                    type="button"
+                    onClick={() => setVehicleDetailViewMode('info')}
+                    className="px-4 py-2.5 rounded-xl bg-red-700 hover:bg-red-800 text-white font-bold text-xs flex items-center gap-1.5 shadow transition cursor-pointer"
+                  >
+                    <span>◀</span>
+                    <span>Trở về thông tin xe</span>
+                  </button>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleExportVehicleHistoryReport}
+                      className="px-4 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white font-bold text-xs border border-zinc-700 transition cursor-pointer flex items-center gap-1.5 shadow"
+                    >
+                      <span>📄</span>
+                      <span>Xuất báo cáo</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setSelectedDetailVehicle(null)}
+                      className="px-5 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white font-semibold text-xs border border-zinc-700 transition cursor-pointer"
+                    >
+                      Đóng
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* Modal Xem chi tiết đơn hàng (Phụ tùng / Xe) theo chuẩn giao diện Ảnh 4 */}
+      {selectedOrderDetail && (() => {
+        const isXe = selectedOrderDetail.loaiDon === 'Xe' || !!selectedOrderDetail.thongTinXe;
+        const stepIdx = (selectedOrderDetail.trangThai === 'HoanThanh' || selectedOrderDetail.trangThai === 'DaGiao')
+          ? 3
+          : selectedOrderDetail.trangThai === 'DangGiao'
+          ? 2
+          : selectedOrderDetail.trangThai === 'DaXacNhan'
+          ? 1
+          : 0;
+
+        const steps = [
+          { key: 'ChoDuyet', label: 'Đã đặt hàng' },
+          { key: 'DaXacNhan', label: 'Đã xác nhận' },
+          { key: 'DangGiao', label: 'Đang giao hàng' },
+          { key: 'DaGiao', label: 'Đã giao hàng' },
+        ];
+
+        const statusLabel = selectedOrderDetail.trangThai === 'DaHuy'
+          ? 'ĐƠN HÀNG ĐÃ HỦY'
+          : selectedOrderDetail.trangThai === 'HoanThanh' || selectedOrderDetail.trangThai === 'DaGiao'
+          ? 'ĐÃ GIAO HÀNG THÀNH CÔNG'
+          : selectedOrderDetail.trangThai === 'DangGiao'
+          ? 'ĐANG GIAO HÀNG'
+          : selectedOrderDetail.trangThai === 'DaXacNhan'
+          ? 'ĐÃ XÁC NHẬN'
+          : 'CHỜ XÁC NHẬN';
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <div className="bg-[#18181b] rounded-3xl max-w-2xl w-full p-6 sm:p-7 shadow-2xl border border-zinc-800 space-y-4 text-white max-h-[92vh] overflow-y-auto">
+              
+              {/* Header */}
+              <div className="flex items-start justify-between border-b border-zinc-800 pb-3.5">
+                <div>
+                  <h3 className="font-extrabold text-base uppercase text-white font-display tracking-wide">
+                    CHI TIẾT ĐƠN HÀNG #{selectedOrderDetail.id}
+                  </h3>
+                  <p className="text-xs text-zinc-400 font-mono mt-0.5">
+                    Ngày đặt: {selectedOrderDetail.ngayDat}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedOrderDetail(null)}
+                  className="text-zinc-400 hover:text-white font-bold text-lg p-1 rounded-lg hover:bg-zinc-800 transition cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Progress Stepper (Theo Ảnh 4) */}
+              <div className="py-2">
+                <div className="text-center font-black text-sm tracking-widest uppercase text-white font-display mb-4">
+                  {statusLabel}
+                </div>
+
+                <div className="relative flex items-center justify-between px-2 sm:px-6">
+                  {/* Connecting lines */}
+                  <div className="absolute left-8 right-8 top-3 h-0.5 bg-zinc-700 -z-0">
+                    <div
+                      className="h-full bg-emerald-500 transition-all duration-500"
+                      style={{
+                        width: selectedOrderDetail.trangThai === 'DaHuy'
+                          ? '0%'
+                          : stepIdx === 0
+                          ? '0%'
+                          : stepIdx === 1
+                          ? '33.33%'
+                          : stepIdx === 2
+                          ? '66.66%'
+                          : '100%',
+                      }}
+                    />
+                  </div>
+
+                  {steps.map((st, sIdx) => {
+                    const isPassed = sIdx < stepIdx;
+                    const isCurrent = sIdx === stepIdx;
+                    return (
+                      <div key={st.key} className="relative z-10 flex flex-col items-center">
+                        <div
+                          className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-all shadow-md ${
+                            isPassed
+                              ? 'bg-emerald-500 text-white'
+                              : isCurrent
+                              ? 'bg-emerald-500 text-white ring-4 ring-emerald-500/30'
+                              : 'bg-zinc-800 text-zinc-500 border border-zinc-700'
+                          }`}
+                        >
+                          {isPassed ? (
+                            '✓'
+                          ) : isCurrent ? (
+                            <span className="w-2 h-2 rounded-full bg-white inline-block" />
+                          ) : (
+                            <span className="w-1.5 h-1.5 rounded-full bg-zinc-600 inline-block" />
+                          )}
+                        </div>
+                        <span
+                          className={`text-xs mt-2 font-medium tracking-tight whitespace-nowrap ${
+                            isPassed || isCurrent ? 'text-zinc-200 font-bold' : 'text-zinc-500'
+                          }`}
+                        >
+                          {st.label}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 2-Column Info Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-2">
+                {/* Cột trái: THÔNG TIN Giao hàng */}
+                <div className="p-4 rounded-2xl bg-[#121214] border border-zinc-800 text-xs space-y-2 text-zinc-300">
+                  <div className="font-bold text-xs uppercase text-zinc-200 tracking-wide font-mono mb-2">
+                    THÔNG TIN Giao hàng
+                  </div>
+                  <div>
+                    + Người nhận: <strong className="text-white font-bold">{selectedOrderDetail.hoTenKH}</strong>
+                  </div>
+                  <div>
+                    + SĐT: <strong className="font-mono text-zinc-100">{selectedOrderDetail.soDienThoai || '0879179243'}</strong>
+                  </div>
+                  <div>
+                    + Địa chỉ: <span className="text-zinc-200">{selectedOrderDetail.diaChiGiao}</span>
+                  </div>
+                  <div>
+                    + Thanh toán: <span className="text-zinc-200">{selectedOrderDetail.phuongThucThanhToan === 'ChuyenKhoan' ? 'Chuyển khoản Online' : 'Tiền mặt khi nhận hàng (COD)'} ({selectedOrderDetail.trangThaiThanhToan === 'DaThanhToan' ? 'đã thanh toán' : 'chưa thanh toán'})</span>
+                  </div>
+                </div>
+
+                {/* Cột phải: CHI TIẾT THANH TOÁN */}
+                {(() => {
+                  const itemSubtotal = (selectedOrderDetail.items && selectedOrderDetail.items.length > 0)
+                    ? selectedOrderDetail.items.reduce((s, it) => s + ((it.donGia || 0) * (it.soLuong || 1)), 0)
+                    : Math.max(0, selectedOrderDetail.tongTien - 30000);
+                  const shippingFee = (selectedOrderDetail.tongTien > itemSubtotal)
+                    ? (selectedOrderDetail.tongTien - itemSubtotal)
+                    : (selectedOrderDetail.kenhBan === 'TaiQuay' ? 0 : 30000);
+                  const displayTotal = selectedOrderDetail.tongTien > 0 ? selectedOrderDetail.tongTien : (itemSubtotal + shippingFee);
+
+                  return (
+                    <div className="p-4 rounded-2xl bg-[#121214] border border-zinc-800 text-xs flex flex-col justify-between space-y-2">
+                      <div className="font-bold text-xs uppercase text-zinc-200 tracking-wide font-mono mb-1">
+                        CHI TIẾT THANH TOÁN
+                      </div>
+                      <div className="space-y-1.5 text-zinc-300">
+                        <div className="flex justify-between">
+                          <span>+ Tạm tính:</span>
+                          <span className="font-mono text-white font-bold">{formatVND(itemSubtotal)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>+ Phí vận chuyển:</span>
+                          <span className="font-mono text-zinc-200 font-bold">
+                            {shippingFee > 0 ? formatVND(shippingFee) : '0 đ (Miễn phí)'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>+ Giảm giá:</span>
+                          <span className="font-mono text-zinc-400">0 đ</span>
+                        </div>
+                      </div>
+                      <div className="border-t border-zinc-800/90 pt-2.5 flex justify-between items-center">
+                        <span className="font-extrabold uppercase text-xs text-zinc-200">TỔNG TIỀN:</span>
+                        <strong className="text-lg font-black text-red-500 font-mono">
+                          {formatVND(displayTotal)}
+                        </strong>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Bảng DANH SÁCH PHỤ TÙNG */}
+              <div className="space-y-2 pt-1">
+                <div className="font-bold text-xs uppercase text-zinc-300 font-mono tracking-wide">
+                  {isXe ? 'THÔNG TIN PHƯƠNG TIỆN' : 'DANH SÁCH PHỤ TÙNG'}
+                </div>
+
+                {isXe && selectedOrderDetail.thongTinXe ? (
+                  <div className="p-3.5 rounded-2xl bg-[#121214] border border-zinc-800 flex justify-between items-center text-xs">
+                    <div>
+                      <div className="font-bold text-white text-sm">{selectedOrderDetail.thongTinXe.tenXe}</div>
+                      <div className="text-[11px] text-zinc-400 font-mono mt-0.5">
+                        Màu: {selectedOrderDetail.thongTinXe.mauSac} · {selectedOrderDetail.thongTinXe.phienBan}
+                      </div>
+                    </div>
+                    <div className="font-mono font-bold text-red-400 text-sm">
+                      {formatVND(selectedOrderDetail.tongTien)}
+                    </div>
+                  </div>
                 ) : (
-                  <strong className="text-red-400 font-mono">{selectedDetailVehicle.bienSo}</strong>
+                  <div className="rounded-2xl bg-[#121214] border border-zinc-800 overflow-hidden text-xs">
+                    <div className="grid grid-cols-12 px-4 py-2 bg-zinc-900/80 border-b border-zinc-800 text-[11px] font-mono text-zinc-400 font-bold">
+                      <div className="col-span-6">Bảng chi tiết</div>
+                      <div className="col-span-2 text-center">Số lượng</div>
+                      <div className="col-span-2 text-right">Đơn giá</div>
+                      <div className="col-span-2 text-right">Thành tiền</div>
+                    </div>
+                    <div className="divide-y divide-zinc-800/60 max-h-56 overflow-y-auto">
+                      {selectedOrderDetail.items?.map((it, idx) => (
+                        <div key={idx} className="grid grid-cols-12 px-4 py-3 items-center hover:bg-zinc-900/40 transition">
+                          <div className="col-span-6 flex items-center gap-3">
+                            <img
+                              src={getPartThumbnail(it)}
+                              alt={it.tenSanPham}
+                              className="w-11 h-11 rounded-lg bg-zinc-900 border border-zinc-800 object-contain p-1 shrink-0"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).src = '/images/phutung/motul_7100.png';
+                              }}
+                            />
+                            <div>
+                              <div className="font-bold text-zinc-100 text-xs leading-snug">{it.tenSanPham}</div>
+                              <div className="text-[11px] text-zinc-400 font-mono mt-0.5">Số lượng: {it.soLuong}</div>
+                            </div>
+                          </div>
+                          <div className="col-span-2 text-center font-mono text-zinc-200">
+                            {it.soLuong}
+                          </div>
+                          <div className="col-span-2 text-right font-mono text-zinc-300">
+                            {formatVND(it.donGia)}
+                          </div>
+                          <div className="col-span-2 text-right font-mono font-bold text-white">
+                            {formatVND(it.donGia * it.soLuong)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 )}
               </div>
-              {selectedDetailVehicle.trangThaiDuyetBienSo === 'ChoDuyet' && (
-                <div className="flex justify-between py-1 border-b border-zinc-800">
-                  <span className="text-zinc-400">Trạng thái biển số:</span>
-                  <span className="text-amber-400 font-bold">⏳ Đang chờ duyệt biển số</span>
+
+              {/* Actions Footer (Theo Ảnh 4) */}
+              <div className="flex items-center justify-between pt-3 border-t border-zinc-800 flex-wrap gap-2.5">
+                <div className="flex items-center gap-2">
+                  {!isXe && (
+                    <button
+                      type="button"
+                      disabled={reorderLoading}
+                      onClick={() => handleReorder(selectedOrderDetail)}
+                      className="px-6 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs shadow-md transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                    >
+                      <span>🔄</span> {reorderLoading ? 'Đang gửi...' : 'Mua lại'}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedOrderDetail(null)}
+                    className="px-6 py-2.5 rounded-xl bg-[#27272a] hover:bg-[#3f3f46] text-zinc-200 font-bold text-xs transition cursor-pointer"
+                  >
+                    Đóng
+                  </button>
                 </div>
-              )}
-              <div className="flex justify-between py-1 border-b border-zinc-800"><span className="text-zinc-400">Số khung:</span> <span className="text-zinc-200 font-mono">{selectedDetailVehicle.soKhung || 'Chưa có'}</span></div>
-              <div className="flex justify-between py-1 border-b border-zinc-800"><span className="text-zinc-400">Số máy:</span> <span className="text-zinc-200 font-mono">{selectedDetailVehicle.soMay || 'Chưa có'}</span></div>
-              <div className="flex justify-between py-1 border-b border-zinc-800"><span className="text-zinc-400">Năm sản xuất:</span> <span className="text-zinc-200 font-mono">{selectedDetailVehicle.namSanXuat}</span></div>
-              <div className="flex justify-between py-1 border-b border-zinc-800"><span className="text-zinc-400">Nguồn gốc:</span> <span className="text-zinc-200">{selectedDetailVehicle.nguonGoc === 'CuaHang' ? 'Mua tại cửa hàng' : 'Xe ngoài hệ thống'}</span></div>
-            </div>
 
-            <div className="flex justify-end pt-3 border-t border-zinc-800">
-              <button
-                onClick={() => setSelectedDetailVehicle(null)}
-                className="px-5 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-bold text-white cursor-pointer"
-              >
-                Đóng
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Xem chi tiết đơn hàng */}
-      {selectedOrderDetail && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-[#18181b] rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-zinc-800 space-y-4 text-white">
-            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-              <div>
-                <h3 className="font-extrabold text-base uppercase">CHI TIẾT ĐƠN HÀNG #{selectedOrderDetail.id}</h3>
-                <p className="text-xs text-zinc-400 font-mono mt-0.5">Ngày đặt: {selectedOrderDetail.ngayDat}</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.dispatchEvent(new CustomEvent('crm-open-chat', {
+                      detail: {
+                        prefillMessage: `Dạ chào Shop, em cần hỗ trợ về đơn hàng #${selectedOrderDetail.id} ạ!`,
+                      }
+                    }));
+                  }}
+                  className="px-4 py-2.5 rounded-xl bg-[#27272a] hover:bg-[#3f3f46] text-zinc-300 border border-zinc-700 font-bold text-xs transition cursor-pointer flex items-center gap-1.5 shadow-sm"
+                >
+                  <span>💬</span> Liên hệ hỗ trợ
+                </button>
               </div>
-              <button onClick={() => setSelectedOrderDetail(null)} className="text-zinc-400 hover:text-white font-bold">✕</button>
-            </div>
 
-            <div className="p-3 rounded-2xl bg-[#121214] border border-zinc-800 text-xs space-y-1">
-              <div>Người nhận: <strong>{selectedOrderDetail.hoTenKH}</strong></div>
-              <div>SĐT: <strong className="font-mono">{selectedOrderDetail.soDienThoai}</strong></div>
-              <div>Địa chỉ: {selectedOrderDetail.diaChiGiao}</div>
-              <div>Thanh toán: {selectedOrderDetail.phuongThucThanhToan === 'ChuyenKhoan' ? 'Chuyển khoản Online' : 'Tiền mặt (COD)'}</div>
-            </div>
-
-            <div className="p-3 bg-red-950/40 border border-red-800/80 rounded-2xl flex justify-between items-center text-xs">
-              <span className="font-bold text-zinc-300">TỔNG TIỀN:</span>
-              <strong className="text-base font-extrabold text-red-400 font-mono">{formatVND(selectedOrderDetail.tongTien)}</strong>
-            </div>
-
-            <div className="flex justify-end pt-3 border-t border-zinc-800">
-              <button
-                onClick={() => setSelectedOrderDetail(null)}
-                className="px-5 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-bold text-white cursor-pointer"
-              >
-                Đóng
-              </button>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Cancel Order Modal */}
       {orderToCancel && (
@@ -4193,40 +6006,12 @@ export default function CustomerDashboard({
                 type="button"
                 onClick={async () => {
                   if (newPickupDateInput) {
-                    setAllOrders(prev => prev.map(o => o.id === changingDateOrder.id ? {
-                      ...o,
-                      thongTinXe: o.thongTinXe ? { ...o.thongTinXe, ngayGiaoXe: newPickupDateInput } : undefined
-                    } : o));
-
-                    try {
-                      const cached = localStorage.getItem('crm_orders_cache');
-                      if (cached) {
-                        const list = JSON.parse(cached);
-                        const idx = list.findIndex((o: any) => o.id === changingDateOrder.id);
-                        if (idx !== -1) {
-                          list[idx].thongTinXe = list[idx].thongTinXe ? { ...list[idx].thongTinXe, ngayGiaoXe: newPickupDateInput } : { ngayGiaoXe: newPickupDateInput };
-                          localStorage.setItem('crm_orders_cache', JSON.stringify(list));
-                        }
-                      }
-                    } catch {}
-
-                    try {
-                      const allAppts = await appointmentApi.getAll();
-                      const matched = allAppts.find(a =>
-                        (a.maLichHen && (a.maLichHen === changingDateOrder.maLichHen || a.maLichHen === changingDateOrder.thongTinXe?.maLichHen)) ||
-                        (a.maDonHangXe && a.maDonHangXe === changingDateOrder.id) ||
-                        (a.customerId === currentCustomer.id && a.loaiDichVu === 'NhanXe')
-                      );
-                      if (matched) {
-                        await appointmentApi.updateDetails(matched.id, { ngayHen: newPickupDateInput });
-                      }
-                    } catch (err) {
-                      console.warn('Lỗi cập nhật ngày hẹn nhận xe:', err);
-                    }
-
+                    await orderApi.confirmVehiclePickupDate(changingDateOrder.id, newPickupDateInput, '09:00');
+                    setAllOrders(orderApi.getAllSync());
+                    appointmentApi.getAll().then(d => { if (d) setAllAppts(d); });
                     setChangingDateOrder(null);
                     window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'appointment_updated' } }));
-                    alert('✓ Đã cập nhật ngày nhận xe mới: ' + newPickupDateInput + '. Lịch hẹn và Lịch biểu Showroom đã được đồng bộ!');
+                    alert('✓ Đã cập nhật và xác nhận ngày nhận xe mới: ' + newPickupDateInput + '. Lịch hẹn và Lịch biểu Showroom đã được đồng bộ!');
                   }
                 }}
                 className="px-4 py-1.5 rounded-xl bg-red-700 hover:bg-red-800 text-white text-xs font-bold cursor-pointer"
@@ -4278,21 +6063,34 @@ export default function CustomerDashboard({
               />
             </div>
 
-            {/* ĐG01: Khu vực đính kèm hình ảnh */}
+            {/* ĐG01: Khu vực đính kèm hình ảnh (tối đa 6 ảnh) */}
             <div className="space-y-2">
-              <label className="block text-xs font-bold text-zinc-300 uppercase">
-                Hình ảnh đính kèm (tùy chọn):
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-bold text-zinc-300 uppercase">
+                  Hình ảnh đính kèm (tối đa 6 ảnh):
+                </label>
+                <span className={`text-[11px] font-mono font-bold ${reviewImages.length > 6 ? 'text-red-400' : 'text-zinc-400'}`}>
+                  {reviewImages.length}/6 ảnh tối đa
+                </span>
+              </div>
 
-              <div className="flex flex-col sm:flex-row gap-2">
-                {/* Upload từ máy */}
-                <label className="px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold cursor-pointer border border-zinc-700 flex items-center justify-center gap-1.5 transition">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              {/* Thông báo cảnh báo vượt quá 6 ảnh */}
+              {reviewImages.length > 6 && (
+                <div className="p-2.5 rounded-xl bg-red-950/80 border border-red-500 text-red-200 text-xs flex items-center gap-2 animate-pulse shadow-md">
+                  <span className="text-base">⚠️</span>
+                  <span><strong>Không được thêm quá 6 ảnh!</strong> Bạn đã chọn {reviewImages.length} ảnh. Vui lòng nhấn nút ✕ để xóa bớt {reviewImages.length - 6} ảnh trước khi gửi đánh giá.</span>
+                </div>
+              )}
+
+              <div>
+                {/* Bug 3: Chỉ chấp nhận tải ảnh trực tiếp từ thiết bị qua input file, không cho phép nhập URL */}
+                <label className="w-full px-4 py-3 rounded-xl bg-zinc-800/80 hover:bg-zinc-800 text-zinc-200 hover:text-white text-xs font-semibold cursor-pointer border border-dashed border-zinc-700 hover:border-red-500/60 flex items-center justify-center gap-2 transition group shadow-sm">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-400 group-hover:text-red-500 transition">
                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                     <polyline points="17 8 12 3 7 8" />
                     <line x1="12" y1="3" x2="12" y2="15" />
                   </svg>
-                  <span>Chọn ảnh từ máy</span>
+                  <span>📁 Tải ảnh trực tiếp từ thiết bị (tối đa 6 ảnh)</span>
                   <input
                     type="file"
                     accept="image/*"
@@ -4313,29 +6111,6 @@ export default function CustomerDashboard({
                     }}
                   />
                 </label>
-
-                {/* Nhập URL ảnh */}
-                <div className="flex-1 flex gap-1">
-                  <input
-                    type="url"
-                    placeholder="Hoặc dán URL hình ảnh..."
-                    value={newImageUrl}
-                    onChange={(e) => setNewImageUrl(e.target.value)}
-                    className="flex-1 px-3 py-1.5 rounded-xl border border-zinc-700 bg-[#121214] text-white text-xs focus:outline-none focus:border-red-600"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (newImageUrl.trim()) {
-                        setReviewImages(prev => [...prev, newImageUrl.trim()]);
-                        setNewImageUrl('');
-                      }
-                    }}
-                    className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-bold transition"
-                  >
-                    + Thêm
-                  </button>
-                </div>
               </div>
 
               {/* Thumbnails preview */}
@@ -4368,7 +6143,8 @@ export default function CustomerDashboard({
               </button>
               <button
                 type="button"
-                disabled={reviewSubmitting || !reviewContent.trim()}
+                disabled={reviewSubmitting || !reviewContent.trim() || reviewImages.length > 6}
+                title={reviewImages.length > 6 ? 'Không được thêm quá 6 ảnh' : undefined}
                 onClick={async () => {
                   if (!currentCustomer || !reviewModalPart) return;
                   setReviewSubmitting(true);
@@ -4382,6 +6158,7 @@ export default function CustomerDashboard({
                       productName: reviewModalPart.partName,
                       productId: reviewModalPart.productId,
                       productType: reviewModalPart.productType || 'PhuTung',
+                      productImage: reviewModalPart.productImage,
                       orderId: reviewModalPart.orderId,
                       hinhAnhDinhKem: reviewImages,
                     });
@@ -4404,21 +6181,26 @@ export default function CustomerDashboard({
                     // Cập nhật ngay lập tức vào state đánh giá cá nhân để phản ánh tức thì
                     setMyCustomerFeedbacks(prev => [res.feedback, ...prev.filter(f => f.id !== res.feedback.id)]);
 
-                    // Tự động chuyển ngay sang Tab 5 (Khảo sát & Đánh giá) -> Sub-tab 2 "Đã đánh giá"
-                    setActiveTab(5);
-                    setSurveySubTab('DaDanhGia');
+                    // DG01: Nếu gửi từ Tab 1 (Đơn mua hàng), giữ khách ở Tab 1 và hiển thị trạng thái đã đánh giá ngay trên đơn hàng
+                    if (reviewModalPart.fromTab === 1) {
+                      setReviewToast(`🎉 Đã gửi đánh giá cho sản phẩm "${reviewModalPart.partName}" thành công!`);
+                    } else {
+                      // Nếu gửi từ Tab 5 (Khảo sát & Đánh giá), chuyển sang Sub-tab "Đã đánh giá"
+                      setActiveTab(5);
+                      setSurveySubTab('DaDanhGia');
+                      setReviewToast('🎉 Cảm ơn bạn đã gửi đánh giá thành công!');
+                    }
 
-                    setReviewToast('🎉 Cảm ơn bạn đã gửi đánh giá thành công!');
                     setTimeout(() => setReviewToast(null), 4000);
                     setReviewModalPart(null);
                     setReviewImages([]);
-                    setNewImageUrl('');
-                    loadCustomerData();
+                                        loadCustomerData();
 
                     // Đồng bộ dữ liệu real-time tới Admin và Showroom
                     window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'feedback', id: res.feedback.id } }));
-                  } catch (err) {
-                    alert('Gửi đánh giá không thành công.');
+                  } catch (err: any) {
+                    console.error('Lỗi gửi đánh giá:', err);
+                    alert(`Gửi đánh giá không thành công: ${err?.message || 'Vui lòng kiểm tra lại.'}`);
                   } finally {
                     setReviewSubmitting(false);
                   }
@@ -5113,6 +6895,36 @@ export default function CustomerDashboard({
               </button>
             </div>
           </div>
+        </div>
+      )}
+      {/* Toast thông báo Mua lại thành công */}
+      {reorderToast && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 p-4 rounded-2xl bg-zinc-900 border border-emerald-500/50 text-white shadow-2xl animate-slideUp">
+          <div className="w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-base">
+            ✓
+          </div>
+          <div>
+            <div className="text-xs font-bold text-emerald-400">Thành công!</div>
+            <div className="text-xs text-zinc-300">{reorderToast.message}</div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setReorderToast(null);
+              if (onNavigateToCheckout) onNavigateToCheckout();
+              else window.dispatchEvent(new CustomEvent('crm-navigate-checkout'));
+            }}
+            className="ml-2 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs cursor-pointer shadow-md whitespace-nowrap"
+          >
+            Đến giỏ hàng ➔
+          </button>
+          <button
+            type="button"
+            onClick={() => setReorderToast(null)}
+            className="text-zinc-500 hover:text-zinc-300 font-bold text-sm ml-1"
+          >
+            ✕
+          </button>
         </div>
       )}
     </div>

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { formatVND } from '../../data/mockData';
 import ImageUploader from '../../components/shared/ImageUploader';
 import { catalogVehicleApi, type CatalogVehicle, isSameCategory } from '../../services/api';
+import { matchVietnameseSearch } from '../../utils/vietnameseSearch';
 
 type Vehicle = CatalogVehicle;
 
@@ -514,9 +515,11 @@ export default function VehiclesPage() {
     // Search
     const matchSearch =
       !search.trim() ||
-      v.tenXe.toLowerCase().includes(search.toLowerCase()) ||
-      v.id.toLowerCase().includes(search.toLowerCase()) ||
-      v.mauSac.toLowerCase().includes(search.toLowerCase());
+      matchVietnameseSearch(v.tenXe, search) ||
+      matchVietnameseSearch(v.id, search) ||
+      matchVietnameseSearch(v.mauSac, search) ||
+      matchVietnameseSearch(v.hang, search) ||
+      (v.phanKhuc ? matchVietnameseSearch(v.phanKhuc, search) : false);
     // Hang
     const matchHang = !filterHang || v.hang === filterHang || (filterHang.includes('Piaggio') && v.hang.includes('Piaggio'));
     // Segment
@@ -631,6 +634,29 @@ export default function VehiclesPage() {
     if (!data.phanKhuc?.trim()) err.phanKhuc = 'Phân khúc không được để trống';
     if (data.giaNiemYet == null || data.giaNiemYet <= 0) err.giaNiemYet = 'Giá niêm yết phải > 0';
 
+    // Bắt buộc Nhà cung cấp (NCC)
+    if (!data.ncc || !data.ncc.trim()) {
+      err.ncc = 'Vui lòng nhập Nhà cung cấp (NCC), không được để trống';
+    }
+
+    // Bắt buộc Năm sản xuất (đúng 4 chữ số hợp lệ)
+    const yearStr = data.namSanXuat != null && data.namSanXuat !== ('' as any) ? String(data.namSanXuat).trim() : '';
+    if (!yearStr) {
+      err.namSanXuat = 'Năm sản xuất không được để trống';
+    } else if (!/^\d{4}$/.test(yearStr)) {
+      err.namSanXuat = 'Năm sản xuất phải có đúng 4 chữ số hợp lệ (Ví dụ: 2024, 2025)';
+    } else {
+      const yearNum = Number(yearStr);
+      if (yearNum < 1900 || yearNum > 2099) {
+        err.namSanXuat = 'Năm sản xuất phải từ năm 1900 đến 2099';
+      }
+    }
+
+    // Bắt buộc Xuất xứ lắp ráp
+    if (!data.xuatXu || !data.xuatXu.trim()) {
+      err.xuatXu = 'Vui lòng nhập Xuất xứ lắp ráp, không được để trống';
+    }
+
     const validColors = colorList.map(c => c.trim()).filter(Boolean);
     if (validColors.length === 0) {
       err.mauSac = 'Vui lòng nhập ít nhất một màu sắc của xe';
@@ -643,7 +669,7 @@ export default function VehiclesPage() {
     if (Object.keys(err).length) {
       setErrors(err);
       if (err.mauSac) setModalTab('colors');
-      else if (err.tenXe || err.hang || err.phanKhuc || err.giaNiemYet) setModalTab('basic');
+      else if (err.tenXe || err.hang || err.phanKhuc || err.giaNiemYet || err.ncc || err.namSanXuat || err.xuatXu) setModalTab('basic');
       return;
     }
 
@@ -661,11 +687,11 @@ export default function VehiclesPage() {
       moTa: form.moTa?.trim() ?? '',
       hinhAnh: form.hinhAnh?.trim() ?? '',
       coTheLaiThu: !!form.coTheLaiThu,
-      // XM04: Các thuộc tính bổ sung
+      // XM04: Các thuộc tính bổ sung - lưu chính xác dữ liệu người dùng nhập
       soLuong: form.soLuong != null ? Number(form.soLuong) : 10,
-      ncc: form.ncc?.trim() || `${form.hang} Việt Nam`,
-      namSanXuat: form.namSanXuat ? Number(form.namSanXuat) : new Date().getFullYear(),
-      xuatXu: form.xuatXu?.trim() || 'Việt Nam',
+      ncc: form.ncc!.trim(),
+      namSanXuat: Number(form.namSanXuat),
+      xuatXu: form.xuatXu!.trim(),
       vat: form.vat != null ? Number(form.vat) : 10,
       trangThaiKinhDoanh: form.trangThaiKinhDoanh || 'DangKinhDoanh',
       trangThaiHienThi: form.trangThaiHienThi || 'Hien',
@@ -1331,38 +1357,56 @@ export default function VehiclesPage() {
 
                   {/* XM04: Nhà cung cấp & Năm SX */}
                   <div>
-                    <label className="block font-semibold text-zinc-700 mb-1">Nhà cung cấp (NCC)</label>
+                    <label className="block font-semibold text-zinc-700 mb-1">
+                      Nhà cung cấp (NCC) <span className="text-red-600">*</span>
+                    </label>
                     <input
                       type="text"
                       placeholder="VD: Công ty Honda Việt Nam"
                       value={form.ncc ?? ''}
-                      onChange={e => setForm({ ...form, ncc: e.target.value })}
-                      className="w-full border rounded-xl px-3 py-2 focus:outline-none focus:border-red-600"
+                      onChange={e => {
+                        setForm({ ...form, ncc: e.target.value });
+                        if (errors.ncc) setErrors(prev => ({ ...prev, ncc: '' }));
+                      }}
+                      className={`w-full border rounded-xl px-3 py-2 focus:outline-none ${errors.ncc ? 'border-red-500 bg-red-50/20' : 'focus:border-red-600'}`}
                     />
+                    {errors.ncc && <p className="text-[11px] text-red-600 mt-0.5">{errors.ncc}</p>}
                   </div>
 
                   <div>
-                    <label className="block font-semibold text-zinc-700 mb-1">Năm sản xuất</label>
+                    <label className="block font-semibold text-zinc-700 mb-1">
+                      Năm sản xuất (4 chữ số) <span className="text-red-600">*</span>
+                    </label>
                     <input
                       type="number"
-                      min="2010"
-                      max="2035"
-                      value={form.namSanXuat ?? 2025}
-                      onChange={e => setForm({ ...form, namSanXuat: Number(e.target.value) })}
-                      className="w-full border rounded-xl px-3 py-2 focus:outline-none focus:border-red-600 font-mono"
+                      placeholder="VD: 2025"
+                      value={form.namSanXuat !== undefined && form.namSanXuat !== null ? form.namSanXuat : ''}
+                      onChange={e => {
+                        const val = e.target.value === '' ? ('' as any) : Number(e.target.value);
+                        setForm({ ...form, namSanXuat: val });
+                        if (errors.namSanXuat) setErrors(prev => ({ ...prev, namSanXuat: '' }));
+                      }}
+                      className={`w-full border rounded-xl px-3 py-2 focus:outline-none font-mono ${errors.namSanXuat ? 'border-red-500 bg-red-50/20' : 'focus:border-red-600'}`}
                     />
+                    {errors.namSanXuat && <p className="text-[11px] text-red-600 mt-0.5">{errors.namSanXuat}</p>}
                   </div>
 
                   {/* Xuất xứ & Trạng thái KD */}
                   <div>
-                    <label className="block font-semibold text-zinc-700 mb-1">Xuất xứ lắp ráp</label>
+                    <label className="block font-semibold text-zinc-700 mb-1">
+                      Xuất xứ lắp ráp <span className="text-red-600">*</span>
+                    </label>
                     <input
                       type="text"
                       placeholder="VD: Việt Nam, Nhập khẩu Nhật Bản, Thái Lan..."
-                      value={form.xuatXu ?? 'Việt Nam'}
-                      onChange={e => setForm({ ...form, xuatXu: e.target.value })}
-                      className="w-full border rounded-xl px-3 py-2 focus:outline-none focus:border-red-600"
+                      value={form.xuatXu ?? ''}
+                      onChange={e => {
+                        setForm({ ...form, xuatXu: e.target.value });
+                        if (errors.xuatXu) setErrors(prev => ({ ...prev, xuatXu: '' }));
+                      }}
+                      className={`w-full border rounded-xl px-3 py-2 focus:outline-none ${errors.xuatXu ? 'border-red-500 bg-red-50/20' : 'focus:border-red-600'}`}
                     />
+                    {errors.xuatXu && <p className="text-[11px] text-red-600 mt-0.5">{errors.xuatXu}</p>}
                   </div>
 
                   <div>

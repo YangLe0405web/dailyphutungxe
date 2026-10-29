@@ -22,6 +22,8 @@ namespace CrmBackend.Controllers
         {
             var sql = @"
                 SELECT d.MaDon, d.MaKH, d.NgayDat, d.TongTien, d.TrangThai, 
+                       ISNULL(d.TrangThaiThanhToan, 'ChuaThanhToan') AS TrangThaiThanhToan,
+                       ISNULL(d.PhuongThucThanhToan, 'TienMat') AS PhuongThucThanhToan,
                        k.HoTen AS TenKhachHang, k.SoDienThoai
                 FROM DON_HANG d
                 JOIN KHACH_HANG k ON d.MaKH = k.MaKH
@@ -31,8 +33,30 @@ namespace CrmBackend.Controllers
                   AND (@TrangThai IS NULL OR d.TrangThai = @TrangThai)
                 ORDER BY d.NgayDat DESC";
 
-            var result = await _db.QueryAsync<DonHang>(sql, new { FromDate = fromDate, ToDate = toDate, MaKH = maKH, TrangThai = trangThai });
-            return Ok(result);
+            var orders = (await _db.QueryAsync<DonHang>(sql, new { FromDate = fromDate, ToDate = toDate, MaKH = maKH, TrangThai = trangThai })).ToList();
+
+            if (orders.Count > 0)
+            {
+                var orderIds = orders.Select(o => o.MaDon).ToList();
+                var itemsSql = @"
+                    SELECT c.MaDon, c.MaPhuTung, c.SoLuong, c.DonGia,
+                           p.TenPhuTung, p.LoaiPhuTung
+                    FROM CHI_TIET_DON_HANG c
+                    LEFT JOIN PHU_TUNG p ON c.MaPhuTung = p.MaPhuTung
+                    WHERE c.MaDon IN @OrderIds";
+
+                var items = await _db.QueryAsync<ChiTietDonHang>(itemsSql, new { OrderIds = orderIds });
+                var grouped = items.GroupBy(i => i.MaDon).ToDictionary(g => g.Key, g => g.ToList());
+                foreach (var ord in orders)
+                {
+                    if (grouped.TryGetValue(ord.MaDon, out var ordItems))
+                    {
+                        ord.ChiTiet = ordItems;
+                    }
+                }
+            }
+
+            return Ok(orders);
         }
 
         // GET: api/DonHang/5 -> Lấy chi tiết đơn hàng kèm danh sách phụ tùng (CartItems)
@@ -41,6 +65,8 @@ namespace CrmBackend.Controllers
         {
             var orderSql = @"
                 SELECT d.MaDon, d.MaKH, d.NgayDat, d.TongTien, d.TrangThai, 
+                       ISNULL(d.TrangThaiThanhToan, 'ChuaThanhToan') AS TrangThaiThanhToan,
+                       ISNULL(d.PhuongThucThanhToan, 'TienMat') AS PhuongThucThanhToan,
                        k.HoTen AS TenKhachHang, k.SoDienThoai
                 FROM DON_HANG d
                 JOIN KHACH_HANG k ON d.MaKH = k.MaKH
@@ -54,7 +80,7 @@ namespace CrmBackend.Controllers
 
             var itemsSql = @"
                 SELECT c.MaDon, c.MaPhuTung, c.SoLuong, c.DonGia,
-                       p.TenPhuTung, p.LoaiPhuTung
+                           p.TenPhuTung, p.LoaiPhuTung
                 FROM CHI_TIET_DON_HANG c
                 LEFT JOIN PHU_TUNG p ON c.MaPhuTung = p.MaPhuTung
                 WHERE c.MaDon = @MaDon";
@@ -81,16 +107,21 @@ namespace CrmBackend.Controllers
                 tongTien = dto.Items.Sum(x => x.SoLuong * x.DonGia);
             }
 
+            var ttThanhToan = string.IsNullOrEmpty(dto.TrangThaiThanhToan) ? "ChuaThanhToan" : dto.TrangThaiThanhToan;
+            var ptThanhToan = string.IsNullOrEmpty(dto.PhuongThucThanhToan) ? "TienMat" : dto.PhuongThucThanhToan;
+
             var insertOrderSql = @"
-                INSERT INTO DON_HANG (MaKH, NgayDat, TongTien, TrangThai)
-                VALUES (@MaKH, GETDATE(), @TongTien, @TrangThai);
+                INSERT INTO DON_HANG (MaKH, NgayDat, TongTien, TrangThai, TrangThaiThanhToan, PhuongThucThanhToan)
+                VALUES (@MaKH, GETDATE(), @TongTien, @TrangThai, @TrangThaiThanhToan, @PhuongThucThanhToan);
                 SELECT CAST(SCOPE_IDENTITY() AS INT);";
 
             var maDon = await _db.ExecuteScalarAsync<int>(insertOrderSql, new
             {
                 dto.MaKH,
                 TongTien = tongTien,
-                TrangThai = string.IsNullOrEmpty(dto.TrangThai) ? "Chờ xác nhận" : dto.TrangThai
+                TrangThai = string.IsNullOrEmpty(dto.TrangThai) ? "Chờ duyệt" : dto.TrangThai,
+                TrangThaiThanhToan = ttThanhToan,
+                PhuongThucThanhToan = ptThanhToan,
             });
 
             // Chèn các chi tiết đơn hàng (CartItems)
@@ -102,17 +133,47 @@ namespace CrmBackend.Controllers
 
                 foreach (var item in dto.Items)
                 {
+                    var ptExists = await _db.ExecuteScalarAsync<int>("SELECT COUNT(1) FROM PHU_TUNG WHERE MaPhuTung = @MaPhuTung", new { item.MaPhuTung });
+                    var validMaPhuTung = ptExists > 0 ? item.MaPhuTung : 1;
+
                     await _db.ExecuteAsync(insertItemSql, new
                     {
                         MaDon = maDon,
-                        item.MaPhuTung,
+                        MaPhuTung = validMaPhuTung,
                         item.SoLuong,
                         item.DonGia
                     });
                 }
             }
 
-            return CreatedAtAction(nameof(GetById), new { maDon }, new { maDon, message = "Đặt hàng thành công!", tongTien });
+            return CreatedAtAction(nameof(GetById), new { maDon }, new { maDon, message = "Đặt hàng thành công!", tongTien, trangThaiThanhToan = ttThanhToan });
+        }
+
+        // PUT/PATCH: api/DonHang/5/thanh-toan -> Cập nhật trạng thái thanh toán trực tiếp vào SQL Server
+        [HttpPut("{maDon}/thanh-toan")]
+        [HttpPatch("{maDon}/thanh-toan")]
+        [HttpPut("thanh-toan/{maDon}")]
+        [HttpPatch("thanh-toan/{maDon}")]
+        public async Task<IActionResult> UpdatePaymentStatus(int maDon, [FromBody] DonHangUpdatePaymentDto dto)
+        {
+            var checkSql = "SELECT COUNT(1) FROM DON_HANG WHERE MaDon = @MaDon";
+            var exists = await _db.ExecuteScalarAsync<int>(checkSql, new { MaDon = maDon });
+            if (exists == 0)
+            {
+                return NotFound(new { message = "Không tìm thấy đơn hàng!" });
+            }
+
+            var validStatus = dto.TrangThaiThanhToan switch
+            {
+                "DaThanhToan" or "Đã thanh toán" => "DaThanhToan",
+                "DaCoc" or "Đã đặt cọc" => "DaCoc",
+                _ => "ChuaThanhToan"
+            };
+
+            var updateSql = "UPDATE DON_HANG SET TrangThaiThanhToan = @TrangThaiThanhToan WHERE MaDon = @MaDon";
+            await _db.ExecuteAsync(updateSql, new { MaDon = maDon, TrangThaiThanhToan = validStatus });
+
+            return Ok(new { message = "Cập nhật trạng thái thanh toán thành công!", maDon, trangThaiThanhToan = validStatus });
         }
 
         // PUT: api/DonHang/duyet/1 -> Chuyển trạng thái đơn sang 'Đang giao'
@@ -132,8 +193,25 @@ namespace CrmBackend.Controllers
         [HttpPatch("{maDon}/trang-thai")]
         public async Task<IActionResult> UpdateTrangThai(int maDon, [FromBody] DonHangUpdateStatusDto dto)
         {
-            var sql = @"UPDATE DON_HANG SET TrangThai = @TrangThai WHERE MaDon = @MaDon";
-            var rows = await _db.ExecuteAsync(sql, new { MaDon = maDon, dto.TrangThai });
+            var statusStr = dto.TrangThai ?? "";
+            if (statusStr == "DaXacNhan") statusStr = "Đã xác nhận";
+            else if (statusStr == "DangGiao") statusStr = "Đang giao";
+            else if (statusStr == "HoanThanh" || statusStr == "DaGiao") statusStr = "Hoàn thành";
+            else if (statusStr == "DaHuy") statusStr = "Đã hủy";
+            else if (statusStr == "ChoDuyet") statusStr = "Chờ xác nhận";
+            else if (statusStr == "ChoGiaoXe") statusStr = "Chờ giao xe";
+            else if (statusStr == "ChoKhachXacNhanNgayNhan" || statusStr == "Chờ khách xác nhận ngày đặt xe") statusStr = "Chờ khách xác nhận ngày đặt xe";
+
+            string sql;
+            if (statusStr == "Hoàn thành")
+            {
+                sql = @"UPDATE DON_HANG SET TrangThai = @TrangThai, TrangThaiThanhToan = 'DaThanhToan' WHERE MaDon = @MaDon";
+            }
+            else
+            {
+                sql = @"UPDATE DON_HANG SET TrangThai = @TrangThai WHERE MaDon = @MaDon";
+            }
+            var rows = await _db.ExecuteAsync(sql, new { MaDon = maDon, TrangThai = statusStr });
             if (rows == 0) return NotFound(new { message = "Không tìm thấy đơn hàng!" });
             return Ok(new { message = "Cập nhật trạng thái đơn hàng thành công!" });
         }

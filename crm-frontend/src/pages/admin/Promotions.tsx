@@ -1,3 +1,4 @@
+import { matchVietnameseSearch } from '../../utils/vietnameseSearch';
 import React, { useState, useEffect, useMemo } from 'react';
 import { formatVND, mockParts, Part } from '../../data/mockData';
 import { promotionApi, partApi, type Promotion } from '../../services/api';
@@ -63,8 +64,8 @@ export default function PromotionsPage() {
     return promotions.filter(p => {
       const matchSearch =
         !search.trim() ||
-        p.tenChuongTrinh.toLowerCase().includes(search.toLowerCase()) ||
-        p.id.toLowerCase().includes(search.toLowerCase());
+        matchVietnameseSearch(p.tenChuongTrinh, search) ||
+        matchVietnameseSearch(p.id, search);
       const matchStatus = filterStatus === 'All' || p.trangThai === filterStatus;
       const matchType = filterType === 'All' || p.loaiGiamGia === filterType;
       const matchScope = filterScope === 'All' || p.apDungCho === filterScope;
@@ -205,9 +206,9 @@ export default function PromotionsPage() {
     return allParts.filter(p => {
       const matchSearch =
         !productSearch.trim() ||
-        p.tenSanPham.toLowerCase().includes(productSearch.toLowerCase()) ||
-        p.id.toLowerCase().includes(productSearch.toLowerCase()) ||
-        p.thuongHieu.toLowerCase().includes(productSearch.toLowerCase());
+        matchVietnameseSearch(p.tenSanPham, productSearch) ||
+        matchVietnameseSearch(p.id, productSearch) ||
+        matchVietnameseSearch(p.thuongHieu, productSearch);
       const matchCat = productCatFilter === 'All' || p.danhMuc === productCatFilter;
       return matchSearch && matchCat;
     });

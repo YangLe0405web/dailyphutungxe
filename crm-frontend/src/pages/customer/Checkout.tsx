@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useCart } from '../../contexts/CartContext';
-import { formatVND, mockCustomers, getCustomerTier, type Customer } from '../../data/mockData';
+import { formatVND, mockCustomers, getCustomerTier, type Customer, type Part } from '../../data/mockData';
 import { orderApi, customerApi, partApi, addCustomerNotification } from '../../services/api';
 
 interface CheckoutProps {
@@ -11,9 +11,39 @@ interface CheckoutProps {
 }
 
 export default function Checkout({ onBack, onSuccess, currentCustomer, onCustomerChange }: CheckoutProps) {
+  // Hỗ trợ chế độ Mua ngay trực tiếp (không thêm vào giỏ hàng)
+  const [directBuyItem, setDirectBuyItem] = useState<{ part: Part; soLuong: number } | null>(() => {
+    try {
+      const cached = sessionStorage.getItem('crm_direct_checkout_item');
+      return cached ? JSON.parse(cached) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const isDirectBuy = !!directBuyItem;
+  const directCheckoutItems = useMemo(() => {
+    if (!directBuyItem) return [];
+    return [{ part: directBuyItem.part, soLuong: directBuyItem.soLuong }];
+  }, [directBuyItem]);
+
+  const directCheckoutTotal = useMemo(() => {
+    if (!directBuyItem) return 0;
+    const price = directBuyItem.part.giaKhuyenMai ?? directBuyItem.part.giaGoc;
+    return price * directBuyItem.soLuong;
+  }, [directBuyItem]);
+
   const { items, total, clear, selectedItems, selectedTotal, selectedCount, remove } = useCart();
-  const checkoutItems = selectedCount > 0 ? selectedItems : items;
-  const checkoutTotal = selectedCount > 0 ? selectedTotal : total;
+  const checkoutItems = isDirectBuy ? directCheckoutItems : (selectedCount > 0 ? selectedItems : items);
+  const checkoutTotal = isDirectBuy ? directCheckoutTotal : (selectedCount > 0 ? selectedTotal : total);
+
+  const handleBackToStore = () => {
+    if (isDirectBuy) {
+      sessionStorage.removeItem('crm_direct_checkout_item');
+      setDirectBuyItem(null);
+    }
+    onBack();
+  };
   
   // Auth state for non-logged in users
   const [authTab, setAuthTab] = useState<'login' | 'register'>('login');
@@ -142,7 +172,8 @@ export default function Checkout({ onBack, onSuccess, currentCustomer, onCustome
         phuongThucThanhToan: pay === 'cod' ? 'TienMat' : 'ChuyenKhoan',
         trangThaiThanhToan: pay === 'cod' ? 'ChuaThanhToan' : 'DaThanhToan',
         items: checkoutItems.map(it => {
-          const numId = parseInt(it.part.id.replace(/\D/g, ''), 10) || 1;
+          const rawNum = parseInt(it.part.id.replace(/\D/g, ''), 10);
+          const numId = (!isNaN(rawNum) && rawNum > 0 && rawNum < 2147483647) ? rawNum : 1;
           const unitPrice = it.part.giaKhuyenMai ?? it.part.giaGoc;
           return {
             maPhuTung: numId,
@@ -180,12 +211,17 @@ export default function Checkout({ onBack, onSuccess, currentCustomer, onCustome
         targetId: res.order?.id,
       });
 
+      window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'orders', id: res.order?.id } }));
+      try {
+        sessionStorage.setItem('crm_client_highlight', JSON.stringify({ type: 'order', id: res.order?.id }));
+      } catch {}
+
       setDone(true);
-      if (selectedCount > 0) {
-        checkoutItems.forEach(it => remove(it.part.id));
-      } else {
-        clear();
+      if (isDirectBuy) {
+        sessionStorage.removeItem('crm_direct_checkout_item');
+        setDirectBuyItem(null);
       }
+      clear();
       setTimeout(onSuccess, 3000);
     } catch (err) {
       console.error('Lỗi khi tạo đơn hàng:', err);
@@ -223,7 +259,7 @@ export default function Checkout({ onBack, onSuccess, currentCustomer, onCustome
       <div className="min-h-screen flex flex-col items-center justify-center p-8">
         <div className="text-4xl mb-4">🛒</div>
         <div className="font-600 mb-4">Không có sản phẩm nào được chọn để thanh toán</div>
-        <button onClick={onBack} className="px-6 py-2.5 rounded-lg text-sm font-600 text-white"
+        <button onClick={handleBackToStore} className="px-6 py-2.5 rounded-lg text-sm font-600 text-white"
           style={{ background: 'var(--color-red-700)', border: 'none', cursor: 'pointer' }}>← Quay lại cửa hàng</button>
       </div>
     );
@@ -558,6 +594,17 @@ export default function Checkout({ onBack, onSuccess, currentCustomer, onCustome
 
         {/* Right: order summary */}
         <div className="rounded-2xl p-6 h-fit sticky top-24 bg-white border border-zinc-200">
+          {isDirectBuy && (
+            <div className="mb-4 p-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-xs font-semibold flex items-center justify-between shadow-2xs">
+              <div className="flex items-center gap-2">
+                <span className="text-base">⚡</span>
+                <span>Đang thanh toán trực tiếp: <strong>{directBuyItem.part.tenSanPham}</strong> (x{directBuyItem.soLuong})</span>
+              </div>
+              <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-amber-200/80 text-amber-950 font-bold shrink-0">
+                Mua ngay
+              </span>
+            </div>
+          )}
           <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 18, letterSpacing: '0.04em', color: 'var(--color-zinc-900)', textTransform: 'uppercase', marginBottom: 16 }}>ĐƠN HÀNG</div>
           <div className="flex flex-col gap-3 mb-4 max-h-[350px] overflow-y-auto pr-1">
             {checkoutItems.map(item => {

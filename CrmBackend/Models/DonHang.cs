@@ -9,6 +9,8 @@ namespace CrmBackend.Models
         public DateTime NgayDat { get; set; }
         public decimal TongTien { get; set; }
         public string TrangThai { get; set; } = "Chờ xác nhận";
+        public string TrangThaiThanhToan { get; set; } = "ChuaThanhToan";
+        public string PhuongThucThanhToan { get; set; } = "TienMat";
 
         // Thuộc tính mở rộng khi JOIN KHACH_HANG
         public string? TenKhachHang { get; set; }
@@ -53,6 +55,10 @@ namespace CrmBackend.Models
 
         public string TrangThai { get; set; } = "Chờ xác nhận";
 
+        public string TrangThaiThanhToan { get; set; } = "ChuaThanhToan";
+
+        public string PhuongThucThanhToan { get; set; } = "TienMat";
+
         // Danh sách các mặt hàng từ giỏ hàng
         public List<CartItemDto> Items { get; set; } = new();
     }
@@ -62,5 +68,12 @@ namespace CrmBackend.Models
     {
         [Required(ErrorMessage = "Trạng thái không được để trống")]
         public string TrangThai { get; set; } = "";
+    }
+
+    // DTO cập nhật trạng thái thanh toán đơn hàng (COD / Chuyển khoản)
+    public class DonHangUpdatePaymentDto
+    {
+        [Required(ErrorMessage = "Trạng thái thanh toán không được để trống")]
+        public string TrangThaiThanhToan { get; set; } = "DaThanhToan";
     }
 }

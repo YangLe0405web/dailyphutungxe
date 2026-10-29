@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace CrmBackend.Models
 {
@@ -22,6 +23,8 @@ namespace CrmBackend.Models
         public string? HangXe { get; set; }
         public string? LoaiXe { get; set; }
         public string? GhiChuXuLy { get; set; }
+        public string? PhanHoiCuaShop { get; set; }
+        public DateTime? NgayPhanHoi { get; set; }
         public string? NhanVienXuLy { get; set; }
         public DateTime? NgayXuLy { get; set; }
         public List<string>? HinhAnhDinhKem { get; set; } = new();
@@ -55,5 +58,6 @@ namespace CrmBackend.Models
         public string SenderName { get; set; } = "";
         public string Content { get; set; } = "";
         public DateTime SentAt { get; set; } = DateTime.Now;
+        public object? PinnedContext { get; set; }
     }
 }

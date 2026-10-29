@@ -6,6 +6,7 @@ import {
   formatVND,
 } from '../../data/mockData';
 import { warrantyApi } from '../../services/api';
+import { matchVietnameseSearch } from '../../utils/vietnameseSearch';
 
 const PRESET_PARTS = [
   { ten: 'Búa côn sau (Ba càng)', donGia: 450000, tinhTrang: 'Đã có sẵn' },
@@ -26,7 +27,7 @@ export const WarrantyPage: React.FC = () => {
   const [activeMainTab, setActiveMainTab] = useState<'GiaHan' | 'YeuCau'>('GiaHan');
 
   // ── DỮ LIỆU GIA HẠN BẢO HÀNH (TAB 1) ──
-  const [extensionList, setExtensionList] = useState<WarrantyExtensionTransaction[]>([]);
+  const [extensionList, setExtensionList] = useState<WarrantyExtensionTransaction[]>(() => warrantyApi.getExtensionTransactions());
   const [extSearchTerm, setExtSearchTerm] = useState('');
   const [extSourceFilter, setExtSourceFilter] = useState<'TatCa' | 'TrucTuyen' | 'TaiShowroom'>('TatCa');
   const [extTimeFilter, setExtTimeFilter] = useState<'ThangNay' | '30Ngay'>('ThangNay');
@@ -51,7 +52,7 @@ export const WarrantyPage: React.FC = () => {
   } | null>(null);
 
   // ── DỮ LIỆU YÊU CẦU BẢO HÀNH (TAB 2) ──
-  const [claimsList, setClaimsList] = useState<AdminWarrantyClaim[]>([]);
+  const [claimsList, setClaimsList] = useState<AdminWarrantyClaim[]>(() => warrantyApi.getAdminClaims());
   const [claimSearchTerm, setClaimSearchTerm] = useState('');
   const [claimStatusFilter, setClaimStatusFilter] = useState<string>('TatCa');
   const [claimTimeFilter, setClaimTimeFilter] = useState<'ThangNay' | '30Ngay'>('ThangNay');
@@ -88,7 +89,11 @@ export const WarrantyPage: React.FC = () => {
     loadData();
     const handleUpdate = () => loadData();
     window.addEventListener('crm-admin-notification', handleUpdate);
-    return () => window.removeEventListener('crm-admin-notification', handleUpdate);
+    window.addEventListener('crm-data-refresh', handleUpdate);
+    return () => {
+      window.removeEventListener('crm-admin-notification', handleUpdate);
+      window.removeEventListener('crm-data-refresh', handleUpdate);
+    };
   }, []);
 
   // TB02: Highlight hàng mục tiêu khi click thông báo
@@ -100,7 +105,8 @@ export const WarrantyPage: React.FC = () => {
       const targetId = String(payload.targetId || payload.keyword || '').trim();
       if (targetId) {
         setHighlightTargetId(targetId);
-        const matchedClaim = claimsList.find(c =>
+        const allCurrentClaims = warrantyApi.getAdminClaims();
+        const matchedClaim = allCurrentClaims.find(c =>
           c.id === targetId ||
           c.maLichHen === targetId ||
           c.id.toLowerCase().includes(targetId.toLowerCase()) ||
@@ -109,13 +115,19 @@ export const WarrantyPage: React.FC = () => {
         );
         if (matchedClaim) {
           setActiveMainTab('YeuCau');
+          setClaimStatusFilter('TatCa');
+          setClaimStaffFilter('TatCa');
           setClaimSearchTerm(matchedClaim.id);
+          setSelectedClaim(matchedClaim);
+          setActiveStep(matchedClaim.currentStep || 1);
           setTimeout(() => {
             const el = document.getElementById(`claim-row-${matchedClaim.id}`);
             if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
           }, 300);
+          try { sessionStorage.removeItem('crm_admin_highlight'); } catch {}
         } else {
-          const matchedExt = extensionList.find(e =>
+          const allExts = warrantyApi.getExtensionTransactions();
+          const matchedExt = allExts.find(e =>
             e.id === targetId ||
             e.id.toLowerCase().includes(targetId.toLowerCase()) ||
             e.soDienThoai.includes(targetId)
@@ -127,6 +139,7 @@ export const WarrantyPage: React.FC = () => {
               const el = document.getElementById(`ext-row-${matchedExt.id}`);
               if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }, 300);
+            try { sessionStorage.removeItem('crm_admin_highlight'); } catch {}
           } else {
             setActiveMainTab('YeuCau');
           }
@@ -141,7 +154,6 @@ export const WarrantyPage: React.FC = () => {
         const parsed = JSON.parse(raw);
         if (parsed.page === 'warranty') {
           handleHighlight(parsed);
-          sessionStorage.removeItem('crm_admin_highlight');
         }
       }
     } catch {}
@@ -153,7 +165,7 @@ export const WarrantyPage: React.FC = () => {
     };
     window.addEventListener('crm-admin-highlight-target', listener);
     return () => window.removeEventListener('crm-admin-highlight-target', listener);
-  }, [claimsList, extensionList]);
+  }, []);
 
   // ──────────────────────────────────────────────────────────────────────────
   // FILTER & KPI TAB 1: GIA HẠN BẢO HÀNH (ẢNH 1)
@@ -162,13 +174,12 @@ export const WarrantyPage: React.FC = () => {
     return extensionList.filter(item => {
       if (extSourceFilter !== 'TatCa' && item.nguon !== extSourceFilter) return false;
       if (extSearchTerm.trim()) {
-        const q = extSearchTerm.toLowerCase();
         const match =
-          item.id.toLowerCase().includes(q) ||
-          item.khachHang.toLowerCase().includes(q) ||
-          item.soDienThoai.includes(q) ||
-          item.xeBienSo.toLowerCase().includes(q) ||
-          item.goiGiaHan.toLowerCase().includes(q);
+          matchVietnameseSearch(item.id, extSearchTerm) ||
+          matchVietnameseSearch(item.khachHang, extSearchTerm) ||
+          matchVietnameseSearch(item.soDienThoai, extSearchTerm) ||
+          matchVietnameseSearch(item.xeBienSo, extSearchTerm) ||
+          matchVietnameseSearch(item.goiGiaHan, extSearchTerm);
         if (!match) return false;
       }
       return true;
@@ -236,13 +247,12 @@ export const WarrantyPage: React.FC = () => {
       if (claimStatusFilter !== 'TatCa' && item.trangThai !== claimStatusFilter) return false;
       if (claimStaffFilter !== 'TatCa' && item.nhanVienPhuTrach !== claimStaffFilter) return false;
       if (claimSearchTerm.trim()) {
-        const q = claimSearchTerm.toLowerCase();
         const match =
-          item.id.toLowerCase().includes(q) ||
-          item.khachHang.toLowerCase().includes(q) ||
-          item.soDienThoai.includes(q) ||
-          item.xeBienSo.toLowerCase().includes(q) ||
-          item.noiDung.toLowerCase().includes(q);
+          matchVietnameseSearch(item.id, claimSearchTerm) ||
+          matchVietnameseSearch(item.khachHang, claimSearchTerm) ||
+          matchVietnameseSearch(item.soDienThoai, claimSearchTerm) ||
+          matchVietnameseSearch(item.xeBienSo, claimSearchTerm) ||
+          matchVietnameseSearch(item.noiDung, claimSearchTerm);
         if (!match) return false;
       }
       return true;

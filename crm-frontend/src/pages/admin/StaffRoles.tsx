@@ -8,6 +8,7 @@ import {
   POPULAR_BANKS,
 } from '../../data/mockData';
 import { staffApi } from '../../services/api';
+import { matchVietnameseSearch } from '../../utils/vietnameseSearch';
 
 interface StaffRolesPageProps {
   currentStaff?: StaffAccount | null;
@@ -498,13 +499,13 @@ export default function StaffRolesPage({ currentStaff, onCurrentStaffChange }: S
       // Keyword match (hoTen, email, phone, cccd, id)
       const q = search.trim().toLowerCase();
       const matchSearch =
-        !q ||
-        s.hoTen.toLowerCase().includes(q) ||
-        s.email.toLowerCase().includes(q) ||
-        s.soDienThoai.includes(q) ||
-        s.id.toLowerCase().includes(q) ||
-        (s.cccd && s.cccd.includes(q)) ||
-        (s.chucVu && s.chucVu.toLowerCase().includes(q));
+        !search.trim() ||
+        matchVietnameseSearch(s.hoTen, search) ||
+        matchVietnameseSearch(s.email, search) ||
+        matchVietnameseSearch(s.soDienThoai, search) ||
+        matchVietnameseSearch(s.id, search) ||
+        (s.cccd ? matchVietnameseSearch(s.cccd, search) : false) ||
+        (s.chucVu ? matchVietnameseSearch(s.chucVu, search) : false);
 
       // Vai trò
       const matchRole = roleFilter === 'All' || s.vaiTro === roleFilter;

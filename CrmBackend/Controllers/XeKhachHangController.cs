@@ -44,7 +44,7 @@ namespace CrmBackend.Controllers
                 SELECT x.MaXeSoHuu, x.MaKH, x.MaXe, x.BienSoXe, x.SoKhung, 
                        x.SoMay, x.NgayMua, x.HanBaoHanh,
                        k.HoTen AS HoTenKH, k.SoDienThoai,
-                       sp.TenXe, sp.HangXe
+                       sp.TenXe, sp.HangXe, sp.HinhAnh, sp.MauSac
                 FROM XE_KHACH_HANG x
                 JOIN KHACH_HANG k ON x.MaKH = k.MaKH
                 JOIN SAN_PHAM_XE sp ON x.MaXe = sp.MaXe
@@ -63,7 +63,7 @@ namespace CrmBackend.Controllers
                 SELECT x.MaXeSoHuu, x.MaKH, x.MaXe, x.BienSoXe, x.SoKhung, 
                        x.SoMay, x.NgayMua, x.HanBaoHanh,
                        k.HoTen AS HoTenKH, k.SoDienThoai,
-                       sp.TenXe, sp.HangXe
+                       sp.TenXe, sp.HangXe, sp.HinhAnh, sp.MauSac
                 FROM XE_KHACH_HANG x
                 JOIN KHACH_HANG k ON x.MaKH = k.MaKH
                 JOIN SAN_PHAM_XE sp ON x.MaXe = sp.MaXe
@@ -82,7 +82,7 @@ namespace CrmBackend.Controllers
             var sql = @"
                 SELECT x.MaXeSoHuu, x.MaKH, x.MaXe, x.BienSoXe, x.SoKhung, 
                        x.SoMay, x.NgayMua, x.HanBaoHanh,
-                       sp.TenXe, sp.HangXe
+                       sp.TenXe, sp.HangXe, sp.HinhAnh, sp.MauSac
                 FROM XE_KHACH_HANG x
                 JOIN SAN_PHAM_XE sp ON x.MaXe = sp.MaXe
                 WHERE x.MaKH = @MaKH
@@ -135,6 +135,31 @@ namespace CrmBackend.Controllers
                 {
                     maXe = matchedId.Value;
                 }
+                else
+                {
+                    // Tự động tạo mẫu xe mới vào SAN_PHAM_XE nếu chưa có trong catalog database
+                    string hangXe = dto.HangXe ?? "";
+                    if (string.IsNullOrWhiteSpace(hangXe))
+                    {
+                        if (dto.TenXe.Contains("Yamaha", StringComparison.OrdinalIgnoreCase)) hangXe = "Yamaha";
+                        else if (dto.TenXe.Contains("Suzuki", StringComparison.OrdinalIgnoreCase)) hangXe = "Suzuki";
+                        else if (dto.TenXe.Contains("SYM", StringComparison.OrdinalIgnoreCase)) hangXe = "SYM";
+                        else if (dto.TenXe.Contains("Piaggio", StringComparison.OrdinalIgnoreCase) || dto.TenXe.Contains("Vespa", StringComparison.OrdinalIgnoreCase)) hangXe = "Piaggio & Vespa";
+                        else hangXe = "Honda";
+                    }
+                    string hinhAnh = dto.HinhAnh ?? (dto.TenXe.Contains("Tuscany", StringComparison.OrdinalIgnoreCase) ? "/images/Xe/sym_tuscany_150.jpg" : "");
+                    string mauSac = dto.MauSac ?? "Tiêu chuẩn";
+                    var insertXe = @"
+                        INSERT INTO SAN_PHAM_XE (TenXe, HangXe, LoaiXe, GiaNiemYet, MauSac, HinhAnh, CoTheLaiThu)
+                        VALUES (@TenXe, @HangXe, N'Xe ga', 45000000, @MauSac, @HinhAnh, 1);
+                        SELECT CAST(SCOPE_IDENTITY() AS INT);";
+                    maXe = await _db.ExecuteScalarAsync<int>(insertXe, new {
+                        TenXe = dto.TenXe.Trim(),
+                        HangXe = hangXe,
+                        MauSac = mauSac,
+                        HinhAnh = hinhAnh
+                    });
+                }
             }
             var ngayMua = dto.NgayMua ?? DateTime.Now;
             var hanBaoHanh = dto.HanBaoHanh ?? new DateTime(1970, 1, 1);
@@ -179,11 +204,14 @@ namespace CrmBackend.Controllers
 
             var cleanPlate = dto.BienSoXe.Trim().ToUpper();
 
-            // Kiểm tra trùng biển số xe khác trong DB
-            var checkSql = "SELECT COUNT(1) FROM XE_KHACH_HANG WHERE BienSoXe = @BienSoXe AND MaXeSoHuu != @MaXeSoHuu";
-            var exists = await _db.ExecuteScalarAsync<int>(checkSql, new { BienSoXe = cleanPlate, MaXeSoHuu = maXeSoHuu });
-            if (exists > 0)
-                return BadRequest(new { message = "Biển số xe này đã tồn tại trong hệ thống!" });
+            // Kiểm tra trùng biển số xe khác trong DB (chỉ kiểm tra khi là biển số hợp lệ, bỏ qua 'Chưa có biển số')
+            if (cleanPlate != "CHƯA CÓ BIỂN SỐ" && !cleanPlate.Contains("CHƯA CÓ") && !cleanPlate.Contains("CHUA CO"))
+            {
+                var checkSql = "SELECT COUNT(1) FROM XE_KHACH_HANG WHERE UPPER(LTRIM(RTRIM(BienSoXe))) = @BienSoXe AND BienSoXe != N'Chưa có biển số' AND MaXeSoHuu != @MaXeSoHuu";
+                var exists = await _db.ExecuteScalarAsync<int>(checkSql, new { BienSoXe = cleanPlate, MaXeSoHuu = maXeSoHuu });
+                if (exists > 0)
+                    return BadRequest(new { message = "Biển số xe này đã tồn tại trong hệ thống!" });
+            }
 
             var sql = @"
                 UPDATE XE_KHACH_HANG 

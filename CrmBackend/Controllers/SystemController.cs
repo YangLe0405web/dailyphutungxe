@@ -123,5 +123,42 @@ namespace CrmBackend.Controllers
                 return StatusCode(500, new { success = false, message = "Lỗi khi reset dữ liệu: " + ex.Message });
             }
         }
+
+        // POST: api/System/sync-catalog-vehicles
+        // Đồng bộ các mẫu xe từ catalog và sửa xe hiển thị sai của khách hàng
+        [HttpPost("sync-catalog-vehicles")]
+        public async Task<IActionResult> SyncCatalogVehicles()
+        {
+            try
+            {
+                var sql = @"
+                    IF NOT EXISTS (SELECT 1 FROM SAN_PHAM_XE WHERE TenXe LIKE '%Tuscany%')
+                    BEGIN
+                        INSERT INTO SAN_PHAM_XE (TenXe, HangXe, LoaiXe, GiaNiemYet, MauSac, HinhAnh, CoTheLaiThu)
+                        VALUES (N'SYM Tuscany 150', N'SYM', N'Xe ga', 45000000, N'Xanh ngọc', N'/images/Xe/sym_tuscany_150.jpg', 1);
+                    END
+
+                    IF NOT EXISTS (SELECT 1 FROM SAN_PHAM_XE WHERE TenXe LIKE '%Shark%')
+                    BEGIN
+                        INSERT INTO SAN_PHAM_XE (TenXe, HangXe, LoaiXe, GiaNiemYet, MauSac, HinhAnh, CoTheLaiThu)
+                        VALUES (N'SYM Shark 50', N'SYM', N'Xe ga', 24500000, N'Xanh nhám', N'/images/Xe/sym_shark_50.jpg', 1);
+                    END
+
+                    DECLARE @MaXeTuscany INT = (SELECT TOP 1 MaXe FROM SAN_PHAM_XE WHERE TenXe LIKE '%Tuscany%');
+                    IF @MaXeTuscany IS NOT NULL
+                    BEGIN
+                        UPDATE XE_KHACH_HANG 
+                        SET MaXe = @MaXeTuscany 
+                        WHERE MaXeSoHuu = 76 OR (MaKH = 36 AND MaXe = 1);
+                    END
+                ";
+                await _db.ExecuteAsync(sql);
+                return Ok(new { success = true, message = "Đồng bộ danh mục xe và cập nhật xe khách hàng thành công!" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { success = false, message = ex.Message });
+            }
+        }
     }
 }

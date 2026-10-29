@@ -36,9 +36,10 @@ function StarRow({ rating, count }: { rating: number; count: number }) {
 interface Props {
   currentCustomer?: Customer | null;
   onRequireLogin?: () => void;
+  onNavigateToCheckout?: () => void;
 }
 
-export default function PartsStore({ currentCustomer, onRequireLogin }: Props = {}) {
+export default function PartsStore({ currentCustomer, onRequireLogin, onNavigateToCheckout }: Props = {}) {
   const { add, updateQty, items } = useCart();
 
   // Navigation & Page View State: null = Store Home, Part = Dedicated Product Detail Page (TC04)
@@ -136,6 +137,7 @@ export default function PartsStore({ currentCustomer, onRequireLogin }: Props = 
               editCount: f.editCount || 0,
               productName: f.productName,
               hinhAnhDinhKem: f.hinhAnhDinhKem || [],
+              phanHoiShowroom: f.phanHoiCuaShop || f.ghiChuXuLy,
             };
           });
 

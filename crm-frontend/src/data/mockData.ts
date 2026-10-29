@@ -1,6 +1,6 @@
 /* ───────────────────────── TYPES ───────────────────────── */
 export type CustomerStatus = 'HoatDong' | 'BiKhoa';
-export type OrderStatus = 'ChoDuyet' | 'DaXacNhan' | 'DangGiao' | 'DaGiao' | 'HoanThanh' | 'DaHuy' | 'ChoGiaoXe';
+export type OrderStatus = 'ChoDuyet' | 'ChoKhachXacNhanNgayNhan' | 'DaXacNhan' | 'DangGiao' | 'DaGiao' | 'HoanThanh' | 'DaHuy' | 'ChoGiaoXe';
 export type PaymentStatus = 'ChuaThanhToan' | 'DaCoc' | 'DaThanhToan';
 export type OrderChannel = 'TaiQuay' | 'Online';
 export type OrderType = 'PhuTung' | 'Xe';
@@ -329,6 +329,7 @@ export interface VehicleOrderDetails {
   mauSac: string;
   phienBan?: string;
   dongCo?: string;
+  hinhAnh?: string;
   soKhungVIN?: string;
   soMay?: string;
   giaNiemYet: number;
@@ -351,6 +352,9 @@ export interface VehicleOrderDetails {
   diaChiGiao?: string;
   maLichHen?: string;
   bienSo?: string;
+  daXacNhanNgayNhan?: boolean;
+  ngayNhanXacNhan?: string;
+  gioNhanXacNhan?: string;
   checklist: VehicleChecklist;
 }
 
@@ -372,6 +376,7 @@ export interface Order {
   tenNV?: string;
   phuongThucThanhToan?: 'TienMat' | 'ChuyenKhoan' | 'TraGop';
   thongTinXe?: VehicleOrderDetails;
+  daXacNhanNgayNhan?: boolean;
   ghiChu?: string;
   lyDoHuy?: string;
   maLichHen?: string;
@@ -597,6 +602,8 @@ export interface Feedback {
   diaChi?: string;
   xeDangDung?: string;
   ghiChuXuLy?: string;
+  phanHoiCuaShop?: string;
+  ngayPhanHoi?: string;
   nhanVienXuLy?: string;
   ngayXuLy?: string;
   hinhAnhDinhKem?: string[];
@@ -649,7 +656,9 @@ export interface Survey {
   startDate?: string;   // KS06: Thời gian bắt đầu
   endDate?: string;     // KS06: Thời gian kết thúc
   questions: SurveyQuestion[];
-  status: SurveyStatus; // KS08: Tự động cập nhật Nháp -> Sắp diễn ra -> Đang diễn ra -> Đã kết thúc
+  status: SurveyStatus;
+  targetCount?: number;
+  responseCount?: number;
 }
 
 export function computeSurveyStatus(survey: Survey): 'Nhap' | 'SapDienRa' | 'DangDienRa' | 'DaKetThuc' {
@@ -715,6 +724,12 @@ export interface SurveyResponse {
   surveyId: string;
   customerId: string;
   customerName: string;
+  soDienThoai?: string;
+  bienSoXe?: string;
+  tenXe?: string;
+  danhGiaChung?: string;
+  ghiChu?: string;
+  daXuLy?: boolean;
   answers: Record<string, string>;
   submittedDate: string;
 }
@@ -723,7 +738,7 @@ export interface SurveyResponse {
 export const PART_IMAGES_LIST = [
   "/images/phutung/dan_ao_ab_125_trang_do.webp",
   "/images/phutung/dan_ao_ab_125_xanh_dam.webp",
-  "/images/phutung/dan_ao_ab_125_den_nham.webp",
+  "/images/phutung/motul_7100.png",
   "/images/phutung/dan_ao_ab_150_xam_xi_mang.webp",
   "/images/phutung/heo_dau_mfz_2pis.webp",
   "/images/phutung/heo_mfz_4_pis_cho_xe_tay_ga.webp",
@@ -1052,6 +1067,7 @@ export const mockCustomers: Customer[] = [
   { id: 'KH007', hoTen: 'Vũ Minh Hải', email: 'vuminhhai85@gmail.com', soDienThoai: '0967890123', diaChi: '34 Nguyễn Đình Chiểu, Phú Nhuận, TP.HCM', ngaySinh: '1985-04-25', gioiTinh: 'Nam', trangThai: 'HoatDong', ngayDangKy: '2023-07-15', soXe: 'XE007', tongChiTieu: 5200000, avatar: '/images/KH/kh7.jpg' },
   { id: 'KH008', hoTen: 'Bùi Thị Hương', email: 'buithihuong94@gmail.com', soDienThoai: '0978901234', diaChi: '67 Phan Xích Long, Phú Nhuận, TP.HCM', ngaySinh: '1994-09-14', gioiTinh: 'Nu', trangThai: 'HoatDong', ngayDangKy: '2023-08-22', soXe: 'XE008', tongChiTieu: 5620000, avatar: '/images/KH/kh8.jpg' },
   { id: 'KH009', hoTen: 'Đỗ Khoa Nam', email: 'dokhoanam91@gmail.com', soDienThoai: '0989012345', diaChi: '102 Hoàng Văn Thụ, Tân Bình, TP.HCM', ngaySinh: '1991-02-10', gioiTinh: 'Nam', trangThai: 'HoatDong', ngayDangKy: '2023-09-19', soXe: 'XE009', tongChiTieu: 1850000, avatar: '/images/KH/kh9.jpg' },
+  { id: 'KH1004', hoTen: 'Lan Phương', email: 'lanphuong1004@gmail.com', soDienThoai: '0918100400', diaChi: '1004 Nguyễn Thị Minh Khai, Q.1, TP.HCM', ngaySinh: '1995-10-04', gioiTinh: 'Nu', trangThai: 'HoatDong', ngayDangKy: '2024-01-15', soXe: 'XE1004', tongChiTieu: 8500000, avatar: '/images/KH/kh2.jpg' },
   { id: 'KH010', hoTen: 'Trương Vũ Hoàng Lộc', email: 'lochoang48@gmail.com', soDienThoai: '0990123456', diaChi: '215 Lê Văn Sỹ, Q.3, TP.HCM', ngaySinh: '1989-10-05', gioiTinh: 'Nam', trangThai: 'HoatDong', ngayDangKy: '2023-10-05', soXe: 'XE010', tongChiTieu: 6400000, avatar: '/images/KH/kh10.jpg' },
 ];
 
@@ -1235,7 +1251,7 @@ export const mockInsuranceContracts: InsuranceContract[] = [
     soDienThoai: '0901234567',
     email: 'nguyenvanan1990@gmail.com',
     diaChi: '12 Lý Thường Kiệt, Q.1, TP.HCM',
-    vehicleId: 'XE001',
+    vehicleId: 'XE002',
     tenXe: 'HONDA SH 150i (59S1 - 123.45)',
     bienSo: '59S1-123.45',
     soKhung: 'RLHKD150CB12345',
@@ -1329,35 +1345,22 @@ export const mockProductReviews: ProductReview[] = [
 export const mockSurveys: Survey[] = [
   {
     id: 'KS001',
-    title: 'Khảo sát chất lượng Dịch vụ Bảo dưỡng 2025',
+    title: 'Khảo sát chất lượng Dịch vụ Bảo dưỡng định kỳ Motoshop 2026',
     description: 'Đánh giá chất lượng phục vụ và thái độ nhân viên kỹ thuật tại showroom Motoshop.',
     targetCustomerId: 'ALL',
     targetCustomerTier: 'ALL',
-    createdDate: '2024-12-15',
-    publishDate: '2024-12-15T08:00',
-    startDate: '2024-12-15T08:00',
+    createdDate: '01-01-2026',
+    publishDate: '2026-01-01T08:00',
+    startDate: '2026-01-01T08:00',
     endDate: '2026-12-31T23:59',
     status: 'DangDienRa',
+    targetCount: 50,
+    responseCount: 40,
     questions: [
-      { id: 'q1', text: 'Bạn hài lòng với thái độ phục vụ của nhân viên kỹ thuật?', opts: ['Rất hài lòng', 'Hài lòng', 'Bình thường', 'Chưa hài lòng'] },
-      { id: 'q2', text: 'Thời gian bảo dưỡng xe có đúng với cam kết?', opts: ['Nhanh hơn dự kiến', 'Đúng giờ', 'Hơi chậm', 'Quá chậm'] },
-      { id: 'q3', text: 'Bạn đánh giá thế nào về trang thiết bị tại xưởng sửa chữa?', opts: ['Hiện đại', 'Tốt', 'Bình thường', 'Cần nâng cấp'] },
-    ]
-  },
-  {
-    id: 'KS002',
-    title: 'Khảo sát nhu cầu mua xe mới Honda SH 160i 2025',
-    description: 'Chương trình tìm hiểu nhu cầu và ưu đãi nâng cấp dòng xe tay ga cao cấp.',
-    targetCustomerId: 'ALL',
-    targetCustomerTier: 'ALL',
-    createdDate: '2024-12-16',
-    publishDate: '2024-12-16T08:00',
-    startDate: '2024-12-16T08:00',
-    endDate: '2026-12-31T23:59',
-    status: 'DangDienRa',
-    questions: [
-      { id: 'q1', text: 'Bạn có dự định đổi xe mới trong 6 tháng tới?', opts: ['Có, chắc chắn', 'Đang cân nhắc', 'Chưa có nhu cầu'] },
-      { id: 'q2', text: 'Màu sắc xe Honda SH 160i nào bạn yêu thích nhất?', opts: ['Đen nhám', 'Đỏ kim loại', 'Trắng ngọc trai', 'Xám xi măng'] },
+      { id: 'q1', text: 'Mức độ hài lòng của bạn về ngoại quan và tình trạng xe mới khi nhận bàn giao (sơn xe, gương, phụ kiện, số khung/số máy)?', opts: ['Rất hài lòng (Xe sạch bóng, nguyên seal, đủ phụ kiện)', 'Hài lòng (Đạt tiêu chuẩn)', 'Bình thường', 'Chưa hài lòng'] },
+      { id: 'q2', text: 'Thái độ tư vấn, hỗ trợ thủ tục hồ sơ và đăng ký xe của nhân viên bán hàng?', opts: ['Nhiệt tình, chu đáo, rất chuyên nghiệp', 'Tận tâm, đầy đủ thông tin', 'Bình thường', 'Cần cải thiện thái độ phục vụ'] },
+      { id: 'q3', text: 'Bạn đã được chuyên viên hướng dẫn chi tiết về Sổ bảo hành điện tử và các mốc bảo dưỡng định kỳ?', opts: ['Đã được hướng dẫn rất chi tiết & rõ ràng', 'Đã được giải thích sơ bộ', 'Chưa được hướng dẫn'] },
+      { id: 'q4', text: 'Bạn có sẵn lòng giới thiệu Showroom DailyXeMay cho người thân, bạn bè khi có nhu cầu mua xe máy không?', opts: ['Chắc chắn sẽ giới thiệu', 'Có thể', 'Chưa chắc chắn'] },
     ]
   },
   {
@@ -1366,14 +1369,18 @@ export const mockSurveys: Survey[] = [
     description: 'Khảo sát ý kiến đóng góp về chính sách quà tặng và cứu hộ miễn phí 24/7 dành cho hội viên thân thiết.',
     targetCustomerId: 'ALL',
     targetCustomerTier: 'VIP',
-    createdDate: '2024-12-20',
-    publishDate: '2024-12-20T08:00',
+    createdDate: '20-10-2026',
+    publishDate: '2026-10-20T08:00',
     startDate: '2026-12-01T08:00',
     endDate: '2027-02-28T23:59',
     status: 'SapDienRa',
+    targetCount: 20,
+    responseCount: 0,
     questions: [
-      { id: 'q1', text: 'Bạn mong muốn nhận đặc quyền nào nhất từ Motoshop?', opts: ['Bảo dưỡng tại nhà', 'Voucher giảm giá 30%', 'Tặng 1 năm cứu hộ 24/7', 'Rửa xe miễn phí trọn đời'] },
-      { id: 'q2', text: 'Kênh nhận thông tin ưu đãi tiện lợi nhất với bạn?', opts: ['Zalo CSKH', 'SMS điện thoại', 'Email thông báo', 'Gọi điện trực tiếp'] },
+      { id: 'q1', text: 'Mức độ hài lòng của bạn về ngoại quan và tình trạng xe mới khi nhận bàn giao (sơn xe, gương, phụ kiện, số khung/số máy)?', opts: ['Rất hài lòng (Xe sạch bóng, nguyên seal, đủ phụ kiện)', 'Hài lòng (Đạt tiêu chuẩn)', 'Bình thường', 'Chưa hài lòng'] },
+      { id: 'q2', text: 'Thái độ tư vấn, hỗ trợ thủ tục hồ sơ và đăng ký xe của nhân viên bán hàng?', opts: ['Nhiệt tình, chu đáo, rất chuyên nghiệp', 'Tận tâm, đầy đủ thông tin', 'Bình thường', 'Cần cải thiện thái độ phục vụ'] },
+      { id: 'q3', text: 'Bạn đã được chuyên viên hướng dẫn chi tiết về Sổ bảo hành điện tử và các mốc bảo dưỡng định kỳ?', opts: ['Đã được hướng dẫn rất chi tiết & rõ ràng', 'Đã được giải thích sơ bộ', 'Chưa được hướng dẫn'] },
+      { id: 'q4', text: 'Bạn có sẵn lòng giới thiệu Showroom DailyXeMay cho người thân, bạn bè khi có nhu cầu mua xe máy không?', opts: ['Chắc chắn sẽ giới thiệu', 'Có thể', 'Chưa chắc chắn'] },
     ]
   },
   {
@@ -1382,14 +1389,18 @@ export const mockSurveys: Survey[] = [
     description: 'Đánh giá độ bền và độ tương thích của phụ tùng Motul, Michelin, Brembo lắp đặt tại showroom.',
     targetCustomerId: 'ALL',
     targetCustomerTier: 'ALL',
-    createdDate: '2024-07-01',
+    createdDate: '01-07-2024',
     publishDate: '2024-07-01T08:00',
     startDate: '2024-07-01T08:00',
     endDate: '2024-09-30T23:59',
     status: 'DaKetThuc',
+    targetCount: 20,
+    responseCount: 18,
     questions: [
-      { id: 'q1', text: 'Độ êm ái của nhớt Motul sau 1.500km di chuyển?', opts: ['Rất êm', 'Bình thường', 'Hơi nóng máy'] },
-      { id: 'q2', text: 'Độ bám đường của lốp Michelin khi trời mưa?', opts: ['Rất tốt', 'Khá tốt', 'Chưa an tâm'] },
+      { id: 'q1', text: 'Mức độ hài lòng của bạn về ngoại quan và tình trạng xe mới khi nhận bàn giao (sơn xe, gương, phụ kiện, số khung/số máy)?', opts: ['Rất hài lòng (Xe sạch bóng, nguyên seal, đủ phụ kiện)', 'Hài lòng (Đạt tiêu chuẩn)', 'Bình thường', 'Chưa hài lòng'] },
+      { id: 'q2', text: 'Thái độ tư vấn, hỗ trợ thủ tục hồ sơ và đăng ký xe của nhân viên bán hàng?', opts: ['Nhiệt tình, chu đáo, rất chuyên nghiệp', 'Tận tâm, đầy đủ thông tin', 'Bình thường', 'Cần cải thiện thái độ phục vụ'] },
+      { id: 'q3', text: 'Bạn đã được chuyên viên hướng dẫn chi tiết về Sổ bảo hành điện tử và các mốc bảo dưỡng định kỳ?', opts: ['Đã được hướng dẫn rất chi tiết & rõ ràng', 'Đã được giải thích sơ bộ', 'Chưa được hướng dẫn'] },
+      { id: 'q4', text: 'Bạn có sẵn lòng giới thiệu Showroom DailyXeMay cho người thân, bạn bè khi có nhu cầu mua xe máy không?', opts: ['Chắc chắn sẽ giới thiệu', 'Có thể', 'Chưa chắc chắn'] },
     ]
   }
 ];
@@ -1400,35 +1411,32 @@ export const mockSurveyResponses: SurveyResponse[] = [
     surveyId: 'KS001',
     customerId: 'KH002',
     customerName: 'Trần Thị Bích',
+    soDienThoai: '0987***221',
+    bienSoXe: '59F2-678.90',
+    tenXe: 'Honda SH 160i ABS',
+    danhGiaChung: 'Hài lòng 😊',
     answers: {
       q1: 'Hài lòng',
       q2: 'Đúng giờ',
       q3: 'Tốt'
     },
-    submittedDate: '2024-12-16 10:30'
+    submittedDate: '26/10/2026'
   },
   {
     id: 'RSP002',
     surveyId: 'KS001',
     customerId: 'KH001',
     customerName: 'Nguyễn Văn An',
+    soDienThoai: '0901***890',
+    bienSoXe: '29K1-123.45',
+    tenXe: 'Honda SH 160i ABS',
+    danhGiaChung: 'Rất hài lòng 😊',
     answers: {
       q1: 'Rất hài lòng',
       q2: 'Nhanh hơn dự kiến',
       q3: 'Hiện đại'
     },
-    submittedDate: '2024-12-17 14:15'
-  },
-  {
-    id: 'RSP003',
-    surveyId: 'KS002',
-    customerId: 'KH001',
-    customerName: 'Nguyễn Văn An',
-    answers: {
-      q1: 'Đang cân nhắc',
-      q2: 'Đen nhám'
-    },
-    submittedDate: '2024-12-18 09:20'
+    submittedDate: '26/10/2026'
   }
 ];
 

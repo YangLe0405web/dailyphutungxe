@@ -19,6 +19,8 @@ namespace CrmBackend.Models
         // JOIN từ SAN_PHAM_XE
         public string? TenXe { get; set; }
         public string? HangXe { get; set; }
+        public string? HinhAnh { get; set; }
+        public string? MauSac { get; set; }
     }
 
     // ── DTO thêm xe cho khách (POST) ──
@@ -27,6 +29,9 @@ namespace CrmBackend.Models
         public int MaKH { get; set; }
         public int? MaXe { get; set; }
         public string? TenXe { get; set; }
+        public string? HangXe { get; set; }
+        public string? MauSac { get; set; }
+        public string? HinhAnh { get; set; }
         public string BienSoXe { get; set; } = "";
         public string? SoKhung { get; set; }
         public string? SoMay { get; set; }
