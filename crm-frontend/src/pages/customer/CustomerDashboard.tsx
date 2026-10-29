@@ -48,6 +48,7 @@ import {
   formatCustomerId,
   type PinnedChatContext,
   DEFAULT_CATALOG_VEHICLES,
+  catalogVehicleApi,
   partApi,
 } from '../../services/api';
 import ImageUploader from '../../components/shared/ImageUploader';
@@ -1150,15 +1151,25 @@ export default function CustomerDashboard({
     // Helper lấy đúng ảnh phương tiện từ xe hoặc catalog đại lý
   const getVehicleDisplayImage = (v: Vehicle) => {
     if (v.hinhAnh) return v.hinhAnh;
+    const cleanName = (v.tenXe || '').toLowerCase().trim();
+    if (cleanName.includes('tuscany')) return '/images/Xe/sym_tuscany_150.jpg';
+    if (cleanName.includes('winner')) return '/images/Xe/honda_winner_x.jpg';
+    if (cleanName.includes('vision')) return '/images/Xe/honda_vision_2024.jpg';
+    if (cleanName.includes('exciter')) return '/images/Xe/yamaha_exciter_155_vva.jpg';
+    if (cleanName.includes('grande')) return '/images/Xe/yamaha_grande_hybrid.jpg';
+    if (cleanName.includes('sh mode')) return '/images/Xe/honda_sh_mode_125.jpg';
+    if (cleanName.includes('sh')) return '/images/Xe/honda_sh_160i_abs_2024.jpg';
+    if (cleanName.includes('air blade') || cleanName.includes('airblade')) return '/images/Xe/honda_air_blade_160_abs.jpg';
     try {
       const cachedCat = localStorage.getItem('crm_catalog_vehicles');
       const catList: any[] = cachedCat ? JSON.parse(cachedCat) : (DEFAULT_CATALOG_VEHICLES || []);
-      const cleanName = (v.tenXe || '').toLowerCase().trim();
       const found = catList.find(c => {
         const cName = (c.tenXe || '').toLowerCase().trim();
         return cleanName && cName && (cleanName.includes(cName) || cName.includes(cleanName));
       });
       if (found?.hinhAnh) return found.hinhAnh;
+      const showFound = showroomVehicles.find(sv => cleanName && sv.tenXe.toLowerCase().includes(cleanName));
+      if (showFound?.hinhAnh) return showFound.hinhAnh;
     } catch {}
     return 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=800&auto=format&fit=crop&q=80';
   };
@@ -1340,13 +1351,15 @@ export default function CustomerDashboard({
   const [orderCancelToast, setOrderCancelToast] = useState<string | null>(null);
 
   // Review modal
-  const [reviewModalPart, setReviewModalPart] = useState<{ partName: string; orderId: string; productId?: string; productType?: 'PhuTung' | 'XeMau' | 'DichVu'; fromTab?: number } | null>(null);
+  const [reviewModalPart, setReviewModalPart] = useState<{ partName: string; orderId: string; productId?: string; productImage?: string; productType?: 'PhuTung' | 'XeMau' | 'DichVu'; fromTab?: number } | null>(null);
   const [reviewStars, setReviewStars] = useState(5);
   const [reviewContent, setReviewContent] = useState('');
   const [reviewImages, setReviewImages] = useState<string[]>([]);
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const [reviewToast, setReviewToast] = useState<string | null>(null);
   const [myCustomerFeedbacks, setMyCustomerFeedbacks] = useState<Feedback[]>([]);
+
+
 
   // Bảo hiểm
   const [isBuyingOnlineInsurance, setIsBuyingOnlineInsurance] = useState(false);
@@ -1809,6 +1822,33 @@ export default function CustomerDashboard({
     );
   }, [myAppts]);
 
+  // Tự động đồng bộ bài khảo sát cho các đơn xe hoặc dịch vụ đã hoàn thành nếu chưa có bài khảo sát
+  useEffect(() => {
+    if (!currentCustomer) return;
+    try {
+      const allSurveys = surveyApi.getAll();
+      myOrders
+        .filter(o => (o.loaiDon === 'Xe' || !!o.thongTinXe) && (o.trangThai === 'HoanThanh' || o.trangThai === 'DaGiao'))
+        .forEach(o => {
+          const sId = `KS-XE-${o.id}`;
+          if (!allSurveys.some(s => s.id === sId)) {
+            surveyApi.createVehiclePurchaseSurvey(o, currentCustomer);
+          }
+        });
+
+      myAppts
+        .filter(a => (a.trangThai === 'DaHoanThanh' || a.trangThai === 'HoanThanh') && (a.loaiDichVu === 'BaoDuong' || a.loaiDichVu === 'SuaChua' || a.loaiDichVu === 'BaoHanh'))
+        .forEach(a => {
+          const sId = `KS-BD-${a.id}`;
+          if (!allSurveys.some(s => s.id === sId)) {
+            surveyApi.createMaintenanceSurvey(a, currentCustomer);
+          }
+        });
+    } catch (e) {
+      console.warn('Lỗi tự động khởi tạo khảo sát:', e);
+    }
+  }, [currentCustomer?.id, myOrders.length, myAppts.length]);
+
   // Real spending & CLV (BH05: Tích lũy cả chi tiêu đơn hàng và bảo hiểm)
   const realCustomerSpending = useMemo(() => {
     if (!currentCustomer) return 0;
@@ -2209,13 +2249,47 @@ export default function CustomerDashboard({
     return baseCount + extraCount;
   }, [myAppts, currentCustomer]);
 
+  const isOnlineOrder = (o: any) => {
+    const kb = (o.kenhBan || (o as any).channel || '').toLowerCase();
+    if (kb === 'taiquay' || kb === 'cuahang' || kb === 'offline') return false;
+    return true;
+  };
+
+  const unreviewedOrdersCount = useMemo(() => {
+    let count = 0;
+    if (!currentCustomer) return 0;
+    myOrders
+      .filter(o => isOnlineOrder(o) && (o.trangThai === 'HoanThanh' || o.trangThai === 'DaGiao' || (o as any).trangThaiDonHang === 'HoanThanh'))
+      .forEach(o => {
+        if (o.thongTinXe) {
+          const already = myCustomerFeedbacks.some(f =>
+            (f.orderId && f.orderId === o.id) ||
+            (f.productId && (f.productId === o.id || f.productId === (o.thongTinXe as any)?.vehicleId || f.productId === (o.thongTinXe as any)?.maXe))
+          );
+          if (!already) count++;
+        }
+        if (o.items && o.items.length > 0) {
+          o.items.forEach((it: any, idx: number) => {
+            const name = it.tenSanPham || it.tenPhuTung || `Phụ tùng #${idx + 1}`;
+            const partId = (it as any).id || (it as any).maPhuTung || undefined;
+            const already = myCustomerFeedbacks.some(f =>
+              (f.orderId && f.orderId === o.id && (f.productId === partId || !f.productId)) ||
+              (f.orderId && f.orderId === o.id && f.productName && f.productName.toLowerCase().trim() === name.toLowerCase().trim())
+            );
+            if (!already) count++;
+          });
+        }
+      });
+    return count;
+  }, [myOrders, myCustomerFeedbacks, currentCustomer]);
+
   const sidebarNavItems = [
     { id: 0, label: 'Phương tiện của tôi', count: myVehicles.length, icon: '🏍️' },
     { id: 1, label: 'Đơn mua hàng', count: myOrders.length, icon: '🛍️' },
     { id: 2, label: 'Lịch hẹn', count: myAppts.filter(a => a.trangThai !== 'DaHoanThanh' && a.trangThai !== 'HoanThanh' && a.trangThai !== 'DaHuy' && a.trangThai !== 'TuChoi').length, icon: '📅' },
     { id: 3, label: 'Lịch sử dịch vụ', count: completedServicesCount, icon: '🕒' },
     { id: 4, label: 'Bảo hiểm', count: myInsurances.length, icon: '🛡️' },
-    { id: 5, label: 'Khảo sát & Đánh giá', count: 0, icon: '📝' },
+    { id: 5, label: 'Khảo sát & Đánh giá', count: unreviewedOrdersCount, icon: '📝' },
   ];
 
   return (
@@ -3166,8 +3240,11 @@ export default function CustomerDashboard({
 
                                 {isCompleted && isXe && (() => {
                                   const vName = order.thongTinXe?.tenXe || 'Xe máy chính hãng';
-                                  const matchedV = showroomVehicles.find(v => v.tenXe.toLowerCase().includes(vName.toLowerCase()) || vName.toLowerCase().includes(v.tenXe.toLowerCase()));
-                                  const vId = matchedV?.id || (order.thongTinXe as any)?.vehicleId || 'XM-HD01';
+                                  const catalogList = catalogVehicleApi.getAllSync();
+                                  const matchedV = catalogList.find(v => v.tenXe.toLowerCase().includes(vName.toLowerCase()) || vName.toLowerCase().includes(v.tenXe.toLowerCase())) ||
+                                    showroomVehicles.find(v => v.tenXe.toLowerCase().includes(vName.toLowerCase()) || vName.toLowerCase().includes(v.tenXe.toLowerCase()));
+                                  const vId = matchedV?.id || (order.thongTinXe as any)?.vehicleId || (vName.toLowerCase().includes('tuscany') ? 'XM042' : 'XM-HD01');
+                                  const vImg = order.thongTinXe?.hinhAnh || matchedV?.hinhAnh || (matchedV as any)?.hinhAnhXe || (vName.toLowerCase().includes('tuscany') ? '/images/Xe/sym_tuscany_150.jpg' : '');
                                   const existingXeReview = myCustomerFeedbacks.find(f =>
                                     (f.orderId && f.orderId === order.id) ||
                                     (f.productId && f.productId === vId && f.orderId === order.id) ||
@@ -3187,6 +3264,7 @@ export default function CustomerDashboard({
                                               partName: vName,
                                               orderId: order.id,
                                               productId: vId,
+                                              productImage: vImg || existingXeReview.productImage,
                                               productType: 'XeMau',
                                               fromTab: 1,
                                             });
@@ -3210,6 +3288,7 @@ export default function CustomerDashboard({
                                           partName: vName,
                                           orderId: order.id,
                                           productId: vId,
+                                          productImage: vImg,
                                           productType: 'XeMau',
                                           fromTab: 1,
                                         });
@@ -3287,14 +3366,14 @@ export default function CustomerDashboard({
                           <div key={d} className="font-bold text-red-500 py-1">{d}</div>
                         ))}
                         {Array.from({ length: 31 }, (_, i) => i + 1).map(day => {
-                          // LH06 & LH11: Loại trừ lịch hủy/từ chối, hiển thị rõ ràng từng loại lịch
+                          // LH06 & LH11 & Fix 8: Hiển thị cả lịch đã xác nhận và lịch đã hoàn tất (nhưng làm mờ)
                           const dayAppts = myAppts.filter(a => {
-                            // LH12: Calendar chỉ hiển thị các lịch hẹn Đã xác nhận (DaXacNhan)
-                            if (a.trangThai !== 'DaXacNhan') return false;
+                            if (a.trangThai !== 'DaXacNhan' && a.trangThai !== 'DaHoanThanh' && a.trangThai !== 'HoanThanh') return false;
                             const dNum = parseInt((a.ngayHen || '').split('-')[2] || '0', 10);
                             return dNum === day;
                           });
                           const hasAppt = dayAppts.length > 0;
+                          const hasActiveAppt = dayAppts.some(a => a.trangThai === 'DaXacNhan');
                           const isSelected = selectedCalendarDay === day;
 
                           return (
@@ -3304,22 +3383,27 @@ export default function CustomerDashboard({
                               className={`p-2 rounded-2xl border text-xs font-bold transition flex flex-col justify-start min-h-[74px] sm:min-h-[82px] relative cursor-pointer select-none ${
                                 isSelected
                                   ? 'bg-red-950/60 border-red-500 ring-2 ring-red-500/40 text-white shadow-md'
-                                  : hasAppt
+                                  : hasActiveAppt
                                   ? 'bg-[#1e1416] border-red-600/90 hover:border-red-500 text-white shadow-xs'
+                                  : hasAppt
+                                  ? 'bg-zinc-900/60 border-zinc-700/60 hover:border-zinc-500 text-zinc-400'
                                   : 'bg-[#18181b] border-zinc-800/80 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
                               }`}
                             >
                               <div className="flex items-center justify-between w-full">
-                                <span className={hasAppt ? 'text-white font-extrabold text-xs' : 'text-zinc-400 text-xs'}>{day}</span>
-                                {hasAppt && (
+                                <span className={hasActiveAppt ? 'text-white font-extrabold text-xs' : hasAppt ? 'text-zinc-400 text-xs' : 'text-zinc-500 text-xs'}>{day}</span>
+                                {hasActiveAppt ? (
                                   <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                                )}
+                                ) : hasAppt ? (
+                                  <span className="w-1.5 h-1.5 rounded-full bg-zinc-500" />
+                                ) : null}
                               </div>
 
                               {/* LH11: Hiển thị badge các loại lịch đã đặt trong ngày */}
                               {hasAppt && (
                                 <div className="w-full space-y-1 mt-1.5 overflow-hidden">
                                   {dayAppts.map(appt => {
+                                    const isDone = appt.trangThai === 'DaHoanThanh' || appt.trangThai === 'HoanThanh';
                                     let badgeClass = 'bg-red-950/80 border-red-600/70 text-red-300';
                                     let shortLabel = 'Lái thử';
                                     if (appt.loaiDichVu === 'BaoDuong') {
@@ -3336,13 +3420,17 @@ export default function CustomerDashboard({
                                       shortLabel = 'Nhận xe';
                                     }
 
+                                    if (isDone) {
+                                      badgeClass = 'opacity-50 line-through bg-zinc-900/60 border-zinc-700/60 text-zinc-400';
+                                    }
+
                                     return (
                                       <div
                                         key={appt.id}
-                                        title={`${shortLabel} lúc ${appt.gioHen || '08:30'} - ${appt.tenXe || ''}`}
+                                        title={`${isDone ? '[ĐÃ HOÀN TẤT] ' : ''}${shortLabel} lúc ${appt.gioHen || '08:30'} - ${appt.tenXe || ''}`}
                                         className={`text-[9px] sm:text-[10px] font-mono px-1 py-0.5 rounded border truncate text-center leading-tight shadow-2xs ${badgeClass}`}
                                       >
-                                        {shortLabel} - {appt.gioHen || '08:30'}
+                                        {isDone ? `✓ ${shortLabel}` : `${shortLabel} - ${appt.gioHen || '08:30'}`}
                                       </div>
                                     );
                                   })}
@@ -3370,13 +3458,13 @@ export default function CustomerDashboard({
                             onClick={() => setSelectedCalendarDay(null)}
                             className="text-[11px] font-mono text-zinc-400 hover:text-white underline cursor-pointer"
                           >
-                            Xem tất cả ({myAppts.filter(a => a.trangThai !== 'DaHuy' && a.trangThai !== 'TuChoi' && a.trangThai !== 'DaHoanThanh' && a.trangThai !== 'HoanThanh').length})
+                            Xem tất cả ({myAppts.filter(a => a.trangThai !== 'DaHuy' && a.trangThai !== 'TuChoi').length})
                           </button>
                         )}
                       </div>
 
                       {(() => {
-                        const validAppts = myAppts.filter(a => a.trangThai !== 'DaHuy' && a.trangThai !== 'TuChoi' && a.trangThai !== 'DaHoanThanh' && a.trangThai !== 'HoanThanh');
+                        const validAppts = myAppts.filter(a => a.trangThai !== 'DaHuy' && a.trangThai !== 'TuChoi');
                         const displayedAppts = selectedCalendarDay !== null
                           ? validAppts.filter(a => parseInt((a.ngayHen || '').split('-')[2] || '0', 10) === selectedCalendarDay)
                           : validAppts;
@@ -4091,7 +4179,7 @@ export default function CustomerDashboard({
                     {[
                       { key: 'ChoDanhGia', label: '✍️ Chờ đánh giá xe & phụ tùng' },
                       { key: 'DaDanhGia', label: '☑️ Đã đánh giá' },
-                      { key: 'KhaoSatHeThong', label: '📋 Khảo sát dịch vụ bảo dưỡng' },
+                      { key: 'KhaoSatHeThong', label: '📋 Khảo sát mua xe & Dịch vụ' },
                     ].map(st => (
                       <button
                         key={st.key}
@@ -4138,7 +4226,8 @@ export default function CustomerDashboard({
                           (f.productId && (f.productId === o.id || f.productId === (o.thongTinXe as any)?.vehicleId || f.productId === (o.thongTinXe as any)?.maXe))
                         );
                         if (!already) {
-                          const xeImg = o.thongTinXe.hinhAnh || (name.toLowerCase().includes('air') ? '/images/Xe/honda_air_blade_160_abs.jpg' : '/images/Xe/honda_sh_160i_abs_2024.jpg');
+                          const catalogMatch = catalogVehicleApi.getAllSync().find(v => v.tenXe.toLowerCase().includes(name.toLowerCase()) || name.toLowerCase().includes(v.tenXe.toLowerCase()));
+                          const xeImg = o.thongTinXe.hinhAnh || catalogMatch?.hinhAnh || (name.toLowerCase().includes('air') ? '/images/Xe/honda_air_blade_160_abs.jpg' : (name.toLowerCase().includes('tuscany') ? '/images/Xe/sym_tuscany_150.jpg' : '/images/Xe/honda_sh_160i_abs_2024.jpg'));
                           waitingReviews.push({
                             id: `order-xe-${o.id}`,
                             orderId: o.id,
@@ -4147,6 +4236,7 @@ export default function CustomerDashboard({
                             title: name,
                             subTitle: `Đơn hàng #${o.id} · ${o.trangThai === 'HoanThanh' || o.trangThai === 'DaGiao' ? 'Giao nhận xe thành công' : 'Đã mua thành công'}`,
                             type: 'XeMau',
+                            productId: catalogMatch?.id || (o.thongTinXe as any)?.vehicleId,
                             image: xeImg,
                           });
                         }
@@ -4284,17 +4374,26 @@ export default function CustomerDashboard({
                                 type="button"
                                 onClick={() => {
                                   let pId = item.productId || item.orderId;
+                                  let pImg = item.image;
                                   if (item.type === 'XeMau') {
-                                    const matchedV = showroomVehicles.find(v => v.tenXe.toLowerCase().includes(item.title.toLowerCase()) || item.title.toLowerCase().includes(v.tenXe.toLowerCase()));
-                                    if (matchedV) pId = matchedV.id;
+                                    const matchedV = catalogVehicleApi.getAllSync().find(v => v.tenXe.toLowerCase().includes(item.title.toLowerCase()) || item.title.toLowerCase().includes(v.tenXe.toLowerCase())) ||
+                                      showroomVehicles.find(v => v.tenXe.toLowerCase().includes(item.title.toLowerCase()) || item.title.toLowerCase().includes(v.tenXe.toLowerCase()));
+                                    if (matchedV) {
+                                      pId = matchedV.id;
+                                      pImg = matchedV.hinhAnh || pImg;
+                                    }
                                   } else if (item.type === 'PhuTung') {
                                     const matchedP = mockParts.find(p => p.tenSanPham.toLowerCase().includes(item.title.toLowerCase()) || item.title.toLowerCase().includes(p.tenSanPham.toLowerCase()));
-                                    if (matchedP) pId = matchedP.id;
+                                    if (matchedP) {
+                                      pId = matchedP.id;
+                                      pImg = matchedP.hinhAnh || pImg;
+                                    }
                                   }
                                   setReviewModalPart({
                                     partName: item.title,
                                     orderId: item.orderId || '',
                                     productId: pId,
+                                    productImage: pImg,
                                     productType: item.type,
                                   });
                                   setReviewStars(5);
@@ -4937,18 +5036,33 @@ export default function CustomerDashboard({
           const cleanVPlate = (v.bienSo || '').toUpperCase().replace(/[\s\-\.]/g, '');
           const isChuaCoBien = !cleanVPlate || cleanVPlate === 'CHUACOBIENSO' || cleanVPlate.includes('CHUACO') || cleanVPlate.startsWith('TAM');
           const vName = (v.tenXe || '').toLowerCase().trim();
+          const vVin = (v.soKhung || '').toUpperCase().trim();
+
+          // Danh sách tổng hợp tất cả lịch hẹn của khách hàng
+          const allApptsPool = appointmentApi.getAllSync();
+          const mergedCustomerAppts = [
+            ...myAppts,
+            ...allApptsPool.filter(a => {
+              const isCust = a.customerId === currentCustomer?.id || 
+                (currentCustomer?.soDienThoai && a.soDienThoai && a.soDienThoai.replace(/\D/g, '') === currentCustomer.soDienThoai.replace(/\D/g, ''));
+              return isCust && !myAppts.some(ma => ma.id === a.id);
+            })
+          ];
 
           // 1. Từ lịch hẹn hoàn thành của khách hàng (Khớp chính xác xe)
-          myAppts.forEach(a => {
+          mergedCustomerAppts.forEach(a => {
             if (a.trangThai !== 'DaHoanThanh' && a.trangThai !== 'HoanThanh') return;
             const cleanAPlate = (a.bienSo || '').toUpperCase().replace(/[\s\-\.]/g, '');
             const aName = (a.tenXe || '').toLowerCase().trim();
-            const matchPlate = !isChuaCoBien && cleanAPlate && cleanVPlate === cleanAPlate;
-            const matchVehId = (a as any).vehicleId === v.id;
-            const matchVin = v.soKhung && (a as any).soKhung && v.soKhung === (a as any).soKhung;
-            const matchOrderXe = isChuaCoBien && (a as any).maDonHangXe && myOrders.some(o => o.id === (a as any).maDonHangXe && o.thongTinXe?.tenXe?.toLowerCase().trim() === vName);
+            const aVin = ((a as any).soKhung || '').toUpperCase().trim();
 
-            if (matchVehId || matchPlate || matchVin || matchOrderXe) {
+            const matchPlate = !isChuaCoBien && cleanAPlate && (cleanVPlate === cleanAPlate || cleanAPlate.includes(cleanVPlate) || cleanVPlate.includes(cleanAPlate));
+            const matchVehId = (a as any).vehicleId === v.id;
+            const matchVin = vVin && aVin && vVin === aVin;
+            const matchOrderXe = isChuaCoBien && (a as any).maDonHangXe && myOrders.some(o => o.id === (a as any).maDonHangXe && (o.thongTinXe?.tenXe?.toLowerCase().trim() === vName || o.thongTinXe?.soKhungVIN === vVin));
+            const matchName = vName && aName && (vName.includes(aName) || aName.includes(vName));
+
+            if (matchVehId || matchPlate || matchVin || matchOrderXe || matchName) {
               const d = a.ngayHen ? new Date(a.ngayHen) : new Date();
               const formattedDate = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
               const monthYear = `${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
@@ -5216,6 +5330,29 @@ export default function CustomerDashboard({
                   </button>
                 </div>
 
+                {/* Top Tabs Switcher */}
+                <div className="flex items-center gap-2 p-1 rounded-2xl bg-[#121214] border border-zinc-800/80">
+                  <button
+                    type="button"
+                    onClick={() => setVehicleDetailViewMode('info')}
+                    className="px-4 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 bg-red-700 text-white shadow cursor-pointer"
+                  >
+                    <span>🚗</span>
+                    <span>Thông tin phương tiện</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setVehicleDetailViewMode('serviceHistory');
+                      setVehicleServicePage(1);
+                    }}
+                    className="px-4 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 text-zinc-400 hover:text-white hover:bg-zinc-800/60 cursor-pointer"
+                  >
+                    <span>⚡</span>
+                    <span>Lịch sử dịch vụ ({allServices.length})</span>
+                  </button>
+                </div>
+
                 {/* Body 2 Cột */}
                 <div className="flex flex-col sm:flex-row gap-6 items-center sm:items-stretch">
                   {/* Cột trái: Ảnh xe */}
@@ -5320,6 +5457,29 @@ export default function CustomerDashboard({
                     title="Đóng"
                   >
                     ✕
+                  </button>
+                </div>
+
+                {/* Top Tabs Switcher */}
+                <div className="flex items-center gap-2 p-1 rounded-2xl bg-[#121214] border border-zinc-800/80">
+                  <button
+                    type="button"
+                    onClick={() => setVehicleDetailViewMode('info')}
+                    className="px-4 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 text-zinc-400 hover:text-white hover:bg-zinc-800/60 cursor-pointer"
+                  >
+                    <span>🚗</span>
+                    <span>Thông tin phương tiện</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setVehicleDetailViewMode('serviceHistory');
+                      setVehicleServicePage(1);
+                    }}
+                    className="px-4 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 bg-red-700 text-white shadow cursor-pointer"
+                  >
+                    <span>⚡</span>
+                    <span>Lịch sử dịch vụ ({allServices.length})</span>
                   </button>
                 </div>
 
@@ -5994,6 +6154,7 @@ export default function CustomerDashboard({
                       productName: reviewModalPart.partName,
                       productId: reviewModalPart.productId,
                       productType: reviewModalPart.productType || 'PhuTung',
+                      productImage: reviewModalPart.productImage,
                       orderId: reviewModalPart.orderId,
                       hinhAnhDinhKem: reviewImages,
                     });

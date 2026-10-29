@@ -11,7 +11,7 @@ import {
   surveyStatusLabels,
   getCustomerTier,
 } from '../../data/mockData';
-import { customerApi, feedbackApi, surveyApi, chatApi, formatCustomerId, type ChatMessage } from '../../services/api';
+import { customerApi, feedbackApi, surveyApi, chatApi, formatCustomerId, catalogVehicleApi, type CatalogVehicle, type ChatMessage } from '../../services/api';
 import { addCustomerNotification } from '../../services/notifications';
 import { matchVietnameseSearch } from '../../utils/vietnameseSearch';
 
@@ -88,6 +88,20 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
     const isXe = isVehicleFeedback(f);
     const name = (f.productName || f.xeDangDung || '').toLowerCase();
     if (isXe) {
+      const allCat = catalogVehicleApi.getAllSync();
+      const cleanN = name.replace(/\s*\([^)]*\)/g, '').trim().toLowerCase();
+      const found = allCat.find((c: CatalogVehicle) => {
+        const cN = c.tenXe.toLowerCase().trim();
+        return cleanN.includes(cN) || cN.includes(cleanN);
+      });
+      if (found?.hinhAnh) return found.hinhAnh;
+
+      if (name.includes('tuscany') || name.includes('sym')) return '/images/Xe/sym_tuscany_150.jpg';
+      if (name.includes('winner')) return '/images/Xe/honda_winner_x.jpg';
+      if (name.includes('vision')) return '/images/Xe/honda_vision_2024.jpg';
+      if (name.includes('exciter')) return '/images/Xe/yamaha_exciter_155_vva.jpg';
+      if (name.includes('grande')) return '/images/Xe/yamaha_grande_hybrid.jpg';
+      if (name.includes('nvx')) return '/images/Xe/yamaha_nvx_155_vva.jpg';
       if (name.includes('air') || name.includes('blade')) return '/images/Xe/honda_air_blade_160_abs.jpg';
       if (name.includes('lead')) return '/images/Xe/honda_lead_125cc_dac_biet.jpg';
       if (name.includes('cbr')) return '/images/Xe/honda_cbr150r.jpg';
@@ -972,7 +986,12 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
                 const isNewReview = f.trangThai === 'ChoXuLy';
                 const isVehicle = isVehicleFeedback(f);
                 const cleanProductTitle = (f.productName || f.xeDangDung || (isVehicle ? 'Xe máy chính hãng Motoshop' : 'Phụ tùng chính hãng Motoshop')).replace(/\s*\([^)]*\)/g, '').trim();
-                const sku = f.productId || (isVehicle ? 'XM001' : 'PT001');
+                const catMatch = isVehicle ? catalogVehicleApi.getAllSync().find((c: CatalogVehicle) => {
+                  const cN = c.tenXe.toLowerCase().trim();
+                  const fN = (f.productName || f.xeDangDung || '').toLowerCase().trim();
+                  return fN.includes(cN) || cN.includes(fN);
+                }) : null;
+                const sku = (f.productId && f.productId !== 'XM-HD01' ? f.productId : catMatch?.id) || f.productId || (isVehicle ? 'XM001' : 'PT001');
                 const thumbnail = getProductThumbnail(f);
                 const isHighlighted = highlightTargetId && (
                   f.id === highlightTargetId ||

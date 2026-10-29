@@ -2087,6 +2087,10 @@ function CreateVehicleOrderModal({
 
     setSubmitting(true);
     try {
+      const catMatch = catalogVehicleApi.getAllSync().find((c: CatalogVehicle) =>
+        c.tenXe.toLowerCase().trim() === selectedVehicleModel.toLowerCase().trim() ||
+        selectedVehicleModel.toLowerCase().trim().includes(c.tenXe.toLowerCase().trim())
+      );
       const vehicleDetails: VehicleOrderDetails = {
         customerType,
         idCardTaxNo: idCardTax.trim(),
@@ -2096,6 +2100,7 @@ function CreateVehicleOrderModal({
         mauSac: specificColor,
         phienBan: driveTrain,
         dongCo: driveTrain,
+        hinhAnh: catMatch?.hinhAnh || '',
         soKhungVIN: vinNumber,
         soMay: engineNumber,
         giaNiemYet: basePrice,

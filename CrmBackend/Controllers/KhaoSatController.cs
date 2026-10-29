@@ -116,153 +116,9 @@ namespace CrmBackend.Controllers
                 }
             };
 
-            // 12 Khảo sát chuẩn theo Ảnh 1: 10 Đang diễn ra, 1 Sắp diễn ra, 1 Đã kết thúc
+            // Danh sách Khảo sát mặc định của hệ thống
             var list = new List<SurveyDetailDto>
             {
-                new SurveyDetailDto
-                {
-                    Id = "KS-XE-DH-XE-003",
-                    Title = "Khảo sát trải nghiệm bàn giao xe mới: Honda SH 160i ABS 2024 (#DH-XE-003)",
-                    Description = "Chúc mừng quý khách đã nhận xe Honda SH 160i ABS 2024! DailyXeMay trân trọng mời quý khách dành 1-2 phút nâng cao chất lượng phục vụ và nhận quà tri ân.",
-                    Status = "DangDienRa",
-                    StartDate = "2026-10-26T08:00",
-                    EndDate = "2026-12-31T23:59",
-                    PublishDate = "2026-10-26T08:00",
-                    CreatedDate = "26-10-2026",
-                    TargetCustomerId = "ALL",
-                    TargetCustomerTier = "ALL",
-                    ResponseCount = 8,
-                    TargetCount = 10,
-                    Questions = standardQuestions
-                },
-                new SurveyDetailDto
-                {
-                    Id = "KS-XE-DH-XE-004",
-                    Title = "Khảo sát trải nghiệm bàn giao xe mới: Honda SH 160i ABS 2024 (#DH-XE-004)",
-                    Description = "Đánh giá chất lượng bàn giao xe mới và mức độ hoàn thiện hồ sơ đăng ký.",
-                    Status = "DangDienRa",
-                    StartDate = "2026-10-26T08:00",
-                    EndDate = "2026-12-31T23:59",
-                    PublishDate = "2026-10-26T08:00",
-                    CreatedDate = "26-10-2026",
-                    TargetCustomerId = "KH002",
-                    TargetCustomerTier = "ALL",
-                    ResponseCount = 0,
-                    TargetCount = 1,
-                    Questions = standardQuestions
-                },
-                new SurveyDetailDto
-                {
-                    Id = "KS-XE-DH-XE-0003",
-                    Title = "Khảo sát trải nghiệm bàn giao xe mới: Honda SH 160i ABS 2024 (#DH-XE-0003)",
-                    Description = "Thăm dò ý kiến khách hàng sau buổi lễ nhận xe máy chính hãng tại showroom Motoshop.",
-                    Status = "DangDienRa",
-                    StartDate = "2026-10-26T08:00",
-                    EndDate = "2026-12-31T23:59",
-                    PublishDate = "2026-10-26T08:00",
-                    CreatedDate = "26-10-2026",
-                    TargetCustomerId = "ALL",
-                    TargetCustomerTier = "ALL",
-                    ResponseCount = 0,
-                    TargetCount = 1,
-                    Questions = standardQuestions
-                },
-                new SurveyDetailDto
-                {
-                    Id = "KS-XE-DH-XE-0004",
-                    Title = "Khảo sát trải nghiệm bàn giao xe mới: Honda SH 160i ABS 2024 (#DH-XE-0004)",
-                    Description = "Chương trình CSKH sau bàn giao xe mới và đăng ký cấp biển số xe máy.",
-                    Status = "DangDienRa",
-                    StartDate = "2026-10-26T08:00",
-                    EndDate = "2026-12-31T23:59",
-                    PublishDate = "2026-10-26T08:00",
-                    CreatedDate = "26-10-2026",
-                    TargetCustomerId = "ALL",
-                    TargetCustomerTier = "ALL",
-                    ResponseCount = 0,
-                    TargetCount = 1,
-                    Questions = standardQuestions
-                },
-                new SurveyDetailDto
-                {
-                    Id = "KS-BD-LH001",
-                    Title = "Khảo sát chất lượng dịch vụ bảo dưỡng: Honda SH 160i ABS (#LH001)",
-                    Description = "Đánh giá chất lượng phục vụ và thái độ nhân viên kỹ thuật tại showroom Motoshop.",
-                    Status = "DangDienRa",
-                    StartDate = "2026-10-26T08:00",
-                    EndDate = "2026-12-31T23:59",
-                    PublishDate = "2026-10-26T08:00",
-                    CreatedDate = "26-10-2026",
-                    TargetCustomerId = "KH001",
-                    TargetCustomerTier = "ALL",
-                    ResponseCount = 6,
-                    TargetCount = 8,
-                    Questions = standardQuestions
-                },
-                new SurveyDetailDto
-                {
-                    Id = "KS-BD-LH002",
-                    Title = "Khảo sát chất lượng dịch vụ sửa chữa: Honda Lead 125 (#LH002)",
-                    Description = "Đánh giá chất lượng phụ tùng thay thế và tay nghề kỹ thuật viên xưởng dịch vụ.",
-                    Status = "DangDienRa",
-                    StartDate = "2026-10-26T08:00",
-                    EndDate = "2026-12-31T23:59",
-                    PublishDate = "2026-10-26T08:00",
-                    CreatedDate = "25-10-2026",
-                    TargetCustomerId = "KH002",
-                    TargetCustomerTier = "ALL",
-                    ResponseCount = 4,
-                    TargetCount = 5,
-                    Questions = standardQuestions
-                },
-                new SurveyDetailDto
-                {
-                    Id = "KS-BD-LH003",
-                    Title = "Khảo sát chất lượng dịch vụ bảo hành: Yamaha Exciter 155 (#LH003)",
-                    Description = "Khảo sát mức độ hài lòng về thời gian và kết quả xử lý bảo hành điện tử.",
-                    Status = "DangDienRa",
-                    StartDate = "2026-10-25T08:00",
-                    EndDate = "2026-12-31T23:59",
-                    PublishDate = "2026-10-25T08:00",
-                    CreatedDate = "25-10-2026",
-                    TargetCustomerId = "KH003",
-                    TargetCustomerTier = "ALL",
-                    ResponseCount = 2,
-                    TargetCount = 3,
-                    Questions = standardQuestions
-                },
-                new SurveyDetailDto
-                {
-                    Id = "KS-XE-DH-XE-001",
-                    Title = "Khảo sát trải nghiệm bàn giao xe mới: Yamaha Grande Hybrid (#DH-XE-001)",
-                    Description = "Đánh giá trải nghiệm nhận xe máy hybrid và các dịch vụ hậu mãi đi kèm.",
-                    Status = "DangDienRa",
-                    StartDate = "2026-10-24T08:00",
-                    EndDate = "2026-12-31T23:59",
-                    PublishDate = "2026-10-24T08:00",
-                    CreatedDate = "24-10-2026",
-                    TargetCustomerId = "ALL",
-                    TargetCustomerTier = "ALL",
-                    ResponseCount = 3,
-                    TargetCount = 4,
-                    Questions = standardQuestions
-                },
-                new SurveyDetailDto
-                {
-                    Id = "KS-XE-DH-XE-002",
-                    Title = "Khảo sát trải nghiệm bàn giao xe mới: Honda Air Blade 160 (#DH-XE-002)",
-                    Description = "Đánh giá chất lượng bàn giao dòng xe thể thao Air Blade 160.",
-                    Status = "DangDienRa",
-                    StartDate = "2026-10-23T08:00",
-                    EndDate = "2026-12-31T23:59",
-                    PublishDate = "2026-10-23T08:00",
-                    CreatedDate = "23-10-2026",
-                    TargetCustomerId = "ALL",
-                    TargetCustomerTier = "ALL",
-                    ResponseCount = 5,
-                    TargetCount = 6,
-                    Questions = standardQuestions
-                },
                 new SurveyDetailDto
                 {
                     Id = "KS001",
@@ -318,11 +174,10 @@ namespace CrmBackend.Controllers
                 _surveys[s.Id] = s;
             }
 
-            // Responses cho KS-XE-DH-XE-003 (Khớp 100% Ảnh 3)
             _responses.Add(new SurveyResponseItemDto
             {
                 Id = "RESP-001",
-                SurveyId = "KS-XE-DH-XE-003",
+                SurveyId = "KS001",
                 CustomerId = "KH001",
                 CustomerName = "Nguyễn Văn A",
                 PhoneNumber = "0901***890",

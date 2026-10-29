@@ -4920,16 +4920,22 @@ export const feedbackApi = {
       }
     }
 
-    // Tự động phân giải ID xe hoặc phụ tùng nếu chưa có hoặc nếu ID chưa đúng định dạng chuẩn
-    if ((!finalProductId || (!finalProductId.startsWith('PT') && !finalProductId.startsWith('XM'))) && data.productName) {
+    // Tự động phân giải ID xe hoặc phụ tùng nếu chưa có hoặc nếu ID là placeholder (XM-HD01) hoặc chưa đúng định dạng chuẩn
+    const isPlaceholderOrUnknown = !finalProductId || finalProductId === 'XM-HD01' || (!finalProductId.startsWith('PT') && !finalProductId.startsWith('XM'));
+    if (data.productName) {
       const matchBike = catalogVehicleApi.getAllSync().find(v =>
         v.tenXe.toLowerCase().includes(data.productName!.toLowerCase()) ||
         data.productName!.toLowerCase().includes(v.tenXe.toLowerCase())
       );
       if (matchBike) {
-        finalProductId = matchBike.id;
-        finalProductType = 'XeMau';
-      } else {
+        if (isPlaceholderOrUnknown || finalProductType === 'XeMau') {
+          finalProductId = matchBike.id;
+          finalProductType = 'XeMau';
+        }
+        if (!data.productImage) {
+          data.productImage = matchBike.hinhAnh;
+        }
+      } else if (isPlaceholderOrUnknown) {
         const matchPart = mockParts.find(p =>
           p.tenSanPham.toLowerCase().includes(data.productName!.toLowerCase()) ||
           data.productName!.toLowerCase().includes(p.tenSanPham.toLowerCase())
@@ -4937,6 +4943,9 @@ export const feedbackApi = {
         if (matchPart) {
           finalProductId = matchPart.id;
           finalProductType = 'PhuTung';
+          if (!data.productImage) {
+            data.productImage = matchPart.hinhAnh;
+          }
         }
       }
     }
@@ -5440,6 +5449,13 @@ export const chatApi = {
 const SURVEY_STORAGE_KEY = 'crm_surveys';
 const SURVEY_RESPONSE_KEY = 'crm_survey_responses';
 
+// Danh sách các mã khảo sát mock/dummy cần loại bỏ triệt để
+const DUMMY_SURVEY_IDS = new Set([
+  'KS-XE-DH-XE-001', 'KS-XE-DH-XE-002', 'KS-XE-DH-XE-003', 'KS-XE-DH-XE-004',
+  'KS-XE-DH-XE-0003', 'KS-XE-DH-XE-0004', 'KS-BD-LH001', 'KS-BD-LH002', 'KS-BD-LH003'
+]);
+const DUMMY_RESPONSE_IDS = new Set(['RESP-001', 'RESP-002', 'RESP-003']);
+
 export const surveyApi = {
   getAll(): Survey[] {
     let list: Survey[] = [];
@@ -5451,12 +5467,16 @@ export const surveyApi = {
       }
     } catch {}
 
+    // Thanh lọc triệt để các bài khảo sát mẫu không liên quan khỏi danh sách
+    list = list.filter(s => !DUMMY_SURVEY_IDS.has(s.id));
+
     if (list.length === 0) {
-      list = [...mockSurveys];
+      list = [...mockSurveys.filter(s => !DUMMY_SURVEY_IDS.has(s.id))];
       localStorage.setItem(SURVEY_STORAGE_KEY, JSON.stringify(list));
     } else {
       // Merge any new surveys from mockSurveys if missing
       mockSurveys.forEach(ms => {
+        if (DUMMY_SURVEY_IDS.has(ms.id)) return;
         const existing = list.find(s => s.id === ms.id);
         if (!existing) {
           list.push(ms);
@@ -5489,7 +5509,9 @@ export const surveyApi = {
       if (res.ok) {
         const beList = await res.json();
         if (Array.isArray(beList) && beList.length > 0) {
-          const mapped: Survey[] = beList.map((item: any) => ({
+          const mapped: Survey[] = beList
+            .filter((item: any) => !DUMMY_SURVEY_IDS.has(item.id || item.Id))
+            .map((item: any) => ({
             id: item.id || item.Id,
             title: item.title || item.Title,
             description: item.description || item.Description,
@@ -5562,6 +5584,14 @@ export const surveyApi = {
     localStorage.setItem(SURVEY_STORAGE_KEY, JSON.stringify(updated));
 
     mockSurveys.unshift(newSurvey);
+
+    try {
+      fetchWithTimeout(`${API_BASE_URL}/KhaoSat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newSurvey),
+      }).catch(err => console.warn('[surveyApi.create] backend POST failed:', err));
+    } catch {}
 
     window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'surveys' } }));
     return newSurvey;
@@ -5774,11 +5804,15 @@ export const surveyApi = {
     try {
       const cached = localStorage.getItem(SURVEY_RESPONSE_KEY);
       let list: SurveyResponse[] = cached ? JSON.parse(cached) : [];
+      // Lọc bỏ triệt để phản hồi của các khảo sát mock cũ
+      list = list.filter(r => !DUMMY_RESPONSE_IDS.has(r.id) && !DUMMY_SURVEY_IDS.has(r.surveyId));
+
       if (!Array.isArray(list) || list.length === 0) {
-        list = [...mockSurveyResponses];
+        list = [...mockSurveyResponses.filter(r => !DUMMY_RESPONSE_IDS.has(r.id) && !DUMMY_SURVEY_IDS.has(r.surveyId))];
         localStorage.setItem(SURVEY_RESPONSE_KEY, JSON.stringify(list));
       } else {
         mockSurveyResponses.forEach(mr => {
+          if (DUMMY_RESPONSE_IDS.has(mr.id) || DUMMY_SURVEY_IDS.has(mr.surveyId)) return;
           const exists = list.find(r => r.id === mr.id);
           if (!exists) {
             list.push(mr);
@@ -5796,7 +5830,7 @@ export const surveyApi = {
       if (surveyId) return list.filter(r => r.surveyId === surveyId);
       return list;
     } catch {
-      return mockSurveyResponses;
+      return mockSurveyResponses.filter(r => !DUMMY_RESPONSE_IDS.has(r.id) && !DUMMY_SURVEY_IDS.has(r.surveyId));
     }
   },
 

@@ -440,6 +440,7 @@ function BuyVehicleOnlineModal({
         mauSac: selectedColor,
         phienBan: selectedVersion.label,
         dongCo: vehicle.dongCo,
+        hinhAnh: vehicle.hinhAnh,
         giaNiemYet: vehiclePrice,
         phiTruocBa: taxFee,
         phiDangKyBienSo: plateFee,

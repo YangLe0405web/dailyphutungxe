@@ -713,19 +713,18 @@ export default function AppointmentsPage({
     const list = appointments.filter(a => {
       // Nghiệp vụ Lịch hẹn nhận xe mới:
       if (a.loaiDichVu === 'NhanXe') {
-        // 1. Sau khi hoàn tất hoặc đã hủy: Biến mất hoàn toàn khỏi danh sách lịch hẹn
-        if (a.trangThai === 'DaHoanThanh' || a.trangThai === 'HoanThanh' || a.trangThai === 'DaHuy') {
-          return false;
-        }
-
-        // 2. Chỉ ẩn khi đơn xe tương ứng đã hoàn tất (HoanThanh / DaGiao) hoặc Đã hủy
-        const matchedOrder = allOrders.find(o =>
-          (a.maDonHangXe && a.maDonHangXe === o.id) ||
-          (a.maLichHen && (a.maLichHen === o.maLichHen || a.maLichHen === o.thongTinXe?.maLichHen)) ||
-          (o.id && a.id && parseInt(o.id.replace(/\D/g, ''), 10) === parseInt(a.id.replace(/\D/g, ''), 10))
-        );
-        if (matchedOrder && (matchedOrder.trangThai === 'HoanThanh' || matchedOrder.trangThai === 'DaGiao' || matchedOrder.trangThai === 'DaHuy')) {
-          return false;
+        if (a.trangThai === 'DaHuy') return false;
+        // Chỉ ẩn khi ở tab "Tất cả dịch vụ" và chưa lọc trạng thái cụ thể
+        if (apptStatusFilter === 'ALL' && apptSvcFilter === 'ALL') {
+          if (a.trangThai === 'DaHoanThanh' || a.trangThai === 'HoanThanh') return false;
+          const matchedOrder = allOrders.find(o =>
+            (a.maDonHangXe && a.maDonHangXe === o.id) ||
+            (a.maLichHen && (a.maLichHen === o.maLichHen || a.maLichHen === o.thongTinXe?.maLichHen)) ||
+            (o.id && a.id && parseInt(o.id.replace(/\D/g, ''), 10) === parseInt(a.id.replace(/\D/g, ''), 10))
+          );
+          if (matchedOrder && (matchedOrder.trangThai === 'HoanThanh' || matchedOrder.trangThai === 'DaGiao' || matchedOrder.trangThai === 'DaHuy')) {
+            return false;
+          }
         }
       }
 
@@ -847,6 +846,43 @@ export default function AppointmentsPage({
           <div className="text-xs text-red-800 font-mono font-bold">🏍️ CHỜ GIAO XE MỚI</div>
           <div className="text-2xl font-extrabold text-red-700 font-mono mt-1">{pickupCount}</div>
         </div>
+      </div>
+
+      {/* ── THANH CHUYỂN TAB DỊCH VỤ CHUYÊN BIỆT (TÁCH RIÊNG TỪNG DỊCH VỤ - ÁP DỤNG CẢ DANH SÁCH & LỊCH BIỂU) ── */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 select-none">
+        {[
+          { key: 'ALL', label: 'Tất cả dịch vụ', icon: '📋', count: appointments.filter(a => a.trangThai !== 'DaHuy' && a.trangThai !== 'TuChoi').length },
+          { key: 'NhanXe', label: 'Bàn giao nhận xe mới', icon: '🎁', count: appointments.filter(a => a.loaiDichVu === 'NhanXe' && a.trangThai !== 'DaHuy' && a.trangThai !== 'TuChoi').length },
+          { key: 'LaiThu', label: 'Lái thử xe mới', icon: '🏍️', count: appointments.filter(a => a.loaiDichVu === 'LaiThu' && a.trangThai !== 'DaHuy' && a.trangThai !== 'TuChoi').length },
+          { key: 'BaoDuong', label: 'Bảo dưỡng định kỳ', icon: '🔧', count: appointments.filter(a => a.loaiDichVu === 'BaoDuong' && a.trangThai !== 'DaHuy' && a.trangThai !== 'TuChoi').length },
+          { key: 'BaoHanh', label: 'Bảo hành điện tử', icon: '🛡️', count: appointments.filter(a => a.loaiDichVu === 'BaoHanh' && a.trangThai !== 'DaHuy' && a.trangThai !== 'TuChoi').length },
+          { key: 'SuaChua', label: 'Sửa chữa phụ tùng', icon: '⚙️', count: appointments.filter(a => a.loaiDichVu === 'SuaChua' && a.trangThai !== 'DaHuy' && a.trangThai !== 'TuChoi').length },
+        ].map(tab => {
+          const isAct = apptSvcFilter === tab.key;
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => {
+                setApptSvcFilter(tab.key as any);
+                setCurrentPage(1);
+              }}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 whitespace-nowrap cursor-pointer border ${
+                isAct
+                  ? 'bg-red-700 text-white border-red-700 shadow-sm'
+                  : 'bg-white text-zinc-700 hover:bg-zinc-50 border-zinc-200 hover:border-zinc-300'
+              }`}
+            >
+              <span>{tab.icon}</span>
+              <span>{tab.label}</span>
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${
+                isAct ? 'bg-white/20 text-white' : 'bg-zinc-100 text-zinc-600'
+              }`}>
+                {tab.count}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       {/* ── THANH TÌM KIẾM & BỘ LỌC NHANH (Chuẩn Ảnh 2) ── */}
@@ -1389,20 +1425,31 @@ export default function AppointmentsPage({
             ))}
 
             {getMonthDaysGrid(currentCalendarDate).map((cell, idx) => {
-              // LH06: Tự động xóa/ẩn lịch hẹn đã hủy trên Calendar
-              // LH12: Calendar chỉ hiển thị các lịch hẹn đã được xác nhận (DaXacNhan) và chưa hoàn tất đơn xe
+              // LH06: Tự động xóa/ẩn lịch hẹn đã hủy hoặc từ chối trên Calendar
+              // LH12: Calendar hiển thị theo Tab dịch vụ và hiện lịch nhận xe khi đã xác nhận ngày; sau khi hoàn tất vẫn hiện nhưng làm mờ
               const dayAppts = appointments.filter(a => {
-                if (a.ngayHen !== cell.dateStr || a.trangThai !== 'DaXacNhan') return false;
+                if (a.ngayHen !== cell.dateStr) return false;
+                // Áp dụng chặt chẽ theo Tab dịch vụ đang chọn
+                if (apptSvcFilter !== 'ALL' && a.loaiDichVu !== apptSvcFilter) return false;
+                if (a.trangThai === 'DaHuy' || a.trangThai === 'TuChoi') return false;
+
+                // Nghiệp vụ Nhận xe mới:
                 if (a.loaiDichVu === 'NhanXe') {
                   const matchedOrder = allOrders.find(o =>
                     (a.maDonHangXe && a.maDonHangXe === o.id) ||
                     (a.maLichHen && (a.maLichHen === o.maLichHen || a.maLichHen === o.thongTinXe?.maLichHen)) ||
                     (o.id && a.id && parseInt(o.id.replace(/\D/g, ''), 10) === parseInt(a.id.replace(/\D/g, ''), 10))
                   );
-                  if (matchedOrder && (matchedOrder.trangThai === 'HoanThanh' || matchedOrder.trangThai === 'DaGiao' || matchedOrder.trangThai === 'DaHuy')) {
+                  // Chỉ hiển thị trên lịch sau khi khách hàng xác nhận ngày nhận xe (đơn chuyển ChoGiaoXe, DaXacNhan, hoặc HoanThanh)
+                  if (matchedOrder && (matchedOrder.trangThai === 'ChoDuyet' || matchedOrder.trangThai === 'ChoKhachXacNhanNgayNhan')) {
                     return false;
                   }
+                  // Sau khi hoàn thành đơn: VẪN HIỆN LÊN LỊCH BIỂU NHƯNG LÀM MỜ
+                  return true;
                 }
+
+                // Các dịch vụ khác (Bảo dưỡng, Sửa chữa, Lái thử, Bảo hành):
+                if (a.trangThai !== 'DaXacNhan' && a.trangThai !== 'DaHoanThanh' && a.trangThai !== 'HoanThanh') return false;
                 return true;
               });
               const hasAppts = dayAppts.length > 0;
@@ -1436,19 +1483,34 @@ export default function AppointmentsPage({
                   </div>
 
                   <div className="space-y-1 mt-1 overflow-y-auto max-h-[85px]">
-                    {dayAppts.slice(0, 3).map(da => (
-                      <div
-                        key={da.id}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedApptForDetail(da);
-                        }}
-                        className="text-[10px] p-1 rounded bg-zinc-100 hover:bg-zinc-200 truncate cursor-pointer font-medium"
-                        title={`${da.gioHen} - ${da.hoTenKH} (${da.tenXe})`}
-                      >
-                        <strong>{da.gioHen}</strong> {da.hoTenKH}
-                      </div>
-                    ))}
+                    {dayAppts.slice(0, 3).map(da => {
+                      const isCompleted = da.trangThai === 'DaHoanThanh' || da.trangThai === 'HoanThanh' || (
+                        da.loaiDichVu === 'NhanXe' && allOrders.some(o =>
+                          ((da.maDonHangXe && da.maDonHangXe === o.id) || (da.maLichHen && o.maLichHen === da.maLichHen)) &&
+                          (o.trangThai === 'HoanThanh' || o.trangThai === 'DaGiao')
+                        )
+                      );
+                      const svc = serviceTypeConfig[da.loaiDichVu] || { label: da.loaiDichVu, icon: '📌' };
+
+                      return (
+                        <div
+                          key={da.id}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedApptForDetail(da);
+                          }}
+                          className={`text-[10px] p-1 rounded truncate cursor-pointer font-medium transition ${
+                            isCompleted
+                              ? 'opacity-50 line-through bg-zinc-200/90 text-zinc-500 border border-dashed border-zinc-300'
+                              : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-800'
+                          }`}
+                          title={`${da.gioHen} - ${da.hoTenKH} (${da.tenXe}) ${isCompleted ? '[ĐÃ HOÀN TẤT]' : ''}`}
+                        >
+                          <span className="mr-1">{svc.icon}</span>
+                          <strong>{da.gioHen}</strong> {da.hoTenKH} {isCompleted && <span className="text-[9px] font-bold no-underline text-emerald-700 ml-1">✓</span>}
+                        </div>
+                      );
+                    })}
                     {dayAppts.length > 3 && (
                       <button
                         type="button"
@@ -2092,22 +2154,41 @@ export default function AppointmentsPage({
             <div className="space-y-2.5 overflow-y-auto pr-1 flex-1">
               {selectedDayApptsModal.appts.map(a => {
                 const svc = serviceTypeConfig[a.loaiDichVu] || { label: a.loaiDichVu, icon: '📌', color: '#0284c7', bg: '#e0f2fe' };
+                const isCompleted = a.trangThai === 'DaHoanThanh' || a.trangThai === 'HoanThanh' || (
+                  a.loaiDichVu === 'NhanXe' && allOrders.some(o =>
+                    ((a.maDonHangXe && a.maDonHangXe === o.id) || (a.maLichHen && o.maLichHen === a.maLichHen)) &&
+                    (o.trangThai === 'HoanThanh' || o.trangThai === 'DaGiao')
+                  )
+                );
 
                 return (
                   <div
                     key={a.id}
-                    className="p-3.5 rounded-2xl border border-zinc-200 bg-zinc-50/70 hover:bg-white hover:border-zinc-300 hover:shadow-xs transition flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                    className={`p-3.5 rounded-2xl border transition flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                      isCompleted
+                        ? 'border-zinc-300 bg-zinc-100/80 opacity-60'
+                        : 'border-zinc-200 bg-zinc-50/70 hover:bg-white hover:border-zinc-300 hover:shadow-xs'
+                    }`}
                   >
                     <div className="space-y-1">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="px-2.5 py-0.5 rounded-lg bg-red-50 border border-red-200 text-red-700 font-mono font-bold text-xs">
+                        <span className={`px-2.5 py-0.5 rounded-lg border font-mono font-bold text-xs ${
+                          isCompleted
+                            ? 'bg-zinc-200 border-zinc-300 text-zinc-600 line-through'
+                            : 'bg-red-50 border-red-200 text-red-700'
+                        }`}>
                           ⏰ {a.gioHen}
                         </span>
-                        <span className="font-bold text-zinc-900 text-sm">{a.hoTenKH}</span>
+                        <span className={`font-bold text-sm ${isCompleted ? 'line-through text-zinc-600' : 'text-zinc-900'}`}>{a.hoTenKH}</span>
                         <span className="text-zinc-500 font-mono text-xs">({a.soDienThoai})</span>
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: svc.bg, color: svc.color }}>
                           {svc.icon} {svc.label}
                         </span>
+                        {isCompleted && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                            ✓ Đã hoàn thành
+                          </span>
+                        )}
                       </div>
                       <div className="text-xs text-zinc-600 flex items-center gap-3">
                         <span>Phương tiện: <strong className="text-zinc-800">{a.tenXe}</strong> ({a.bienSo || 'Chưa bấm biển'})</span>
