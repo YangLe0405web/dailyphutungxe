@@ -13,6 +13,8 @@ import {
   MOTORBIKE_BRANDS,
   ENGINE_CAPACITIES,
   formatVietnameseLicensePlate,
+  liveFormatVietnameseLicensePlate,
+  SAMPLE_CA_VET_IMAGE,
   isValidLicensePlate,
   INSURANCE_PACKAGES,
   PRESET_CUSTOMER_AVATARS,
@@ -50,6 +52,7 @@ import {
   DEFAULT_CATALOG_VEHICLES,
   catalogVehicleApi,
   partApi,
+  normalizeDateStr,
 } from '../../services/api';
 import ImageUploader from '../../components/shared/ImageUploader';
 import { WarrantyDetailView, WarrantyClaimFormView, ExtendedWarrantyModal } from '../../components/customer/WarrantyViews';
@@ -150,8 +153,8 @@ function DynamicSurveyTab({
 
     // KS02: Hiển thị bài khảo sát mà khách đủ điều kiện theo ngữ cảnh
     const eligible = all.filter(s => {
-      // Loại bỏ bài khảo sát mẫu KS002 và các bài dummy
-      if (s.id === 'KS002' || s.id.startsWith('KS-XE-DH-XE-001') || s.id.startsWith('KS-XE-DH-XE-002')) return false;
+      // Loại bỏ bài khảo sát mẫu KS002/KSH02 và các bài dummy
+      if (s.id === 'KS002' || s.id === 'KSH02' || s.id.startsWith('KSH')) return false;
 
       // KS08: Khảo sát phải đang diễn ra, chưa hết hạn và đã đến ngày bắt đầu
       const liveStatus = s.status || computeSurveyStatus(s);
@@ -160,40 +163,31 @@ function DynamicSurveyTab({
       if (s.startDate && new Date(s.startDate).getTime() > now) return false;
 
       const cNum = parseInt(customer.id.replace(/\D/g, ''), 10);
-      if (s.targetCustomerId && s.targetCustomerId !== 'ALL') {
-        const sNum = parseInt(s.targetCustomerId.replace(/\D/g, ''), 10);
-        const matchId = s.targetCustomerId === customer.id || (!isNaN(cNum) && !isNaN(sNum) && cNum === sNum);
-        const matchIds = s.targetCustomerIds && s.targetCustomerIds.some(id => id === customer.id || parseInt(id.replace(/\D/g, ''), 10) === cNum);
-        return matchId || !!matchIds;
+      const isTargetedToMe =
+        (s.targetCustomerId && s.targetCustomerId !== 'ALL' && (s.targetCustomerId === customer.id || (!isNaN(cNum) && parseInt(s.targetCustomerId.replace(/\D/g, ''), 10) === cNum))) ||
+        (s.targetCustomerIds && s.targetCustomerIds.some(id => id === customer.id || (!isNaN(cNum) && parseInt(id.replace(/\D/g, ''), 10) === cNum)));
+
+      if (isTargetedToMe) {
+        return true;
       }
-      if (s.targetCustomerIds && s.targetCustomerIds.length > 0) {
-        return s.targetCustomerIds.some(id => id === customer.id || parseInt(id.replace(/\D/g, ''), 10) === cNum);
-      }
+
       if (s.targetCustomerId === 'ALL' || !s.targetCustomerId) {
-        // Kiểm tra nếu bài khảo sát gắn với mã đơn hàng cụ thể trong tiêu đề (#DH-...)
-        const orderMatch = (s.title + ' ' + (s.description || '')).match(/#(DH-[A-Z0-9-]+)/i);
-        if (orderMatch && orderMatch[1]) {
-          const ordId = orderMatch[1];
-          const hasThisOrder = myOrders.some(o => o.id === ordId);
-          if (!hasThisOrder) return false;
-        }
-
-        // Kiểm tra nếu bài khảo sát gắn với mã lịch hẹn cụ thể trong tiêu đề (#LH-...)
-        const apptMatch = (s.title + ' ' + (s.description || '')).match(/#(LH-[A-Z0-9-]+)/i);
-        if (apptMatch && apptMatch[1]) {
-          const apptId = apptMatch[1];
-          const hasThisAppt = myAppts.some(a => a.id === apptId || (a as any).maLichHen === apptId);
-          if (!hasThisAppt) return false;
-        }
-
         if (s.targetCustomerTier && s.targetCustomerTier !== 'ALL' && s.targetCustomerTier !== custTier) {
           return false;
         }
 
         // Kiểm tra ngữ cảnh trải nghiệm dịch vụ của khách
         const lower = (s.title + ' ' + (s.description || '')).toLowerCase();
-        const isBaoDuong = lower.includes('bảo dưỡng') || lower.includes('sửa chữa') || lower.includes('kỹ thuật') || lower.includes('bảo hành');
-        const isMuaXe = lower.includes('mua xe') || lower.includes('bàn giao xe') || lower.includes('xe mới');
+        const isBaoDuong = lower.includes('bảo dưỡng') || lower.includes('sửa chữa') || lower.includes('kỹ thuật') || lower.includes('bảo hành') || s.id.startsWith('KS-BD-') || s.id === 'KS001';
+        const isMuaXe = lower.includes('mua xe') || lower.includes('bàn giao xe') || lower.includes('xe mới') || s.id.startsWith('KS-XE-');
+        const isLaiThu = lower.includes('lái thử') || s.id.startsWith('KS-LT-');
+
+        if (isLaiThu) {
+          const hasCompletedTestDrive = myAppts.some(a =>
+            a.loaiDichVu === 'LaiThu' && (a.trangThai === 'DaHoanThanh' || a.trangThai === 'HoanThanh')
+          );
+          if (!hasCompletedTestDrive) return false;
+        }
 
         // KS01: Khảo sát bảo dưỡng CHỈ hiển thị sau khi khách hàng đã hoàn tất dịch vụ bảo dưỡng/sửa chữa
         if (isBaoDuong) {
@@ -205,9 +199,18 @@ function DynamicSurveyTab({
         }
 
         if (isMuaXe) {
-          const hasXeOrder = myOrders.some(o => (o.loaiDon === 'Xe' || !!o.thongTinXe) && (o.trangThai === 'HoanThanh' || o.trangThai === 'DaGiao'));
-          const hasDeliveryAppt = myAppts.some(a => a.loaiDichVu === 'NhanXe' && (a.trangThai === 'DaHoanThanh' || a.trangThai === 'HoanThanh'));
+          const hasXeOrder = myOrders.some(o => (o.loaiDon === 'Xe' || !!o.thongTinXe) && (o.trangThai === 'HoanThanh' || o.trangThai === 'DaGiao' || o.trangThai === 'ChoGiaoXe' || o.daXacNhanNgayNhan || (o as any).daXacNhanNgayNhan));
+          const hasDeliveryAppt = myAppts.some(a => a.loaiDichVu === 'NhanXe');
           if (!hasXeOrder && !hasDeliveryAppt) return false;
+
+          // Nếu bài khảo sát nhắm đích danh một dòng xe cụ thể (VD: SH 160i, Air Blade, Sirius...), khách phải sở hữu hoặc có đơn mua đúng dòng xe đó
+          const specificModels = ['honda sh', 'sh 160', 'sh 125', 'air blade', 'sirius', 'wave', 'winner', 'vision', 'exciter', 'grande', 'nvx', 'lead', 'tuscany', 'vespa', 'gts', 'shark'];
+          const matchedModel = specificModels.find(m => lower.includes(m));
+          if (matchedModel) {
+            const hasMatchingBike = myOrders.some(o => (o.thongTinXe?.tenXe || '').toLowerCase().includes(matchedModel)) ||
+              myVehicles.some(v => (v.tenXe || '').toLowerCase().includes(matchedModel));
+            if (!hasMatchingBike) return false;
+          }
         }
 
         return true;
@@ -1153,16 +1156,40 @@ export default function CustomerDashboard({
 
     // Helper lấy đúng ảnh phương tiện từ xe hoặc catalog đại lý
   const getVehicleDisplayImage = (v: Vehicle) => {
-    if (v.hinhAnh) return v.hinhAnh;
     const cleanName = (v.tenXe || '').toLowerCase().trim();
-    if (cleanName.includes('tuscany')) return '/images/Xe/sym_tuscany_150.jpg';
-    if (cleanName.includes('winner')) return '/images/Xe/honda_winner_x.jpg';
-    if (cleanName.includes('vision')) return '/images/Xe/honda_vision_2024.jpg';
+
+    // 1. Ánh xạ trực tiếp các dòng xe phổ biến sang file ảnh chuẩn xác đã kiểm tra
+    if (cleanName.includes('sirius')) return '/images/Xe/yamaha_sirius_fi.jpg';
+    if (cleanName.includes('tuscany') || cleanName.includes('sym tuscany')) return '/images/Xe/sym_tuscany_150.jpg';
+    if (cleanName.includes('wave')) return '/images/Xe/honda_wave_alpha_110_2025.jpg';
+    if (cleanName.includes('winner')) return '/images/Xe/honda_winner_x_150_abs.jpg';
+    if (cleanName.includes('vision')) return '/images/Xe/honda_vision_110_the_thao.jpg';
     if (cleanName.includes('exciter')) return '/images/Xe/yamaha_exciter_155_vva.jpg';
     if (cleanName.includes('grande')) return '/images/Xe/yamaha_grande_hybrid.jpg';
-    if (cleanName.includes('sh mode')) return '/images/Xe/honda_sh_mode_125.jpg';
+    if (cleanName.includes('lead')) return '/images/Xe/honda_lead_125cc_dac_biet.jpg';
+    if (cleanName.includes('nvx')) return '/images/Xe/yamaha_nvx_155_vva.jpg';
+    if (cleanName.includes('cbr')) return '/images/Xe/honda_cbr150r.jpg';
+    if (cleanName.includes('future')) return '/images/Xe/honda_future_125_fi.jpg';
+    if (cleanName.includes('sh mode')) return '/images/Xe/honda_sh_mode_125.png';
     if (cleanName.includes('sh')) return '/images/Xe/honda_sh_160i_abs_2024.jpg';
     if (cleanName.includes('air blade') || cleanName.includes('airblade')) return '/images/Xe/honda_air_blade_160_abs.jpg';
+    if (cleanName.includes('janus')) return '/images/Xe/yamaha_janus_125.jpg';
+    if (cleanName.includes('freego')) return '/images/Xe/yamaha_freego_125.png';
+    if (cleanName.includes('jupiter')) return '/images/Xe/yamaha_jupiter_finn.jpg';
+    if (cleanName.includes('latte')) return '/images/Xe/yamaha_latte_125.jpg';
+    if (cleanName.includes('pg-1') || cleanName.includes('pg 1')) return '/images/Xe/yamaha_pg_1.jpg';
+    if (cleanName.includes('shark')) return '/images/Xe/sym_shark_50.jpg';
+    if (cleanName.includes('attila')) return '/images/Xe/sym_attila_125.jpg';
+    if (cleanName.includes('galaxy')) return '/images/Xe/sym_galaxy_125.jpg';
+    if (cleanName.includes('star sr')) return '/images/Xe/sym_star_sr_170.jpg';
+    if (cleanName.includes('raider')) return '/images/Xe/suzuki_raider_r150.jpg';
+    if (cleanName.includes('satria')) return '/images/Xe/suzuki_satria_f150.jpg';
+    if (cleanName.includes('burgman')) return '/images/Xe/suzuki_burgman_street_125.jpg';
+    if (cleanName.includes('sprint')) return '/images/Xe/vespa_sprint_s_125.jpg';
+    if (cleanName.includes('primavera')) return '/images/Xe/vespa_primavera_125.jpg';
+    if (cleanName.includes('liberty')) return '/images/Xe/piaggio_liberty_125_s.jpg';
+
+    // 2. Tra cứu từ catalog xe nội bộ
     try {
       const cachedCat = localStorage.getItem('crm_catalog_vehicles');
       const catList: any[] = cachedCat ? JSON.parse(cachedCat) : (DEFAULT_CATALOG_VEHICLES || []);
@@ -1171,10 +1198,11 @@ export default function CustomerDashboard({
         return cleanName && cName && (cleanName.includes(cName) || cName.includes(cleanName));
       });
       if (found?.hinhAnh) return found.hinhAnh;
-      const showFound = showroomVehicles.find(sv => cleanName && sv.tenXe.toLowerCase().includes(cleanName));
-      if (showFound?.hinhAnh) return showFound.hinhAnh;
     } catch {}
-    return 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=800&auto=format&fit=crop&q=80';
+
+    // 3. Sử dụng ảnh đính kèm của xe nếu có và hợp lệ
+    if (v.hinhAnh && !v.hinhAnh.includes('unsplash.com')) return v.hinhAnh;
+    return '/images/Xe/yamaha_sirius_fi.jpg';
   };
 
   // Helper tìm hợp đồng bảo hiểm khớp với xe (5 cấp độ nhận diện)
@@ -1255,6 +1283,7 @@ export default function CustomerDashboard({
 
   // LH11: Bộ lọc ngày trên Calendar & Modal liên hệ showroom (Chuẩn Ảnh 2)
   const [selectedCalendarDay, setSelectedCalendarDay] = useState<number | null>(null);
+  const [customerCalDate, setCustomerCalDate] = useState<Date>(() => new Date(2026, 9, 29));
   const [contactModalAppt, setContactModalAppt] = useState<Appointment | null>(null);
 
   // Xác nhận ngày nhận xe & Đổi ngày nhận xe (Luồng Showroom)
@@ -1682,7 +1711,10 @@ export default function CustomerDashboard({
       return;
     }
     loadCustomerData();
-    const handleRefresh = () => loadCustomerData();
+    const handleRefresh = (e?: any) => {
+      if (e?.detail?.type === 'license_plate_submitted') return;
+      loadCustomerData();
+    };
     window.addEventListener('crm-data-refresh', handleRefresh);
     window.addEventListener('storage', handleRefresh);
     return () => {
@@ -1777,12 +1809,14 @@ export default function CustomerDashboard({
     const custPhone = currentCustomer.soDienThoai ? currentCustomer.soDienThoai.replace(/\D/g, '') : '';
     const custName = currentCustomer.hoTen ? currentCustomer.hoTen.trim().toLowerCase() : '';
 
-    return allAppts.filter(a => {
+    const list: Appointment[] = allAppts.filter(a => {
       let isMine = false;
       if (a.customerId === currentCustomer.id) isMine = true;
       const aCustNum = parseInt(a.customerId.replace(/\D/g, ''), 10);
       if (!isNaN(custNum) && !isNaN(aCustNum) && custNum === aCustNum) isMine = true;
       if (custPhone && a.soDienThoai && a.soDienThoai.replace(/\D/g, '') === custPhone) isMine = true;
+      if (custName && a.hoTenKH && a.hoTenKH.trim().toLowerCase() === custName) isMine = true;
+      if (a.maDonHangXe && myOrders.some(o => o.id === a.maDonHangXe)) isMine = true;
       if (!isMine) return false;
 
       // Nghiệp vụ Lịch nhận xe mới:
@@ -1810,6 +1844,48 @@ export default function CustomerDashboard({
 
       return true;
     });
+
+    // Tự động tổng hợp lịch nhận xe từ các đơn mua xe có ngày nhận (Quản lý đơn hàng xe)
+    myOrders
+      .filter(o => (o.loaiDon === 'Xe' || !!o.thongTinXe) && (
+        o.daXacNhanNgayNhan ||
+        (o as any).daXacNhanNgayNhan ||
+        o.trangThai === 'ChoGiaoXe' ||
+        o.trangThai === 'DaXacNhan' ||
+        o.trangThai === 'HoanThanh' ||
+        o.trangThai === 'DaGiao'
+      ))
+      .forEach(o => {
+        const pickupDate = o.thongTinXe?.ngayNhanXacNhan || o.thongTinXe?.ngayGiaoXe || (o as any).ngayHen;
+        if (!pickupDate) return;
+        const exists = list.some(a =>
+          a.maDonHangXe === o.id ||
+          a.id === `APPT-${o.id}` ||
+          (a.maLichHen && (a.maLichHen === o.maLichHen || a.maLichHen === o.thongTinXe?.maLichHen))
+        );
+        if (!exists) {
+          const isDone = o.trangThai === 'HoanThanh' || o.trangThai === 'DaGiao';
+          list.push({
+            id: `APPT-${o.id}`,
+            customerId: currentCustomer.id,
+            hoTenKH: currentCustomer.hoTen,
+            soDienThoai: currentCustomer.soDienThoai || '',
+            loaiDichVu: 'NhanXe',
+            ngayHen: pickupDate,
+            gioHen: o.thongTinXe?.gioNhanXacNhan || o.thongTinXe?.khungGioGiao || '09:00',
+            tenXe: o.thongTinXe?.tenXe || 'Xe máy chính hãng',
+            bienSo: o.thongTinXe?.bienSo || 'Showroom bàn giao',
+            mauXe: o.thongTinXe?.mauSac || 'Tiêu chuẩn',
+            trangThai: isDone ? 'DaHoanThanh' : 'DaXacNhan',
+            nhanVienPhuTrach: o.tenNV || 'Showroom bàn giao',
+            ghiChu: `Lịch đón tiếp nhận xe mới theo đơn hàng #${o.id}. Trạng thái: ${isDone ? 'Đã hoàn tất' : 'Chờ giao xe'}`,
+            maDonHangXe: o.id,
+            maLichHen: o.maLichHen || `HEN-${o.id}`,
+          });
+        }
+      });
+
+    return list;
   }, [allAppts, currentCustomer, myOrders]);
 
   // Upcoming appointments (LH14)
@@ -1829,23 +1905,22 @@ export default function CustomerDashboard({
   useEffect(() => {
     if (!currentCustomer) return;
     try {
-      const allSurveys = surveyApi.getAll();
       myOrders
-        .filter(o => (o.loaiDon === 'Xe' || !!o.thongTinXe) && (o.trangThai === 'HoanThanh' || o.trangThai === 'DaGiao'))
+        .filter(o => (o.loaiDon === 'Xe' || !!o.thongTinXe) && (o.trangThai === 'HoanThanh' || o.trangThai === 'DaGiao' || o.trangThai === 'ChoGiaoXe' || o.daXacNhanNgayNhan || (o as any).daXacNhanNgayNhan))
         .forEach(o => {
-          const sId = `KS-XE-${o.id}`;
-          if (!allSurveys.some(s => s.id === sId)) {
-            surveyApi.createVehiclePurchaseSurvey(o, currentCustomer);
-          }
+          surveyApi.createVehiclePurchaseSurvey(o, currentCustomer);
         });
 
       myAppts
         .filter(a => (a.trangThai === 'DaHoanThanh' || a.trangThai === 'HoanThanh') && (a.loaiDichVu === 'BaoDuong' || a.loaiDichVu === 'SuaChua' || a.loaiDichVu === 'BaoHanh'))
         .forEach(a => {
-          const sId = `KS-BD-${a.id}`;
-          if (!allSurveys.some(s => s.id === sId)) {
-            surveyApi.createMaintenanceSurvey(a, currentCustomer);
-          }
+          surveyApi.createMaintenanceSurvey(a, currentCustomer);
+        });
+
+      myAppts
+        .filter(a => (a.trangThai === 'DaHoanThanh' || a.trangThai === 'HoanThanh') && a.loaiDichVu === 'LaiThu')
+        .forEach(a => {
+          surveyApi.createTestDriveSurvey(a, currentCustomer);
         });
     } catch (e) {
       console.warn('Lỗi tự động khởi tạo khảo sát:', e);
@@ -2033,22 +2108,27 @@ export default function CustomerDashboard({
 
     const rawPlate = newPlateInput.trim();
     if (!rawPlate || !isValidLicensePlate(rawPlate)) {
-      setPlateUpdateError('Biển số không đúng định dạng VN (VD: 59F1-123.45)!');
+      setPlateUpdateError('Biển số không đúng định dạng VN (VD: 59P1-123.45, 69AB-111.11 hoặc 59F1-1234)!');
       return;
     }
     if (!newPlateCaVetImg) {
-      setPlateUpdateError('Vui lòng tải ảnh Cà vẹt xe làm căn cứ đối chiếu!');
+      setPlateUpdateError('Vui lòng tải ảnh Cà vẹt xe làm căn cứ đối chiếu hoặc chọn nút "Dùng ảnh Cà vẹt mẫu"!');
       return;
     }
 
     setPlateUpdateSubmitting(true);
     try {
       const formatted = formatVietnameseLicensePlate(rawPlate);
-      await vehicleApi.requestLicensePlateUpdate(updatingPlateVehicle.id, formatted, newPlateCaVetImg);
+      await vehicleApi.requestLicensePlateUpdate(
+        updatingPlateVehicle.id,
+        formatted,
+        newPlateCaVetImg,
+        updatingPlateVehicle
+      );
       setMyVehicles(prev =>
         prev.map(v =>
-          v.id === updatingPlateVehicle.id
-            ? { ...v, bienSoChoDuyet: formatted, anhCaVet: newPlateCaVetImg, trangThaiDuyetBienSo: 'ChoDuyet' }
+          (v.id === updatingPlateVehicle.id || (v.soKhung && v.soKhung === updatingPlateVehicle.soKhung) || (v.tenXe === updatingPlateVehicle.tenXe && v.customerId === updatingPlateVehicle.customerId))
+            ? { ...v, bienSoChoDuyet: formatted, anhCaVet: newPlateCaVetImg, trangThaiDuyetBienSo: 'ChoDuyet', lyDoTuChoiBienSo: undefined }
             : v
         )
       );
@@ -2057,8 +2137,9 @@ export default function CustomerDashboard({
       setUpdatingPlateVehicle(null);
       setNewPlateInput('');
       setNewPlateCaVetImg('');
-    } catch (err) {
-      setPlateUpdateError('Có lỗi khi gửi yêu cầu cập nhật biển số.');
+    } catch (err: any) {
+      console.error('Error submitting plate update:', err);
+      setPlateUpdateError(err?.message || 'Có lỗi khi gửi yêu cầu cập nhật biển số.');
     } finally {
       setPlateUpdateSubmitting(false);
     }
@@ -2695,7 +2776,7 @@ export default function CustomerDashboard({
                               </div>
 
                               {/* Banner bị từ chối duyệt biển số kèm lý do */}
-                              {isCuaHang && v.trangThaiDuyetBienSo === 'TuChoi' && (
+                              {v.trangThaiDuyetBienSo === 'TuChoi' && (
                                 <div className="mx-5 mb-3 p-3 rounded-2xl bg-red-950/50 border border-red-700/80 text-xs shadow-md">
                                   <div className="flex items-center justify-between mb-1.5">
                                     <div className="text-red-300 font-bold flex items-center gap-1.5">
@@ -2725,7 +2806,7 @@ export default function CustomerDashboard({
                               )}
 
                               {/* Banner đang chờ duyệt biển số */}
-                              {isCuaHang && v.trangThaiDuyetBienSo === 'ChoDuyet' && (
+                              {(v.trangThaiDuyetBienSo === 'ChoDuyet' || Boolean(v.bienSoChoDuyet)) && v.trangThaiDuyetBienSo !== 'DaDuyet' && v.trangThaiDuyetBienSo !== 'TuChoi' && (
                                 <div className="mx-5 mb-3 p-3 rounded-2xl bg-amber-950/40 border border-amber-700/60 text-xs">
                                   <div className="flex items-center justify-between mb-1">
                                     <div className="text-amber-300 font-bold flex items-center gap-1.5">
@@ -2736,13 +2817,13 @@ export default function CustomerDashboard({
                                     </span>
                                   </div>
                                   <div className="text-zinc-300 text-[11px]">
-                                    Biển số yêu cầu: <strong className="text-white font-mono">{v.bienSoChoDuyet}</strong> (Kèm ảnh Cà vẹt xe)
+                                    Biển số yêu cầu: <strong className="text-white font-mono">{v.bienSoChoDuyet || v.bienSo}</strong> (Kèm ảnh Cà vẹt xe)
                                   </div>
                                 </div>
                               )}
 
-                              {/* Banner cập nhật biển số nếu xe mua cửa hàng chưa có biển và chưa gửi duyệt */}
-                              {isCuaHang && v.trangThaiDuyetBienSo !== 'ChoDuyet' && v.trangThaiDuyetBienSo !== 'DaDuyet' && (v.trangThaiDuyetBienSo === 'ChoCapNhat' || !v.bienSo || v.bienSo === 'Chưa có biển số') && (
+                              {/* Banner cập nhật biển số nếu xe chưa có biển và chưa gửi duyệt */}
+                              {v.trangThaiDuyetBienSo !== 'ChoDuyet' && !v.bienSoChoDuyet && v.trangThaiDuyetBienSo !== 'DaDuyet' && v.trangThaiDuyetBienSo !== 'TuChoi' && (v.trangThaiDuyetBienSo === 'ChoCapNhat' || !v.bienSo || v.bienSo === 'Chưa có biển số' || v.bienSo.includes('Chưa có') || v.bienSo.startsWith('TAM-')) && (
                                 <div className="mx-5 mb-3 p-3 rounded-2xl bg-amber-950/40 border border-amber-700/60 text-xs">
                                   <div className="text-amber-200 mb-2 font-semibold">
                                     🎉 Chúc mừng bạn đã nhận xe! Vui lòng cập nhật biển số và ảnh cà vẹt xe để duyệt hồ sơ.
@@ -3360,89 +3441,186 @@ export default function CustomerDashboard({
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     {/* Calendar visual (Left 2 cols) - Chuẩn Ảnh 2 LH11 */}
                     <div className="lg:col-span-2 p-6 rounded-3xl bg-[#141416] border border-zinc-800 space-y-4">
+                      {/* Month Header with Navigation Controls */}
                       <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-                        <div className="font-extrabold text-sm sm:text-base text-white uppercase tracking-tight">THÁNG 10 / 2026</div>
-                        <div className="text-xs text-zinc-400 font-mono">Showroom Motoshop</div>
+                        <div className="flex items-center gap-2 sm:gap-3">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedCalendarDay(null);
+                              setCustomerCalDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
+                            }}
+                            className="w-7 h-7 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs flex items-center justify-center cursor-pointer transition border border-zinc-700"
+                            title="Tháng trước"
+                          >
+                            ◀
+                          </button>
+                          <div className="font-extrabold text-sm sm:text-base text-white uppercase tracking-tight">
+                            THÁNG {customerCalDate.getMonth() + 1} / {customerCalDate.getFullYear()}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedCalendarDay(null);
+                              setCustomerCalDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
+                            }}
+                            className="w-7 h-7 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs flex items-center justify-center cursor-pointer transition border border-zinc-700"
+                            title="Tháng sau"
+                          >
+                            ▶
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedCalendarDay(null);
+                              setCustomerCalDate(new Date(2026, 9, 29));
+                            }}
+                            className="text-[10px] font-mono px-2 py-1 rounded-md bg-zinc-900 border border-zinc-700 text-zinc-400 hover:text-white cursor-pointer ml-1"
+                          >
+                            Tháng 10/2026
+                          </button>
+                        </div>
+                        <div className="text-xs text-zinc-400 font-mono hidden sm:block">Showroom Motoshop</div>
                       </div>
 
                       <div className="grid grid-cols-7 gap-2 text-center text-xs font-mono">
                         {['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'].map(d => (
                           <div key={d} className="font-bold text-red-500 py-1">{d}</div>
                         ))}
-                        {Array.from({ length: 31 }, (_, i) => i + 1).map(day => {
-                          // LH06 & LH11 & Fix 8: Hiển thị cả lịch đã xác nhận và lịch đã hoàn tất (nhưng làm mờ)
-                          const dayAppts = myAppts.filter(a => {
-                            if (a.trangThai !== 'DaXacNhan' && a.trangThai !== 'DaHoanThanh' && a.trangThai !== 'HoanThanh') return false;
-                            const dNum = parseInt((a.ngayHen || '').split('-')[2] || '0', 10);
-                            return dNum === day;
-                          });
-                          const hasAppt = dayAppts.length > 0;
-                          const hasActiveAppt = dayAppts.some(a => a.trangThai === 'DaXacNhan');
-                          const isSelected = selectedCalendarDay === day;
+                        {(() => {
+                          const calYear = customerCalDate.getFullYear();
+                          const calMonth = customerCalDate.getMonth();
+                          const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+                          const firstDayIndex = (new Date(calYear, calMonth, 1).getDay() + 6) % 7; // Mon = 0
+                          const cells = [];
 
-                          return (
-                            <div
-                              key={day}
-                              onClick={() => setSelectedCalendarDay(isSelected ? null : day)}
-                              className={`p-2 rounded-2xl border text-xs font-bold transition flex flex-col justify-start min-h-[74px] sm:min-h-[82px] relative cursor-pointer select-none ${
-                                isSelected
-                                  ? 'bg-red-950/60 border-red-500 ring-2 ring-red-500/40 text-white shadow-md'
-                                  : hasActiveAppt
-                                  ? 'bg-[#1e1416] border-red-600/90 hover:border-red-500 text-white shadow-xs'
-                                  : hasAppt
-                                  ? 'bg-zinc-900/60 border-zinc-700/60 hover:border-zinc-500 text-zinc-400'
-                                  : 'bg-[#18181b] border-zinc-800/80 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
-                              }`}
-                            >
-                              <div className="flex items-center justify-between w-full">
-                                <span className={hasActiveAppt ? 'text-white font-extrabold text-xs' : hasAppt ? 'text-zinc-400 text-xs' : 'text-zinc-500 text-xs'}>{day}</span>
-                                {hasActiveAppt ? (
-                                  <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                                ) : hasAppt ? (
-                                  <span className="w-1.5 h-1.5 rounded-full bg-zinc-500" />
-                                ) : null}
-                              </div>
+                          for (let i = 0; i < firstDayIndex; i++) {
+                            cells.push(
+                              <div key={`empty-${i}`} className="p-2 rounded-2xl border border-transparent min-h-[74px] sm:min-h-[82px] opacity-20 pointer-events-none" />
+                            );
+                          }
 
-                              {/* LH11: Hiển thị badge các loại lịch đã đặt trong ngày */}
-                              {hasAppt && (
-                                <div className="w-full space-y-1 mt-1.5 overflow-hidden">
-                                  {dayAppts.map(appt => {
-                                    const isDone = appt.trangThai === 'DaHoanThanh' || appt.trangThai === 'HoanThanh';
-                                    let badgeClass = 'bg-red-950/80 border-red-600/70 text-red-300';
-                                    let shortLabel = 'Lái thử';
-                                    if (appt.loaiDichVu === 'BaoDuong') {
-                                      badgeClass = 'bg-amber-950/80 border-amber-600/70 text-amber-300';
-                                      shortLabel = 'Bảo dưỡng';
-                                    } else if (appt.loaiDichVu === 'SuaChua') {
-                                      badgeClass = 'bg-blue-950/80 border-blue-600/70 text-blue-300';
-                                      shortLabel = 'Sửa chữa';
-                                    } else if (appt.loaiDichVu === 'BaoHanh') {
-                                      badgeClass = 'bg-rose-950/80 border-rose-600/70 text-rose-300';
-                                      shortLabel = 'Bảo hành';
-                                    } else if (appt.loaiDichVu === 'NhanXe') {
-                                      badgeClass = 'bg-emerald-950/80 border-emerald-600/70 text-emerald-300';
-                                      shortLabel = 'Nhận xe';
-                                    }
+                          for (let day = 1; day <= daysInMonth; day++) {
+                            const dayAppts = myAppts.filter(a => {
+                              const isNhanXe = a.loaiDichVu === 'NhanXe';
+                              if (!isNhanXe && a.trangThai !== 'DaXacNhan' && a.trangThai !== 'DaHoanThanh' && a.trangThai !== 'HoanThanh') return false;
+                              const norm = normalizeDateStr(a.ngayHen);
+                              if (!norm) return false;
+                              const [y, m, d] = norm.split('-').map(v => parseInt(v, 10));
+                              return y === calYear && m === (calMonth + 1) && d === day;
+                            });
+                            const hasAppt = dayAppts.length > 0;
+                            const hasActiveAppt = dayAppts.some(a => a.trangThai === 'DaXacNhan' || (a.loaiDichVu === 'NhanXe' && a.trangThai !== 'DaHoanThanh' && a.trangThai !== 'HoanThanh'));
+                            const isSelected = selectedCalendarDay === day;
 
-                                    if (isDone) {
-                                      badgeClass = 'opacity-50 line-through bg-zinc-900/60 border-zinc-700/60 text-zinc-400';
-                                    }
-
-                                    return (
-                                      <div
-                                        key={appt.id}
-                                        title={`${isDone ? '[ĐÃ HOÀN TẤT] ' : ''}${shortLabel} lúc ${appt.gioHen || '08:30'} - ${appt.tenXe || ''}`}
-                                        className={`text-[9px] sm:text-[10px] font-mono px-1 py-0.5 rounded border truncate text-center leading-tight shadow-2xs ${badgeClass}`}
-                                      >
-                                        {isDone ? `✓ ${shortLabel}` : `${shortLabel} - ${appt.gioHen || '08:30'}`}
-                                      </div>
-                                    );
-                                  })}
+                            cells.push(
+                              <div
+                                key={`day-${day}`}
+                                onClick={() => setSelectedCalendarDay(isSelected ? null : day)}
+                                className={`p-2 rounded-2xl border text-xs font-bold transition flex flex-col justify-start min-h-[74px] sm:min-h-[82px] relative cursor-pointer select-none ${
+                                  isSelected
+                                    ? 'bg-red-950/60 border-red-500 ring-2 ring-red-500/40 text-white shadow-md'
+                                    : hasActiveAppt
+                                    ? 'bg-[#1e1416] border-red-600/90 hover:border-red-500 text-white shadow-xs'
+                                    : hasAppt
+                                    ? 'bg-zinc-900/60 border-zinc-700/60 hover:border-zinc-500 text-zinc-400'
+                                    : 'bg-[#18181b] border-zinc-800/80 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between w-full">
+                                  <span className={hasActiveAppt ? 'text-white font-extrabold text-xs' : hasAppt ? 'text-zinc-400 text-xs' : 'text-zinc-500 text-xs'}>{day}</span>
+                                  {hasActiveAppt ? (
+                                    <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                                  ) : hasAppt ? (
+                                    <span className="w-1.5 h-1.5 rounded-full bg-zinc-500" />
+                                  ) : null}
                                 </div>
-                              )}
-                            </div>
-                          );
-                        })}
+
+                                {hasAppt && (
+                                  <div className="w-full space-y-1 mt-1.5 overflow-hidden">
+                                    {dayAppts.length <= 2 ? (
+                                      dayAppts.map(appt => {
+                                        const isDone = appt.trangThai === 'DaHoanThanh' || appt.trangThai === 'HoanThanh';
+                                        let badgeClass = 'bg-red-950/80 border-red-600/70 text-red-300';
+                                        let shortLabel = 'Lái thử';
+                                        if (appt.loaiDichVu === 'BaoDuong') {
+                                          badgeClass = 'bg-amber-950/80 border-amber-600/70 text-amber-300';
+                                          shortLabel = 'Bảo dưỡng';
+                                        } else if (appt.loaiDichVu === 'SuaChua') {
+                                          badgeClass = 'bg-blue-950/80 border-blue-600/70 text-blue-300';
+                                          shortLabel = 'Sửa chữa';
+                                        } else if (appt.loaiDichVu === 'BaoHanh') {
+                                          badgeClass = 'bg-rose-950/80 border-rose-600/70 text-rose-300';
+                                          shortLabel = 'Bảo hành';
+                                        } else if (appt.loaiDichVu === 'NhanXe') {
+                                          badgeClass = 'bg-emerald-950/80 border-emerald-600/70 text-emerald-300';
+                                          shortLabel = 'Nhận xe';
+                                        }
+
+                                        if (isDone) {
+                                          badgeClass = 'opacity-50 line-through bg-zinc-900/60 border-zinc-700/60 text-zinc-400';
+                                        }
+
+                                        return (
+                                          <div
+                                            key={appt.id}
+                                            title={`${isDone ? '[ĐÃ HOÀN TẤT] ' : ''}${shortLabel} lúc ${appt.gioHen || '08:30'} - ${appt.tenXe || ''}`}
+                                            className={`text-[9px] sm:text-[10px] font-mono px-1 py-0.5 rounded border truncate text-center leading-tight shadow-2xs ${badgeClass}`}
+                                          >
+                                            {isDone ? `✓ ${shortLabel}` : `${shortLabel} - ${appt.gioHen || '08:30'}`}
+                                          </div>
+                                        );
+                                      })
+                                    ) : (
+                                      <>
+                                        {/* Hiển thị 1 lịch đầu tiên */}
+                                        {(() => {
+                                          const appt = dayAppts[0];
+                                          const isDone = appt.trangThai === 'DaHoanThanh' || appt.trangThai === 'HoanThanh';
+                                          let badgeClass = 'bg-red-950/80 border-red-600/70 text-red-300';
+                                          let shortLabel = 'Lái thử';
+                                          if (appt.loaiDichVu === 'BaoDuong') {
+                                            badgeClass = 'bg-amber-950/80 border-amber-600/70 text-amber-300';
+                                            shortLabel = 'Bảo dưỡng';
+                                          } else if (appt.loaiDichVu === 'SuaChua') {
+                                            badgeClass = 'bg-blue-950/80 border-blue-600/70 text-blue-300';
+                                            shortLabel = 'Sửa chữa';
+                                          } else if (appt.loaiDichVu === 'BaoHanh') {
+                                            badgeClass = 'bg-rose-950/80 border-rose-600/70 text-rose-300';
+                                            shortLabel = 'Bảo hành';
+                                          } else if (appt.loaiDichVu === 'NhanXe') {
+                                            badgeClass = 'bg-emerald-950/80 border-emerald-600/70 text-emerald-300';
+                                            shortLabel = 'Nhận xe';
+                                          }
+                                          if (isDone) {
+                                            badgeClass = 'opacity-50 line-through bg-zinc-900/60 border-zinc-700/60 text-zinc-400';
+                                          }
+                                          return (
+                                            <div
+                                              key={appt.id}
+                                              title={`${isDone ? '[ĐÃ HOÀN TẤT] ' : ''}${shortLabel} lúc ${appt.gioHen || '08:30'} - ${appt.tenXe || ''}`}
+                                              className={`text-[9px] sm:text-[10px] font-mono px-1 py-0.5 rounded border truncate text-center leading-tight shadow-2xs ${badgeClass}`}
+                                            >
+                                              {isDone ? `✓ ${shortLabel}` : `${shortLabel} - ${appt.gioHen || '08:30'}`}
+                                            </div>
+                                          );
+                                        })()}
+                                        {/* Gôm lại thành tổng số lịch */}
+                                        <div
+                                          className="text-[9px] sm:text-[10px] font-mono font-bold px-1 py-0.5 rounded bg-zinc-800/90 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-center leading-tight shadow-2xs"
+                                          title={`Ngày ${day} có tổng cộng ${dayAppts.length} lịch hẹn. Nhấp để xem danh sách chi tiết ở bảng bên phải.`}
+                                        >
+                                          +${dayAppts.length - 1} lịch khác
+                                        </div>
+                                      </>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          }
+                          return cells;
+                        })()}
                       </div>
 
                       <div className="text-[11px] text-zinc-500 italic pt-2">
@@ -3454,7 +3632,9 @@ export default function CustomerDashboard({
                     <div className="p-6 rounded-3xl bg-[#141416] border border-zinc-800 space-y-4">
                       <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
                         <div className="font-extrabold text-sm sm:text-base text-red-500 uppercase tracking-wide">
-                          DANH SÁCH LỊCH HẸN
+                          {selectedCalendarDay !== null
+                            ? `LỊCH HẸN NGÀY ${selectedCalendarDay}/${customerCalDate.getMonth() + 1}`
+                            : 'DANH SÁCH LỊCH HẸN'}
                         </div>
                         {selectedCalendarDay !== null && (
                           <button
@@ -3469,8 +3649,15 @@ export default function CustomerDashboard({
 
                       {(() => {
                         const validAppts = myAppts.filter(a => a.trangThai !== 'DaHuy' && a.trangThai !== 'TuChoi');
+                        const calYear = customerCalDate.getFullYear();
+                        const calMonth = customerCalDate.getMonth();
                         const displayedAppts = selectedCalendarDay !== null
-                          ? validAppts.filter(a => parseInt((a.ngayHen || '').split('-')[2] || '0', 10) === selectedCalendarDay)
+                          ? validAppts.filter(a => {
+                              const norm = normalizeDateStr(a.ngayHen);
+                              if (!norm) return false;
+                              const [y, m, d] = norm.split('-').map(v => parseInt(v, 10));
+                              return y === calYear && m === (calMonth + 1) && d === selectedCalendarDay;
+                            })
                           : validAppts;
 
                         if (displayedAppts.length === 0) {
@@ -3479,7 +3666,7 @@ export default function CustomerDashboard({
                               <span className="text-2xl block">📅</span>
                               <div>
                                 {selectedCalendarDay !== null
-                                  ? `Không có lịch hẹn vào ngày ${selectedCalendarDay}/10/2026.`
+                                  ? `Không có lịch hẹn vào ngày ${selectedCalendarDay}/${calMonth + 1}/${calYear}.`
                                   : 'Chưa có lịch hẹn nào được ghi nhận.'}
                               </div>
                               {selectedCalendarDay !== null && (
@@ -4245,9 +4432,11 @@ export default function CustomerDashboard({
                           });
                         }
                       }
-                      if (o.loaiDon !== 'Xe' && !o.thongTinXe && !String(o.id).includes('XE') && o.items && o.items.length > 0) {
+                      const isXeOrder = o.loaiDon === 'Xe' || !!o.thongTinXe || String(o.id).includes('XE');
+                      if (!isXeOrder && o.items && o.items.length > 0) {
                         o.items.forEach((it: any, idx: number) => {
                           const name = it.tenSanPham || it.tenPhuTung || `Phụ tùng #${idx + 1}`;
+                          if (name === 'Phụ tùng chính hãng' && !it.maPhuTung && !it.id) return; // Bỏ qua phụ tùng ảo tự sinh
                           const partId = (it as any).id || (it as any).maPhuTung || undefined;
                           const already = myCustomerFeedbacks.some(f => 
                             (f.orderId && f.orderId === o.id && (f.productId === partId || !f.productId)) ||
@@ -4964,19 +5153,58 @@ export default function CustomerDashboard({
                 <input
                   type="text"
                   required
-                  placeholder="VD: 59P1-123.45"
+                  maxLength={15}
+                  placeholder="VD: 59P1-123.45 hoặc 69AB-111.11"
                   value={newPlateInput}
-                  onChange={e => setNewPlateInput(formatVietnameseLicensePlate(e.target.value))}
+                  onChange={e => {
+                    const formatted = liveFormatVietnameseLicensePlate(e.target.value);
+                    setNewPlateInput(formatted);
+                    setPlateUpdateError(null);
+                  }}
                   className="w-full p-2.5 rounded-xl border border-zinc-700 bg-[#121214] text-white text-xs font-mono uppercase focus:outline-none focus:border-red-600"
                 />
+                <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                  <span className="text-[10px] text-zinc-400">Gợi ý test nhanh:</span>
+                  <button
+                    type="button"
+                    onClick={() => setNewPlateInput('69AB - 111.11')}
+                    className="px-2 py-0.5 rounded text-[10px] bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-mono border border-zinc-700 cursor-pointer"
+                  >
+                    69AB - 111.11
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewPlateInput('59P1 - 246.88')}
+                    className="px-2 py-0.5 rounded text-[10px] bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-mono border border-zinc-700 cursor-pointer"
+                  >
+                    59P1 - 246.88
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewPlateInput('51K - 888.99')}
+                    className="px-2 py-0.5 rounded text-[10px] bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-mono border border-zinc-700 cursor-pointer"
+                  >
+                    51K - 888.99
+                  </button>
+                </div>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-zinc-300 uppercase mb-1 font-mono">Ảnh chụp Cà vẹt xe *</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-zinc-300 uppercase font-mono">Ảnh chụp Cà vẹt xe</label>
+                  <button
+                    type="button"
+                    onClick={() => setNewPlateCaVetImg(SAMPLE_CA_VET_IMAGE)}
+                    className="text-[11px] font-bold text-amber-400 hover:text-amber-300 hover:underline cursor-pointer flex items-center gap-1"
+                  >
+                    <span>📄</span> <span>Dùng ảnh Cà vẹt mẫu để test</span>
+                  </button>
+                </div>
                 <ImageUploader
                   value={newPlateCaVetImg}
                   onChange={url => setNewPlateCaVetImg(url)}
-                  label="Tải ảnh Cà vẹt xe làm căn cứ đối chiếu"
+                  label=""
+                  placeholder="Tải ảnh Cà vẹt hoặc bấm 'Dùng ảnh Cà vẹt mẫu'..."
                 />
               </div>
 

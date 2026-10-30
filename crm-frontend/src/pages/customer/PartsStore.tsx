@@ -349,9 +349,12 @@ export default function PartsStore({ currentCustomer, onRequireLogin, onNavigate
       alert(`⚠️ Sản phẩm "${freshPart.tenSanPham}" hiện đã HẾT HÀNG trong kho (Tồn kho = 0)! Không thể đặt mua.`);
       return;
     }
-    const success = add(freshPart, qty);
-    if (success) {
-      window.location.hash = '#cart';
+    // Mua ngay với giá ưu đãi: Chuyển thẳng sang trang Thanh toán trực tiếp, KHÔNG thêm vào giỏ hàng
+    sessionStorage.setItem('crm_direct_checkout_item', JSON.stringify({ part: freshPart, soLuong: qty }));
+    window.location.hash = '#checkout';
+    window.dispatchEvent(new CustomEvent('crm-navigate-checkout'));
+    if (onNavigateToCheckout) {
+      onNavigateToCheckout();
     }
   }
 

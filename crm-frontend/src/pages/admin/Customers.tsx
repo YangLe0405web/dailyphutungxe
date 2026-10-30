@@ -1252,6 +1252,7 @@ function Customer360Modal({
                 <div className="space-y-4">
                   {vehicles.map(v => {
                     const isCuaHang = v.nguonGoc === 'CuaHang';
+                      const effectiveCaVet = v.anhCaVet || (v.id ? localStorage.getItem('crm_cavet_' + v.id) : null) || (v.soKhung ? localStorage.getItem('crm_cavet_' + v.soKhung) : null);
                     const isConHan = v.trangThaiBaoHanh === 'ConHan';
                     const isChoDuyet = v.trangThaiDuyet === 'ChoDuyet';
 

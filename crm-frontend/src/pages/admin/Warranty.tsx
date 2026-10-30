@@ -114,6 +114,8 @@ export const WarrantyPage: React.FC = () => {
           c.khachHang.toLowerCase().includes(targetId.toLowerCase())
         );
         if (matchedClaim) {
+          setClaimsList(allCurrentClaims);
+          setClaimCurrentPage(1);
           setActiveMainTab('YeuCau');
           setClaimStatusFilter('TatCa');
           setClaimStaffFilter('TatCa');

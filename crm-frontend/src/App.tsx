@@ -18,6 +18,9 @@ import SuppliersPage from './pages/admin/Suppliers';
 import StaffRolesPage from './pages/admin/StaffRoles';
 import InsurancePage from './pages/admin/Insurance';
 import PromotionsPage from './pages/admin/Promotions';
+import CalendarPage from './pages/admin/Calendar';
+import MaintenancePage from './pages/admin/Maintenance';
+import TestDrivesPage from './pages/admin/TestDrives';
 import { WarrantyPage } from './pages/admin/Warranty';
 import LicensePlateApproval from './pages/admin/LicensePlateApproval';
 
@@ -30,7 +33,7 @@ import VehiclesShowroom from './pages/customer/VehiclesShowroom';
 import SurveyTaking from './pages/customer/SurveyTaking';
 
 type Mode = 'admin' | 'customer' | null;
-type AdminPage = 'dashboard' | 'sales' | 'promotions' | 'appointments' | 'warranty' | 'insurance' | 'customers' | 'feedback' | 'reports' | 'parts' | 'vehicles' | 'suppliers' | 'staff' | 'license-plates';
+type AdminPage = 'dashboard' | 'sales' | 'promotions' | 'appointments' | 'calendar' | 'maintenance' | 'test-drives' | 'warranty' | 'insurance' | 'customers' | 'feedback' | 'reports' | 'parts' | 'vehicles' | 'suppliers' | 'staff' | 'license-plates';
 type CustomerPage = 'store' | 'vehicles' | 'booking' | 'dashboard' | 'checkout' | 'survey';
 
 
@@ -366,8 +369,28 @@ export default function App() {
           />
         )}
         {adminPage === 'promotions' && <PromotionsPage />}
-        {adminPage === 'appointments' && (
-          <AppointmentsPage
+        {(adminPage === 'calendar' || adminPage === 'appointments') && (
+          <CalendarPage
+            currentStaff={currentStaff}
+            onNavigateToCreateVehicleOrder={(appt) => {
+              setVehicleOrderPreFill(appt);
+              setPreFillSource('appointments');
+              setAdminPage('sales');
+            }}
+          />
+        )}
+        {adminPage === 'maintenance' && (
+          <MaintenancePage
+            currentStaff={currentStaff}
+            onNavigateToCreateVehicleOrder={(appt) => {
+              setVehicleOrderPreFill(appt);
+              setPreFillSource('appointments');
+              setAdminPage('sales');
+            }}
+          />
+        )}
+        {adminPage === 'test-drives' && (
+          <TestDrivesPage
             currentStaff={currentStaff}
             onNavigateToCreateVehicleOrder={(appt) => {
               setVehicleOrderPreFill(appt);

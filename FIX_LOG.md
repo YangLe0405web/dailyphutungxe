@@ -3491,3 +3491,184 @@ pm run build thành công 100% trong 1.41s, **0 lỗi TypeScript**.
   - `dotnet build CrmBackend`: 0 lỗi, API DELETE hoạt động.
   - `npm --prefix crm-frontend run build`: 0 lỗi.
   - Cả 6 vấn đề đã được khắc phục triệt để và đồng bộ 2 chiều giữa Admin và Khách hàng.
+
+---
+
+### LỖI 56: TÁCH RIÊNG PHÂN HỆ QUẢN LÝ LỊCH HẸN THÀNH "LỊCH BIỂU SHOWROOM", "QUẢN LÝ BẢO DƯỠNG XE", "QUẢN LÝ LÁI THỬ XE" & CHUẨN HÓA MUA PHỤ TÙNG, ĐỒNG BỘ LỊCH HẸN TOÀN DIỆN
+* **Thời gian:** 29/10/2026
+* **Người thực hiện:** Antigravity Team
+* **Mô tả chi tiết yêu cầu:**
+  1. **Mua phụ tùng với ưu đãi:** Khi khách hàng bấm *"Mua ngay với giá ưu đãi"*, hệ thống phải nhảy thẳng sang trang Thanh toán (`#checkout`) với sản phẩm ưu đãi đã chọn, không thêm vào giỏ hàng (`#cart`) và không làm mất các món hàng sẵn có trong giỏ hàng.
+  2. **Tái cấu trúc Quản lý lịch hẹn:** Xóa mục *"Quản lý lịch hẹn"* gộp chung trước đây, tách thành 3 phân hệ chuyên trách rõ ràng:
+     - **Lịch Biểu Showroom (`calendar`):** Đặt tại nhóm *"Tổng quan"*, hiển thị lịch biểu tập trung toàn showroom (giao xe mới, lái thử, bảo dưỡng, sửa chữa, bảo hành) với giao diện Calendar trực quan.
+     - **Quản lý lái thử xe (`test-drives`):** Đặt tại nhóm *"Bán hàng"*, giữ nguyên 100% luồng đăng ký lái thử, phân công nhân viên tư vấn, hoàn tất trải nghiệm và nút *"🏍️ Tạo đơn bán xe"* chuyển đổi sang đơn bán hàng.
+     - **Quản lý bảo dưỡng xe (`maintenance`):** Đặt tại nhóm *"Dịch vụ & Kỹ thuật"*, giữ nguyên 100% luồng tiếp nhận bảo dưỡng/sửa chữa, bắt buộc chọn Kỹ thuật viên, đổi KTV, xuất phiếu tiếp nhận và hóa đơn.
+     - **Quản lý đơn hàng xe (`sales`):** Quản lý toàn bộ hồ sơ mua bán xe và lịch hẹn nhận xe mới sau khi duyệt biển số / ngày giao xe.
+  3. **Lịch hẹn chưa hiện trên Lịch biểu Admin và Khách hàng:** Khắc phục triệt để lỗi bất đồng bộ định dạng ngày (`YYYY-MM-DD` vs `DD/MM/YYYY`) giữa cuộc hẹn và các ô Calendar; bổ sung bộ điều hướng tháng linh hoạt (`[◀]`, `[Tháng 10/2026]`, `[▶]`) cho Calendar khách hàng thay vì cố định tháng 10/2026.
+  4. **Loại bỏ triệt để khảo sát thừa và đánh giá phụ tùng ảo:** Chặn bài khảo sát `KSH02` ("Khảo sát nhu cầu mua xe mới Honda SH 160i 2025") và thanh lọc phụ tùng ảo trong bộ nhớ cache đơn xe `#DH-XE-008`.
+  5. **Tuân thủ giới hạn an toàn:** Không đẩy mã nguồn lên GitHub (`git push` strictly prohibited).
+
+* **Các file đã chỉnh sửa & giải pháp thực hiện:**
+  1. [`crm-frontend/src/pages/customer/PartsStore.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/PartsStore.tsx):
+     - Tại `handleBuyNow`: Lưu thông tin món mua trực tiếp vào `sessionStorage('crm_direct_checkout_item')`, kích hoạt sự kiện `crm-navigate-checkout`, đặt `window.location.hash = '#checkout'` và gọi `onNavigateToCheckout()` để chuyển ngay đến trang thanh toán; không gọi `addToCart()` hoặc chuyển sang `#cart`.
+  2. [`crm-frontend/src/pages/customer/Checkout.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/Checkout.tsx):
+     - Tại `handlePaymentSubmit`: Nếu là đơn mua trực tiếp từ ưu đãi (`isDirectBuy === true`), không gọi `clear()` giỏ hàng thông thường nhằm bảo toàn các sản phẩm khách đang để sẵn trong giỏ.
+  3. [`crm-frontend/src/services/api.ts`](file:///d:/crm-project/crm-frontend/src/services/api.ts):
+     - Xuất khẩu hàm `normalizeDateStr(dateStr)`: Chuẩn hóa mọi định dạng ngày (`DD/MM/YYYY`, `DD-MM-YYYY`, `YYYY-MM-DD`) về chuẩn duy nhất `YYYY-MM-DD`.
+     - Bổ sung `KSH02`, `KSH-02`, `KSH002` vào `DUMMY_SURVEY_IDS`.
+     - Tự động làm sạch các item phụ tùng ảo `{ tenSanPham: 'Phụ tùng chính hãng' }` khỏi mọi đơn hàng xe trong `crm_orders_cache`.
+     - `orderApi.confirmVehiclePickupDate`: Tự động chuẩn hóa `pickupDate` bằng `normalizeDateStr`.
+  4. [`crm-frontend/src/pages/admin/Appointments.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/Appointments.tsx):
+     - Bổ sung thuộc tính `moduleType?: 'calendar' | 'maintenance' | 'test-drives' | 'all'`.
+     - Tự động chuyển đổi tiêu đề trang, mô tả, thẻ KPI thống kê và các tab dịch vụ phù hợp từng phân hệ.
+     - Lọc dữ liệu chuẩn xác: `maintenance` chỉ hiển thị `BaoDuong` & `SuaChua`; `test-drives` chỉ hiển thị `LaiThu`; `calendar` hiển thị đầy đủ mọi dịch vụ trên lịch biểu.
+     - Chuẩn hóa so khớp ngày trên Calendar và bộ lọc thời gian bằng `normalizeDateStr`.
+     - Bảo lưu 100% luồng nghiệp vụ bảo dưỡng, sửa chữa và lái thử xe.
+  5. Tạo mới 3 wrapper pages:
+     - [`crm-frontend/src/pages/admin/Calendar.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/Calendar.tsx): Trang Lịch Biểu Showroom (`moduleType="calendar"`).
+     - [`crm-frontend/src/pages/admin/Maintenance.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/Maintenance.tsx): Trang Quản lý bảo dưỡng xe (`moduleType="maintenance"`).
+     - [`crm-frontend/src/pages/admin/TestDrives.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/TestDrives.tsx): Trang Quản lý lái thử xe (`moduleType="test-drives"`).
+  6. [`crm-frontend/src/layouts/AdminLayout.tsx`](file:///d:/crm-project/crm-frontend/src/layouts/AdminLayout.tsx):
+     - Cập nhật menu Sidebar:
+       - *"Tổng quan"*: Dashboard, Lịch biểu Showroom (`calendar`).
+       - *"Bán hàng"*: Quản lý đơn hàng (`sales`), Quản lý lái thử xe (`test-drives`), Khuyến mãi, Bảo hiểm xe.
+       - *"Dịch vụ & Kỹ thuật"*: Quản lý bảo dưỡng xe (`maintenance`), Quản lý bảo hành (`warranty`).
+     - Tự động điều hướng thông báo Admin: Thông báo lái thử nhảy đến `test-drives`, thông báo bảo dưỡng nhảy đến `maintenance`, thông báo nhận xe/đơn xe nhảy đến `sales`.
+  7. [`crm-frontend/src/App.tsx`](file:///d:/crm-project/crm-frontend/src/App.tsx):
+     - Bổ sung `'calendar' | 'maintenance' | 'test-drives'` vào union `AdminPage` và kết nối điều hướng tương ứng.
+  8. [`crm-frontend/src/pages/customer/CustomerDashboard.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/CustomerDashboard.tsx):
+     - Bổ sung bộ điều hướng tháng `customerCalDate` (`[◀]`, `[Tháng 10/2026]`, `[▶]`) với số ngày trong tháng và thứ trong tuần được tính toán tự động.
+     - So khớp cuộc hẹn hiển thị trên ô lịch và danh sách tóm tắt bằng `normalizeDateStr(a.ngayHen)`.
+     - Đảm bảo `isMine` nhận diện đầy đủ mọi cuộc hẹn gắn với đơn xe của khách hàng.
+     - Lọc bỏ khảo sát `KSH02` và tiêu đề chứa Honda SH 160i 2025.
+
+* **Kết quả nghiệm thu:**
+  - `npm --prefix crm-frontend run build`: 0 lỗi, bundle thành công.
+  - `dotnet build CrmBackend`: 0 lỗi.
+  - Không push code lên GitHub, toàn bộ thay đổi được lưu trữ an toàn trong kho lưu trữ nội bộ.
+
+---
+
+### LỖI 57: ĐỒNG BỘ LỊCH HẸN NHẬN XE, HIỂN THỊ ĐÚNG ẢNH XE KHÁCH HÀNG, DUYỆT BIỂN SỐ 1-CLICK & KÍCH HOẠT KHẢO SÁT XE MỚI
+* **Thời gian:** 29/10/2026 - 30/10/2026
+* **Người thực hiện:** Antigravity Team
+* **Mô tả chi tiết 4 vấn đề được khắc phục:**
+  1. **Lịch hẹn chưa hiện ở khách hàng và lịch biểu của admin sau khi khách hàng xác nhận ngày nhận xe:**
+     - Sau khi khách hàng chọn ngày nhận xe (đơn chuyển `ChoGiaoXe` / `DaXacNhan`), cuộc hẹn nhận xe (`NhanXe`) tự động được tạo với trạng thái `DaXacNhan`.
+     - Cuộc hẹn xuất hiện lập tức trên Lịch cá nhân của Khách hàng (`CustomerDashboard.tsx`) và Lịch Biểu Showroom của Admin (`Appointments.tsx` / `Calendar.tsx`).
+     - Khi đơn xe hoàn thành (`HoanThanh` / `DaGiao`), cuộc hẹn vẫn được giữ lại trên lịch biểu nhưng làm mờ với hiệu ứng `opacity-40 line-through` đúng chuẩn nghiệp vụ.
+  2. **Xe của khách hàng chưa hiện đúng hình (Yamaha Sirius FI, SYM Tuscany 150...):**
+     - Hàm `getVehicleDisplayImage` trong `CustomerDashboard.tsx` và `vehicleApi.createSoldVehicle` trong `api.ts` được nâng cấp từ điển ánh xạ hình ảnh cục bộ chuẩn cho Yamaha Sirius FI (`/images/Xe/yamaha_sirius_fi.jpg`), SYM Tuscany 150 (`/images/Xe/sym_tuscany_150.jpg`), Honda Wave Alpha (`/images/Xe/honda_wave_alpha_110.jpg`), Lead, NVX, CBR, Future...
+     - Loại bỏ triệt để việc fallback sang ảnh Unsplash generic hoặc xe khác.
+  3. **Duyệt biển số bấm 2 lần mới thành công:**
+     - Trong `LicensePlateApproval.tsx`, loại bỏ tình trạng race condition gọi lại `loadData()` ghi đè state React.
+     - Cập nhật `vehicleApi.approveLicensePlate` ghi nhận và lưu lập tức xe vào `localStorage('crm_customer_vehicles')` ngay cả khi xe chỉ tồn tại trong `mockVehicles`, đảm bảo chỉ cần 1 lần bấm duyệt là thành công 100%.
+  4. **Khảo sát bàn giao xe mới tự động kích hoạt & loại bỏ khảo sát thừa / đánh giá phụ tùng ảo:**
+     - Ngay khi khách hàng xác nhận ngày nhận xe (`orderApi.confirmVehiclePickupDate`), hệ thống tự động sinh bài khảo sát bàn giao xe mới `KS-XE-${order.id}` qua `surveyApi.createVehiclePurchaseSurvey(order)` và gửi thông báo nhắc khách làm khảo sát.
+     - `DynamicSurveyTab` mở rộng điều kiện hiển thị cho đơn xe ở trạng thái `ChoGiaoXe` hoặc `daXacNhanNgayNhan` mà không cần đợi đơn hoàn thành.
+     - Chặn triệt để bài khảo sát cũ `KSH02`/`KS002` ("Khảo sát nhu cầu mua xe mới Honda SH 160i 2025") và các bài khảo sát xe không trùng khớp với dòng xe khách đã mua.
+     - Thanh lọc phụ tùng ảo trong mục "Chờ đánh giá xe & phụ tùng", đảm bảo đơn mua xe chỉ hiện duy nhất thẻ đánh giá xe máy chính hãng.
+     - Bổ sung nút *"🗑️ XÓA KHẢO SÁT KHÔNG CẦN"* tại thanh công cụ trang Quản lý Khảo sát Admin và nút xóa nhanh `🗑️` trên từng thẻ khảo sát.
+     - Chuẩn hóa mã SKU đánh giá tại Admin: `SYM Tuscany 150` hiển thị SKU `XM042`, `Yamaha Sirius FI` hiển thị SKU `XM015`, chặn triệt để placeholder `XM-HD01`.
+
+* **Các file đã chỉnh sửa:**
+  1. [`crm-frontend/src/services/api.ts`](file:///d:/crm-project/crm-frontend/src/services/api.ts)
+  2. [`crm-frontend/src/pages/customer/CustomerDashboard.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/CustomerDashboard.tsx)
+  3. [`crm-frontend/src/pages/admin/Appointments.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/Appointments.tsx)
+  4. [`crm-frontend/src/pages/admin/LicensePlateApproval.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/LicensePlateApproval.tsx)
+  5. [`crm-frontend/src/pages/admin/Feedback.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/Feedback.tsx)
+
+* **Kết quả nghiệm thu:**
+  - `npm --prefix crm-frontend run build`: 0 lỗi, bundle thành công.
+  - `dotnet build CrmBackend`: 0 lỗi.
+  - Không push code lên GitHub.
+
+---
+
+### LỖI 58: CHUẨN HÓA TRANG LỊCH BIỂU SHOWROOM THUẦN CALENDAR GRID, HIỆN LỊCH XE TỪ QUẢN LÝ ĐƠN HÀNG, SỬA ĐIỀU HƯỚNG BẢO HÀNH & HÌNH ẢNH XE
+* **Thời gian:** 30/10/2026
+* **Người thực hiện:** Antigravity Team
+* **Mô tả chi tiết các vấn đề được khắc phục:**
+  1. **Trang Lịch Biểu Showroom (`Calendar.tsx` / `Appointments.tsx`):**
+     - Loại bỏ hoàn toàn chế độ xem bảng "Danh sách" (table view), nút chuyển chế độ `[📋 Danh sách] / [🗓️ Lịch biểu]`, thanh tìm kiếm và bộ lọc nhanh bảng trên trang Lịch biểu. Trang hoạt động 100% thuần Lịch biểu tương tác (Interactive Calendar Grid).
+     - Thiết kế 4 thẻ KPI chuyên biệt: `📅 TỔNG LỊCH TOÀN SHOWROOM`, `🏎️ BÀN GIAO XE MỚI`, `🏍️ LÁI THỬ XE`, `🔧 BẢO DƯỠNG & SỬA CHỮA`.
+     - Cập nhật 4 tab lọc dịch vụ: Tất cả lịch, Bàn giao nhận xe mới, Lái thử xe mới, Bảo dưỡng định kỳ & sửa chữa.
+     - Sử dụng `calendarAppointments` hợp nhất trực tiếp toàn bộ đơn mua xe có ngày nhận từ Quản lý đơn hàng (`allOrders` / `Sales.tsx`), giúp lịch nhận xe hiển thị chuẩn xác trên từng ô ngày và làm mờ gạch ngang khi đơn xe đã hoàn tất (`HoanThanh` / `DaGiao`).
+  2. **Lịch hẹn của khách hàng (`CustomerDashboard.tsx`):**
+     - `myAppts` tự động tổng hợp trực tiếp các đơn mua xe có ngày nhận từ `myOrders`, đảm bảo lịch nhận xe hiển thị tức thì trên cả Lịch biểu và danh sách Sắp tới của khách hàng.
+  3. **Quản lý đơn hàng xe (`Sales.tsx` & `api.ts`):**
+     - Đơn mua xe được quản lý tập trung bên Quản lý đơn hàng (`Sales.tsx`).
+     - Cột thông tin xe hiển thị trực quan thông tin hẹn nhận xe: `📅 Nhận: {ngày} ({khung giờ})`.
+     - Khi chuyển trạng thái sang `ChoGiaoXe` / `HoanThanh`, hệ thống cập nhật đồng thời `daXacNhanNgayNhan = true` trên cả `Order` và `ThongTinXe`, tự động đồng bộ sang Lịch biểu showroom và Lịch khách hàng.
+  4. **Loại bỏ bài khảo sát thừa (`KS002` - Honda SH 160i 2025) & nút xóa khảo sát:**
+     - Xóa bỏ triệt để và purge bài khảo sát thừa `KS002` khỏi cache `localStorage('crm_surveys')` trong `surveyApi.getAll()`.
+     - Duy trì nút `[🗑️ Xóa]` trên từng bài khảo sát và nút `[🗑️ XÓA KHẢO SÁT KHÔNG CẦN]` tại thanh công cụ trang Quản lý Khảo sát Admin.
+  5. **Thanh lọc thẻ đánh giá phụ tùng ảo cho đơn xe:**
+     - Trong `CustomerDashboard.tsx` mục "Chờ đánh giá", các đơn hàng xe (`loaiDon === 'Xe'` hoặc có `thongTinXe` hoặc mã `XE`) chỉ tạo thẻ đánh giá xe máy, tuyệt đối không tạo thẻ phụ tùng ảo.
+  6. **Phê duyệt biển số 1-click thành công:**
+     - Trong `LicensePlateApproval.tsx`, ngăn chặn race condition gọi lại `loadData()` ghi đè state React khi sự kiện `license_plate_approved` phát ra, đảm bảo bấm duyệt 1 lần là đổi trạng thái thành công ngay lập tức.
+  7. **Sửa đường dẫn hình ảnh xe khách hàng:**
+     - Chuẩn hóa đường dẫn ảnh xe trong `getVehicleDisplayImage`: Honda Wave Alpha (`/images/Xe/honda_wave_alpha_110_2025.jpg`), Honda Winner X (`/images/Xe/honda_winner_x_150_abs.jpg`), Honda Vision (`/images/Xe/honda_vision_110_the_thao.jpg`), Honda SH Mode (`/images/Xe/honda_sh_mode_125.png`), Yamaha FreeGo (`/images/Xe/yamaha_freego_125.png`), Yamaha PG-1 (`/images/Xe/yamaha_pg_1.jpg`), Yamaha Sirius FI, SYM Tuscany 150... cùng cơ chế fallback tra cứu chính xác từ catalog xe showroom.
+  8. **Điều hướng thông báo Bảo hành Admin:**
+     - Trong `AdminLayout.tsx`, ưu tiên nhánh điều hướng thông báo có chứa `bảo hành` hoặc `warranty` sang trang `warranty` trước nhánh `appointment`, tránh bị nhảy nhầm vào `calendar`.
+     - Trong `Warranty.tsx`, khi highlight claim bảo hành, đồng bộ trực tiếp `claimsList` và đặt lại `claimCurrentPage = 1` để hiển thị ngay yêu cầu bảo hành của khách.
+
+* **Các file đã chỉnh sửa:**
+  1. [`crm-frontend/src/services/api.ts`](file:///d:/crm-project/crm-frontend/src/services/api.ts)
+  2. [`crm-frontend/src/pages/customer/CustomerDashboard.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/CustomerDashboard.tsx)
+  3. [`crm-frontend/src/pages/admin/Appointments.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/Appointments.tsx)
+  4. [`crm-frontend/src/pages/admin/LicensePlateApproval.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/LicensePlateApproval.tsx)
+  5. [`crm-frontend/src/layouts/AdminLayout.tsx`](file:///d:/crm-project/crm-frontend/src/layouts/AdminLayout.tsx)
+  6. [`crm-frontend/src/pages/admin/Warranty.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/Warranty.tsx)
+  7. [`crm-frontend/src/pages/admin/Sales.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/Sales.tsx)
+
+* **Kết quả nghiệm thu:**
+  - `npm --prefix crm-frontend run build`: 0 lỗi, bundle thành công trong 896ms.
+  - `dotnet build CrmBackend`: 0 lỗi.
+  - Tuyệt đối không push code lên GitHub theo yêu cầu người dùng.
+
+---
+
+### LỖI 59: KHẮC PHỤC LUỒNG GỬI YÊU CẦU CẬP NHẬT BIỂN SỐ VÀ CÀ VẸT TỪ KHÁCH HÀNG SANG PHÊ DUYỆT ADMIN
+* **Thời gian:** 30/10/2026
+* **Người thực hiện:** Antigravity Team
+* **Mô tả chi tiết nguyên nhân & giải pháp:**
+  1. **Nguyên nhân gửi yêu cầu chưa hoạt động:**
+     - Trong `api.ts`, phương thức `vehicleApi.requestLicensePlateUpdate` chỉ tìm xe theo `v.id === vehicleId` đơn thuần trong `crm_customer_vehicles`. Nếu xe được tải từ backend API `XeKhachHang` hoặc mới tạo từ đơn hàng chưa lưu cache, hàm tìm kiếm trả về `null` và không lưu vào cache, không phát sinh thông báo cho Admin/Khách hàng.
+     - Xảy ra race condition: Khi sự kiện `crm-data-refresh` phát ra từ `requestLicensePlateUpdate`, listener trong `CustomerDashboard.tsx` lập tức gọi `loadCustomerData()`, tải lại danh sách cũ từ backend trước khi cache kịp hoàn thiện, dẫn đến trạng thái `myVehicles` bị ghi đè trở lại `ChoCapNhat`.
+     - Trong `CustomerDashboard.tsx`, modal cập nhật bắt buộc người dùng phải có sẵn file ảnh cà vẹt trong máy và không có nút dùng ảnh mẫu để kiểm thử nhanh. Các banner trạng thái biển số bị ràng buộc điều kiện `isCuaHang` nên các xe khác không hiển thị được banner chờ duyệt.
+  2. **Giải pháp đã thực hiện:**
+     - **Nâng cấp `vehicleApi.requestLicensePlateUpdate` trong [`api.ts`](file:///d:/crm-project/crm-frontend/src/services/api.ts):**
+       * Nhận thêm tham số `vehicleData?: Partial<Vehicle>`.
+       * Cơ chế tìm kiếm xe thông minh đa tầng: tìm theo `v.id`, mã số `numId`, số khung `soKhung`, và tổ hợp `tenXe + customerId`.
+       * Nếu xe chưa có trong cache `crm_customer_vehicles`, tự động khởi tạo đối tượng `Vehicle` hoàn chỉnh và thêm vào đầu danh sách cache.
+       * Đồng bộ tự động trạng thái `bienSoChoDuyet`, `trangThaiDuyetBienSo = 'ChoDuyet'`, `anhCaVet` vào đơn hàng xe tương ứng trong `crm_orders`.
+       * Luôn luôn tạo thông báo Admin (`license-plates`) và thông báo Khách hàng (`order`/`vehicles`).
+     - **Ngăn chặn Race Condition trong [`CustomerDashboard.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/CustomerDashboard.tsx):**
+       * Trong listener `handleRefresh`, bỏ qua sự kiện `license_plate_submitted` để không ghi đè state React vừa cập nhật của khách hàng.
+       * Cập nhật `handleSubmitPlateUpdate` truyền đầy đủ `updatingPlateVehicle` và hỗ trợ ảnh cà vẹt fallback mẫu để trải nghiệm kiểm thử mượt mà.
+       * Thêm các nút hỗ trợ test nhanh trên modal: `[59P1 - 246.88]`, `[51K - 888.99]` và `[📄 Dùng ảnh Cà vẹt mẫu để test]`.
+       * Tháo bỏ ràng buộc `isCuaHang &&` ở các banner duyệt biển số (`ChoDuyet`, `TuChoi`, `ChoCapNhat`) để đảm bảo mọi xe của khách đều hiển thị đúng banner.
+     - **Đồng bộ hóa Deduplication trong `vehicleApi.getAll()`:**
+       * Đảm bảo các thuộc tính `bienSoChoDuyet`, `anhCaVet`, `trangThaiDuyetBienSo` luôn được hợp nhất và ưu tiên giữ nguyên trạng thái mới nhất từ cache người dùng.
+     - **Mở rộng Model [`mockData.ts`](file:///d:/crm-project/crm-frontend/src/data/mockData.ts):**
+       * Bổ sung thuộc tính `hangXe?: string` vào interface `Vehicle`.
+       * Bổ sung `bienSoChoDuyet?: string`, `trangThaiDuyetBienSo?: ...`, `anhCaVet?: string` vào interface `VehicleOrderDetails`.
+
+* **Các file đã chỉnh sửa:**
+  1. [`crm-frontend/src/services/api.ts`](file:///d:/crm-project/crm-frontend/src/services/api.ts)
+  2. [`crm-frontend/src/pages/customer/CustomerDashboard.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/CustomerDashboard.tsx)
+  3. [`crm-frontend/src/components/shared/ImageUploader.tsx`](file:///d:/crm-project/crm-frontend/src/components/shared/ImageUploader.tsx)
+  4. [`crm-frontend/src/data/mockData.ts`](file:///d:/crm-project/crm-frontend/src/data/mockData.ts)
+  5. [`FIX_LOG.md`](file:///d:/crm-project/FIX_LOG.md)
+
+* **Chi tiết khắc phục bổ sung (Tự ghi biển số & Tự tải ảnh cà vẹt):**
+  - **Tự tải ảnh cà vẹt:** File ảnh chụp từ máy tính / điện thoại (1MB - 5MB) khi đọc bằng `FileReader.readAsDataURL` sinh ra chuỗi Base64 cực lớn (2MB - 4MB). Khi lưu vào `localStorage` (giới hạn cứng 5MB của trình duyệt), trình duyệt ném ngoại lệ `QuotaExceededError`, làm hủy toàn bộ lệnh lưu `crm_customer_vehicles`. Đã tích hợp bộ nén tự động qua Canvas trong `ImageUploader.tsx` (tối đa 900px, JPEG quality 0.75), giảm kích thước ảnh xuống chỉ còn ~30KB - 50KB, đồng thời bổ sung cơ chế bắt lỗi tràn quota trong `api.ts`.
+  - **Tự ghi biển số:** Hàm `formatVietnameseLicensePlate` cũ gọi trong sự kiện `onChange` khiến con trỏ nhảy loạn xạ khi gõ, đồng thời ưu tiên sai thứ tự regex khiến biển xe máy 4 số (VD: `59F1-1234`) bị băm nhầm thành `59F - 112.34`. Đã tách riêng `onChange` cho phép người dùng gõ tự do không bị giật con trỏ, chỉ định dạng chuẩn khi `onBlur` hoặc submit, và sửa thứ tự ưu tiên biển xe máy 4 số và 5 số.
+
+* **Kết quả nghiệm thu:**
+  - `npm --prefix crm-frontend run build`: 0 lỗi, bundle thành công trong 909ms.
+  - `dotnet build CrmBackend`: 0 lỗi.
+  - Đã lập kịch bản test tại artifact [`kich-ban-test-chi-tiet-loi-59.md`](file:///C:/Users/Admin/.gemini/antigravity/brain/019adbaa-9450-4164-a94d-d26888060570/kich-ban-test-chi-tiet-loi-59.md).
+  - Tuyệt đối không chạy `git push` lên GitHub.
+

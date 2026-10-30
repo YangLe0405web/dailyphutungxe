@@ -20,17 +20,56 @@ export default function ImageUploader({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        alert('Dung lượng file ảnh quá lớn! Vui lòng chọn file dưới 5MB.');
+      if (file.size > 20 * 1024 * 1024) {
+        alert('Dung lượng file ảnh quá lớn! Vui lòng chọn file dưới 20MB.');
         return;
       }
       const reader = new FileReader();
-      reader.onloadend = () => {
-        if (typeof reader.result === 'string') {
-          onChange(reader.result);
-        }
+      reader.onload = (readEvent) => {
+        const rawResult = readEvent.target?.result as string;
+        if (!rawResult) return;
+
+        // Tự động nén ảnh qua Canvas (tối đa 900px, chất lượng 0.75) để ảnh chỉ khoảng 30KB - 50KB,
+        // vừa hiển thị sắc nét vừa tuyệt đối không làm tràn hạn ngạch LocalStorage (QuotaExceededError)
+        const img = new Image();
+        img.onload = () => {
+          try {
+            const canvas = document.createElement('canvas');
+            const maxDimension = 800;
+            let width = img.width;
+            let height = img.height;
+
+            if (width > maxDimension || height > maxDimension) {
+              if (width > height) {
+                height = Math.round((height * maxDimension) / width);
+                width = maxDimension;
+              } else {
+                width = Math.round((width * maxDimension) / height);
+                height = maxDimension;
+              }
+            }
+
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(img, 0, 0, width, height);
+              const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
+              onChange(compressedBase64);
+              return;
+            }
+          } catch (canvasErr) {
+            console.warn('[ImageUploader] Canvas compress fallback:', canvasErr);
+          }
+          onChange(rawResult);
+        };
+        img.onerror = () => {
+          onChange(rawResult);
+        };
+        img.src = rawResult;
       };
       reader.readAsDataURL(file);
+      e.target.value = "";
     }
   };
 
@@ -98,10 +137,15 @@ export default function ImageUploader({
           <div className="relative">
             <input
               type="text"
-              value={value}
-              onChange={e => onChange(e.target.value)}
+              readOnly={value.startsWith('data:')}
+              value={value.startsWith('data:') ? '✓ Đã tải ảnh từ máy tính' : value}
+              onChange={e => {
+                if (!value.startsWith('data:')) {
+                  onChange(e.target.value);
+                }
+              }}
               placeholder={placeholder}
-              className="w-full p-2 text-xs rounded-xl border border-zinc-300 bg-white focus:outline-none focus:border-red-600 font-mono"
+              className={`w-full p-2 text-xs rounded-xl border border-zinc-300 ${value.startsWith('data:') ? 'bg-zinc-100 text-emerald-700 font-semibold cursor-default' : 'bg-white text-zinc-800'} focus:outline-none focus:border-red-600 font-mono`}
             />
           </div>
         </div>

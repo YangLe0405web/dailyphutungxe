@@ -276,8 +276,9 @@ export default function SalesPage({
         ? {
             ...o,
             trangThai: finalStatus,
+            ...(finalStatus === 'ChoGiaoXe' || finalStatus === 'HoanThanh' || finalStatus === 'DaGiao' ? { daXacNhanNgayNhan: true } : {}),
             ...(finalStatus === 'HoanThanh' ? { trangThaiThanhToan: 'DaThanhToan' as const } : {}),
-            ...(finalStatus === 'HoanThanh' && o.thongTinXe ? { thongTinXe: { ...o.thongTinXe, soTienConLai: 0 } } : {})
+            ...(finalStatus === 'HoanThanh' && o.thongTinXe ? { thongTinXe: { ...o.thongTinXe, soTienConLai: 0, daXacNhanNgayNhan: true } } : {})
           }
         : o;
     }));
@@ -285,8 +286,9 @@ export default function SalesPage({
       setSelectedOrderForDetail(prev => (prev ? {
         ...prev,
         trangThai: finalStatus,
+        ...(finalStatus === 'ChoGiaoXe' || finalStatus === 'HoanThanh' || finalStatus === 'DaGiao' ? { daXacNhanNgayNhan: true } : {}),
         ...(finalStatus === 'HoanThanh' ? { trangThaiThanhToan: 'DaThanhToan' as const } : {}),
-        ...(finalStatus === 'HoanThanh' && prev.thongTinXe ? { thongTinXe: { ...prev.thongTinXe, soTienConLai: 0 } } : {})
+        ...(finalStatus === 'HoanThanh' && prev.thongTinXe ? { thongTinXe: { ...prev.thongTinXe, soTienConLai: 0, daXacNhanNgayNhan: true } } : {})
       } : null));
     }
 
@@ -841,6 +843,15 @@ export default function SalesPage({
                             </div>
                             {order.thongTinXe?.phienBan && (
                               <div className="text-[10px] text-zinc-400">{order.thongTinXe.phienBan}</div>
+                            )}
+                            {(order.thongTinXe?.ngayNhanXacNhan || order.thongTinXe?.ngayGiaoXe) && (
+                              <div className="mt-1 text-[11px] font-mono text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 inline-flex items-center gap-1">
+                                <span>📅 Nhận:</span>
+                                <span>{order.thongTinXe.ngayNhanXacNhan || order.thongTinXe.ngayGiaoXe}</span>
+                                {order.thongTinXe.gioNhanXacNhan || order.thongTinXe.khungGioGiao ? (
+                                  <span>({order.thongTinXe.gioNhanXacNhan || order.thongTinXe.khungGioGiao})</span>
+                                ) : null}
+                              </div>
                             )}
                           </td>
 

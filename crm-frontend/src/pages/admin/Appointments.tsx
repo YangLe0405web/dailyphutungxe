@@ -9,7 +9,7 @@ import {
   type StaffAccount,
   formatVND,
 } from '../../data/mockData';
-import { appointmentApi, orderApi } from '../../services/api';
+import { appointmentApi, orderApi, normalizeDateStr } from '../../services/api';
 
 const apptStatuses: { key: AppointmentStatus; label: string; color: string; bg: string }[] = [
   { key: 'ChoXacNhan', label: 'Chờ xác nhận', color: '#d97706', bg: '#fef3c7' },
@@ -120,14 +120,22 @@ const getMonthDaysGrid = (currentDate: Date) => {
   return cells;
 };
 
+export const isTestDriveAppt = (a?: Appointment | { loaiDichVu?: string } | null): boolean => {
+  if (!a) return false;
+  const ldv = String(a.loaiDichVu || '').toLowerCase().trim();
+  return ldv === 'laithu' || ldv.includes('lái') || ldv.includes('lai') || ldv.includes('test');
+};
+
 export interface AppointmentsPageProps {
   currentStaff?: StaffAccount | null;
   onNavigateToCreateVehicleOrder?: (appt: Appointment) => void;
+  moduleType?: 'calendar' | 'maintenance' | 'test-drives' | 'all';
 }
 
 export default function AppointmentsPage({
   currentStaff,
   onNavigateToCreateVehicleOrder,
+  moduleType = 'all',
 }: AppointmentsPageProps) {
   const [appointments, setAppointments] = useState<Appointment[]>(mockAppointments);
 
@@ -174,7 +182,7 @@ export default function AppointmentsPage({
   const [highlightApptId, setHighlightApptId] = useState<string | null>(null);
 
   // Calendar View mode
-  const [apptViewMode, setApptViewMode] = useState<'table' | 'calendar'>('table');
+  const [apptViewMode, setApptViewMode] = useState<'table' | 'calendar'>(moduleType === 'calendar' ? 'calendar' : 'table');
   const [currentCalendarDate, setCurrentCalendarDate] = useState<Date>(new Date());
 
   // Load appointments from API / storage
@@ -189,21 +197,37 @@ export default function AppointmentsPage({
     loadData();
 
     const handleRefresh = (e: any) => {
-      const type = e.detail?.type;
-      if (!type || type === 'appointment' || type === 'appointment_booked' || type === 'appointment_updated') {
+      const isStorage = e instanceof StorageEvent || Boolean(e?.key);
+      if (isStorage) {
+        if (!e.key || e.key.includes('appointment') || e.key.includes('order') || e.key.includes('notif')) {
+          loadData();
+        }
+        return;
+      }
+      const type = e?.detail?.type;
+      if (!type || type.includes('appointment') || type.includes('order') || type.includes('notif')) {
         loadData();
       }
     };
 
     window.addEventListener('crm-data-refresh', handleRefresh);
     window.addEventListener('crm-admin-notification', handleRefresh);
+    window.addEventListener('storage', handleRefresh);
 
     return () => {
       isMounted = false;
       window.removeEventListener('crm-data-refresh', handleRefresh);
       window.removeEventListener('crm-admin-notification', handleRefresh);
+      window.removeEventListener('storage', handleRefresh);
     };
   }, []);
+
+  // Tự động reset và cố định bộ lọc khi chuyển sang phân hệ Lái thử xe
+  useEffect(() => {
+    if (moduleType === 'test-drives') {
+      setApptSvcFilter('ALL');
+    }
+  }, [moduleType]);
 
   // Đón nhận highlight lịch hẹn từ thông báo Admin
   useEffect(() => {
@@ -215,7 +239,7 @@ export default function AppointmentsPage({
           if (raw) data = JSON.parse(raw);
         } catch {}
       }
-      if (!data || data.page !== 'appointments') return;
+      if (!data || (data.page !== 'appointments' && data.page !== 'test-drives' && data.page !== 'calendar' && data.page !== 'maintenance')) return;
 
       const targetId = (data.targetId || '').trim();
       const keyword = (data.keyword || '').trim();
@@ -228,7 +252,7 @@ export default function AppointmentsPage({
       const targetAppt = match || (targetId ? appointments.find(a => a.id === targetId) : undefined);
 
       if (targetAppt) {
-        setApptViewMode('table');
+        if (moduleType !== 'calendar') setApptViewMode('table');
         setApptSearch(targetAppt.id);
         setHighlightApptId(targetAppt.id);
 
@@ -243,7 +267,7 @@ export default function AppointmentsPage({
           setHighlightApptId(null);
         }, 7000);
       } else if (targetId) {
-        setApptViewMode('table');
+        if (moduleType !== 'calendar') setApptViewMode('table');
         setApptSearch(targetId);
         setHighlightApptId(targetId);
         setTimeout(() => setHighlightApptId(null), 7000);
@@ -711,6 +735,10 @@ export default function AppointmentsPage({
   // Filtered & Sorted Appointments (Ưu tiên cuộc hẹn 'ChoXacNhan' lên đầu danh sách)
   const filteredAppointments = useMemo(() => {
     const list = appointments.filter(a => {
+      // Phân hệ chuyên biệt theo moduleType
+      if (moduleType === 'maintenance' && a.loaiDichVu !== 'BaoDuong' && a.loaiDichVu !== 'SuaChua') return false;
+      if (moduleType === 'test-drives' && !isTestDriveAppt(a)) return false;
+
       // Nghiệp vụ Lịch hẹn nhận xe mới:
       if (a.loaiDichVu === 'NhanXe') {
         if (a.trangThai === 'DaHuy') return false;
@@ -729,9 +757,11 @@ export default function AppointmentsPage({
       }
 
       if (apptStatusFilter !== 'ALL' && a.trangThai !== apptStatusFilter) return false;
-      if (apptSvcFilter !== 'ALL' && a.loaiDichVu !== apptSvcFilter) return false;
-      if (apptFromDate && a.ngayHen < apptFromDate) return false;
-      if (apptToDate && a.ngayHen > apptToDate) return false;
+      if (moduleType !== 'test-drives' && apptSvcFilter !== 'ALL' && a.loaiDichVu !== apptSvcFilter) return false;
+      
+      const aDate = normalizeDateStr(a.ngayHen);
+      if (apptFromDate && aDate && aDate < apptFromDate) return false;
+      if (apptToDate && aDate && aDate > apptToDate) return false;
       if (apptSearch.trim()) {
         const matchId = matchVietnameseSearch(a.id, apptSearch);
         const matchName = matchVietnameseSearch(a.hoTenKH, apptSearch);
@@ -751,16 +781,78 @@ export default function AppointmentsPage({
       if (a.trangThai !== 'ChoXacNhan' && b.trangThai === 'ChoXacNhan') return 1;
 
       // 2. Tiếp theo: Sắp xếp theo ngày hẹn mới nhất
-      if (b.ngayHen !== a.ngayHen) {
-        return b.ngayHen.localeCompare(a.ngayHen);
+      const aDate = normalizeDateStr(a.ngayHen);
+      const bDate = normalizeDateStr(b.ngayHen);
+      if (bDate !== aDate) {
+        return bDate.localeCompare(aDate);
       }
       return (b.gioHen || '').localeCompare(a.gioHen || '');
     });
-  }, [appointments, apptStatusFilter, apptSvcFilter, apptFromDate, apptToDate, apptSearch, allOrders]);
+  }, [appointments, apptStatusFilter, apptSvcFilter, apptFromDate, apptToDate, apptSearch, allOrders, moduleType]);
+
+  // Hợp nhất toàn bộ lịch hẹn kỹ thuật (Bảo dưỡng, Lái thử, Sửa chữa) VỚI toàn bộ lịch nhận xe từ Quản lý đơn hàng (allOrders)
+  const calendarAppointments = useMemo(() => {
+    const list: Appointment[] = [...appointments];
+    const existingOrderIds = new Set(appointments.filter(a => a.maDonHangXe).map(a => a.maDonHangXe!));
+
+    allOrders.forEach(o => {
+      const isVehicle = o.loaiDon === 'Xe' || !!o.thongTinXe || (o.id && o.id.includes('XE'));
+      if (!isVehicle) return;
+      if (existingOrderIds.has(o.id)) return;
+
+      const pickupDate = o.thongTinXe?.ngayNhanXacNhan || o.thongTinXe?.ngayGiaoXe;
+      if (!pickupDate) return;
+      if (o.trangThai === 'DaHuy') return;
+
+      const isConfirmed = o.daXacNhanNgayNhan || o.thongTinXe?.daXacNhanNgayNhan || o.trangThai === 'ChoGiaoXe' || o.trangThai === 'HoanThanh' || o.trangThai === 'DaGiao' || o.trangThai === 'DaXacNhan';
+      if (!isConfirmed) return;
+
+      const isCompleted = o.trangThai === 'HoanThanh' || o.trangThai === 'DaGiao';
+
+      list.push({
+        id: `APPT-${o.id}`,
+        customerId: o.customerId,
+        hoTenKH: o.hoTenKH,
+        soDienThoai: o.soDienThoai || '',
+        loaiDichVu: 'NhanXe',
+        ngayHen: pickupDate,
+        gioHen: o.thongTinXe?.gioNhanXacNhan || o.thongTinXe?.khungGioGiao || '09:00',
+        tenXe: o.thongTinXe?.tenXe || 'Xe máy chính hãng',
+        bienSo: o.thongTinXe?.bienSo || 'Showroom bàn giao',
+        mauXe: o.thongTinXe?.mauSac || 'Tiêu chuẩn',
+        trangThai: isCompleted ? 'DaHoanThanh' : 'DaXacNhan',
+        nhanVienPhuTrach: o.tenNV || 'Showroom bàn giao',
+        ghiChu: `Lịch nhận xe theo đơn hàng #${o.id}. Trạng thái: ${isCompleted ? 'Đã hoàn tất' : 'Chờ giao xe'}`,
+        maDonHangXe: o.id,
+        maLichHen: o.maLichHen || `HEN-${o.id}`,
+      });
+    });
+
+    return list;
+  }, [appointments, allOrders]);
+
+  const currentMonthCalendarAppts = useMemo(() => {
+    const calMonth = currentCalendarDate.getMonth() + 1;
+    const calYear = currentCalendarDate.getFullYear();
+    return calendarAppointments.filter(a => {
+      const norm = normalizeDateStr(a.ngayHen);
+      if (!norm) return false;
+      const [y, m] = norm.split('-').map(v => parseInt(v, 10));
+      return y === calYear && m === calMonth;
+    });
+  }, [calendarAppointments, currentCalendarDate]);
+
+  const totalCalendarCount = currentMonthCalendarAppts.length;
+  const pickupCalendarCount = currentMonthCalendarAppts.filter(a => a.loaiDichVu === 'NhanXe').length;
+  const testDriveCalendarCount = currentMonthCalendarAppts.filter(a => isTestDriveAppt(a)).length;
+  const maintenanceCalendarCount = currentMonthCalendarAppts.filter(a => a.loaiDichVu === 'BaoDuong' || a.loaiDichVu === 'SuaChua').length;
 
   // KPI stats (chỉ đếm lịch hẹn đang hoạt động, không bao gồm lịch nhận xe đã hoàn tất)
   const activeAppts = useMemo(() => {
     return appointments.filter(a => {
+      if (moduleType === 'maintenance' && a.loaiDichVu !== 'BaoDuong' && a.loaiDichVu !== 'SuaChua') return false;
+      if (moduleType === 'test-drives' && !isTestDriveAppt(a)) return false;
+
       if (a.loaiDichVu === 'NhanXe') {
         if (a.trangThai === 'DaHoanThanh' || a.trangThai === 'HoanThanh' || a.trangThai === 'DaHuy') return false;
         const matchedOrder = allOrders.find(o =>
@@ -774,12 +866,17 @@ export default function AppointmentsPage({
       }
       return true;
     });
-  }, [appointments, allOrders]);
+  }, [appointments, allOrders, moduleType]);
 
   const totalCount = activeAppts.length;
   const pendingCount = activeAppts.filter(a => a.trangThai === 'ChoXacNhan').length;
   const confirmedCount = activeAppts.filter(a => a.trangThai === 'DaXacNhan').length;
   const pickupCount = activeAppts.filter(a => a.loaiDichVu === 'NhanXe').length;
+  const completedCount = appointments.filter(a => {
+    if (moduleType === 'maintenance' && a.loaiDichVu !== 'BaoDuong' && a.loaiDichVu !== 'SuaChua') return false;
+    if (moduleType === 'test-drives' && !isTestDriveAppt(a)) return false;
+    return a.trangThai === 'DaHoanThanh' || a.trangThai === 'HoanThanh';
+  }).length;
 
   // LH19: Tính toán phân trang
   const totalPages = Math.max(1, Math.ceil(filteredAppointments.length / pageSize));
@@ -797,68 +894,183 @@ export default function AppointmentsPage({
             className="text-2xl font-extrabold text-zinc-950 tracking-tight"
             style={{ fontFamily: 'var(--font-display)', letterSpacing: '0.02em' }}
           >
-            QUẢN LÝ LỊCH HẸN
+            {moduleType === 'calendar'
+              ? 'LỊCH BIỂU SHOWROOM'
+              : moduleType === 'maintenance'
+              ? 'QUẢN LÝ BẢO DƯỠNG XE'
+              : moduleType === 'test-drives'
+              ? 'QUẢN LÝ LÁI THỬ XE'
+              : 'QUẢN LÝ LỊCH HẸN'}
           </h1>
           <p className="text-xs text-zinc-500 mt-0.5">
-            Theo dõi, điều phối lịch hẹn sửa chữa, bảo dưỡng, lái thử và lịch đón tiếp khách nhận xe mới tại showroom.
+            {moduleType === 'calendar'
+              ? 'Điều phối tập trung toàn bộ lịch đón tiếp nhận xe mới, lái thử và dịch vụ kỹ thuật bảo dưỡng tại showroom.'
+              : moduleType === 'maintenance'
+              ? 'Tiếp nhận xe, phân công kỹ thuật viên, theo dõi tiến độ bảo dưỡng & sửa chữa và bàn giao xe cho khách hàng.'
+              : moduleType === 'test-drives'
+              ? 'Tiếp nhận yêu cầu lái thử của khách hàng, phân công nhân viên tư vấn đồng hành và hỗ trợ chuyển đổi đơn hàng xe mới.'
+              : 'Theo dõi, điều phối lịch hẹn sửa chữa, bảo dưỡng, lái thử và lịch đón tiếp khách nhận xe mới tại showroom.'}
           </p>
         </div>
 
         {/* View toggle (Table vs Calendar) */}
-        <div className="flex items-center gap-2">
-          <div className="flex items-center bg-zinc-100 p-1 rounded-xl border border-zinc-200">
-            <button
-              type="button"
-              onClick={() => setApptViewMode('table')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
-                apptViewMode === 'table' ? 'bg-white text-zinc-900 shadow-2xs' : 'text-zinc-600 hover:text-zinc-900'
-              }`}
-            >
-              <span>📋</span> Danh sách
-            </button>
-            <button
-              type="button"
-              onClick={() => setApptViewMode('calendar')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
-                apptViewMode === 'calendar' ? 'bg-white text-zinc-900 shadow-2xs' : 'text-zinc-600 hover:text-zinc-900'
-              }`}
-            >
-              <span>🗓️</span> Lịch biểu
-            </button>
+        {moduleType !== 'calendar' && (
+          <div className="flex items-center gap-2">
+            <div className="flex items-center bg-zinc-100 p-1 rounded-xl border border-zinc-200">
+              <button
+                type="button"
+                onClick={() => setApptViewMode('table')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                  apptViewMode === 'table' ? 'bg-white text-zinc-900 shadow-2xs' : 'text-zinc-600 hover:text-zinc-900'
+                }`}
+              >
+                <span>📋</span> Danh sách
+              </button>
+              <button
+                type="button"
+                onClick={() => setApptViewMode('calendar')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                  apptViewMode === 'calendar' ? 'bg-white text-zinc-900 shadow-2xs' : 'text-zinc-600 hover:text-zinc-900'
+                }`}
+              >
+                <span>🗓️</span> Lịch biểu
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* ── KPI CARDS ── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="p-4 rounded-2xl bg-white border border-zinc-200/80 shadow-2xs">
-          <div className="text-xs text-zinc-500 font-mono">TỔNG LỊCH HẸN</div>
-          <div className="text-2xl font-extrabold text-zinc-950 font-mono mt-1">{totalCount}</div>
-        </div>
-        <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-200/80 shadow-2xs">
-          <div className="text-xs text-amber-800 font-mono font-bold">⏳ CHỜ TIẾP NHẬN</div>
-          <div className="text-2xl font-extrabold text-amber-700 font-mono mt-1">{pendingCount}</div>
-        </div>
-        <div className="p-4 rounded-2xl bg-blue-50/80 border border-blue-200/80 shadow-2xs">
-          <div className="text-xs text-blue-800 font-mono font-bold">✓ ĐÃ XÁC NHẬN</div>
-          <div className="text-2xl font-extrabold text-blue-700 font-mono mt-1">{confirmedCount}</div>
-        </div>
-        <div className="p-4 rounded-2xl bg-red-50/80 border border-red-200/80 shadow-2xs">
-          <div className="text-xs text-red-800 font-mono font-bold">🏍️ CHỜ GIAO XE MỚI</div>
-          <div className="text-2xl font-extrabold text-red-700 font-mono mt-1">{pickupCount}</div>
-        </div>
+        {moduleType === 'calendar' ? (
+          <>
+            <div className="p-4 rounded-2xl bg-white border border-zinc-200/80 shadow-2xs">
+              <div className="text-xs text-zinc-500 font-mono">📅 TỔNG LỊCH TOÀN SHOWROOM</div>
+              <div className="text-2xl font-extrabold text-zinc-950 font-mono mt-1">{totalCalendarCount}</div>
+            </div>
+            <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-200/80 shadow-2xs">
+              <div className="text-xs text-amber-800 font-mono font-bold">🏎️ BÀN GIAO XE MỚI</div>
+              <div className="text-2xl font-extrabold text-amber-700 font-mono mt-1">{pickupCalendarCount}</div>
+            </div>
+            <div className="p-4 rounded-2xl bg-purple-50/80 border border-purple-200/80 shadow-2xs">
+              <div className="text-xs text-purple-800 font-mono font-bold">🏍️ LÁI THỬ XE</div>
+              <div className="text-2xl font-extrabold text-purple-700 font-mono mt-1">{testDriveCalendarCount}</div>
+            </div>
+            <div className="p-4 rounded-2xl bg-blue-50/80 border border-blue-200/80 shadow-2xs">
+              <div className="text-xs text-blue-800 font-mono font-bold">🔧 BẢO DƯỠNG & SỬA CHỮA</div>
+              <div className="text-2xl font-extrabold text-blue-700 font-mono mt-1">{maintenanceCalendarCount}</div>
+            </div>
+          </>
+        ) : moduleType === 'maintenance' ? (
+          <>
+            <div className="p-4 rounded-2xl bg-white border border-zinc-200/80 shadow-2xs">
+              <div className="text-xs text-zinc-500 font-mono">TỔNG BẢO DƯỠNG & SỬA CHỮA</div>
+              <div className="text-2xl font-extrabold text-zinc-950 font-mono mt-1">{totalCount}</div>
+            </div>
+            <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-200/80 shadow-2xs">
+              <div className="text-xs text-amber-800 font-mono font-bold">⏳ CHỜ TIẾP NHẬN</div>
+              <div className="text-2xl font-extrabold text-amber-700 font-mono mt-1">{pendingCount}</div>
+            </div>
+            <div className="p-4 rounded-2xl bg-blue-50/80 border border-blue-200/80 shadow-2xs">
+              <div className="text-xs text-blue-800 font-mono font-bold">🔧 ĐÃ XÁC NHẬN / PHÂN CÔNG</div>
+              <div className="text-2xl font-extrabold text-blue-700 font-mono mt-1">{confirmedCount}</div>
+            </div>
+            <div className="p-4 rounded-2xl bg-emerald-50/80 border border-emerald-200/80 shadow-2xs">
+              <div className="text-xs text-emerald-800 font-mono font-bold">✓ ĐÃ HOÀN TẤT DỊCH VỤ</div>
+              <div className="text-2xl font-extrabold text-emerald-700 font-mono mt-1">{completedCount}</div>
+            </div>
+          </>
+        ) : moduleType === 'test-drives' ? (
+          <>
+            <div
+              onClick={() => setApptStatusFilter('ALL')}
+              className={`p-4 rounded-2xl border shadow-2xs transition cursor-pointer select-none ${
+                apptStatusFilter === 'ALL'
+                  ? 'bg-zinc-950 text-white border-zinc-800 shadow-md ring-2 ring-zinc-700'
+                  : 'bg-white text-zinc-900 border-zinc-200/80 hover:border-zinc-300'
+              }`}
+            >
+              <div className={`text-xs font-mono font-bold ${apptStatusFilter === 'ALL' ? 'text-zinc-300' : 'text-zinc-500'}`}>TỔNG YÊU CẦU LÁI THỬ</div>
+              <div className="text-2xl font-extrabold font-mono mt-1">{totalCount}</div>
+            </div>
+            <div
+              onClick={() => setApptStatusFilter('ChoXacNhan')}
+              className={`p-4 rounded-2xl border shadow-2xs transition cursor-pointer select-none ${
+                apptStatusFilter === 'ChoXacNhan'
+                  ? 'bg-amber-900 text-white border-amber-700 shadow-md ring-2 ring-amber-500'
+                  : 'bg-amber-50/80 text-amber-900 border-amber-200/80 hover:border-amber-300'
+              }`}
+            >
+              <div className={`text-xs font-mono font-bold ${apptStatusFilter === 'ChoXacNhan' ? 'text-amber-200' : 'text-amber-800'}`}>⏳ CHỜ TIẾP NHẬN</div>
+              <div className={`text-2xl font-extrabold font-mono mt-1 ${apptStatusFilter === 'ChoXacNhan' ? 'text-amber-100' : 'text-amber-700'}`}>{pendingCount}</div>
+            </div>
+            <div
+              onClick={() => setApptStatusFilter('DaXacNhan')}
+              className={`p-4 rounded-2xl border shadow-2xs transition cursor-pointer select-none ${
+                apptStatusFilter === 'DaXacNhan'
+                  ? 'bg-purple-900 text-white border-purple-700 shadow-md ring-2 ring-purple-500'
+                  : 'bg-purple-50/80 text-purple-900 border-purple-200/80 hover:border-purple-300'
+              }`}
+            >
+              <div className={`text-xs font-mono font-bold ${apptStatusFilter === 'DaXacNhan' ? 'text-purple-200' : 'text-purple-800'}`}>🏍️ ĐÃ XÁC NHẬN LÁI THỬ</div>
+              <div className={`text-2xl font-extrabold font-mono mt-1 ${apptStatusFilter === 'DaXacNhan' ? 'text-purple-100' : 'text-purple-700'}`}>{confirmedCount}</div>
+            </div>
+            <div
+              onClick={() => setApptStatusFilter('DaHoanThanh')}
+              className={`p-4 rounded-2xl border shadow-2xs transition cursor-pointer select-none ${
+                apptStatusFilter === 'DaHoanThanh'
+                  ? 'bg-emerald-900 text-white border-emerald-700 shadow-md ring-2 ring-emerald-500'
+                  : 'bg-emerald-50/80 text-emerald-900 border-emerald-200/80 hover:border-emerald-300'
+              }`}
+            >
+              <div className={`text-xs font-mono font-bold ${apptStatusFilter === 'DaHoanThanh' ? 'text-emerald-200' : 'text-emerald-800'}`}>✓ ĐÃ HOÀN TẤT LÁI THỬ</div>
+              <div className={`text-2xl font-extrabold font-mono mt-1 ${apptStatusFilter === 'DaHoanThanh' ? 'text-emerald-100' : 'text-emerald-700'}`}>{completedCount}</div>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="p-4 rounded-2xl bg-white border border-zinc-200/80 shadow-2xs">
+              <div className="text-xs text-zinc-500 font-mono">TỔNG LỊCH HẸN</div>
+              <div className="text-2xl font-extrabold text-zinc-950 font-mono mt-1">{totalCount}</div>
+            </div>
+            <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-200/80 shadow-2xs">
+              <div className="text-xs text-amber-800 font-mono font-bold">⏳ CHỜ TIẾP NHẬN</div>
+              <div className="text-2xl font-extrabold text-amber-700 font-mono mt-1">{pendingCount}</div>
+            </div>
+            <div className="p-4 rounded-2xl bg-blue-50/80 border border-blue-200/80 shadow-2xs">
+              <div className="text-xs text-blue-800 font-mono font-bold">✓ ĐÃ XÁC NHẬN</div>
+              <div className="text-2xl font-extrabold text-blue-700 font-mono mt-1">{confirmedCount}</div>
+            </div>
+            <div className="p-4 rounded-2xl bg-red-50/80 border border-red-200/80 shadow-2xs">
+              <div className="text-xs text-red-800 font-mono font-bold">🏍️ CHỜ GIAO XE MỚI</div>
+              <div className="text-2xl font-extrabold text-red-700 font-mono mt-1">{pickupCount}</div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* ── THANH CHUYỂN TAB DỊCH VỤ CHUYÊN BIỆT (TÁCH RIÊNG TỪNG DỊCH VỤ - ÁP DỤNG CẢ DANH SÁCH & LỊCH BIỂU) ── */}
       <div className="flex items-center gap-2 overflow-x-auto pb-1 select-none">
-        {[
+        {(moduleType === 'calendar' ? [
+          { key: 'ALL', label: 'Tất cả lịch toàn showroom', icon: '📅', count: totalCalendarCount },
+          { key: 'NhanXe', label: 'Bàn giao nhận xe mới', icon: '🏎️', count: pickupCalendarCount },
+          { key: 'LaiThu', label: 'Lái thử xe mới', icon: '🏍️', count: testDriveCalendarCount },
+          { key: 'BaoDuong', label: 'Bảo dưỡng định kỳ', icon: '🔧', count: calendarAppointments.filter(a => a.loaiDichVu === 'BaoDuong').length },
+          { key: 'SuaChua', label: 'Sửa chữa phụ tùng', icon: '⚙️', count: calendarAppointments.filter(a => a.loaiDichVu === 'SuaChua').length },
+        ] : moduleType === 'maintenance' ? [
+          { key: 'ALL', label: 'Tất cả dịch vụ kỹ thuật', icon: '🔧', count: appointments.filter(a => (a.loaiDichVu === 'BaoDuong' || a.loaiDichVu === 'SuaChua') && a.trangThai !== 'DaHuy' && a.trangThai !== 'TuChoi').length },
+          { key: 'BaoDuong', label: 'Bảo dưỡng định kỳ', icon: '🔧', count: appointments.filter(a => a.loaiDichVu === 'BaoDuong' && a.trangThai !== 'DaHuy' && a.trangThai !== 'TuChoi').length },
+          { key: 'SuaChua', label: 'Sửa chữa phụ tùng', icon: '⚙️', count: appointments.filter(a => a.loaiDichVu === 'SuaChua' && a.trangThai !== 'DaHuy' && a.trangThai !== 'TuChoi').length },
+        ] : moduleType === 'test-drives' ? [
+          { key: 'ALL', label: 'Tất cả yêu cầu lái thử', icon: '🏍️', count: appointments.filter(a => isTestDriveAppt(a) && a.trangThai !== 'DaHuy' && a.trangThai !== 'TuChoi').length },
+        ] : [
           { key: 'ALL', label: 'Tất cả dịch vụ', icon: '📋', count: appointments.filter(a => a.trangThai !== 'DaHuy' && a.trangThai !== 'TuChoi').length },
           { key: 'NhanXe', label: 'Bàn giao nhận xe mới', icon: '🎁', count: appointments.filter(a => a.loaiDichVu === 'NhanXe' && a.trangThai !== 'DaHuy' && a.trangThai !== 'TuChoi').length },
-          { key: 'LaiThu', label: 'Lái thử xe mới', icon: '🏍️', count: appointments.filter(a => a.loaiDichVu === 'LaiThu' && a.trangThai !== 'DaHuy' && a.trangThai !== 'TuChoi').length },
+          { key: 'LaiThu', label: 'Lái thử xe mới', icon: '🏍️', count: appointments.filter(a => isTestDriveAppt(a) && a.trangThai !== 'DaHuy' && a.trangThai !== 'TuChoi').length },
           { key: 'BaoDuong', label: 'Bảo dưỡng định kỳ', icon: '🔧', count: appointments.filter(a => a.loaiDichVu === 'BaoDuong' && a.trangThai !== 'DaHuy' && a.trangThai !== 'TuChoi').length },
           { key: 'BaoHanh', label: 'Bảo hành điện tử', icon: '🛡️', count: appointments.filter(a => a.loaiDichVu === 'BaoHanh' && a.trangThai !== 'DaHuy' && a.trangThai !== 'TuChoi').length },
           { key: 'SuaChua', label: 'Sửa chữa phụ tùng', icon: '⚙️', count: appointments.filter(a => a.loaiDichVu === 'SuaChua' && a.trangThai !== 'DaHuy' && a.trangThai !== 'TuChoi').length },
-        ].map(tab => {
+        ]).map(tab => {
           const isAct = apptSvcFilter === tab.key;
           return (
             <button
@@ -886,128 +1098,130 @@ export default function AppointmentsPage({
         })}
       </div>
 
-      {/* ── THANH TÌM KIẾM & BỘ LỌC NHANH (Chuẩn Ảnh 2) ── */}
-      <div className="p-4 rounded-2xl bg-white border border-zinc-200/80 shadow-2xs space-y-3">
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-          {/* Ô tìm kiếm chính */}
-          <div className="relative flex-1">
-            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400 text-sm">🔍</span>
-            <input
-              type="text"
-              placeholder="Tìm kiếm tên, số điện thoại, biển số xe, mã lịch..."
-              value={apptSearch}
-              onChange={e => setApptSearch(e.target.value)}
-              className="w-full pl-9 pr-9 py-2 text-xs rounded-xl border border-zinc-300 focus:outline-none focus:border-red-600 bg-white"
-            />
-            {apptSearch && (
-              <button
-                type="button"
-                onClick={() => setApptSearch('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 text-xs font-bold"
-              >
-                ✕
-              </button>
-            )}
+      {/* ── THANH TÌM KIẾM & BỘ LỌC NHANH (Chỉ dùng cho Danh sách dịch vụ & kỹ thuật) ── */}
+      {moduleType !== 'calendar' && (
+        <div className="p-4 rounded-2xl bg-white border border-zinc-200/80 shadow-2xs space-y-3">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+            {/* Ô tìm kiếm chính */}
+            <div className="relative flex-1">
+              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400 text-sm">🔍</span>
+              <input
+                type="text"
+                placeholder="Tìm kiếm tên, số điện thoại, biển số xe, mã lịch..."
+                value={apptSearch}
+                onChange={e => setApptSearch(e.target.value)}
+                className="w-full pl-9 pr-9 py-2 text-xs rounded-xl border border-zinc-300 focus:outline-none focus:border-red-600 bg-white"
+              />
+              {apptSearch && (
+                <button
+                  type="button"
+                  onClick={() => setApptSearch('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 text-xs font-bold"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            {/* Nút Bộ lọc nhanh toggle */}
+            <button
+              type="button"
+              onClick={() => setShowFilters(!showFilters)}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition flex items-center gap-1.5 cursor-pointer ${
+                showFilters
+                  ? 'bg-zinc-100 text-zinc-900 border-zinc-300'
+                  : 'bg-white text-zinc-700 hover:bg-zinc-50 border-zinc-200'
+              }`}
+            >
+              <span>≡</span>
+              <span>Bộ lọc nhanh</span>
+              <span className="text-[10px]">{showFilters ? '▲' : '▼'}</span>
+            </button>
           </div>
 
-          {/* Nút Bộ lọc nhanh toggle */}
-          <button
-            type="button"
-            onClick={() => setShowFilters(!showFilters)}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition flex items-center gap-1.5 cursor-pointer ${
-              showFilters
-                ? 'bg-zinc-100 text-zinc-900 border-zinc-300'
-                : 'bg-white text-zinc-700 hover:bg-zinc-50 border-zinc-200'
-            }`}
-          >
-            <span>≡</span>
-            <span>Bộ lọc nhanh</span>
-            <span className="text-[10px]">{showFilters ? '▲' : '▼'}</span>
-          </button>
-        </div>
-
-        {/* Khung bộ lọc mở rộng */}
-        {showFilters && (
-          <div className="pt-3 border-t border-zinc-100 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 animate-in fade-in">
-            {/* Loại dịch vụ */}
-            <div>
-              <label className="block text-[11px] font-bold text-zinc-500 uppercase font-mono mb-1">Loại dịch vụ</label>
-              <select
-                value={apptSvcFilter}
-                onChange={e => setApptSvcFilter(e.target.value as any)}
-                className="w-full px-3 py-1.5 text-xs rounded-xl border border-zinc-300 focus:outline-none focus:border-red-600 bg-white"
-              >
-                <option value="ALL">Tất cả loại dịch vụ</option>
-                <option value="NhanXe">🎁 Bàn giao nhận xe mới</option>
-                <option value="LaiThu">🏍️ Lái thử xe mới</option>
-                <option value="BaoHanh">🛡️ Kiểm tra bảo hành</option>
-                <option value="BaoDuong">🔧 Bảo dưỡng định kỳ</option>
-              </select>
-            </div>
-
-            {/* Trạng thái */}
-            <div>
-              <label className="block text-[11px] font-bold text-zinc-500 uppercase font-mono mb-1">Trạng thái</label>
-              <select
-                value={apptStatusFilter}
-                onChange={e => setApptStatusFilter(e.target.value as any)}
-                className="w-full px-3 py-1.5 text-xs rounded-xl border border-zinc-300 focus:outline-none focus:border-red-600 bg-white"
-              >
-                <option value="ALL">Tất cả trạng thái</option>
-                {apptStatuses.map(s => (
-                  <option key={s.key} value={s.key}>
-                    {s.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Thời gian */}
-            <div className="lg:col-span-2">
-              <label className="block text-[11px] font-bold text-zinc-500 uppercase font-mono mb-1">Khoảng thời gian hẹn</label>
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <input
-                  type="date"
-                  value={apptFromDate}
-                  onChange={e => setApptFromDate(e.target.value)}
-                  className="px-2 py-1 text-xs rounded-xl border border-zinc-300 focus:outline-none focus:border-red-600 bg-white font-mono flex-1 min-w-[120px]"
-                />
-                <span className="text-zinc-400 text-xs">-</span>
-                <input
-                  type="date"
-                  value={apptToDate}
-                  onChange={e => setApptToDate(e.target.value)}
-                  className="px-2 py-1 text-xs rounded-xl border border-zinc-300 focus:outline-none focus:border-red-600 bg-white font-mono flex-1 min-w-[120px]"
-                />
-                <button
-                  type="button"
-                  onClick={() => setQuickDate('today')}
-                  className="px-2 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-semibold"
+          {/* Khung bộ lọc mở rộng */}
+          {showFilters && (
+            <div className="pt-3 border-t border-zinc-100 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 animate-in fade-in">
+              {/* Loại dịch vụ */}
+              <div>
+                <label className="block text-[11px] font-bold text-zinc-500 uppercase font-mono mb-1">Loại dịch vụ</label>
+                <select
+                  value={apptSvcFilter}
+                  onChange={e => setApptSvcFilter(e.target.value as any)}
+                  className="w-full px-3 py-1.5 text-xs rounded-xl border border-zinc-300 focus:outline-none focus:border-red-600 bg-white"
                 >
-                  Hôm nay
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setQuickDate('7days')}
-                  className="px-2 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-semibold"
+                  <option value="ALL">Tất cả loại dịch vụ</option>
+                  <option value="NhanXe">🎁 Bàn giao nhận xe mới</option>
+                  <option value="LaiThu">🏍️ Lái thử xe mới</option>
+                  <option value="BaoHanh">🛡️ Kiểm tra bảo hành</option>
+                  <option value="BaoDuong">🔧 Bảo dưỡng định kỳ</option>
+                </select>
+              </div>
+
+              {/* Trạng thái */}
+              <div>
+                <label className="block text-[11px] font-bold text-zinc-500 uppercase font-mono mb-1">Trạng thái</label>
+                <select
+                  value={apptStatusFilter}
+                  onChange={e => setApptStatusFilter(e.target.value as any)}
+                  className="w-full px-3 py-1.5 text-xs rounded-xl border border-zinc-300 focus:outline-none focus:border-red-600 bg-white"
                 >
-                  7 ngày
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setQuickDate('all')}
-                  className="px-2 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-semibold"
-                >
-                  Tất cả
-                </button>
+                  <option value="ALL">Tất cả trạng thái</option>
+                  {apptStatuses.map(s => (
+                    <option key={s.key} value={s.key}>
+                      {s.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Thời gian */}
+              <div className="lg:col-span-2">
+                <label className="block text-[11px] font-bold text-zinc-500 uppercase font-mono mb-1">Khoảng thời gian hẹn</label>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <input
+                    type="date"
+                    value={apptFromDate}
+                    onChange={e => setApptFromDate(e.target.value)}
+                    className="px-2 py-1 text-xs rounded-xl border border-zinc-300 focus:outline-none focus:border-red-600 bg-white font-mono flex-1 min-w-[120px]"
+                  />
+                  <span className="text-zinc-400 text-xs">-</span>
+                  <input
+                    type="date"
+                    value={apptToDate}
+                    onChange={e => setApptToDate(e.target.value)}
+                    className="px-2 py-1 text-xs rounded-xl border border-zinc-300 focus:outline-none focus:border-red-600 bg-white font-mono flex-1 min-w-[120px]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setQuickDate('today')}
+                    className="px-2 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-semibold"
+                  >
+                    Hôm nay
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setQuickDate('7days')}
+                    className="px-2 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-semibold"
+                  >
+                    7 ngày
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setQuickDate('all')}
+                    className="px-2 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-semibold"
+                  >
+                    Tất cả
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
 
-      {/* ── CHẾ ĐỘ 1: BẢNG DANH SÁCH (LH19 & LH20: 6 Cột chuẩn, không cuộn ngang, giao diện chuẩn Ảnh 2) ── */}
-      {apptViewMode === 'table' && (
+      {/* ── CHẾ ĐỘ 1: BẢNG DANH SÁCH (Chỉ hiển thị cho Quản lý Bảo dưỡng & Lái thử xe) ── */}
+      {apptViewMode === 'table' && moduleType !== 'calendar' && (
         <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden">
           <table className="w-full border-collapse">
             <thead>
@@ -1072,7 +1286,7 @@ export default function AppointmentsPage({
                             </div>
                           </div>
                         )}
-                        {a.loaiDichVu === 'LaiThu' && (
+                        {isTestDriveAppt(a) && (
                           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-100/90 text-blue-900 border border-blue-200/60 shadow-2xs">
                             <span className="text-sm">🏍️</span>
                             <div className="text-left leading-tight">
@@ -1110,7 +1324,7 @@ export default function AppointmentsPage({
                             </div>
                           </div>
                         )}
-                        {a.loaiDichVu !== 'SuaChua' && a.loaiDichVu !== 'BaoDuong' && a.loaiDichVu !== 'LaiThu' && a.loaiDichVu !== 'NhanXe' && a.loaiDichVu !== 'BaoHanh' && (
+                        {a.loaiDichVu !== 'SuaChua' && a.loaiDichVu !== 'BaoDuong' && !isTestDriveAppt(a) && a.loaiDichVu !== 'NhanXe' && a.loaiDichVu !== 'BaoHanh' && (
                           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-zinc-100 text-zinc-800 text-xs font-semibold">
                             <span>📌</span> {a.loaiDichVu}
                           </div>
@@ -1174,7 +1388,7 @@ export default function AppointmentsPage({
                       <td className="py-3 px-4 align-middle">
                         <div className="grid grid-cols-2 gap-1.5 items-center justify-center">
                           {/* Nút Nhận xe mới / Lập đơn xe trực tiếp cho Lịch hẹn Nhận xe & Lái thử */}
-                          {(isNhanXe || a.loaiDichVu === 'LaiThu') && !isCompleted && a.trangThai !== 'DaHuy' && a.trangThai !== 'TuChoi' && onNavigateToCreateVehicleOrder && (
+                          {(isNhanXe || isTestDriveAppt(a)) && !isCompleted && a.trangThai !== 'DaHuy' && a.trangThai !== 'TuChoi' && onNavigateToCreateVehicleOrder && (
                             <button
                               type="button"
                               onClick={() => onNavigateToCreateVehicleOrder(a)}
@@ -1251,6 +1465,22 @@ export default function AppointmentsPage({
                           {/* Trạng thái Đã xác nhận */}
                           {isConfirmed && (
                             <>
+                              {/* Nút Hoàn tất lái thử chuyên biệt cho phân hệ lái thử xe */}
+                              {isTestDriveAppt(a) && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (confirm(`Xác nhận hoàn tất buổi lái thử xe ${a.tenXe || ''} cho khách hàng ${a.hoTenKH}?`)) {
+                                      updateApptStatus(a.id, 'DaHoanThanh', undefined, a.nhanVienPhuTrach || 'Tư vấn bán hàng', 'Khách hàng đã hoàn tất buổi lái thử trải nghiệm xe thành công.');
+                                    }
+                                  }}
+                                  className="col-span-2 w-full px-2.5 py-1.5 rounded-xl text-xs font-black bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-800 text-white shadow-xs hover:shadow transition flex items-center justify-center gap-1.5 cursor-pointer mb-1"
+                                  title="Xác nhận khách hàng đã lái thử xong và hoàn tất dịch vụ"
+                                >
+                                  <span>✓</span> <span>Hoàn tất lái thử</span>
+                                </button>
+                              )}
+
                               <div className="space-y-1">
                                 <button
                                   type="button"
@@ -1378,7 +1608,7 @@ export default function AppointmentsPage({
       )}
 
       {/* ── CHẾ ĐỘ 2: LỊCH BIỂU (CALENDAR VIEW) ── */}
-      {apptViewMode === 'calendar' && (
+      {(apptViewMode === 'calendar' || moduleType === 'calendar') && (
         <div className="bg-white rounded-2xl border border-zinc-200/80 shadow-2xs p-5 space-y-4">
           <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
             <div className="flex items-center gap-2">
@@ -1428,8 +1658,10 @@ export default function AppointmentsPage({
             {getMonthDaysGrid(currentCalendarDate).map((cell, idx) => {
               // LH06: Tự động xóa/ẩn lịch hẹn đã hủy hoặc từ chối trên Calendar
               // LH12: Calendar hiển thị theo Tab dịch vụ và hiện lịch nhận xe khi đã xác nhận ngày; sau khi hoàn tất vẫn hiện nhưng làm mờ
-              const dayAppts = appointments.filter(a => {
-                if (a.ngayHen !== cell.dateStr) return false;
+              const dayAppts = calendarAppointments.filter(a => {
+                if (normalizeDateStr(a.ngayHen) !== cell.dateStr) return false;
+                if (moduleType === 'maintenance' && a.loaiDichVu !== 'BaoDuong' && a.loaiDichVu !== 'SuaChua') return false;
+                if (moduleType === 'test-drives' && !isTestDriveAppt(a)) return false;
                 // Áp dụng chặt chẽ theo Tab dịch vụ đang chọn
                 if (apptSvcFilter !== 'ALL' && a.loaiDichVu !== apptSvcFilter) return false;
                 if (a.trangThai === 'DaHuy' || a.trangThai === 'TuChoi') return false;
@@ -1442,7 +1674,7 @@ export default function AppointmentsPage({
                     (o.id && a.id && parseInt(o.id.replace(/\D/g, ''), 10) === parseInt(a.id.replace(/\D/g, ''), 10))
                   );
                   // Chỉ hiển thị trên lịch sau khi khách hàng xác nhận ngày nhận xe (đơn chuyển ChoGiaoXe, DaXacNhan, hoặc HoanThanh)
-                  if (matchedOrder && (matchedOrder.trangThai === 'ChoDuyet' || matchedOrder.trangThai === 'ChoKhachXacNhanNgayNhan')) {
+                  if (matchedOrder && !matchedOrder.daXacNhanNgayNhan && a.trangThai !== 'DaXacNhan' && (matchedOrder.trangThai === 'ChoDuyet' || matchedOrder.trangThai === 'ChoKhachXacNhanNgayNhan')) {
                     return false;
                   }
                   // Sau khi hoàn thành đơn: VẪN HIỆN LÊN LỊCH BIỂU NHƯNG LÀM MỜ
@@ -1639,7 +1871,7 @@ export default function AppointmentsPage({
               )}
 
               {/* LH27: Lịch hẹn lái thử -> Nút chuyển sang quy trình nhận xe mới */}
-              {selectedApptForDetail.loaiDichVu === 'LaiThu' && onNavigateToCreateVehicleOrder && (
+              {isTestDriveAppt(selectedApptForDetail) && onNavigateToCreateVehicleOrder && (
                 <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200/90 text-amber-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div className="space-y-0.5">
                     <div className="font-extrabold flex items-center gap-1.5 text-amber-900 text-xs">
@@ -1783,8 +2015,25 @@ export default function AppointmentsPage({
                   </span>
                 )}
 
+                {/* LH27 & LaiThu: Nút hoàn tất lái thử ngay trong modal chi tiết */}
+                {isTestDriveAppt(selectedApptForDetail) && selectedApptForDetail.trangThai === 'DaXacNhan' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const appt = selectedApptForDetail;
+                      if (confirm(`Xác nhận hoàn tất buổi lái thử xe ${appt.tenXe || ''} cho khách hàng ${appt.hoTenKH}?`)) {
+                        updateApptStatus(appt.id, 'DaHoanThanh', undefined, appt.nhanVienPhuTrach || 'Tư vấn bán hàng', 'Khách hàng đã hoàn tất buổi lái thử trải nghiệm xe thành công.');
+                      }
+                    }}
+                    className="px-3.5 py-2 rounded-xl text-xs font-extrabold bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white shadow-sm transition cursor-pointer flex items-center gap-1.5"
+                    title="Xác nhận khách hàng đã hoàn tất buổi lái thử"
+                  >
+                    <span>✓</span> <span>Hoàn tất lái thử</span>
+                  </button>
+                )}
+
                 {/* LH27 & NhanXe: Thao tác chuyển sang nhận xe mới ở footer */}
-                {(selectedApptForDetail.loaiDichVu === 'NhanXe' || selectedApptForDetail.loaiDichVu === 'LaiThu') &&
+                {(selectedApptForDetail.loaiDichVu === 'NhanXe' || isTestDriveAppt(selectedApptForDetail)) &&
                   selectedApptForDetail.trangThai !== 'DaHoanThanh' &&
                   selectedApptForDetail.trangThai !== 'DaHuy' &&
                   selectedApptForDetail.trangThai !== 'TuChoi' &&
