@@ -138,6 +138,7 @@ export interface Customer {
 export interface Vehicle {
   id: string; customerId: string; tenXe: string; bienSo: string;
   namSanXuat: number; hanBaoHanh: string; mauSac: string;
+  hangXe?: string;
   trangThaiBaoHanh: 'ConHan' | 'HetHan' | 'ChuaCo' | 'KhongApDung'; soKhung?: string; hinhAnh?: string;
   trangThaiDuyet?: 'ChoDuyet' | 'DaDuyet' | 'TuChoi';
   nguonGoc?: 'CuaHang' | 'NgoaiHeThong'; // Mua tại cửa hàng vs Xe mua ngoài hệ thống
@@ -248,50 +249,75 @@ export const ENGINE_CAPACITIES = [
   'Xe điện (Động cơ điện)',
 ];
 
+// Ảnh mẫu Cà vẹt xe máy chuẩn Bộ Công An (SVG sắc nét, chuẩn biểu mẫu giấy đăng ký xe)
+export const SAMPLE_CA_VET_IMAGE = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='600' height='400' viewBox='0 0 600 400'><rect width='600' height='400' rx='16' fill='%23fef9c3' stroke='%23ca8a04' stroke-width='4'/><rect x='12' y='12' width='576' height='376' rx='10' fill='none' stroke='%23eab308' stroke-dasharray='6,4' stroke-width='2'/><text x='300' y='42' font-family='Arial,sans-serif' font-size='12' font-weight='bold' text-anchor='middle' fill='%231f2937'>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</text><text x='300' y='58' font-family='Arial,sans-serif' font-size='10' text-anchor='middle' fill='%234b5563'>Độc lập - Tự do - Hạnh phúc</text><line x1='220' y1='65' x2='380' y2='65' stroke='%234b5563' stroke-width='1'/><text x='300' y='95' font-family='Arial,sans-serif' font-size='15' font-weight='900' text-anchor='middle' fill='%23b91c1c'>CHỨNG NHẬN ĐĂNG KÝ XE MÔ TÔ, XE MÁY</text><text x='300' y='112' font-family='Arial,sans-serif' font-size='10' font-style='italic' text-anchor='middle' fill='%236b7280'>(Motorcycle Registration Certificate)</text><g font-family='Arial,sans-serif' font-size='12' fill='%231f2937'><text x='40' y='150' font-weight='bold'>Tên chủ xe (Owner):</text><text x='210' y='150' font-weight='bold' fill='%230369a1'>NGUYỄN MINH ANH</text><text x='40' y='180'>Địa chỉ (Address):</text><text x='210' y='180'>Quận 1, TP. Hồ Chí Minh</text><text x='40' y='210'>Nhãn hiệu (Brand):</text><text x='210' y='210' font-weight='bold'>HONDA / YAMAHA</text><text x='40' y='240'>Số loại (Model):</text><text x='210' y='240'>Xe 2 bánh gắn máy</text><text x='40' y='270'>Số máy (Engine No):</text><text x='210' y='270' font-family='monospace' font-weight='bold'>KF12E-8934521</text><text x='40' y='300'>Số khung (Chassis No):</text><text x='210' y='300' font-family='monospace' font-weight='bold'>RLHKD160CB7352794</text><text x='40' y='335' font-weight='bold'>Biển số đăng ký:</text><text x='210' y='335' font-family='monospace' font-size='16' font-weight='900' fill='%23b91c1c'>69AB - 111.11</text></g><circle cx='490' cy='270' r='48' fill='none' stroke='%23dc2626' stroke-width='3' stroke-dasharray='2,1'/><text x='490' y='255' font-family='Arial,sans-serif' font-size='8' font-weight='bold' text-anchor='middle' fill='%23dc2626'>CÔNG AN TP.HCM</text><text x='490' y='275' font-family='Arial,sans-serif' font-size='14' text-anchor='middle' fill='%23dc2626'>★</text><text x='490' y='295' font-family='Arial,sans-serif' font-size='8' font-weight='bold' text-anchor='middle' fill='%23dc2626'>PHÒNG CSGT</text></svg>";
+
+// Định dạng trực tiếp khi người dùng đang gõ phím (Realtime typing formatter)
+export function liveFormatVietnameseLicensePlate(input: string): string {
+  if (!input) return '';
+  const str = input.toUpperCase().trim();
+  const clean = str.replace(/[^0-9A-Z]/g, '');
+  if (clean.length === 0) return '';
+
+  const prov = clean.slice(0, 2).replace(/[^0-9]/g, '');
+  const rest = clean.slice(prov.length);
+  if (rest.length === 0) return prov;
+
+  const mSeries = rest.match(/^([A-Z][0-9A-Z]?)(.*)$/);
+  if (!mSeries) return prov + rest;
+
+  const series = mSeries[1];
+  let num = mSeries[2].replace(/[^0-9]/g, '');
+  // Giới hạn số hiệu biển số tối đa 5 chữ số (chống gõ tràn lan như 111111111111)
+  if (num.length > 5) num = num.slice(0, 5);
+
+  if (num.length === 0) return `${prov}${series}`;
+  if (num.length <= 4) return `${prov}${series} - ${num}`;
+  return `${prov}${series} - ${num.slice(0, 3)}.${num.slice(3, 5)}`;
+}
+
 export function formatVietnameseLicensePlate(input: string): string {
   if (!input) return '';
-  const clean = input.toUpperCase().replace(/[\s\-\.]/g, '');
+  const str = input.trim().toUpperCase();
+  // Lọc chỉ giữ chữ cái và số, giới hạn tối đa 9 ký tự chuẩn
+  const clean = str.replace(/[^0-9A-Z]/g, '').slice(0, 9);
+  if (clean.length <= 2) return clean;
+  if (clean.length === 3) return clean;
 
-  const m5SingleLetter = clean.match(/^([0-9]{2}[A-Z])([0-9]{3})([0-9]{2})$/);
-  if (m5SingleLetter) {
-    return `${m5SingleLetter[1]} - ${m5SingleLetter[2]}.${m5SingleLetter[3]}`;
+  // Kiểm tra nếu là biển ô tô nhập có dấu gạch sau 3 ký tự (VD: 51K - 123.45)
+  const isCarSeries = /^[0-9]{2}[A-Z][\s\-]/.test(str);
+  if (isCarSeries) {
+    const series = clean.slice(0, 3);
+    const rest = clean.slice(3);
+    if (rest.length > 3) return `${series} - ${rest.slice(0, 3)}.${rest.slice(3)}`;
+    if (rest.length > 0) return `${series} - ${rest}`;
+    return series;
   }
 
-  const m5DoubleSeries = clean.match(/^([0-9]{2}[A-Z][0-9A-Z])([0-9]{3})([0-9]{2})$/);
-  if (m5DoubleSeries) {
-    return `${m5DoubleSeries[1]} - ${m5DoubleSeries[2]}.${m5DoubleSeries[3]}`;
+  // Biển xe máy (chiếm 95% xe trong hệ thống): Series 4 ký tự (VD: 59P1, 69AB, 59F1, 29AA)
+  const series = clean.slice(0, 4);
+  const rest = clean.slice(4);
+
+  // Biển 4 số xe máy (VD: 59F1-1234)
+  if (rest.length === 4 && (str.includes('-') && !str.includes('.'))) {
+    return `${series} - ${rest}`;
   }
 
-  const m4SingleLetter = clean.match(/^([0-9]{2}[A-Z])([0-9]{4})$/);
-  if (m4SingleLetter) {
-    return `${m4SingleLetter[1]} - ${m4SingleLetter[2]}`;
+  // Biển 5 số xe máy (VD: 69AB - 111.11, 59P1 - 246.88)
+  if (rest.length > 3) {
+    return `${series} - ${rest.slice(0, 3)}.${rest.slice(3)}`;
   }
-
-  const m4DoubleSeries = clean.match(/^([0-9]{2}[A-Z][0-9A-Z])([0-9]{4})$/);
-  if (m4DoubleSeries) {
-    return `${m4DoubleSeries[1]} - ${m4DoubleSeries[2]}`;
+  if (rest.length > 0) {
+    return `${series} - ${rest}`;
   }
-
-  if (clean.length >= 4) {
-    const mPartial = clean.match(/^([0-9]{2}[A-Z][0-9A-Z]?)(.*)$/);
-    if (mPartial) {
-      const series = mPartial[1];
-      const rest = mPartial[2];
-      if (rest.length > 3) {
-        return `${series} - ${rest.slice(0, 3)}.${rest.slice(3, 5)}`;
-      } else if (rest.length > 0) {
-        return `${series} - ${rest}`;
-      }
-    }
-  }
-
-  return clean;
+  return series;
 }
 
 export function isValidLicensePlate(plate: string): boolean {
   if (!plate || !plate.trim()) return false;
-  const clean = plate.toUpperCase().replace(/[\s\-\.]/g, '');
-  return /^[0-9]{2}[A-Z][0-9A-Z]?[0-9]{4,5}$/.test(clean);
+  const clean = plate.toUpperCase().replace(/[^0-9A-Z]/g, '');
+  // Chấp nhận biển số xe máy 4 hoặc 5 số (59P1-1234, 59P1-123.45, 69AB-111.11), ô tô (51K-123.45), xe điện / 50cc (29AA-123.45)
+  return /^[0-9]{2}[A-Z][0-9A-Z]?[0-9]{4,5}$/.test(clean) || /^[0-9]{2}[A-Z]{2}[0-9]{4,5}$/.test(clean);
 }
 
 export interface Part {
@@ -356,6 +382,9 @@ export interface VehicleOrderDetails {
   ngayNhanXacNhan?: string;
   gioNhanXacNhan?: string;
   checklist: VehicleChecklist;
+  bienSoChoDuyet?: string;
+  trangThaiDuyetBienSo?: 'ChoCapNhat' | 'ChoDuyet' | 'DaDuyet' | 'TuChoi';
+  anhCaVet?: string;
 }
 
 export interface Order {
@@ -1239,6 +1268,38 @@ export const mockAppointments: Appointment[] = [
     bienSo: '59P1-888.88',
     nhanVienPhuTrach: 'Chưa phân công',
     createdDate: '2026-10-20 08:30',
+  },
+  // ── LỊCH 3: LÁI THỬ XE MẪU CHỜ TIẾP NHẬN ──
+  {
+    id: 'LH003',
+    customerId: 'KH001',
+    hoTenKH: 'Nguyễn Văn An',
+    soDienThoai: '0901234567',
+    loaiDichVu: 'LaiThu',
+    ngayHen: '2026-10-31',
+    gioHen: '14:30',
+    trangThai: 'ChoXacNhan',
+    ghiChu: '[GPLX LÁI THỬ]: Số 079198004567 (Hạng A1) | [GHI CHÚ KHÁCH HÀNG]: Muốn trải nghiệm phanh ABS và cảm giác ngồi xe thực tế',
+    tenXe: 'Honda SH 160i ABS 2025',
+    bienSo: 'XE-LÁI-THỬ',
+    nhanVienPhuTrach: 'Chưa phân công',
+    createdDate: '2026-10-29 11:20',
+  },
+  // ── LỊCH 4: LÁI THỬ XE MẪU ĐÃ HOÀN TẤT ──
+  {
+    id: 'LH004',
+    customerId: 'KH002',
+    hoTenKH: 'Trần Thị Bích',
+    soDienThoai: '0912345678',
+    loaiDichVu: 'LaiThu',
+    ngayHen: '2026-10-28',
+    gioHen: '10:00',
+    trangThai: 'DaHoanThanh',
+    ghiChu: '[GPLX LÁI THỬ]: Số 081293009988 (Hạng A1) | Đã hoàn tất buổi lái thử trải nghiệm xe',
+    tenXe: 'Yamaha Grande Hybrid 2025',
+    bienSo: 'XE-LÁI-THỬ',
+    nhanVienPhuTrach: 'Nguyễn Thị Bích (Tư vấn bán hàng)',
+    createdDate: '2026-10-27 09:15',
   },
 ];
 

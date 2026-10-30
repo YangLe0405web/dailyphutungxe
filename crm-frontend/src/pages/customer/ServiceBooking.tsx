@@ -381,6 +381,29 @@ export default function ServiceBooking({
     return mapped.length > 0 ? mapped : defaultTestDriveVehicles;
   }, [catalogVehicles]);
 
+  // LH18: Tự động ánh xạ thông minh mẫu xe lái thử từ Showroom (XM-HD01 <-> XM001)
+  useEffect(() => {
+    if (initialVehicleId && allTestDriveVehicles.length > 0) {
+      const match = allTestDriveVehicles.find(v => 
+        v.id === initialVehicleId || 
+        v.id.toLowerCase() === initialVehicleId.toLowerCase() ||
+        (initialVehicleId.includes('-') && v.id.replace(/\D/g, '') === initialVehicleId.replace(/\D/g, ''))
+      );
+      if (match) {
+        setSelectedTestDriveId(match.id);
+      } else {
+        const cleanInit = initialVehicleId.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const nameMatch = allTestDriveVehicles.find(v => {
+          const vClean = v.tenXe.toLowerCase().replace(/[^a-z0-9]/g, '');
+          return vClean.includes(cleanInit) || cleanInit.includes(vClean);
+        });
+        if (nameMatch) {
+          setSelectedTestDriveId(nameMatch.id);
+        }
+      }
+    }
+  }, [initialVehicleId, allTestDriveVehicles]);
+
   // Danh sách các hãng xe có trong hệ thống để tạo bộ lọc nhanh
   const availableBrands = useMemo(() => {
     const brands = Array.from(new Set(allTestDriveVehicles.map(v => v.hang).filter(Boolean)));
@@ -602,8 +625,18 @@ export default function ServiceBooking({
     let finalPlate = '';
 
     if (svc === 'LaiThu') {
-      const testCar = allTestDriveVehicles.find(v => v.id === selectedTestDriveId);
-      if (!selectedTestDriveId || !testCar) {
+      let testCar = allTestDriveVehicles.find(v => v.id === selectedTestDriveId);
+      if (!testCar && initialVehicleId) {
+        testCar = allTestDriveVehicles.find(v => 
+          v.id === initialVehicleId || 
+          v.id.toLowerCase() === initialVehicleId.toLowerCase() ||
+          (initialVehicleId.includes('-') && v.id.replace(/\D/g, '') === initialVehicleId.replace(/\D/g, ''))
+        );
+      }
+      if (!testCar && allTestDriveVehicles.length > 0) {
+        testCar = allTestDriveVehicles[0];
+      }
+      if (!testCar) {
         errs['field-testdrive-vehicle'] = 'Vui lòng chọn mẫu xe bạn muốn lái thử!';
       } else {
         finalVehicleName = testCar.tenXe;
@@ -1895,8 +1928,30 @@ export default function ServiceBooking({
               className="space-y-4 p-5 rounded-2xl bg-blue-50/50 border border-blue-200"
             >
               <div className="flex items-center justify-between flex-wrap gap-2">
-                <div className="flex items-center gap-2.5 text-xs font-bold text-blue-950 uppercase font-mono">
-                  <span>🪪</span> THÔNG TIN GIẤY PHÉP LÁI XE HỢP LỆ (BẮT BUỘC)
+                <div className="flex items-center justify-between w-full flex-wrap gap-2">
+                  <div className="flex items-center gap-2.5 text-xs font-bold text-blue-950 uppercase font-mono">
+                    <span>🪪</span> THÔNG TIN GIẤY PHÉP LÁI XE HỢP LỆ (BẮT BUỘC)
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLicenseForm({
+                        soGPLX: '079198004567',
+                        hangBang: 'A1',
+                        anhMatTruoc: 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=800&auto=format&fit=crop&q=80',
+                        anhMatSau: '',
+                      });
+                      setFormErrors(prev => {
+                        const n = { ...prev };
+                        delete n['field-testdrive-license'];
+                        delete n['field-testdrive-license-img'];
+                        return n;
+                      });
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] flex items-center gap-1 cursor-pointer transition shadow-2xs"
+                  >
+                    <span>📄</span> Dùng GPLX mẫu để test
+                  </button>
                 </div>
                 <span className="text-[11px] text-zinc-500 font-medium">Bắt buộc theo Luật GTĐB Việt Nam</span>
               </div>

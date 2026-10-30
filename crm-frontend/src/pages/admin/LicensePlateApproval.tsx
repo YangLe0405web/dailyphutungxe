@@ -53,7 +53,10 @@ export default function LicensePlateApproval() {
 
   useEffect(() => {
     loadData();
-    const handleRefresh = () => loadData();
+    const handleRefresh = (e: any) => {
+      if (e?.detail?.type === 'license_plate_approved') return;
+      loadData();
+    };
     window.addEventListener('crm-data-refresh', handleRefresh);
     window.addEventListener('storage', handleRefresh);
     return () => {
@@ -182,7 +185,7 @@ export default function LicensePlateApproval() {
 
     setIsSubmitting(true);
     try {
-      await vehicleApi.approveLicensePlate(vehicle.id);
+      await vehicleApi.approveLicensePlate(vehicle.id, proposedPlate, vehicle);
       showToast(`✓ Đã phê duyệt thành công biển số ${proposedPlate} cho xe ${vehicle.tenXe}!`);
       setVehicles(prev =>
         prev.map(v =>
@@ -197,7 +200,6 @@ export default function LicensePlateApproval() {
             : v
         )
       );
-      loadData();
     } catch (err: any) {
       showToast(`Lỗi phê duyệt biển số: ${err.message || 'Không thể cập nhật'}`, 'error');
     } finally {
@@ -468,6 +470,7 @@ export default function LicensePlateApproval() {
                   const isCuaHang = v.nguonGoc === 'CuaHang';
                   const currentPlate = v.bienSo || 'Chưa có biển số';
                   const proposedPlate = v.bienSoChoDuyet || v.bienSo;
+                  const effectiveCaVetImg = v.anhCaVet || (v.id ? localStorage.getItem('crm_cavet_' + v.id) : null) || (v.soKhung ? localStorage.getItem('crm_cavet_' + v.soKhung) : null);
 
                   const isHighlighted = Boolean(
                     highlightId && (
@@ -555,13 +558,13 @@ export default function LicensePlateApproval() {
 
                       {/* Ảnh Cà vẹt */}
                       <td className="p-3.5 text-center">
-                        {v.anhCaVet ? (
+                        {effectiveCaVetImg ? (
                           <div className="flex flex-col items-center gap-1">
                             <img
-                              src={v.anhCaVet}
+                              src={effectiveCaVetImg}
                               alt="Ảnh Cà vẹt xe"
                               onClick={() => setPreviewCaVetImage({
-                                url: v.anhCaVet!,
+                                url: effectiveCaVetImg,
                                 title: `Cà vẹt xe ${v.tenXe} (${cust?.hoTen || 'Khách hàng'})`,
                                 plate: proposedPlate,
                                 vin: v.soKhung,
@@ -571,7 +574,7 @@ export default function LicensePlateApproval() {
                             <button
                               type="button"
                               onClick={() => setPreviewCaVetImage({
-                                url: v.anhCaVet!,
+                                url: effectiveCaVetImg,
                                 title: `Cà vẹt xe ${v.tenXe} (${cust?.hoTen || 'Khách hàng'})`,
                                 plate: proposedPlate,
                                 vin: v.soKhung,
@@ -846,16 +849,19 @@ export default function LicensePlateApproval() {
                 </div>
               </div>
 
-              {viewingDetailVehicle.anhCaVet && (
-                <div>
-                  <label className="block font-bold text-zinc-700 mb-1.5">Ảnh Cà vẹt xe đính kèm:</label>
-                  <img
-                    src={viewingDetailVehicle.anhCaVet}
-                    alt="Cà vẹt"
-                    className="w-full max-h-48 object-contain rounded-xl border border-zinc-200 bg-zinc-900"
-                  />
-                </div>
-              )}
+              {(() => {
+                const modalCaVet = viewingDetailVehicle.anhCaVet || (viewingDetailVehicle.id ? localStorage.getItem('crm_cavet_' + viewingDetailVehicle.id) : null) || (viewingDetailVehicle.soKhung ? localStorage.getItem('crm_cavet_' + viewingDetailVehicle.soKhung) : null);
+                return modalCaVet ? (
+                  <div>
+                    <label className="block font-bold text-zinc-700 mb-1.5">Ảnh Cà vẹt xe đính kèm:</label>
+                    <img
+                      src={modalCaVet}
+                      alt="Cà vẹt"
+                      className="w-full max-h-48 object-contain rounded-xl border border-zinc-200 bg-zinc-900"
+                    />
+                  </div>
+                ) : null;
+              })()}
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-3 border-t border-zinc-200">
@@ -869,8 +875,8 @@ export default function LicensePlateApproval() {
               {(!['DaDuyet', 'TuChoi'].includes(viewingDetailVehicle.trangThaiDuyetBienSo || '') && (viewingDetailVehicle.trangThaiDuyetBienSo === 'ChoDuyet' || viewingDetailVehicle.bienSoChoDuyet)) && (
                 <button
                   type="button"
-                  onClick={() => {
-                    handleApprove(viewingDetailVehicle);
+                  onClick={async () => {
+                    await handleApprove(viewingDetailVehicle);
                     setViewingDetailVehicle(null);
                   }}
                   className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow cursor-pointer"

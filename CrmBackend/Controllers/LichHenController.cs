@@ -22,9 +22,9 @@ namespace CrmBackend.Controllers
         {
             var sql = @"
                 SELECT l.MaLich, l.MaKH, l.LoaiDichVu, l.NgayHen, l.GhiChu, l.TrangThai,
-                       k.HoTen AS TenKhachHang, k.SoDienThoai
+                       COALESCE(k.HoTen, N'Khách hàng') AS TenKhachHang, COALESCE(k.SoDienThoai, '') AS SoDienThoai
                 FROM LICH_HEN l
-                JOIN KHACH_HANG k ON l.MaKH = k.MaKH
+                LEFT JOIN KHACH_HANG k ON l.MaKH = k.MaKH
                 ORDER BY l.NgayHen ASC";
 
             var result = await _db.QueryAsync<LichHen>(sql);
@@ -37,9 +37,9 @@ namespace CrmBackend.Controllers
         {
             var sql = @"
                 SELECT l.MaLich, l.MaKH, l.LoaiDichVu, l.NgayHen, l.GhiChu, l.TrangThai,
-                       k.HoTen AS TenKhachHang, k.SoDienThoai
+                       COALESCE(k.HoTen, N'Khách hàng') AS TenKhachHang, COALESCE(k.SoDienThoai, '') AS SoDienThoai
                 FROM LICH_HEN l
-                JOIN KHACH_HANG k ON l.MaKH = k.MaKH
+                LEFT JOIN KHACH_HANG k ON l.MaKH = k.MaKH
                 WHERE l.MaLich = @MaLich";
 
             var item = await _db.QueryFirstOrDefaultAsync<LichHen>(sql, new { MaLich = maLich });

@@ -220,8 +220,9 @@ export default function Checkout({ onBack, onSuccess, currentCustomer, onCustome
       if (isDirectBuy) {
         sessionStorage.removeItem('crm_direct_checkout_item');
         setDirectBuyItem(null);
+      } else {
+        clear();
       }
-      clear();
       setTimeout(onSuccess, 3000);
     } catch (err) {
       console.error('Lỗi khi tạo đơn hàng:', err);

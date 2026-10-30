@@ -11,7 +11,7 @@ import {
   surveyStatusLabels,
   getCustomerTier,
 } from '../../data/mockData';
-import { customerApi, feedbackApi, surveyApi, chatApi, formatCustomerId, catalogVehicleApi, type CatalogVehicle, type ChatMessage } from '../../services/api';
+import { customerApi, feedbackApi, surveyApi, migrateAndDeduplicateSurveys, chatApi, formatCustomerId, catalogVehicleApi, type CatalogVehicle, type ChatMessage } from '../../services/api';
 import { addCustomerNotification } from '../../services/notifications';
 import { matchVietnameseSearch } from '../../utils/vietnameseSearch';
 
@@ -79,24 +79,19 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
     if (f.productType === 'XeMau') return true;
     if (f.productType === 'PhuTung') return false;
     if (f.loaiDanhGia === 'DichVu') return false;
+    if (f.productId && (f.productId.toLowerCase().startsWith('xm') || f.productId.toLowerCase().startsWith('xe'))) return true;
     const str = `${f.productName || ''} ${f.xeDangDung || ''} ${f.productId || ''} ${f.noiDung || ''}`.toLowerCase();
-    return str.includes('xe') || str.includes('sh') || str.includes('air') || str.includes('blade') || str.includes('lead') || str.includes('cbr') || str.includes('future') || str.includes('vespa') || str.startsWith('xm');
+    return str.includes('xe') || str.includes('sirius') || str.includes('tuscany') || str.includes('sh') || str.includes('air') || str.includes('blade') || str.includes('lead') || str.includes('cbr') || str.includes('future') || str.includes('vespa') || str.includes('wave') || str.includes('winner') || str.includes('exciter') || str.includes('grande');
   };
 
   const getProductThumbnail = (f: Feedback): string => {
-    if (f.productImage && f.productImage.trim()) return f.productImage;
+    if (f.productImage && f.productImage.trim() && !f.productImage.includes('unsplash.com')) return f.productImage;
     const isXe = isVehicleFeedback(f);
     const name = (f.productName || f.xeDangDung || '').toLowerCase();
     if (isXe) {
-      const allCat = catalogVehicleApi.getAllSync();
-      const cleanN = name.replace(/\s*\([^)]*\)/g, '').trim().toLowerCase();
-      const found = allCat.find((c: CatalogVehicle) => {
-        const cN = c.tenXe.toLowerCase().trim();
-        return cleanN.includes(cN) || cN.includes(cleanN);
-      });
-      if (found?.hinhAnh) return found.hinhAnh;
-
       if (name.includes('tuscany') || name.includes('sym')) return '/images/Xe/sym_tuscany_150.jpg';
+      if (name.includes('sirius')) return '/images/Xe/yamaha_sirius_fi.jpg';
+      if (name.includes('wave')) return '/images/Xe/honda_wave_alpha_110.jpg';
       if (name.includes('winner')) return '/images/Xe/honda_winner_x.jpg';
       if (name.includes('vision')) return '/images/Xe/honda_vision_2024.jpg';
       if (name.includes('exciter')) return '/images/Xe/yamaha_exciter_155_vva.jpg';
@@ -106,7 +101,15 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
       if (name.includes('lead')) return '/images/Xe/honda_lead_125cc_dac_biet.jpg';
       if (name.includes('cbr')) return '/images/Xe/honda_cbr150r.jpg';
       if (name.includes('future')) return '/images/Xe/honda_future_125_fi.jpg';
-      return '/images/Xe/honda_sh_160i_abs_2024.jpg';
+
+      const allCat = catalogVehicleApi.getAllSync();
+      const cleanN = name.replace(/\s*\([^)]*\)/g, '').trim().toLowerCase();
+      const found = allCat.find((c: CatalogVehicle) => {
+        const cN = c.tenXe.toLowerCase().trim();
+        return cleanN.includes(cN) || cN.includes(cleanN);
+      });
+      if (found?.hinhAnh) return found.hinhAnh;
+      return '/images/Xe/yamaha_sirius_fi.jpg';
     } else {
       if (name.includes('nhớt') || name.includes('motul')) return 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=500';
       if (name.includes('phanh') || name.includes('bố')) return 'https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=500';
@@ -657,6 +660,28 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
     setTimeout(() => setToast(null), 3000);
   };
 
+  const handleCleanUnnecessarySurveys = async () => {
+    if (!window.confirm('Hệ thống sẽ tự động dọn dẹp và gom nhóm các bài khảo sát bị phân mảnh theo từng dòng xe / loại dịch vụ, đồng thời loại bỏ các khảo sát rác thừa.\n\nBạn có muốn thực hiện gom nhóm và tối ưu ngay bây giờ không?')) {
+      return;
+    }
+
+    try {
+      const res = migrateAndDeduplicateSurveys();
+      ['KS002', 'KSH02', 'KSH-02', 'KSH002', 'KS-XE-DH-XE-001', 'KS-XE-DH-XE-002', 'KS-XE-DH-XE-003', 'KS-XE-DH-XE-004', 'KS-BD-LH001', 'KS-BD-LH002', 'KS-BD-LH003'].forEach(id => {
+        surveyApi.delete(id);
+      });
+      const updated = surveyApi.getAll();
+      setSurveys(updated);
+      setSurveyResponses(surveyApi.getResponses());
+      setToast(`✓ Đã gom nhóm thành công! Đã dọn dẹp ${res.removedCount} bài trùng lặp, hiện có ${updated.length} bài khảo sát chuẩn.`);
+      setTimeout(() => setToast(null), 3500);
+    } catch (e) {
+      console.error(e);
+      setToast('⚠️ Đã có lỗi xảy ra khi dọn dẹp khảo sát.');
+      setTimeout(() => setToast(null), 3000);
+    }
+  };
+
   const handleMarkSurveyResponseHandled = async (respId: string) => {
     try {
       if ((surveyApi as any).markResponseHandled) {
@@ -1004,7 +1029,19 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
                   const fN = (f.productName || f.xeDangDung || '').toLowerCase().trim();
                   return fN.includes(cN) || cN.includes(fN);
                 }) : null;
-                const sku = (catMatch?.id || (f.productId && f.productId !== 'XM-HD01' ? f.productId : null)) || (cleanProductTitle.toLowerCase().includes('tuscany') ? 'XM042' : null) || f.productId || (isVehicle ? 'XM001' : 'PT001');
+                const lowerTitle = cleanProductTitle.toLowerCase();
+                let sku = isVehicle ? 'XM001' : 'PT001';
+                if (lowerTitle.includes('tuscany')) {
+                  sku = 'XM042';
+                } else if (lowerTitle.includes('sirius')) {
+                  sku = 'XM015';
+                } else if (lowerTitle.includes('wave')) {
+                  sku = 'XM016';
+                } else if (catMatch?.id && catMatch.id !== 'XM-HD01') {
+                  sku = catMatch.id;
+                } else if (f.productId && f.productId !== 'XM-HD01') {
+                  sku = f.productId;
+                }
                 const thumbnail = getProductThumbnail(f);
                 const isHighlighted = highlightTargetId && (
                   f.id === highlightTargetId ||
@@ -1357,8 +1394,8 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
           const liveSt = computeSurveyStatus(s);
           const statusCfg = surveyStatusLabels[liveSt] || surveyStatusLabels.DangDienRa;
           const detailResponses = surveyResponses.filter(r => r.surveyId === s.id);
-          const totalTarget = s.targetCount || (detailResponses.length > 0 ? detailResponses.length : 10);
-          const totalRespCount = s.responseCount !== undefined ? Math.max(s.responseCount, detailResponses.length) : detailResponses.length;
+          const totalTarget = Math.max(s.targetCount || 0, s.targetCustomerIds?.length || 0, detailResponses.length, 1);
+          const totalRespCount = detailResponses.length;
           const completionPct = totalTarget > 0 ? Math.min(100, (totalRespCount / totalTarget) * 100) : 0;
 
           // Response đang được chọn để hiển thị ở cột chi tiết phải
@@ -1863,14 +1900,25 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
                   Hệ thống ghi nhận đánh giá trải nghiệm khách hàng, khiếu nại dịch vụ và quản lý khảo sát chất lượng định kỳ.
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={handleOpenCreateModal}
-                className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-red-700 hover:bg-red-800 shadow-md shadow-red-700/20 transition flex items-center gap-2 cursor-pointer self-start md:self-auto shrink-0 uppercase tracking-wider"
-                style={{ fontFamily: 'var(--font-display)' }}
-              >
-                <span>+ TẠO KHẢO SÁT MỚI</span>
-              </button>
+              <div className="flex items-center gap-2 flex-wrap self-start md:self-auto">
+                <button
+                  type="button"
+                  onClick={handleCleanUnnecessarySurveys}
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 transition flex items-center gap-1.5 cursor-pointer uppercase tracking-wider"
+                  title="Dọn dẹp các bài khảo sát mẫu hoặc không cần thiết"
+                >
+                  <span>🗑️</span>
+                  <span>XÓA KHẢO SÁT KHÔNG CẦN</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleOpenCreateModal}
+                  className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-red-700 hover:bg-red-800 shadow-md shadow-red-700/20 transition flex items-center gap-2 cursor-pointer uppercase tracking-wider"
+                  style={{ fontFamily: 'var(--font-display)' }}
+                >
+                  <span>+ TẠO KHẢO SÁT MỚI</span>
+                </button>
+              </div>
             </div>
 
             {/* KS08: Filter Pills Trạng thái khảo sát tự động */}
@@ -1908,8 +1956,8 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
                   const responses = surveyResponses.filter(r => r.surveyId === s.id);
                   const liveStatus = computeSurveyStatus(s);
                   const statusCfg = surveyStatusLabels[liveStatus] || surveyStatusLabels.DangDienRa;
-                  const targetCount = s.targetCount || 10;
-                  const respCount = s.responseCount !== undefined ? Math.max(s.responseCount, responses.length) : responses.length;
+                  const targetCount = Math.max(s.targetCount || 0, s.targetCustomerIds?.length || 0, responses.length, 1);
+                  const respCount = responses.length;
                   const progressPct = targetCount > 0 ? Math.min(100, Math.round((respCount / targetCount) * 100)) : 0;
 
                   return (
@@ -1918,21 +1966,31 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
                       className="bg-white rounded-2xl p-5 border border-zinc-200 shadow-sm flex flex-col justify-between hover:shadow-md transition"
                     >
                       <div>
-                        {/* Header card with Live Status Badge */}
+                        {/* Header card with Live Status Badge and Delete button */}
                         <div className="flex items-center justify-between gap-2 mb-2">
-                          <span className="text-xs font-mono px-2.5 py-0.5 rounded bg-zinc-100 text-zinc-700 font-bold border border-zinc-200">
-                            {s.id}
-                          </span>
-                          <span
-                            className="text-xs font-bold font-mono px-2.5 py-0.5 rounded-full"
-                            style={{
-                              background: statusCfg.bg,
-                              color: statusCfg.text,
-                              border: `1px solid ${statusCfg.border}`,
-                            }}
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-mono px-2.5 py-0.5 rounded bg-zinc-100 text-zinc-700 font-bold border border-zinc-200">
+                              {s.id}
+                            </span>
+                            <span
+                              className="text-xs font-bold font-mono px-2.5 py-0.5 rounded-full"
+                              style={{
+                                background: statusCfg.bg,
+                                color: statusCfg.text,
+                                border: `1px solid ${statusCfg.border}`,
+                              }}
+                            >
+                              ● {statusCfg.label}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteSurvey(s.id, s.title)}
+                            className="p-1 rounded-lg text-zinc-400 hover:text-red-600 hover:bg-red-50 transition cursor-pointer border border-transparent hover:border-red-200 text-xs"
+                            title="Xóa bài khảo sát này"
                           >
-                            ● {statusCfg.label}
-                          </span>
+                            <span>🗑️</span>
+                          </button>
                         </div>
 
                         <h4 className="font-extrabold text-zinc-900 text-base mb-1 line-clamp-1" style={{ fontFamily: 'var(--font-display)' }}>

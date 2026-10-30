@@ -19,16 +19,25 @@ type NavGroup = { group: string; items: { key: string; label: string; icon: Reac
 const nav: NavGroup[] = [
   {
     group: 'Tổng quan',
-    items: [{ key: 'dashboard', label: 'Dashboard', icon: <I icon="grid" /> }],
+    items: [
+      { key: 'dashboard', label: 'Dashboard', icon: <I icon="grid" /> },
+      { key: 'calendar', label: 'Lịch biểu Showroom', icon: <I icon="calendar" /> },
+    ],
   },
   {
     group: 'Bán hàng',
     items: [
       { key: 'sales', label: 'Quản lý đơn hàng', icon: <I icon="package" />, allowedRoles: ['SuperAdmin', 'NhanVienBanHang'] },
+      { key: 'test-drives', label: 'Quản lý lái thử xe', icon: <I icon="bike" />, allowedRoles: ['SuperAdmin', 'NhanVienBanHang'] },
       { key: 'promotions', label: 'Chương trình khuyến mãi', icon: <I icon="tag" />, allowedRoles: ['SuperAdmin', 'NhanVienBanHang'] },
-      { key: 'appointments', label: 'Lịch hẹn dịch vụ', icon: <I icon="calendar" /> },
-      { key: 'warranty', label: 'Quản lý bảo hành', icon: <I icon="wrench" /> },
       { key: 'insurance', label: 'Bảo hiểm xe', icon: <I icon="shield-check" />, allowedRoles: ['SuperAdmin', 'NhanVienBanHang'] },
+    ],
+  },
+  {
+    group: 'Dịch vụ & Kỹ thuật',
+    items: [
+      { key: 'maintenance', label: 'Quản lý bảo dưỡng xe', icon: <I icon="wrench" />, allowedRoles: ['SuperAdmin', 'NhanVienKyThuat'] },
+      { key: 'warranty', label: 'Quản lý bảo hành', icon: <I icon="shield-check" />, allowedRoles: ['SuperAdmin', 'NhanVienKyThuat'] },
     ],
   },
   {
@@ -389,6 +398,8 @@ export default function AdminLayout({
     let targetPage = n.linkPage || 'sales';
     if (n.category === 'order' || n.category === 'payment' || n.type?.includes('order') || n.title?.toLowerCase().includes('đơn hàng') || n.title?.toLowerCase().includes('đơn xe')) {
       targetPage = 'sales';
+    } else if (n.linkPage === 'warranty' || n.type?.includes('warranty') || n.title?.toLowerCase().includes('bảo hành') || n.message?.toLowerCase().includes('bảo hành')) {
+      targetPage = 'warranty';
     } else if (n.category === 'review' || n.category === 'survey') {
       targetPage = 'feedback';
     } else if (n.category === 'customer') {
@@ -396,9 +407,13 @@ export default function AdminLayout({
     } else if (n.category === 'inventory') {
       targetPage = 'parts';
     } else if (n.type?.includes('appointment') || n.title?.toLowerCase().includes('lịch hẹn')) {
-      targetPage = 'appointments';
-    } else if (n.linkPage === 'warranty' || n.type?.includes('warranty') || n.title?.toLowerCase().includes('bảo hành')) {
-      targetPage = 'warranty';
+      if (n.title?.toLowerCase().includes('lái thử') || n.message?.toLowerCase().includes('lái thử')) {
+        targetPage = 'test-drives';
+      } else if (n.title?.toLowerCase().includes('bảo dưỡng') || n.title?.toLowerCase().includes('sửa chữa') || n.message?.toLowerCase().includes('bảo dưỡng') || n.message?.toLowerCase().includes('sửa chữa')) {
+        targetPage = 'maintenance';
+      } else {
+        targetPage = 'calendar';
+      }
     } else if (n.linkPage === 'insurance' || n.type?.includes('insurance') || n.title?.toLowerCase().includes('bảo hiểm')) {
       targetPage = 'insurance';
     } else if (n.linkPage === 'license-plates' || n.type?.includes('license_plate') || n.title?.toLowerCase().includes('biển số') || n.message?.toLowerCase().includes('biển số')) {
