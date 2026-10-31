@@ -2999,22 +2999,28 @@ async delete(orderIdOrNum: string | number): Promise<boolean> {
     // Kích hoạt / cập nhật lịch hẹn nhận xe chính thức
     try {
       const allAppts = await appointmentApi.getAll();
+      const orderBikeName = (order.thongTinXe?.tenXe || '').trim().toLowerCase();
       const matched = allAppts.find(a =>
-        (a.maDonHangXe && a.maDonHangXe === order.id) ||
+        (a.maDonHangXe && (a.maDonHangXe === order.id || a.maDonHangXe.replace(/\D/g, '') === order.id.replace(/\D/g, ''))) ||
         (a.maLichHen && (a.maLichHen === order.maLichHen || a.maLichHen === order.thongTinXe?.maLichHen)) ||
-        (a.customerId === order.customerId && a.loaiDichVu === 'NhanXe')
+        (a.ghiChu && a.ghiChu.includes(order.id)) ||
+        (a.customerId === order.customerId && a.loaiDichVu === 'NhanXe' && orderBikeName && a.tenXe && (
+          a.tenXe.toLowerCase().includes(orderBikeName) || orderBikeName.includes(a.tenXe.toLowerCase())
+        ))
       );
 
       if (matched) {
         matched.trangThai = 'DaXacNhan';
         matched.ngayHen = pickupDate;
         matched.gioHen = pickupTime.split(' - ')[0] || pickupTime;
+        matched.maDonHangXe = order.id;
         await appointmentApi.updateStatus(matched.id, 'DaXacNhan');
         await appointmentApi.updateDetails(matched.id, {
           ngayHen: pickupDate,
           gioHen: pickupTime.split(' - ')[0] || pickupTime,
           trangThai: 'DaXacNhan',
-          ghiChu: `Khách hàng đã xác nhận ngày nhận xe: ${pickupDate} lúc ${pickupTime}`,
+          maDonHangXe: order.id,
+          ghiChu: `Khách hàng đã xác nhận ngày nhận xe: ${pickupDate} lúc ${pickupTime}. Đơn #${order.id}`,
         });
       } else {
         const newAppt = await appointmentApi.create({
@@ -3030,7 +3036,7 @@ async delete(orderIdOrNum: string | number): Promise<boolean> {
           mauXe: order.thongTinXe?.mauSac || 'Tiêu chuẩn',
           maLichHen: order.maLichHen || `HEN-XE-${Math.floor(1000 + Math.random() * 9000)}`,
           maDonHangXe: order.id,
-          ghiChu: `Khách hàng đã xác nhận lịch nhận xe lúc ${pickupTime} ngày ${pickupDate}`,
+          ghiChu: `Khách hàng đã xác nhận lịch nhận xe lúc ${pickupTime} ngày ${pickupDate}. Đơn #${order.id}`,
         });
         if (newAppt?.appointment?.id) {
           await appointmentApi.updateStatus(newAppt.appointment.id, 'DaXacNhan');
@@ -3275,6 +3281,48 @@ async delete(orderIdOrNum: string | number): Promise<boolean> {
 // ────────────────────────────────────────────────────────────
 // 5. LỊCH HẸN DỊCH VỤ API (APPOINTMENTS)
 // ────────────────────────────────────────────────────────────
+export function deduplicateNhanXeAppointments(list: Appointment[]): Appointment[] {
+  const dedupMap = new Map<string, Appointment>();
+  const out: Appointment[] = [];
+  const statusRank = (st?: string) => (st === 'DaHoanThanh' || st === 'HoanThanh' ? 3 : st === 'DaXacNhan' ? 2 : st === 'ChoXacNhan' ? 1 : 0);
+
+  list.forEach(a => {
+    if (a.loaiDichVu === 'NhanXe') {
+      const cleanXe = (a.tenXe || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const cleanCust = (a.customerId || a.soDienThoai || '').replace(/\D/g, '');
+      const key = a.maDonHangXe
+        ? `NX-${cleanCust}-${a.maDonHangXe}`
+        : `NX-${cleanCust}-${cleanXe}`;
+
+      const existing = dedupMap.get(key);
+      if (!existing) {
+        dedupMap.set(key, a);
+        out.push(a);
+      } else {
+        if (statusRank(a.trangThai) > statusRank(existing.trangThai)) {
+          const merged: Appointment = {
+            ...existing,
+            ...a,
+            maDonHangXe: a.maDonHangXe || existing.maDonHangXe,
+            ghiChu: a.ghiChu || existing.ghiChu,
+          };
+          const idx = out.indexOf(existing);
+          if (idx !== -1) out[idx] = merged;
+          dedupMap.set(key, merged);
+        } else {
+          if (!existing.maDonHangXe && a.maDonHangXe) {
+            existing.maDonHangXe = a.maDonHangXe;
+          }
+        }
+      }
+    } else {
+      out.push(a);
+    }
+  });
+
+  return out;
+}
+
 export const appointmentApi = {
   async getAll(): Promise<Appointment[]> {
     // LH11 & LH12: Persistence qua localStorage
@@ -3417,6 +3465,7 @@ export const appointmentApi = {
     };
 
     result = result.filter(a => !isBlacklisted(a));
+    result = deduplicateNhanXeAppointments(result);
 
     // LH10: Luôn sắp xếp lịch hẹn mới nhất lên đầu danh sách
     result.sort((a, b) => {
@@ -3469,6 +3518,7 @@ export const appointmentApi = {
     };
 
     result = result.filter(a => !isBlacklisted(a));
+    result = deduplicateNhanXeAppointments(result);
     result.sort((a, b) => {
       const dateA = a.createdDate || `${a.ngayHen} ${a.gioHen}`;
       const dateB = b.createdDate || `${b.ngayHen} ${b.gioHen}`;
@@ -3654,6 +3704,28 @@ export const appointmentApi = {
     hinhThucGiao?: 'Showroom' | 'HomeDelivery';
     diaChiGiao?: string;
   }): Promise<{ success: boolean; appointment: Appointment; maLich?: number }> {
+    // Nếu là lịch nhận xe mới (NhanXe), kiểm tra xem đã có lịch cho đơn/mẫu xe này chưa để tránh nhân bản
+    if (data.loaiDichVu === 'NhanXe') {
+      const existingAll = appointmentApi.getAllSync();
+      const orderBike = (data.tenXe || '').trim().toLowerCase();
+      const existAppt = existingAll.find(a =>
+        a.loaiDichVu === 'NhanXe' && (
+          (data.maDonHangXe && a.maDonHangXe === data.maDonHangXe) ||
+          (a.customerId === data.customerId && orderBike && a.tenXe && a.tenXe.toLowerCase().includes(orderBike))
+        )
+      );
+      if (existAppt) {
+        await appointmentApi.updateDetails(existAppt.id, {
+          ngayHen: data.ngayHen,
+          gioHen: data.gioHen,
+          trangThai: data.trangThai || 'DaXacNhan',
+          maDonHangXe: data.maDonHangXe || existAppt.maDonHangXe,
+          ghiChu: data.ghiChu || existAppt.ghiChu,
+        });
+        return { success: true, appointment: existAppt };
+      }
+    }
+
     let maKH = data.customerId ? parseInt(data.customerId.replace(/\D/g, ''), 10) : 1;
     if (isNaN(maKH) || maKH <= 0) maKH = 1;
 

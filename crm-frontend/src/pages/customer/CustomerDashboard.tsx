@@ -1154,6 +1154,117 @@ export default function CustomerDashboard({
     }
   };
 
+  // DG09: Xử lý Xem sản phẩm từ mục "Đã đánh giá" (Tự động nhận diện xe máy hoặc phụ tùng để nhảy đúng trang)
+  const handleViewReviewProduct = (f: Feedback) => {
+    // 1. Kiểm tra xem có phải là Phụ tùng không
+    const cleanProdName = (f.productName || '').trim().toLowerCase();
+    const matchedPart = mockParts.find(p =>
+      (f.productId && (p.id === f.productId || p.id.toLowerCase() === f.productId.toLowerCase())) ||
+      (cleanProdName && (
+        p.tenSanPham.toLowerCase() === cleanProdName ||
+        p.tenSanPham.toLowerCase().includes(cleanProdName) ||
+        cleanProdName.includes(p.tenSanPham.toLowerCase())
+      ))
+    );
+
+    const isPart = f.productType === 'PhuTung' || (f.productId && f.productId.startsWith('PT')) || Boolean(matchedPart);
+
+    if (isPart) {
+      const partId = matchedPart?.id || f.productId || 'PT001';
+      const partName = matchedPart?.tenSanPham || f.productName || 'Phụ tùng Motoshop';
+
+      try {
+        sessionStorage.setItem('crm_view_part_id', partId);
+        sessionStorage.setItem('crm_view_part_name', partName);
+      } catch {}
+
+      if (onNavigateToStore) {
+        onNavigateToStore();
+      } else {
+        window.location.hash = '#store';
+      }
+
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('crm-view-part', {
+          detail: { id: partId, name: partName }
+        }));
+      }, 60);
+    } else {
+      // 2. Xe máy
+      const rawBikeName = f.productName || f.xeDangDung || 'Honda SH 160i ABS';
+      const cleanBike = rawBikeName.trim().toLowerCase();
+      const allVehicles = [
+        ...showroomVehicles,
+        ...catalogVehicleApi.getAllSync()
+      ];
+      const matchedVehicle = allVehicles.find(v =>
+        (f.productId && (v.id === f.productId || (v as any).maXe === f.productId || (v.id.replace(/\D/g, '') && f.productId.replace(/\D/g, '') && v.id.replace(/\D/g, '') === f.productId.replace(/\D/g, '')))) ||
+        (cleanBike && (
+          v.tenXe.toLowerCase() === cleanBike ||
+          v.tenXe.toLowerCase().includes(cleanBike) ||
+          cleanBike.includes(v.tenXe.toLowerCase())
+        ))
+      );
+
+      const vehicleName = matchedVehicle?.tenXe || rawBikeName;
+      const vehicleId = matchedVehicle?.id || f.productId || '';
+
+      try {
+        sessionStorage.setItem('crm_view_vehicle_name', vehicleName);
+        if (vehicleId) sessionStorage.setItem('crm_view_vehicle_id', vehicleId);
+      } catch {}
+
+      if (onNavigateToShowroom) {
+        onNavigateToShowroom();
+      } else {
+        window.location.hash = '#vehicles';
+      }
+
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('crm-view-vehicle', {
+          detail: { id: vehicleId, name: vehicleName }
+        }));
+      }, 60);
+    }
+  };
+
+  // DG09: Xử lý Mua lại từ mục "Đã đánh giá" (Dành cho Phụ tùng - Nhảy thẳng sang trang Thanh toán)
+  const handleReorderReviewProduct = (f: Feedback, thumbnail: string) => {
+    const cleanName = (f.productName || '').trim().toLowerCase();
+    let matchedPart = mockParts.find(p =>
+      (f.productId && p.id === f.productId) ||
+      p.tenSanPham.toLowerCase() === cleanName ||
+      p.tenSanPham.toLowerCase().includes(cleanName) ||
+      cleanName.includes(p.tenSanPham.toLowerCase())
+    );
+    if (!matchedPart) {
+      matchedPart = {
+        id: f.productId || `PT-CUSTOM-${f.id}`,
+        tenSanPham: f.productName || 'Phụ tùng chính hãng Motoshop',
+        thuongHieu: 'Motoshop Chính Hãng',
+        giaGoc: 250000,
+        giaKhuyenMai: null,
+        soLuongTon: 50,
+        danhMuc: 'Phụ tùng thay thế',
+        moTa: 'Phụ tùng chính hãng Motoshop',
+        hinhAnh: thumbnail || '/images/phutung/dan_ao_ab_125_den_nham.webp',
+        rating: 5,
+        luotDanh: 10
+      };
+    }
+    try {
+      sessionStorage.setItem('crm_direct_checkout_item', JSON.stringify({ part: matchedPart, soLuong: 1 }));
+    } catch {}
+    addToCart(matchedPart, 1);
+
+    // Chuyển thẳng đến trang thanh toán ngay lập tức
+    if (onNavigateToCheckout) {
+      onNavigateToCheckout();
+    } else {
+      window.dispatchEvent(new CustomEvent('crm-navigate-checkout'));
+    }
+  };
+
     // Helper lấy đúng ảnh phương tiện từ xe hoặc catalog đại lý
   const getVehicleDisplayImage = (v: Vehicle) => {
     const cleanName = (v.tenXe || '').toLowerCase().trim();
@@ -1861,7 +1972,11 @@ export default function CustomerDashboard({
         const exists = list.some(a =>
           a.maDonHangXe === o.id ||
           a.id === `APPT-${o.id}` ||
-          (a.maLichHen && (a.maLichHen === o.maLichHen || a.maLichHen === o.thongTinXe?.maLichHen))
+          (a.maLichHen && (a.maLichHen === o.maLichHen || a.maLichHen === o.thongTinXe?.maLichHen)) ||
+          (a.loaiDichVu === 'NhanXe' && (
+            (a.tenXe && o.thongTinXe?.tenXe && a.tenXe.toLowerCase().includes(o.thongTinXe.tenXe.toLowerCase())) ||
+            (o.thongTinXe?.tenXe && a.tenXe && o.thongTinXe.tenXe.toLowerCase().includes(a.tenXe.toLowerCase()))
+          ))
         );
         if (!exists) {
           const isDone = o.trangThai === 'HoanThanh' || o.trangThai === 'DaGiao';
@@ -1885,7 +2000,34 @@ export default function CustomerDashboard({
         }
       });
 
-    return list;
+    // Khử trùng lặp: Đảm bảo mỗi đơn hàng / dòng xe chỉ hiển thị duy nhất 1 lịch nhận xe
+    const dedupMap = new Map<string, Appointment>();
+    const statusRank = (st?: string) => (st === 'DaHoanThanh' || st === 'HoanThanh' ? 3 : st === 'DaXacNhan' ? 2 : st === 'ChoXacNhan' ? 1 : 0);
+    const finalList: Appointment[] = [];
+
+    list.forEach(a => {
+      if (a.loaiDichVu === 'NhanXe') {
+        const cleanXe = (a.tenXe || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const key = a.maDonHangXe
+          ? `NX-${a.maDonHangXe}`
+          : `NX-${cleanXe}-${a.ngayHen}`;
+        const existing = dedupMap.get(key);
+        if (!existing) {
+          dedupMap.set(key, a);
+          finalList.push(a);
+        } else {
+          if (statusRank(a.trangThai) > statusRank(existing.trangThai)) {
+            const idx = finalList.indexOf(existing);
+            if (idx !== -1) finalList[idx] = a;
+            dedupMap.set(key, a);
+          }
+        }
+      } else {
+        finalList.push(a);
+      }
+    });
+
+    return finalList;
   }, [allAppts, currentCustomer, myOrders]);
 
   // Upcoming appointments (LH14)
@@ -4619,19 +4761,29 @@ export default function CustomerDashboard({
                     );
                   }
 
-                  const countDaXe = myCustomerFeedbacks.filter(f => f.productType === 'XeMau' || f.xeDangDung || f.productName?.toLowerCase().includes('honda') || f.productName?.toLowerCase().includes('sh') || f.productName?.toLowerCase().includes('xe')).length;
-                  const countDaPt = myCustomerFeedbacks.filter(f => f.productType === 'PhuTung' || (!f.xeDangDung && !f.productType) || f.productName?.toLowerCase().includes('nhớt') || f.productName?.toLowerCase().includes('phụ')).length;
+                  // Hàm nhận diện chính xác đánh giá là Phụ tùng hay Xe máy (Loại trừ tương hỗ, không bị đếm trùng)
+                  const isPartReview = (f: Feedback) => {
+                    if (f.productType === 'PhuTung') return true;
+                    if (f.productId && f.productId.startsWith('PT')) return true;
+                    const name = (f.productName || '').toLowerCase().trim();
+                    if (name && (name.includes('nhớt') || name.includes('lọc') || name.includes('bugi') || name.includes('phanh') || name.includes('dầu') || name.includes('bố') || name.includes('vỏ') || name.includes('lốp') || name.includes('xích') || name.includes('sên'))) return true;
+                    if (name && mockParts.some(p => p.tenSanPham.toLowerCase() === name || p.tenSanPham.toLowerCase().includes(name) || name.includes(p.tenSanPham.toLowerCase()))) return true;
+                    return false;
+                  };
+
+                  const isXeReview = (f: Feedback) => !isPartReview(f);
+
+                  const countDaPt = myCustomerFeedbacks.filter(isPartReview).length;
+                  const countDaXe = myCustomerFeedbacks.filter(isXeReview).length;
 
                   const filteredFeedbacks = myCustomerFeedbacks.filter(f => {
                     if (myReviewRatingFilter !== 'All' && (f.diemDanhGia || 5) !== myReviewRatingFilter) return false;
                     if (myReviewHasImageFilter && (!f.hinhAnhDinhKem || f.hinhAnhDinhKem.length === 0)) return false;
                     if (myReviewTypeFilter !== 'All') {
                       if (myReviewTypeFilter === 'PhuTung') {
-                        const isPart = f.productType === 'PhuTung' || f.productId?.startsWith('PT') || f.productName?.toLowerCase().includes('nhớt') || f.productName?.toLowerCase().includes('lọc') || f.productName?.toLowerCase().includes('bugi') || f.productName?.toLowerCase().includes('phanh');
-                        if (!isPart) return false;
+                        if (!isPartReview(f)) return false;
                       } else if (myReviewTypeFilter === 'XeMau') {
-                        const isVehicle = f.productType === 'XeMau' || f.productId?.startsWith('XM') || f.productId?.startsWith('V') || f.xeDangDung || f.productName?.toLowerCase().includes('honda') || f.productName?.toLowerCase().includes('yamaha') || f.productName?.toLowerCase().includes('sh') || f.productName?.toLowerCase().includes('vision') || f.productName?.toLowerCase().includes('air blade');
-                        if (!isVehicle) return false;
+                        if (!isXeReview(f)) return false;
                       } else if (myReviewTypeFilter === 'DichVu') {
                         const isService = f.loaiDanhGia === 'DichVu' || f.productType === 'DichVu';
                         if (!isService) return false;
@@ -4765,8 +4917,20 @@ export default function CustomerDashboard({
                             f.id.toLowerCase().includes((highlightTarget.id || '').toLowerCase())
                           );
 
-                          const isXe = f.productType === 'XeMau' || (f.productName && f.productName.toLowerCase().includes('xe')) || (f.xeDangDung && !f.productType);
-                          const thumbnail = f.productImage || (isXe ? '/images/Xe/honda_sh_160i_abs_2024.jpg' : (f.productName?.toLowerCase().includes('nhớt') ? 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=500' : (f.productName?.toLowerCase().includes('phanh') ? 'https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=500' : '/images/phutung/dan_ao_ab_125_den_nham.webp')));
+                          const cleanName = (f.productName || '').trim().toLowerCase();
+                          const matchedPart = mockParts.find(p =>
+                            (f.productId && (p.id === f.productId || p.id.toLowerCase() === f.productId.toLowerCase())) ||
+                            (cleanName && (
+                              p.tenSanPham.toLowerCase() === cleanName ||
+                              p.tenSanPham.toLowerCase().includes(cleanName) ||
+                              cleanName.includes(p.tenSanPham.toLowerCase())
+                            ))
+                          );
+                          const isPart = isPartReview(f);
+                          const isXe = isXeReview(f);
+                          const displayProdName = matchedPart?.tenSanPham || f.productName || (isPart ? 'Phụ tùng chính hãng Motoshop' : (f.xeDangDung || 'Honda SH 160i ABS'));
+
+                          const thumbnail = f.productImage || (isXe ? '/images/Xe/honda_sh_160i_abs_2024.jpg' : (matchedPart?.hinhAnh || (f.productName?.toLowerCase().includes('nhớt') ? 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=500' : (f.productName?.toLowerCase().includes('phanh') ? 'https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=500' : '/images/phutung/dan_ao_ab_125_den_nham.webp'))));
 
                           return (
                             <div
@@ -4783,7 +4947,7 @@ export default function CustomerDashboard({
                                 <div className="flex items-center gap-3.5 min-w-0">
                                   <img
                                     src={thumbnail}
-                                    alt={f.productName || 'Sản phẩm'}
+                                    alt={displayProdName}
                                     className="w-14 h-14 rounded-2xl object-contain bg-zinc-900 border border-zinc-700/80 p-1 shrink-0 shadow-sm"
                                   />
                                   <div className="min-w-0">
@@ -4798,7 +4962,7 @@ export default function CustomerDashboard({
                                         Đã mua trên website
                                       </span>
                                     </div>
-                                    <h4 className="font-extrabold text-sm text-white mt-1 truncate">{f.productName || 'Sản phẩm Motoshop'}</h4>
+                                    <h4 className="font-extrabold text-sm text-white mt-1 truncate">{displayProdName}</h4>
                                     <div className="text-[11px] text-zinc-500 font-mono">
                                       Mã phản hồi: #{f.id} · Gửi ngày: {f.ngayGui || 'Hôm nay'}
                                     </div>
@@ -4850,11 +5014,35 @@ export default function CustomerDashboard({
                                 </div>
                               )}
 
-                              {/* Nút liên hệ tư vấn trao đổi về đánh giá */}
+                              {/* DG09: Bổ sung hai nút "Xem sản phẩm" và "Mua lại" cùng nút Liên hệ Showroom */}
                               <div className="pt-2 flex items-center justify-between flex-wrap gap-2 border-t border-zinc-800/60">
-                                <span className="text-[11px] text-zinc-500 font-mono">
-                                  Cần hỗ trợ tư vấn thêm về đơn hàng hoặc đánh giá này?
-                                </span>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  {/* Nút Xem sản phẩm (DG09) */}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleViewReviewProduct(f)}
+                                    className="px-3 py-1.5 rounded-xl bg-zinc-800/90 hover:bg-zinc-700 text-zinc-200 hover:text-white border border-zinc-700 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+                                    title="Xem thông tin chi tiết sản phẩm"
+                                  >
+                                    <span>🔍</span>
+                                    <span>Xem sản phẩm</span>
+                                  </button>
+
+                                  {/* Nút Mua lại (DG09 - Chỉ dành cho phụ tùng, xe máy không cần mua lại) */}
+                                  {!isXe && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleReorderReviewProduct(f, thumbnail)}
+                                      className="px-3.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+                                      title="Thêm phụ tùng này vào đơn và chuyển ngay đến trang thanh toán"
+                                    >
+                                      <span>🛒</span>
+                                      <span>Mua lại</span>
+                                    </button>
+                                  )}
+                                </div>
+
+                                {/* Nút liên hệ tư vấn trao đổi */}
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -4875,7 +5063,7 @@ export default function CustomerDashboard({
                                       }
                                     }));
                                   }}
-                                  className="px-3.5 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+                                  className="px-3.5 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-xs ml-auto"
                                 >
                                   <span>💬</span>
                                   <span>Liên hệ trao đổi với Showroom</span>
@@ -6727,259 +6915,519 @@ export default function CustomerDashboard({
         </div>
       )}
 
-      {/* ── MODAL: XEM HÓA ĐƠN & BIÊN BẢN DỊCH VỤ (LSLH02) ── */}
-      {selectedServiceInvoice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in overflow-y-auto">
-          {/* Scoped print styling */}
-          <style>{`
-            @media print {
-              body * {
-                visibility: hidden !important;
-              }
-              #motoshop-service-invoice-print, #motoshop-service-invoice-print * {
-                visibility: visible !important;
-              }
-              #motoshop-service-invoice-print {
-                position: absolute !important;
-                left: 0 !important;
-                top: 0 !important;
-                width: 100% !important;
-                padding: 20px !important;
-                background: white !important;
-                color: black !important;
-                border: none !important;
-                box-shadow: none !important;
-              }
-              .no-print {
-                display: none !important;
-              }
+      {/* ── MODAL: XEM HÓA ĐƠN & BIÊN BẢN DỊCH VỤ (LSLH01 & LSLH02) ── */}
+      {selectedServiceInvoice && (() => {
+        const appt = selectedServiceInvoice;
+        const loai = appt.loaiDichVu;
+
+        // Tìm đơn hàng xe tương ứng nếu là nhận xe
+        const matchedOrder = myOrders.find(o =>
+          (appt.maDonHangXe && (o.id === appt.maDonHangXe || o.id.replace(/\D/g, '') === appt.maDonHangXe.replace(/\D/g, ''))) ||
+          (appt.tenXe && o.thongTinXe?.tenXe && (
+            o.thongTinXe.tenXe.toLowerCase().includes(appt.tenXe.toLowerCase()) ||
+            appt.tenXe.toLowerCase().includes(o.thongTinXe.tenXe.toLowerCase())
+          ))
+        );
+
+        let docTitle = 'HÓA ĐƠN DỊCH VỤ & BIÊN BẢN BÀN GIAO';
+        let docCode = `#HD-DV-${appt.id}`;
+        let docBadge = '✓ ĐÃ HOÀN TẤT & NGHIỆM THU';
+        let customerSignLabel = 'KHÁCH HÀNG NHẬN XE';
+        let staffSignLabel = 'ĐẠI DIỆN TRUNG TÂM DỊCH VỤ';
+        let staffRole = appt.nhanVienPhuTrach || 'KTV Xưởng Dịch Vụ Motoshop';
+        let displayVehicleName = appt.tenXe || 'Xe máy';
+        let displayBienSo = appt.bienSo || 'Chưa bấm biển';
+        let displayVIN = appt.soKhungVIN || 'Đang cập nhật';
+        let displaySoMay = appt.soMay || 'Đang cập nhật';
+        let invoiceNote = '';
+        let totalPaymentText = '350.000 đ';
+
+        interface DocItem {
+          stt: string;
+          name: string;
+          desc: string;
+          unit: string;
+          qty: number;
+          priceText: string;
+          totalText: string;
+          isFree?: boolean;
+        }
+
+        let docItems: DocItem[] = [];
+
+        if (loai === 'NhanXe') {
+          docTitle = 'BIÊN BẢN BÀN GIAO & HÓA ĐƠN NHẬN XE MỚI';
+          docCode = `#BB-BGX-${appt.id}`;
+          docBadge = '✓ ĐÃ BÀN GIAO XE MỚI';
+          customerSignLabel = 'KHÁCH HÀNG NHẬN XE';
+          staffSignLabel = 'ĐẠI DIỆN SHOWROOM BÀN GIAO';
+          staffRole = 'Nhân viên Bàn giao & CSKH Showroom';
+
+          displayVehicleName = appt.tenXe || matchedOrder?.thongTinXe?.tenXe || 'Xe máy mới';
+          displayBienSo = appt.bienSo || ((matchedOrder as any)?.hinhThucNhanBien === 'Showroom' ? 'Bấm biển tại Showroom' : 'Chưa bấm biển');
+          displayVIN = appt.soKhungVIN || matchedOrder?.thongTinXe?.soKhungVIN || (matchedOrder?.thongTinXe as any)?.soKhung || 'RLCHJ4409PY024891';
+          displaySoMay = appt.soMay || matchedOrder?.thongTinXe?.soMay || 'JF05E-1284950';
+
+          const vehiclePrice = matchedOrder?.tongTien || 45000000;
+          const isPaidFull = matchedOrder?.trangThaiThanhToan === 'DaThanhToan' || matchedOrder?.trangThai === 'HoanThanh' || (matchedOrder as any)?.hinhThucThanhToan === 'FullOnline' || matchedOrder?.phuongThucThanhToan === 'ChuyenKhoan';
+          const depositAmount = 2000000;
+          const remaining = isPaidFull ? 0 : Math.max(0, vehiclePrice - depositAmount);
+
+          totalPaymentText = isPaidFull
+            ? `${formatVND(vehiclePrice)} (ĐÃ THANH TOÁN 100% ONLINE)`
+            : `${formatVND(vehiclePrice)} (ĐÃ CỌC: ${formatVND(depositAmount)} - THU NỐT TẠI QUẦY: ${formatVND(remaining)})`;
+
+          invoiceNote = isPaidFull
+            ? 'Khách hàng đã hoàn tất thanh toán 100% giá trị xe trước khi nhận xe. Số tiền thu tại quầy: 0 đ.'
+            : `Khách hàng đã đặt cọc trước ${formatVND(depositAmount)}. Số tiền thu nốt tại quầy khi nhận xe: ${formatVND(remaining)}.`;
+
+          docItems = [
+            {
+              stt: '01',
+              name: `Bàn giao xe máy mới: ${displayVehicleName}`,
+              desc: `Màu sắc: ${matchedOrder?.thongTinXe?.mauSac || appt.mauXe || 'Tiêu chuẩn'} | Số máy: ${displaySoMay} | Số khung (VIN): ${displayVIN}.`,
+              unit: 'Chiếc',
+              qty: 1,
+              priceText: formatVND(vehiclePrice),
+              totalText: formatVND(vehiclePrice),
+              isFree: false
+            },
+            {
+              stt: '02',
+              name: 'Gói quà tặng bàn giao xe mới Motoshop VIP',
+              desc: '01 Nón bảo hiểm Motoshop cao cấp, 01 Áo mưa chính hãng, 01 Bộ dụng cụ tiêu chuẩn và móc khóa da lưu niệm.',
+              unit: 'Bộ',
+              qty: 1,
+              priceText: 'Miễn phí',
+              totalText: '0 đ',
+              isFree: true
+            },
+            {
+              stt: '03',
+              name: 'Hồ sơ pháp lý xe & Sổ bảo hành điện tử chính hãng',
+              desc: 'Sổ bảo hành chính hãng 3 năm hoặc 30.000 km, Phiếu xuất xưởng, Hóa đơn GTGT và Giấy hẹn nhận biển số.',
+              unit: 'Bộ',
+              qty: 1,
+              priceText: 'Miễn phí',
+              totalText: '0 đ',
+              isFree: true
             }
-          `}</style>
+          ];
+        } else if (loai === 'LaiThu') {
+          docTitle = 'BIÊN BẢN NGHIỆM THU TRẢI NGHIỆM LÁI THỬ XE';
+          docCode = `#BB-LT-${appt.id}`;
+          docBadge = '✓ ĐÃ HOÀN TẤT LÁI THỬ';
+          customerSignLabel = 'KHÁCH HÀNG TRẢI NGHIỆM';
+          staffSignLabel = 'KỸ THUẬT VIÊN / CSKH ĐI KÈM';
+          staffRole = 'Tư vấn viên Lái thử & Hướng dẫn an toàn';
 
-          <div
-            id="motoshop-service-invoice-print"
-            className="bg-[#18181b] rounded-3xl max-w-2xl w-full max-h-[92vh] overflow-y-auto shadow-2xl border border-zinc-800 p-6 sm:p-8 space-y-6 text-white my-auto print:bg-white print:text-black"
-          >
-            {/* Header / Invoice Branding */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-zinc-800 print:border-zinc-300 gap-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-2xl text-red-600 font-black">MOTOSHOP</span>
-                  <span className="text-xs px-2 py-0.5 rounded bg-red-950/80 text-red-400 font-bold border border-red-800/50 print:bg-zinc-100 print:text-zinc-800 print:border-zinc-300">
-                    SERVICE CRM
+          displayVehicleName = appt.tenXe || 'Xe lái thử Motoshop';
+          displayBienSo = appt.bienSo || 'XE-LÁI-THỬ';
+          displayVIN = 'Xe trưng bày lái thử Showroom';
+          displaySoMay = 'Động cơ nguyên bản theo xe';
+
+          totalPaymentText = '0 đ (TRẢI NGHIỆM MIỄN PHÍ)';
+          invoiceNote = 'Chương trình lái thử trải nghiệm hoàn toàn MIỄN PHÍ theo chính sách chăm sóc khách hàng của Motoshop.';
+
+          docItems = [
+            {
+              stt: '01',
+              name: `Dịch vụ lái thử & trải nghiệm thực tế xe: ${displayVehicleName}`,
+              desc: 'Trải nghiệm vận hành thực tế tại cung đường tiêu chuẩn quanh Showroom, kiểm tra khả năng tăng tốc, hệ thống phanh an toàn và độ êm ái của động cơ.',
+              unit: 'Lượt',
+              qty: 1,
+              priceText: 'Miễn phí',
+              totalText: '0 đ',
+              isFree: true
+            },
+            {
+              stt: '02',
+              name: 'Trang bị bảo hộ an toàn lái thử tiêu chuẩn Motoshop',
+              desc: 'Mũ bảo hiểm đạt chuẩn an toàn QCVN, giáp bảo hộ khuỷu tay và đầu gối trong suốt quá trình chạy thử xe.',
+              unit: 'Bộ',
+              qty: 1,
+              priceText: 'Miễn phí',
+              totalText: '0 đ',
+              isFree: true
+            },
+            {
+              stt: '03',
+              name: 'Voucher ưu đãi tri ân khách hàng lái thử xe',
+              desc: 'Voucher giảm giá 1.000.000₫ khi ký hợp đồng mua xe trong tháng hoặc giảm 20% khi mua phụ kiện trang bị chính hãng.',
+              unit: 'Phiếu',
+              qty: 1,
+              priceText: 'Tặng kèm',
+              totalText: '0 đ',
+              isFree: true
+            }
+          ];
+        } else if (loai === 'BaoHanh') {
+          docTitle = 'BIÊN BẢN BÀN GIAO & PHIẾU BẢO HÀNH CHÍNH HÃNG';
+          docCode = `#PBH-${appt.id}`;
+          docBadge = '✓ ĐÃ XỬ LÝ BẢO HÀNH CHÍNH HÃNG';
+          customerSignLabel = 'KHÁCH HÀNG NHẬN XE';
+          staffSignLabel = 'KỸ THUẬT VIÊN BẢO HÀNH';
+          staffRole = 'Kỹ thuật viên Trưởng xưởng Dịch vụ';
+
+          displayVehicleName = appt.tenXe || 'Xe bảo hành chính hãng';
+          displayBienSo = appt.bienSo || 'Chưa bấm biển';
+
+          totalPaymentText = '0 đ (BẢO HÀNH CHÍNH HÃNG MIỄN PHÍ)';
+          invoiceNote = 'Dịch vụ bảo hành được thực hiện MIỄN PHÍ 100% theo chính sách bảo hành chính hãng của Motoshop.';
+
+          docItems = [
+            {
+              stt: '01',
+              name: 'Kiểm tra, chẩn đoán & khắc phục sự cố kỹ thuật bảo hành',
+              desc: appt.ghiChu || 'Khắc phục sự cố theo chính sách bảo hành chính hãng của nhà sản xuất, căn chỉnh các thông số vận hành tiêu chuẩn.',
+              unit: 'Gói',
+              qty: 1,
+              priceText: '0 đ',
+              totalText: '0 đ',
+              isFree: true
+            },
+            {
+              stt: '02',
+              name: 'Vật tư & Linh kiện phụ tùng thay thế bảo hành',
+              desc: 'Linh kiện chính hãng mới 100%, bảo hành theo tiêu chuẩn nhà máy (miễn phí theo chế độ bảo hành xe).',
+              unit: 'Hạng mục',
+              qty: 1,
+              priceText: '0 đ',
+              totalText: '0 đ',
+              isFree: true
+            },
+            {
+              stt: '03',
+              name: 'Kiểm tra an toàn tổng quát & vệ sinh xe sau bảo hành',
+              desc: 'Kiểm tra siết ốc toàn diện, kiểm tra áp suất lốp, phanh an toàn và rửa xe tiêu chuẩn trước khi bàn giao.',
+              unit: 'Lần',
+              qty: 1,
+              priceText: 'Miễn phí',
+              totalText: '0 đ',
+              isFree: true
+            }
+          ];
+        } else if (loai === 'SuaChua') {
+          docTitle = 'HÓA ĐƠN DỊCH VỤ SỬA CHỮA & THAY THẾ PHỤ TÙNG';
+          docCode = `#HD-SC-${appt.id}`;
+          docBadge = '✓ ĐÃ HOÀN TẤT SỬA CHỮA';
+          customerSignLabel = 'KHÁCH HÀNG NHẬN XE';
+          staffSignLabel = 'KỸ THUẬT VIÊN SỬA CHỮA';
+          staffRole = 'KTV Xưởng Dịch vụ Kỹ thuật';
+
+          displayVehicleName = appt.tenXe || 'Xe sửa chữa kỹ thuật';
+          displayBienSo = appt.bienSo || 'Chưa bấm biển';
+
+          totalPaymentText = '450.000 đ';
+          invoiceNote = 'Linh kiện thay thế được bảo hành chính hãng 06 tháng hoặc 5.000 km.';
+
+          docItems = [
+            {
+              stt: '01',
+              name: 'Tiền công thợ kiểm tra, chẩn đoán & sửa chữa kỹ thuật',
+              desc: appt.ghiChu || 'Sửa chữa, khắc phục sự cố vận hành và phục hồi tính năng an toàn cho xe theo yêu cầu.',
+              unit: 'Công',
+              qty: 1,
+              priceText: '150.000 đ',
+              totalText: '150.000 đ',
+              isFree: false
+            },
+            {
+              stt: '02',
+              name: 'Phụ tùng / Vật tư kỹ thuật chính hãng thay thế',
+              desc: 'Vật tư phụ tùng thay thế chính hãng Motoshop, bảo hành kỹ thuật 06 tháng.',
+              unit: 'Gói',
+              qty: 1,
+              priceText: '300.000 đ',
+              totalText: '300.000 đ',
+              isFree: false
+            },
+            {
+              stt: '03',
+              name: 'Vệ sinh chi tiết & kiểm tra an toàn sau sửa chữa',
+              desc: 'Tra dầu mỡ xích sên, cân chỉnh phanh lốp và rửa xe tiêu chuẩn bàn giao.',
+              unit: 'Lần',
+              qty: 1,
+              priceText: 'Miễn phí',
+              totalText: '0 đ',
+              isFree: true
+            }
+          ];
+        } else {
+          // Mặc định: BaoDuong
+          docTitle = 'HÓA ĐƠN DỊCH VỤ BẢO DƯỠNG ĐỊNH KỲ';
+          docCode = `#HD-BD-${appt.id}`;
+          docBadge = '✓ ĐÃ HOÀN TẤT BẢO DƯỠNG';
+          customerSignLabel = 'KHÁCH HÀNG NHẬN XE';
+          staffSignLabel = 'KỸ THUẬT VIÊN BẢO DƯỠNG';
+          staffRole = 'KTV Xưởng Bảo dưỡng Motoshop';
+
+          displayVehicleName = appt.tenXe || 'Xe bảo dưỡng';
+          displayBienSo = appt.bienSo || 'Chưa bấm biển';
+
+          totalPaymentText = '350.000 đ';
+          invoiceNote = 'Bảo hành dịch vụ bảo dưỡng định kỳ trong 01 tháng hoặc 1.000 km đầu tiên.';
+
+          docItems = [
+            {
+              stt: '01',
+              name: 'Gói công bảo dưỡng định kỳ tiêu chuẩn Motoshop Care',
+              desc: appt.ghiChu || 'Kiểm tra tổng quát 15 hạng mục an toàn, vệ sinh lọc gió, bugi, buồng đốt và cân chỉnh phanh.',
+              unit: 'Gói',
+              qty: 1,
+              priceText: '200.000 đ',
+              totalText: '200.000 đ',
+              isFree: false
+            },
+            {
+              stt: '02',
+              name: 'Dầu nhớt động cơ 4T cao cấp chính hãng (Motul / Castrol 0.8L)',
+              desc: 'Dầu nhớt máy chính hãng chuyên dụng cho xe số & xe tay ga bôi trơn tối ưu, tiết kiệm nhiên liệu.',
+              unit: 'Chai',
+              qty: 1,
+              priceText: '150.000 đ',
+              totalText: '150.000 đ',
+              isFree: false
+            },
+            {
+              stt: '03',
+              name: 'Kiểm tra áp suất lốp, phanh và rửa xe tiêu chuẩn miễn phí',
+              desc: 'Gói chăm sóc khách hàng định kỳ tiêu chuẩn Motoshop Care.',
+              unit: 'Lần',
+              qty: 1,
+              priceText: 'Miễn phí',
+              totalText: '0 đ',
+              isFree: true
+            }
+          ];
+        }
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in overflow-y-auto">
+            {/* Scoped print styling */}
+            <style>{`
+              @media print {
+                body * {
+                  visibility: hidden !important;
+                }
+                #motoshop-service-invoice-print, #motoshop-service-invoice-print * {
+                  visibility: visible !important;
+                }
+                #motoshop-service-invoice-print {
+                  position: absolute !important;
+                  left: 0 !important;
+                  top: 0 !important;
+                  width: 100% !important;
+                  padding: 20px !important;
+                  background: white !important;
+                  color: black !important;
+                  border: none !important;
+                  box-shadow: none !important;
+                }
+                .no-print {
+                  display: none !important;
+                }
+              }
+            `}</style>
+
+            <div
+              id="motoshop-service-invoice-print"
+              className="bg-[#18181b] rounded-3xl max-w-2xl w-full max-h-[92vh] overflow-y-auto shadow-2xl border border-zinc-800 p-6 sm:p-8 space-y-6 text-white my-auto print:bg-white print:text-black"
+            >
+              {/* Header / Invoice Branding */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-zinc-800 print:border-zinc-300 gap-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xl text-red-600 font-black">MOTOSHOP</span>
+                    <span className="text-xs px-2 py-0.5 rounded bg-red-950/80 text-red-400 font-bold border border-red-800/50 print:bg-zinc-100 print:text-zinc-800 print:border-zinc-300">
+                      SERVICE CRM
+                    </span>
+                  </div>
+                  <p className="text-xs text-zinc-400 print:text-zinc-600 mt-1">
+                    Trung tâm dịch vụ kỹ thuật & Chăm sóc xe máy chuyên nghiệp
+                  </p>
+                  <p className="text-[11px] text-zinc-500 print:text-zinc-600">
+                    Địa chỉ: 123 Nguyễn Văn Cừ, Quận 5, TP. Hồ Chí Minh · Hotline: 1900 6868
+                  </p>
+                </div>
+
+                <div className="text-left sm:text-right">
+                  <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-950/70 border border-emerald-800/60 px-3 py-1 rounded-full uppercase inline-block print:bg-zinc-100 print:text-black print:border-zinc-400">
+                    {docBadge}
                   </span>
+                  <div className="text-xs font-mono text-zinc-300 print:text-zinc-700 mt-2">
+                    Số HĐ/Biên bản: <strong className="text-white print:text-black font-bold">{docCode}</strong>
+                  </div>
+                  <div className="text-[11px] text-zinc-400 print:text-zinc-600 font-mono">
+                    Ngày lập: {appt.ngayHen}
+                  </div>
                 </div>
-                <p className="text-xs text-zinc-400 print:text-zinc-600 mt-1">
-                  Trung tâm dịch vụ kỹ thuật & Chăm sóc xe máy chuyên nghiệp
+              </div>
+
+              {/* Document Title */}
+              <div className="text-center py-1">
+                <h2 className="text-lg sm:text-xl font-extrabold uppercase tracking-tight text-white print:text-black">
+                  {docTitle}
+                </h2>
+                <p className="text-xs text-zinc-400 print:text-zinc-600 font-mono">
+                  Mã lịch hẹn gốc: #{appt.id}
                 </p>
-                <p className="text-[11px] text-zinc-500 print:text-zinc-600">
-                  Địa chỉ: 123 Nguyễn Văn Cừ, Quận 5, TP. Hồ Chí Minh · Hotline: 1900 6868
-                </p>
               </div>
 
-              <div className="text-left sm:text-right">
-                <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-950/70 border border-emerald-800/60 px-3 py-1 rounded-full uppercase inline-block print:bg-zinc-100 print:text-black print:border-zinc-400">
-                  ✓ ĐÃ HOÀN TẤT & NGHIỆM THU
-                </span>
-                <div className="text-xs font-mono text-zinc-300 print:text-zinc-700 mt-2">
-                  Số HĐ: <strong className="text-white print:text-black font-bold">#HD-DV-{selectedServiceInvoice.id}</strong>
+              {/* Customer & Vehicle Information */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-2xl bg-[#141416] print:bg-zinc-50 border border-zinc-800 print:border-zinc-300 text-xs">
+                <div className="space-y-1.5">
+                  <div className="font-bold text-red-400 print:text-zinc-800 uppercase font-mono tracking-wider text-[11px]">
+                    THÔNG TIN KHÁCH HÀNG
+                  </div>
+                  <div>
+                    <span className="text-zinc-400 print:text-zinc-600">Họ và tên: </span>
+                    <strong className="text-white print:text-black">{appt.hoTenKH || currentCustomer?.hoTen}</strong>
+                  </div>
+                  <div>
+                    <span className="text-zinc-400 print:text-zinc-600">Số điện thoại: </span>
+                    <span className="text-white print:text-black font-mono">{appt.soDienThoai || currentCustomer?.soDienThoai}</span>
+                  </div>
+                  <div>
+                    <span className="text-zinc-400 print:text-zinc-600">Mã khách hàng: </span>
+                    <span className="text-zinc-300 print:text-zinc-700 font-mono">{appt.customerId || currentCustomer?.id}</span>
+                  </div>
                 </div>
-                <div className="text-[11px] text-zinc-400 print:text-zinc-600 font-mono">
-                  Ngày lập: {selectedServiceInvoice.ngayHen}
-                </div>
-              </div>
-            </div>
 
-            {/* Document Title */}
-            <div className="text-center py-1">
-              <h2 className="text-lg sm:text-xl font-extrabold uppercase tracking-tight text-white print:text-black">
-                HÓA ĐƠN DỊCH VỤ & BIÊN BẢN BÀN GIAO
-              </h2>
-              <p className="text-xs text-zinc-400 print:text-zinc-600 font-mono">
-                Mã lịch hẹn gốc: #{selectedServiceInvoice.id}
-              </p>
-            </div>
-
-            {/* Customer & Vehicle Information */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-2xl bg-[#141416] print:bg-zinc-50 border border-zinc-800 print:border-zinc-300 text-xs">
-              <div className="space-y-1.5">
-                <div className="font-bold text-red-400 print:text-zinc-800 uppercase font-mono tracking-wider text-[11px]">
-                  THÔNG TIN KHÁCH HÀNG
-                </div>
-                <div>
-                  <span className="text-zinc-400 print:text-zinc-600">Họ và tên: </span>
-                  <strong className="text-white print:text-black">{selectedServiceInvoice.hoTenKH || currentCustomer?.hoTen}</strong>
-                </div>
-                <div>
-                  <span className="text-zinc-400 print:text-zinc-600">Số điện thoại: </span>
-                  <span className="text-white print:text-black font-mono">{selectedServiceInvoice.soDienThoai || currentCustomer?.soDienThoai}</span>
-                </div>
-                <div>
-                  <span className="text-zinc-400 print:text-zinc-600">Mã khách hàng: </span>
-                  <span className="text-zinc-300 print:text-zinc-700 font-mono">{selectedServiceInvoice.customerId || currentCustomer?.id}</span>
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <div className="font-bold text-blue-400 print:text-zinc-800 uppercase font-mono tracking-wider text-[11px]">
-                  THÔNG TIN PHƯƠNG TIỆN
-                </div>
-                <div>
-                  <span className="text-zinc-400 print:text-zinc-600">Phương tiện: </span>
-                  <strong className="text-white print:text-black">{selectedServiceInvoice.tenXe || 'Xe máy'}</strong>
-                </div>
-                <div>
-                  <span className="text-zinc-400 print:text-zinc-600">Biển số đăng ký: </span>
-                  <strong className="text-white print:text-black font-mono">{selectedServiceInvoice.bienSo || 'Chưa bấm biển'}</strong>
-                </div>
-                {selectedServiceInvoice.soKhungVIN && (
+                <div className="space-y-1.5">
+                  <div className="font-bold text-blue-400 print:text-zinc-800 uppercase font-mono tracking-wider text-[11px]">
+                    THÔNG TIN PHƯƠNG TIỆN
+                  </div>
+                  <div>
+                    <span className="text-zinc-400 print:text-zinc-600">Phương tiện: </span>
+                    <strong className="text-white print:text-black">{displayVehicleName}</strong>
+                  </div>
+                  <div>
+                    <span className="text-zinc-400 print:text-zinc-600">Biển số đăng ký: </span>
+                    <strong className="text-white print:text-black font-mono">{displayBienSo}</strong>
+                  </div>
                   <div>
                     <span className="text-zinc-400 print:text-zinc-600">Số khung (VIN): </span>
-                    <span className="text-zinc-300 print:text-zinc-700 font-mono">{selectedServiceInvoice.soKhungVIN}</span>
+                    <span className="text-zinc-300 print:text-zinc-700 font-mono">{displayVIN}</span>
                   </div>
-                )}
-                {selectedServiceInvoice.soMay && (
                   <div>
                     <span className="text-zinc-400 print:text-zinc-600">Số máy: </span>
-                    <span className="text-zinc-300 print:text-zinc-700 font-mono">{selectedServiceInvoice.soMay}</span>
+                    <span className="text-zinc-300 print:text-zinc-700 font-mono">{displaySoMay}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Service & Work Details Table */}
+              <div className="space-y-2 text-xs">
+                <div className="flex items-center justify-between">
+                  <div className="font-bold text-zinc-300 print:text-zinc-800 uppercase font-mono text-[11px]">
+                    CHI TIẾT HẠNG MỤC DỊCH VỤ & BÀN GIAO
+                  </div>
+                  <div className="text-[11px] text-zinc-400 print:text-zinc-600">
+                    Phụ trách thực hiện: <strong className="text-white print:text-black">{staffRole}</strong>
+                  </div>
+                </div>
+
+                <div className="border border-zinc-800 print:border-zinc-300 rounded-2xl overflow-hidden">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-zinc-900 print:bg-zinc-100 text-zinc-300 print:text-zinc-800 border-b border-zinc-800 print:border-zinc-300 font-mono">
+                        <th className="py-2.5 px-3">STT</th>
+                        <th className="py-2.5 px-3">Nội dung công việc / Vật tư phụ tùng</th>
+                        <th className="py-2.5 px-3 text-center">ĐVT</th>
+                        <th className="py-2.5 px-3 text-center">SL</th>
+                        <th className="py-2.5 px-3 text-right">Đơn giá</th>
+                        <th className="py-2.5 px-3 text-right">Thành tiền</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-800/80 print:divide-zinc-200 text-zinc-200 print:text-zinc-800">
+                      {docItems.map(item => (
+                        <tr key={item.stt}>
+                          <td className="py-2.5 px-3 text-center font-mono">{item.stt}</td>
+                          <td className="py-2.5 px-3">
+                            <div className="font-bold text-white print:text-black">{item.name}</div>
+                            <div className="text-[11px] text-zinc-400 print:text-zinc-600">{item.desc}</div>
+                          </td>
+                          <td className="py-2.5 px-3 text-center">{item.unit}</td>
+                          <td className="py-2.5 px-3 text-center font-mono">{item.qty}</td>
+                          <td className={`py-2.5 px-3 text-right font-mono ${item.isFree ? 'text-emerald-400 print:text-emerald-700' : ''}`}>
+                            {item.priceText}
+                          </td>
+                          <td className={`py-2.5 px-3 text-right font-mono font-bold ${item.isFree ? 'text-emerald-400 print:text-emerald-700' : ''}`}>
+                            {item.totalText}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="bg-zinc-900/60 print:bg-zinc-100 font-bold border-t border-zinc-800 print:border-zinc-300">
+                        <td colSpan={5} className="py-3 px-3 text-right uppercase tracking-wider font-mono">
+                          TỔNG CỘNG THANH TOÁN:
+                        </td>
+                        <td className="py-3 px-3 text-right font-mono text-red-400 print:text-red-700 text-sm">
+                          {totalPaymentText}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+
+                {invoiceNote && (
+                  <div className="p-3 rounded-xl bg-zinc-900/70 border border-zinc-800 text-[11px] text-zinc-300 print:bg-zinc-50 print:border-zinc-300 print:text-zinc-800">
+                    <span className="font-bold text-amber-400 print:text-black">Ghi chú thanh toán / Bàn giao: </span>
+                    {invoiceNote}
                   </div>
                 )}
               </div>
-            </div>
 
-            {/* Service & Work Details Table */}
-            <div className="space-y-2 text-xs">
-              <div className="flex items-center justify-between">
-                <div className="font-bold text-zinc-300 print:text-zinc-800 uppercase font-mono text-[11px]">
-                  CHI TIẾT HẠNG MỤC DỊCH VỤ & BÀN GIAO
+              {/* Signatures for handover */}
+              <div className="grid grid-cols-2 gap-4 pt-4 text-center text-xs print:pt-8">
+                <div className="space-y-10">
+                  <div className="font-bold uppercase text-zinc-300 print:text-zinc-800">{customerSignLabel}</div>
+                  <div className="text-[11px] text-zinc-400 print:text-zinc-600 italic">
+                    (Ký và ghi rõ họ tên)<br />
+                    <strong className="text-white print:text-black not-italic mt-2 block font-medium">
+                      {appt.hoTenKH || currentCustomer?.hoTen}
+                    </strong>
+                  </div>
                 </div>
-                <div className="text-[11px] text-zinc-400 print:text-zinc-600">
-                  KTV thực hiện: <strong className="text-white print:text-black">{selectedServiceInvoice.nhanVienPhuTrach || 'KTV Xưởng Dịch Vụ Motoshop'}</strong>
-                </div>
-              </div>
-
-              <div className="border border-zinc-800 print:border-zinc-300 rounded-2xl overflow-hidden">
-                <table className="w-full text-left text-xs border-collapse">
-                  <thead>
-                    <tr className="bg-zinc-900 print:bg-zinc-100 text-zinc-300 print:text-zinc-800 border-b border-zinc-800 print:border-zinc-300 font-mono">
-                      <th className="py-2.5 px-3">STT</th>
-                      <th className="py-2.5 px-3">Nội dung công việc / Vật tư phụ tùng</th>
-                      <th className="py-2.5 px-3 text-center">ĐVT</th>
-                      <th className="py-2.5 px-3 text-center">SL</th>
-                      <th className="py-2.5 px-3 text-right">Đơn giá</th>
-                      <th className="py-2.5 px-3 text-right">Thành tiền</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-800/80 print:divide-zinc-200 text-zinc-200 print:text-zinc-800">
-                    <tr>
-                      <td className="py-2.5 px-3 text-center font-mono">01</td>
-                      <td className="py-2.5 px-3">
-                        <div className="font-bold text-white print:text-black">
-                          {SVC_LABELS[selectedServiceInvoice.loaiDichVu] || selectedServiceInvoice.loaiDichVu}
-                        </div>
-                        <div className="text-[11px] text-zinc-400 print:text-zinc-600">
-                          {selectedServiceInvoice.ghiChu || 'Kiểm tra tổng quát, vệ sinh và cân chỉnh các bộ phận vận hành an toàn'}
-                        </div>
-                      </td>
-                      <td className="py-2.5 px-3 text-center">Gói</td>
-                      <td className="py-2.5 px-3 text-center font-mono">1</td>
-                      <td className="py-2.5 px-3 text-right font-mono">
-                        {selectedServiceInvoice.loaiDichVu === 'BaoHanh' ? '0 đ' : '200.000 đ'}
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-mono font-bold">
-                        {selectedServiceInvoice.loaiDichVu === 'BaoHanh' ? '0 đ' : '200.000 đ'}
-                      </td>
-                    </tr>
-                    <tr>
-                      <td className="py-2.5 px-3 text-center font-mono">02</td>
-                      <td className="py-2.5 px-3">
-                        <div className="font-bold text-white print:text-black">Dầu nhớt động cơ chính hãng / Vật tư phụ</div>
-                        <div className="text-[11px] text-zinc-400 print:text-zinc-600">
-                          {selectedServiceInvoice.loaiDichVu === 'BaoHanh' ? 'Miễn phí theo chế độ bảo hành xe' : 'Nhớt máy cao cấp 4T Motul / Castrol 0.8L'}
-                        </div>
-                      </td>
-                      <td className="py-2.5 px-3 text-center">Chai</td>
-                      <td className="py-2.5 px-3 text-center font-mono">1</td>
-                      <td className="py-2.5 px-3 text-right font-mono">
-                        {selectedServiceInvoice.loaiDichVu === 'BaoHanh' ? '0 đ' : '150.000 đ'}
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-mono font-bold">
-                        {selectedServiceInvoice.loaiDichVu === 'BaoHanh' ? '0 đ' : '150.000 đ'}
-                      </td>
-                    </tr>
-                    <tr>
-                      <td className="py-2.5 px-3 text-center font-mono">03</td>
-                      <td className="py-2.5 px-3">
-                        <div className="font-bold text-white print:text-black">Kiểm tra áp suất lốp, phanh và rửa xe tiêu chuẩn</div>
-                        <div className="text-[11px] text-zinc-400 print:text-zinc-600">Gói ưu đãi chăm sóc khách hàng Motoshop VIP</div>
-                      </td>
-                      <td className="py-2.5 px-3 text-center">Lần</td>
-                      <td className="py-2.5 px-3 text-center font-mono">1</td>
-                      <td className="py-2.5 px-3 text-right font-mono text-emerald-400 print:text-emerald-700">Miễn phí</td>
-                      <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-400 print:text-emerald-700">0 đ</td>
-                    </tr>
-                  </tbody>
-                  <tfoot>
-                    <tr className="bg-zinc-900/60 print:bg-zinc-100 font-bold border-t border-zinc-800 print:border-zinc-300">
-                      <td colSpan={5} className="py-3 px-3 text-right uppercase tracking-wider font-mono">
-                        TỔNG CỘNG THANH TOÁN:
-                      </td>
-                      <td className="py-3 px-3 text-right font-mono text-red-400 print:text-red-700 text-sm">
-                        {selectedServiceInvoice.loaiDichVu === 'BaoHanh' ? '0 đ' : '350.000 đ'}
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            </div>
-
-            {/* Signatures for handover */}
-            <div className="grid grid-cols-2 gap-4 pt-4 text-center text-xs print:pt-8">
-              <div className="space-y-10">
-                <div className="font-bold uppercase text-zinc-300 print:text-zinc-800">KHÁCH HÀNG NHẬN XE</div>
-                <div className="text-[11px] text-zinc-400 print:text-zinc-600 italic">
-                  (Ký và ghi rõ họ tên)<br />
-                  <strong className="text-white print:text-black not-italic mt-2 block font-medium">
-                    {selectedServiceInvoice.hoTenKH || currentCustomer?.hoTen}
-                  </strong>
+                <div className="space-y-10">
+                  <div className="font-bold uppercase text-zinc-300 print:text-zinc-800">{staffSignLabel}</div>
+                  <div className="text-[11px] text-zinc-400 print:text-zinc-600 italic">
+                    (Ký xác nhận bàn giao)<br />
+                    <strong className="text-white print:text-black not-italic mt-2 block font-medium">
+                      {staffRole}
+                    </strong>
+                  </div>
                 </div>
               </div>
-              <div className="space-y-10">
-                <div className="font-bold uppercase text-zinc-300 print:text-zinc-800">ĐẠI DIỆN TRUNG TÂM DỊCH VỤ</div>
-                <div className="text-[11px] text-zinc-400 print:text-zinc-600 italic">
-                  (Kỹ thuật viên ký xác nhận bàn giao)<br />
-                  <strong className="text-white print:text-black not-italic mt-2 block font-medium">
-                    {selectedServiceInvoice.nhanVienPhuTrach || 'KTV Xưởng Motoshop'}
-                  </strong>
-                </div>
-              </div>
-            </div>
 
-            {/* Actions: In & Đóng */}
-            <div className="pt-4 border-t border-zinc-800 print:border-zinc-300 flex items-center justify-between no-print">
-              <span className="text-[11px] text-zinc-500 italic">
-                * Hóa đơn điện tử có giá trị tra cứu và bảo hành dịch vụ tại toàn bộ hệ thống đại lý.
-              </span>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => window.print()}
-                  className="px-5 py-2.5 rounded-xl text-xs font-bold bg-cyan-700 hover:bg-cyan-600 text-white shadow-lg transition cursor-pointer flex items-center gap-1.5"
-                >
-                  <span>🖨️</span> In hóa đơn / Lưu PDF
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSelectedServiceInvoice(null)}
-                  className="px-5 py-2.5 rounded-xl text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-white transition cursor-pointer"
-                >
-                  Đóng
-                </button>
+              {/* Actions: In & Đóng */}
+              <div className="pt-4 border-t border-zinc-800 print:border-zinc-300 flex items-center justify-between no-print">
+                <span className="text-[11px] text-zinc-500 italic">
+                  * Hóa đơn / Biên bản điện tử có giá trị tra cứu và bảo hành dịch vụ tại toàn bộ hệ thống đại lý.
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => window.print()}
+                    className="px-5 py-2.5 rounded-xl text-xs font-bold bg-cyan-700 hover:bg-cyan-600 text-white shadow-lg transition cursor-pointer flex items-center gap-1.5"
+                  >
+                    <span>🖨️</span> In hóa đơn / Lưu PDF
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedServiceInvoice(null)}
+                    className="px-5 py-2.5 rounded-xl text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-white transition cursor-pointer"
+                  >
+                    Đóng
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ── MODAL: XÁC NHẬN HỦY LỊCH HẸN (LH06) ── */}
       {cancelConfirmAppt && (
