@@ -224,6 +224,43 @@ export default function PartsStore({ currentCustomer, onRequireLogin, onNavigate
     });
   }, []);
 
+  // DG09: Tự động mở chi tiết phụ tùng khi được điều hướng từ mục "Đã đánh giá"
+  useEffect(() => {
+    const checkAndOpenPart = (customId?: string, customName?: string) => {
+      try {
+        const pId = customId || sessionStorage.getItem('crm_view_part_id');
+        const pName = customName || sessionStorage.getItem('crm_view_part_name');
+        if (pId || pName) {
+          sessionStorage.removeItem('crm_view_part_id');
+          sessionStorage.removeItem('crm_view_part_name');
+          const cleanTarget = (pName || '').trim().toLowerCase();
+          const list = rawParts.length > 0 ? rawParts : mockParts;
+          const found = list.find(p =>
+            (pId && (p.id === pId || p.id.toLowerCase() === pId.toLowerCase())) ||
+            (cleanTarget && (
+              p.tenSanPham.toLowerCase() === cleanTarget ||
+              p.tenSanPham.toLowerCase().includes(cleanTarget) ||
+              cleanTarget.includes(p.tenSanPham.toLowerCase())
+            ))
+          );
+          if (found) {
+            setSelectedPart(found);
+            setDetailQty(1);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }
+        }
+      } catch {}
+    };
+
+    checkAndOpenPart();
+
+    const handleViewEvent = (e: any) => {
+      checkAndOpenPart(e.detail?.id, e.detail?.name);
+    };
+    window.addEventListener('crm-view-part', handleViewEvent);
+    return () => window.removeEventListener('crm-view-part', handleViewEvent);
+  }, [rawParts]);
+
   useEffect(() => {
     const handleRefresh = () => setPromoRefreshKey(k => k + 1);
     window.addEventListener('crm-data-refresh', handleRefresh);

@@ -123,6 +123,21 @@ export const showroomVehicles: ShowroomVehicle[] = [
     phanh: 'Tang trống trước & sau',
     hinhAnh: 'https://images.unsplash.com/photo-1558980664-769d59546b3d?w=800&auto=format&fit=crop&q=80',
   },
+  {
+    id: 'XM007',
+    tenXe: 'Honda CBR150R',
+    hang: 'Honda',
+    phanKhuc: 'Côn tay',
+    giaNiemYet: 72290000,
+    mauSac: 'Đỏ đen HRC, Đen nhám thể thao',
+    moTa: 'Sportbike 150cc thuần chất với phuộc trước hành trình ngược Upside Down Showa vàng óng ánh, phanh đĩa ABS 2 kênh và bộ ly hợp chống trượt.',
+    coTheLaiThu: true,
+    dongCo: '149.2cc DOHC 4 van làm mát dung dịch',
+    congSuat: '16.9 HP / 9.000 rpm',
+    tieuHaoNhienLieu: '2.25 L/100km',
+    phanh: 'Đĩa trước & sau, ABS 2 kênh',
+    hinhAnh: '/images/Xe/honda_cbr150r.jpg',
+  },
 
   // ── YAMAHA ──
   {
@@ -1434,6 +1449,63 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
     window.addEventListener('crm-data-refresh', loadVehicles);
     return () => window.removeEventListener('crm-data-refresh', loadVehicles);
   }, []);
+
+  // DG09: Tự động mở chi tiết xe khi được điều hướng từ mục "Đã đánh giá"
+  useEffect(() => {
+    const checkAndOpenVehicle = (customId?: string, customName?: string) => {
+      try {
+        const vName = customName || sessionStorage.getItem('crm_view_vehicle_name');
+        const vId = customId || sessionStorage.getItem('crm_view_vehicle_id');
+        if (vName || vId) {
+          const cleanTarget = (vName || '').trim().toLowerCase();
+          const syncCatalog = catalogVehicleApi.getAllSync();
+          const list: ShowroomVehicle[] = [
+            ...vehicles,
+            ...showroomVehicles,
+            ...syncCatalog.map((d: any) => ({
+              id: d.id,
+              tenXe: d.tenXe,
+              hang: d.hang || 'Honda',
+              phanKhuc: d.phanKhuc || 'Xe côn tay',
+              giaNiemYet: d.giaNiemYet || 0,
+              mauSac: d.mauSac || 'Tiêu chuẩn',
+              moTa: d.moTa || '',
+              hinhAnh: d.hinhAnh || '/images/Xe/honda_cbr150r.jpg',
+              coTheLaiThu: d.coTheLaiThu ?? true,
+              dongCo: d.dongCo || d.loaiDongCo || '150cc',
+              congSuat: d.congSuat || '16.9 HP',
+              tieuHaoNhienLieu: d.tieuHaoNhienLieu || d.tieuThuNhienLieu || '2.25 L/100km',
+              phanh: d.phanh || d.heThongPhanh || 'Đĩa trước & sau'
+            }))
+          ];
+
+          const found = list.find(v =>
+            (vId && (v.id === vId || (v as any).maXe === vId || (v.id.replace(/\D/g, '') && vId.replace(/\D/g, '') && v.id.replace(/\D/g, '') === vId.replace(/\D/g, '')))) ||
+            (cleanTarget && (
+              v.tenXe.toLowerCase() === cleanTarget ||
+              v.tenXe.toLowerCase().includes(cleanTarget) ||
+              cleanTarget.includes(v.tenXe.toLowerCase())
+            ))
+          );
+          if (found) {
+            sessionStorage.removeItem('crm_view_vehicle_name');
+            sessionStorage.removeItem('crm_view_vehicle_id');
+            setDetailVehicle(found);
+            setActiveModalTab('specs');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }
+        }
+      } catch {}
+    };
+
+    checkAndOpenVehicle();
+
+    const handleViewEvent = (e: any) => {
+      checkAndOpenVehicle(e.detail?.id, e.detail?.name);
+    };
+    window.addEventListener('crm-view-vehicle', handleViewEvent);
+    return () => window.removeEventListener('crm-view-vehicle', handleViewEvent);
+  }, [vehicles]);
 
   // Local reviews state so user can add a review dynamically (ĐG04, ĐG05)
   const [allReviews, setAllReviews] = useState<ProductReview[]>([...mockProductReviews]);
