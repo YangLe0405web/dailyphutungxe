@@ -3586,6 +3586,12 @@ export const appointmentApi = {
         title = `⚠️ Lịch hẹn #${appt.id} không thể tiếp nhận`;
         msg = lyDoTuChoi ? `Lý do: ${lyDoTuChoi}` : 'Đại lý chưa thể tiếp nhận lịch hẹn trong khung giờ này.';
         icon = '⚠️';
+      } else if (status === 'DaHuy') {
+        title = `❌ Lịch hẹn #${appt.id} đã bị hủy`;
+        msg = lyDoTuChoi 
+          ? `Lịch hẹn ${appt.loaiDichVu} xe ${appt.tenXe} ngày ${appt.ngayHen} lúc ${appt.gioHen} đã bị hủy. Lý do: ${lyDoTuChoi}`
+          : `Lịch hẹn ${appt.loaiDichVu} xe ${appt.tenXe} ngày ${appt.ngayHen} lúc ${appt.gioHen} của quý khách đã bị hủy bởi nhân viên showroom.`;
+        icon = '❌';
       }
       addCustomerNotification({
         customerId: appt.customerId,
@@ -3597,6 +3603,14 @@ export const appointmentApi = {
         tab: 'appts',
         targetId: appt.id,
       });
+
+      // Phát sự kiện toàn cục để trang người dùng cập nhật thông báo và lịch hẹn ngay lập tức
+      window.dispatchEvent(new CustomEvent('crm-customer-notification', {
+        detail: { customerId: appt.customerId, apptId: appt.id, status }
+      }));
+      window.dispatchEvent(new CustomEvent('crm-data-refresh', {
+        detail: { type: 'appointment_updated', id: appt.id, status }
+      }));
 
       // Tự động tạo bài khảo sát tương ứng theo dịch vụ khi hoàn tất (Lái thử / Bảo dưỡng / Nhận xe)
       if (status === 'DaHoanThanh') {

@@ -3672,3 +3672,32 @@ pm run build thành công 100% trong 1.41s, **0 lỗi TypeScript**.
   - Đã lập kịch bản test tại artifact [`kich-ban-test-chi-tiet-loi-59.md`](file:///C:/Users/Admin/.gemini/antigravity/brain/019adbaa-9450-4164-a94d-d26888060570/kich-ban-test-chi-tiet-loi-59.md).
   - Tuyệt đối không chạy `git push` lên GitHub.
 
+
+---
+
+### 60. Tối ưu Đặt lịch hẹn lái thử xe, thông báo hủy lịch từ Admin & Sắp xếp Calendar Khách hàng
+* **Thời gian thực hiện:** 31/10/2026.
+* **Người yêu cầu:** Người dùng kiểm tra các phân hệ ĐẶT LỊCH HẸN - NGƯỜI DÙNG.
+* **Phân tích vấn đề:**
+  1. **Lịch hẹn lái thử xe:** Khi một tài khoản đã chọn đặt slot lái thử xe, hệ thống khóa đỏ slot khiến mọi tài khoản khác không thể đặt slot đó cho chiếc xe đó. Ngoài ra khi 1 người đặt trùng nhiều giờ cho cùng 1 xe trong ngày chưa có thông báo hỏi xác nhận.
+  2. **Thông báo hủy lịch từ Admin:** Khi Admin hủy lịch hẹn của khách, khách hàng không nhận được thông báo chuông và lịch hẹn bị ẩn mất hoàn toàn khỏi tab Lịch hẹn của khách thay vì hiển thị thẻ "Đã hủy" và lý do hủy.
+  3. **Banner nhắc hẹn:** Lời nhắc cuộc hẹn sắp tới ở trang chủ khách hàng bị xếp theo thứ tự ngược (ngày xa nhất lại hiện trước).
+  4. **Lịch biểu Calendar:** Các cuộc hẹn trong cùng một ngày ở cả ô lịch lẫn danh sách bên phải chưa được sắp xếp tăng dần theo giờ hẹn. Khách click vào badge lịch hẹn trên ô Calendar không xem được modal chi tiết.
+* **Giải pháp & Các file đã chỉnh sửa:**
+  1. [`crm-frontend/src/pages/customer/ServiceBooking.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/ServiceBooking.tsx):
+     - Hàm `isSlotBookedForVehicle`: Cho phép dịch vụ lái thử (`svc === 'LaiThu'`) luôn mở mọi slot cho các tài khoản khác nhau lựa chọn.
+     - `handleSubmitBooking`: Kiểm tra trùng lặp lịch lái thử:
+       * Cùng tài khoản, cùng xe, cùng ngày, cùng giờ: Báo lỗi không cho đặt trùng.
+       * Cùng tài khoản, cùng xe, cùng ngày, khác giờ: Mở Modal xác nhận (`duplicateConfirmModal`) hỏi: *"Bạn đã đặt lịch lái thử xe này vào lúc [giờ] cùng ngày. Bạn có chắc chắn muốn đặt thêm lịch không?"*. Có nút "Hủy" và "Tiếp tục".
+  2. [`crm-frontend/src/services/api.ts`](file:///d:/crm-project/crm-frontend/src/services/api.ts) & [`Appointments.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/Appointments.tsx):
+     - Khi Admin hủy lịch: Bổ sung gọi `addCustomerNotification` tạo thông báo `❌ Lịch hẹn #[ID] đã bị hủy` kèm lý do hủy cụ thể; phát `crm-customer-notification` và `crm-data-refresh`.
+  3. [`crm-frontend/src/pages/customer/CustomerDashboard.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/CustomerDashboard.tsx):
+     - Banner `upcomingAppts`: Sắp xếp tăng dần theo thời gian (`dtA.localeCompare(dtB)`), đưa cuộc hẹn sắp tới gần nhất lên đầu banner.
+     - Tab 2 Lịch hẹn: Loại bỏ điều kiện lọc ẩn `DaHuy` và `TuChoi`, hiển thị badge trạng thái "ĐÃ HỦY" cùng box lý do hủy.
+     - Ô ngày trên Lịch biểu (`dayAppts`): Sắp xếp tăng dần theo `gioHen`; click trực tiếp vào badge cuộc hẹn mở modal xem chi tiết (`setSelectedApptDetail(appt)`).
+     - Danh sách ngày bên phải (`displayedAppts`): Sắp xếp tăng dần theo ngày & giờ; click thẻ để xem chi tiết.
+* **Quy tắc vận hành mới:**
+  - Hỗ trợ lệnh kích hoạt nhanh `.github --update`: Tự động commit, push mã nguồn lên branch `develop` và cập nhật tag `backup-stable-checkpoint`.
+* **Kết quả nghiệm thu:**
+  - Build frontend: 0 lỗi.
+  - Tạo kịch bản kiểm thử chi tiết tại artifact `kich-ban-test-chi-tiet-loi-60.md`.

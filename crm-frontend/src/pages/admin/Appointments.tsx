@@ -581,8 +581,15 @@ export default function AppointmentsPage({
       alert(check.message);
       return;
     }
-    updateApptStatus(cancelModalAppt.id, 'DaHuy', cancelReasonInput.trim() || 'Hủy lịch', 'Khách hàng / Admin', cancelReasonInput.trim());
+    const cancelReason = cancelReasonInput.trim() || 'Nhân viên showroom hủy lịch';
+    updateApptStatus(cancelModalAppt.id, 'DaHuy', cancelReason, 'Nhân viên Showroom', cancelReason);
     setCancelModalAppt(null);
+
+    // Đồng bộ tức thì thông báo sang trang người dùng
+    window.dispatchEvent(new CustomEvent('crm-customer-notification', {
+      detail: { customerId: cancelModalAppt.customerId, apptId: cancelModalAppt.id, status: 'DaHuy' }
+    }));
+    window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'appointment_updated' } }));
   }
 
   function handleConfirmReject() {

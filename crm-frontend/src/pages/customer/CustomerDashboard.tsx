@@ -2030,17 +2030,23 @@ export default function CustomerDashboard({
     return finalList;
   }, [allAppts, currentCustomer, myOrders]);
 
-  // Upcoming appointments (LH14)
+  // Upcoming appointments (LH14) - Tự động sắp xếp theo thời gian tăng dần, lịch gần nhất lên đầu
   const upcomingAppts = useMemo(() => {
     const todayStr = new Date().toISOString().split('T')[0];
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
     const tomorrowStr = tomorrow.toISOString().split('T')[0];
 
-    return myAppts.filter(a =>
+    const upcoming = myAppts.filter(a =>
       (a.trangThai === 'ChoXacNhan' || a.trangThai === 'DaXacNhan' || a.trangThai === 'ChoDuyet') &&
-      (a.ngayHen === todayStr || a.ngayHen === tomorrowStr)
+      (a.ngayHen === todayStr || a.ngayHen === tomorrowStr || a.ngayHen >= todayStr)
     );
+
+    return upcoming.sort((a, b) => {
+      const dtA = `${a.ngayHen || ''} ${a.gioHen || '00:00'}`;
+      const dtB = `${b.ngayHen || ''} ${b.gioHen || '00:00'}`;
+      return dtA.localeCompare(dtB);
+    });
   }, [myAppts]);
 
   // Tự động đồng bộ bài khảo sát cho các đơn xe hoặc dịch vụ đã hoàn thành nếu chưa có bài khảo sát
@@ -3650,7 +3656,7 @@ export default function CustomerDashboard({
                               if (!norm) return false;
                               const [y, m, d] = norm.split('-').map(v => parseInt(v, 10));
                               return y === calYear && m === (calMonth + 1) && d === day;
-                            });
+                            }).sort((a, b) => (a.gioHen || '00:00').localeCompare(b.gioHen || '00:00'));
                             const hasAppt = dayAppts.length > 0;
                             const hasActiveAppt = dayAppts.some(a => a.trangThai === 'DaXacNhan' || (a.loaiDichVu === 'NhanXe' && a.trangThai !== 'DaHoanThanh' && a.trangThai !== 'HoanThanh'));
                             const isSelected = selectedCalendarDay === day;
@@ -3706,8 +3712,12 @@ export default function CustomerDashboard({
                                         return (
                                           <div
                                             key={appt.id}
-                                            title={`${isDone ? '[ĐÃ HOÀN TẤT] ' : ''}${shortLabel} lúc ${appt.gioHen || '08:30'} - ${appt.tenXe || ''}`}
-                                            className={`text-[9px] sm:text-[10px] font-mono px-1 py-0.5 rounded border truncate text-center leading-tight shadow-2xs ${badgeClass}`}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setSelectedApptDetail(appt);
+                                            }}
+                                            title={`${isDone ? '[ĐÃ HOÀN TẤT] ' : ''}${shortLabel} lúc ${appt.gioHen || '08:30'} - ${appt.tenXe || ''} (Bấm để xem chi tiết)`}
+                                            className={`text-[9px] sm:text-[10px] font-mono px-1 py-0.5 rounded border truncate text-center leading-tight shadow-2xs hover:scale-105 transition cursor-pointer ${badgeClass}`}
                                           >
                                             {isDone ? `✓ ${shortLabel}` : `${shortLabel} - ${appt.gioHen || '08:30'}`}
                                           </div>
@@ -3740,8 +3750,12 @@ export default function CustomerDashboard({
                                           return (
                                             <div
                                               key={appt.id}
-                                              title={`${isDone ? '[ĐÃ HOÀN TẤT] ' : ''}${shortLabel} lúc ${appt.gioHen || '08:30'} - ${appt.tenXe || ''}`}
-                                              className={`text-[9px] sm:text-[10px] font-mono px-1 py-0.5 rounded border truncate text-center leading-tight shadow-2xs ${badgeClass}`}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setSelectedApptDetail(appt);
+                                              }}
+                                              title={`${isDone ? '[ĐÃ HOÀN TẤT] ' : ''}${shortLabel} lúc ${appt.gioHen || '08:30'} - ${appt.tenXe || ''} (Bấm để xem chi tiết)`}
+                                              className={`text-[9px] sm:text-[10px] font-mono px-1 py-0.5 rounded border truncate text-center leading-tight shadow-2xs hover:scale-105 transition cursor-pointer ${badgeClass}`}
                                             >
                                               {isDone ? `✓ ${shortLabel}` : `${shortLabel} - ${appt.gioHen || '08:30'}`}
                                             </div>
@@ -3749,10 +3763,14 @@ export default function CustomerDashboard({
                                         })()}
                                         {/* Gôm lại thành tổng số lịch */}
                                         <div
-                                          className="text-[9px] sm:text-[10px] font-mono font-bold px-1 py-0.5 rounded bg-zinc-800/90 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-center leading-tight shadow-2xs"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setSelectedCalendarDay(day);
+                                          }}
+                                          className="text-[9px] sm:text-[10px] font-mono font-bold px-1 py-0.5 rounded bg-zinc-800/90 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-center leading-tight shadow-2xs cursor-pointer hover:text-white transition"
                                           title={`Ngày ${day} có tổng cộng ${dayAppts.length} lịch hẹn. Nhấp để xem danh sách chi tiết ở bảng bên phải.`}
                                         >
-                                          +${dayAppts.length - 1} lịch khác
+                                          +{dayAppts.length - 1} lịch khác
                                         </div>
                                       </>
                                     )}
@@ -3793,14 +3811,19 @@ export default function CustomerDashboard({
                         const validAppts = myAppts.filter(a => a.trangThai !== 'DaHuy' && a.trangThai !== 'TuChoi');
                         const calYear = customerCalDate.getFullYear();
                         const calMonth = customerCalDate.getMonth();
-                        const displayedAppts = selectedCalendarDay !== null
+                        const displayedAppts = (selectedCalendarDay !== null
                           ? validAppts.filter(a => {
                               const norm = normalizeDateStr(a.ngayHen);
                               if (!norm) return false;
                               const [y, m, d] = norm.split('-').map(v => parseInt(v, 10));
                               return y === calYear && m === (calMonth + 1) && d === selectedCalendarDay;
                             })
-                          : validAppts;
+                          : validAppts
+                        ).sort((a, b) => {
+                          const dtA = `${a.ngayHen || ''} ${a.gioHen || '00:00'}`;
+                          const dtB = `${b.ngayHen || ''} ${b.gioHen || '00:00'}`;
+                          return dtA.localeCompare(dtB);
+                        });
 
                         if (displayedAppts.length === 0) {
                           return (
@@ -3843,7 +3866,11 @@ export default function CustomerDashboard({
                               const canCancel = (a.trangThai === 'ChoXacNhan' || a.trangThai === 'DaXacNhan') && hoursLeft >= 48;
 
                               return (
-                                <div key={a.id} className="p-4 rounded-2xl bg-[#18181b] border border-zinc-800 text-xs space-y-2.5 shadow-sm">
+                                <div
+                                  key={a.id}
+                                  onClick={() => setSelectedApptDetail(a)}
+                                  className="p-4 rounded-2xl bg-[#18181b] hover:bg-[#1f1f24] border border-zinc-800 hover:border-zinc-700 text-xs space-y-2.5 shadow-sm transition cursor-pointer group"
+                                >
                                   <div className="flex items-center justify-between">
                                     <span className="font-black text-red-500 text-sm tracking-wide uppercase">
                                       {title}
@@ -3897,7 +3924,10 @@ export default function CustomerDashboard({
                                   <div className="pt-2 border-t border-zinc-800/80 flex items-center gap-2 flex-wrap">
                                     <button
                                       type="button"
-                                      onClick={() => setSelectedApptDetail(a)}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedApptDetail(a);
+                                      }}
                                       className="px-3 py-1.5 rounded-xl text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-white transition cursor-pointer flex items-center gap-1.5 border border-zinc-700"
                                     >
                                       <span>👁</span> Xem chi tiết
@@ -3905,7 +3935,10 @@ export default function CustomerDashboard({
 
                                     <button
                                       type="button"
-                                      onClick={() => setContactModalAppt(a)}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setContactModalAppt(a);
+                                      }}
                                       className={`px-3 py-1.5 rounded-xl text-xs font-bold text-white transition cursor-pointer flex items-center gap-1.5 ${
                                         isLaiThu ? 'bg-red-700 hover:bg-red-800' : 'bg-cyan-800 hover:bg-cyan-700'
                                       }`}
@@ -3916,7 +3949,8 @@ export default function CustomerDashboard({
                                     {a.trangThai !== 'DaHuy' && a.trangThai !== 'TuChoi' && (
                                       <button
                                         type="button"
-                                        onClick={() => {
+                                        onClick={(e) => {
+                                          e.stopPropagation();
                                           if (!canCancel) {
                                             alert('Chỉ được tự hủy lịch trước giờ hẹn ít nhất 48 tiếng. Vui lòng liên hệ Hotline 1900 6868 để được nhân viên hỗ trợ trực tiếp.');
                                             return;
@@ -3946,14 +3980,18 @@ export default function CustomerDashboard({
                   <div className="space-y-4">
                     {(() => {
                       const filtered = myAppts.filter(a => {
-                        // Loại trừ các lịch đã hoàn tất hoặc đã hủy/từ chối khỏi Tab 2 Lịch hẹn
-                        if (a.trangThai === 'DaHoanThanh' || a.trangThai === 'HoanThanh' || a.trangThai === 'DaHuy' || a.trangThai === 'TuChoi') return false;
+                        // Loại trừ các lịch đã hoàn tất khỏi Tab 2 Lịch hẹn (Lịch đã hủy và từ chối vẫn hiển thị rõ ràng trên trang người dùng)
+                        if (a.trangThai === 'DaHoanThanh' || a.trangThai === 'HoanThanh') return false;
                         if (apptsSubTab === 'NhanXe' && a.loaiDichVu !== 'NhanXe') return false;
                         if (apptsSubTab === 'SuaChua' && a.loaiDichVu !== 'SuaChua') return false;
                         if (apptsSubTab === 'BaoDuong' && a.loaiDichVu !== 'BaoDuong') return false;
                         if (apptsSubTab === 'LaiThu' && a.loaiDichVu !== 'LaiThu') return false;
                         if (apptsSubTab === 'BaoHanh' && a.loaiDichVu !== 'BaoHanh') return false;
                         return true;
+                      }).sort((a, b) => {
+                        const dtA = `${a.ngayHen || ''} ${a.gioHen || '00:00'}`;
+                        const dtB = `${b.ngayHen || ''} ${b.gioHen || '00:00'}`;
+                        return dtA.localeCompare(dtB);
                       });
 
                       if (filtered.length === 0) {
@@ -4004,6 +4042,18 @@ export default function CustomerDashboard({
                                     </div>
                                     <div className="mt-0.5 text-rose-200/90 pl-5 font-medium">
                                       {appt.lyDoTuChoi || 'Cửa hàng không thể tiếp nhận trong khung giờ này hoặc dịch vụ tạm ngưng.'}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Hiển thị lý do hủy nếu lịch hẹn đã bị nhân viên hủy */}
+                                {appt.trangThai === 'DaHuy' && (
+                                  <div className="p-2.5 rounded-xl bg-zinc-900 border border-zinc-700/80 text-xs text-zinc-300 space-y-1">
+                                    <div className="font-bold text-red-400 flex items-center gap-1.5 font-mono uppercase">
+                                      <span>❌</span> Trạng thái: Lịch hẹn đã bị hủy
+                                    </div>
+                                    <div className="text-zinc-400 pl-5">
+                                      Lý do: <span className="text-zinc-200 font-medium">{appt.lyDoTuChoi || 'Nhân viên showroom đã hủy lịch hẹn này'}</span>
                                     </div>
                                   </div>
                                 )}
