@@ -35,6 +35,7 @@ import {
   type Feedback,
   type Part,
   mockParts,
+  getVehicleCatalogImage,
 } from '../../data/mockData';
 import {
   customerApi,
@@ -76,6 +77,7 @@ const SVC_LABELS: Record<string, string> = {
   SuaChua: 'Sửa chữa',
   LaiThu: 'Lái thử xe',
   BaoHanh: 'Bảo hành',
+  GiaHanBaoHanh: 'Gia hạn bảo hành',
   NhanXe: 'Nhận xe mới',
 };
 
@@ -163,12 +165,23 @@ function DynamicSurveyTab({
       if (s.startDate && new Date(s.startDate).getTime() > now) return false;
 
       const cNum = parseInt(customer.id.replace(/\D/g, ''), 10);
+      const hasSpecificTargetList = s.targetCustomerIds && s.targetCustomerIds.length > 0;
       const isTargetedToMe =
         (s.targetCustomerId && s.targetCustomerId !== 'ALL' && (s.targetCustomerId === customer.id || (!isNaN(cNum) && parseInt(s.targetCustomerId.replace(/\D/g, ''), 10) === cNum))) ||
-        (s.targetCustomerIds && s.targetCustomerIds.some(id => id === customer.id || (!isNaN(cNum) && parseInt(id.replace(/\D/g, ''), 10) === cNum)));
+        (hasSpecificTargetList && (s.targetCustomerIds || []).some(id => id === customer.id || (!isNaN(cNum) && parseInt(id.replace(/\D/g, ''), 10) === cNum)));
 
       if (isTargetedToMe) {
         return true;
+      }
+
+      // CÁCH LY TRIỆT ĐỂ: Nếu bài khảo sát đã chỉ định danh sách khách hàng cụ thể mà mình không thuộc danh sách -> KHÔNG HIỂN THỊ
+      if (hasSpecificTargetList) {
+        return false;
+      }
+
+      // Nếu bài khảo sát nhắm đích danh một customerId cụ thể khác -> KHÔNG HIỂN THỊ
+      if (s.targetCustomerId && s.targetCustomerId !== 'ALL' && s.targetCustomerId !== customer.id) {
+        return false;
       }
 
       if (s.targetCustomerId === 'ALL' || !s.targetCustomerId) {
@@ -1191,23 +1204,30 @@ export default function CustomerDashboard({
       }, 60);
     } else {
       // 2. Xe máy
-      const rawBikeName = f.productName || f.xeDangDung || 'Honda SH 160i ABS';
-      const cleanBike = rawBikeName.trim().toLowerCase();
+      const rawBikeName = (f.productName || f.xeDangDung || '').replace(/\s*\([^)]*\)/g, '').trim();
+      const cleanBike = rawBikeName.toLowerCase();
       const allVehicles = [
         ...showroomVehicles,
         ...catalogVehicleApi.getAllSync()
       ];
-      const matchedVehicle = allVehicles.find(v =>
-        (f.productId && (v.id === f.productId || (v as any).maXe === f.productId || (v.id.replace(/\D/g, '') && f.productId.replace(/\D/g, '') && v.id.replace(/\D/g, '') === f.productId.replace(/\D/g, '')))) ||
-        (cleanBike && (
-          v.tenXe.toLowerCase() === cleanBike ||
-          v.tenXe.toLowerCase().includes(cleanBike) ||
-          cleanBike.includes(v.tenXe.toLowerCase())
-        ))
-      );
 
-      const vehicleName = matchedVehicle?.tenXe || rawBikeName;
-      const vehicleId = matchedVehicle?.id || f.productId || '';
+      // 1. ƯU TIÊN CAO NHẤT: Khớp theo tên xe để đảm bảo luôn nhảy đúng mẫu xe đã đánh giá
+      let matchedVehicle = cleanBike
+        ? allVehicles.find(v => v.tenXe.toLowerCase().trim() === cleanBike) ||
+          allVehicles.find(v => {
+            const vNameClean = v.tenXe.toLowerCase().replace(/abs|cbs|smartkey|2024|2025|2026|\(|\)/gi, '').trim();
+            const targetClean = cleanBike.replace(/abs|cbs|smartkey|2024|2025|2026|\(|\)/gi, '').trim();
+            return vNameClean === targetClean || v.tenXe.toLowerCase().includes(targetClean) || targetClean.includes(vNameClean);
+          })
+        : undefined;
+
+      // 2. Nếu không tìm được theo tên, mới tìm theo ID chính xác (tuyệt đối không so sánh lỏng lẻo bằng replace(/\D/g, ''))
+      if (!matchedVehicle && f.productId) {
+        matchedVehicle = allVehicles.find(v => v.id === f.productId || (v as any).maXe === f.productId);
+      }
+
+      const vehicleName = matchedVehicle?.tenXe || rawBikeName || 'Xe máy chính hãng';
+      const vehicleId = matchedVehicle?.id || '';
 
       try {
         sessionStorage.setItem('crm_view_vehicle_name', vehicleName);
@@ -1373,7 +1393,7 @@ export default function CustomerDashboard({
   const [orderTimeFilter, setOrderTimeFilter] = useState<string>('30days');
 
   const [apptsSubTab, setApptsSubTab] = useState<'Tong' | 'NhanXe' | 'SuaChua' | 'BaoDuong' | 'LaiThu' | 'BaoHanh'>('Tong');
-  const [serviceHistSubTab, setServiceHistSubTab] = useState<'TatCa' | 'BaoDuong' | 'SuaChua' | 'LaiThu' | 'BaoHanh' | 'NhanXe'>('TatCa');
+  const [serviceHistSubTab, setServiceHistSubTab] = useState<'TatCa' | 'BaoDuong' | 'SuaChua' | 'LaiThu' | 'BaoHanh' | 'GiaHanBaoHanh' | 'NhanXe'>('TatCa');
   const [serviceSearch, setServiceSearch] = useState('');
 
   const [surveySubTab, setSurveySubTab] = useState<'ChoDanhGia' | 'DaDanhGia' | 'KhaoSatHeThong'>('ChoDanhGia');
@@ -1652,35 +1672,6 @@ export default function CustomerDashboard({
         const custPhone = currentCustomer.soDienThoai ? currentCustomer.soDienThoai.replace(/\D/g, '') : '';
         // Lấy danh sách các đơn hàng xe của khách hàng này để kiểm tra tiến trình bàn giao
         const curOrders = orderApi.getAllSync();
-        const pendingVehicleOrders = curOrders.filter(o => {
-          const oCustNum = parseInt(o.customerId.replace(/\D/g, ''), 10);
-          const matchCust = o.customerId === currentCustomer.id || (!isNaN(cIdNum) && !isNaN(oCustNum) && cIdNum === oCustNum);
-          const isXeOrder = o.loaiDon === 'Xe' || !!o.thongTinXe || (o.id && o.id.includes('XE'));
-          return matchCust && isXeOrder && o.trangThai !== 'HoanThanh' && o.trangThai !== 'DaGiao';
-        });
-
-        // Tự động dọn dẹp khỏi cache crm_customer_vehicles nếu xe của đơn chưa hoàn thành bị lọt vào
-        if (pendingVehicleOrders.length > 0) {
-          try {
-            const rawV = localStorage.getItem('crm_customer_vehicles');
-            if (rawV) {
-              const vAll: Vehicle[] = JSON.parse(rawV);
-              const cleaned = vAll.filter(cv => {
-                const isBad = pendingVehicleOrders.some(pOrd => {
-                  const matchCust = cv.customerId === pOrd.customerId || parseInt(cv.customerId.replace(/\D/g, ''), 10) === parseInt(pOrd.customerId.replace(/\D/g, ''), 10);
-                  const vinMatch = pOrd.thongTinXe?.soKhungVIN && cv.soKhung && pOrd.thongTinXe.soKhungVIN === cv.soKhung;
-                  const nameMatch = pOrd.thongTinXe?.tenXe && (cv.tenXe || '').toLowerCase().trim() === pOrd.thongTinXe.tenXe.toLowerCase().trim();
-                  const isChuaCoBien = !cv.bienSo || cv.bienSo === 'Chưa có biển số' || cv.bienSo.includes('Chưa có') || cv.bienSo.startsWith('TAM-');
-                  return matchCust && (vinMatch || (nameMatch && isChuaCoBien));
-                });
-                return !isBad;
-              });
-              if (cleaned.length !== vAll.length) {
-                localStorage.setItem('crm_customer_vehicles', JSON.stringify(cleaned));
-              }
-            }
-          } catch {}
-        }
 
         let vList = data.filter(v => {
           const plate = (v.bienSo || v.bienSoChoDuyet || '').toUpperCase();
@@ -1694,20 +1685,69 @@ export default function CustomerDashboard({
           if (!isNaN(cIdNum) && !isNaN(vNum) && cIdNum === vNum) belongsToCustomer = true;
           if (currentCustomer.soXe && currentCustomer.soXe === v.id) belongsToCustomer = true;
           if (custPhone && (v as any).soDienThoai && (v as any).soDienThoai.replace(/\D/g, '') === custPhone) belongsToCustomer = true;
-          if (!belongsToCustomer) return false;
+          return belongsToCustomer;
+        });
 
-          // QUY TẮC BẢO VỆ: Nếu xe thuộc đơn mua trực tuyến nhưng đơn đó CHƯA HOÀN THÀNH (đang Chờ duyệt / Chờ giao xe / Đã hủy) -> ẨN KHỎI "Phương tiện của tôi"
-          if (v.nguonGoc === 'CuaHang') {
-            const isUnfinishedOrderBike = pendingVehicleOrders.some(pOrd => {
-              const vinMatch = pOrd.thongTinXe?.soKhungVIN && v.soKhung && pOrd.thongTinXe.soKhungVIN === v.soKhung;
-              const nameMatch = pOrd.thongTinXe?.tenXe && (v.tenXe || '').toLowerCase().trim() === pOrd.thongTinXe.tenXe.toLowerCase().trim();
-              const isChuaCoBien = !v.bienSo || v.bienSo === 'Chưa có biển số' || v.bienSo.includes('Chưa có') || v.bienSo.startsWith('TAM-');
-              return vinMatch || (nameMatch && isChuaCoBien);
-            });
-            if (isUnfinishedOrderBike) return false;
+        // Tự động đồng bộ các xe đã mua từ đơn hàng thành công của khách vào danh sách phương tiện sở hữu
+        const myVehicleOrders = curOrders.filter(o => {
+          const oCustNum = parseInt(o.customerId.replace(/\D/g, ''), 10);
+          const matchCust = o.customerId === currentCustomer.id || (!isNaN(cIdNum) && !isNaN(oCustNum) && cIdNum === oCustNum) || (custPhone && o.soDienThoai && o.soDienThoai.replace(/\D/g, '') === custPhone);
+          const isXeOrder = o.loaiDon === 'Xe' || !!o.thongTinXe || (o.id && o.id.includes('XE')) || (!o.items?.length && o.tongTien >= 10000000);
+          return matchCust && isXeOrder && o.trangThai !== 'DaHuy';
+        });
+
+        myVehicleOrders.forEach(o => {
+          const vName = o.thongTinXe?.tenXe || 'Xe máy chính hãng';
+          const vin = o.thongTinXe?.soKhungVIN || '';
+          const already = vList.some(v => {
+            if (vin && v.soKhung && v.soKhung.trim().toUpperCase() === vin.trim().toUpperCase()) return true;
+            const matchName = (v.tenXe || '').toLowerCase().trim() === vName.toLowerCase().trim();
+            const matchOrder = (v as any).orderId === o.id || v.id.includes(o.id.replace(/\D/g, ''));
+            return matchOrder || matchName;
+          });
+
+          if (!already) {
+            const isCompleted = o.trangThai === 'HoanThanh' || o.trangThai === 'DaGiao';
+            const brand = vName.includes('Yamaha') ? 'Yamaha' : vName.includes('Suzuki') ? 'Suzuki' : vName.includes('SYM') ? 'SYM' : 'Honda';
+            const catalogMatch = catalogVehicleApi.getAllSync().find(cv => cv.tenXe.toLowerCase().includes(vName.toLowerCase()) || vName.toLowerCase().includes(cv.tenXe.toLowerCase()));
+            const fallbackImg = getVehicleCatalogImage(vName, '');
+            const vehImg = o.thongTinXe?.hinhAnh || catalogMatch?.hinhAnh || fallbackImg;
+            const plateStr = o.thongTinXe?.bienSo && o.thongTinXe.bienSo !== 'Chưa có biển số' && !o.thongTinXe.bienSo.includes('Chưa có')
+              ? o.thongTinXe.bienSo
+              : isCompleted
+              ? '59-K1 888.88'
+              : 'Chưa có biển số';
+
+            const newVehFromOrder: Vehicle = {
+              id: `XE-${o.id}`,
+              customerId: currentCustomer.id,
+              tenXe: vName,
+              hangXe: brand,
+              bienSo: plateStr,
+              namSanXuat: new Date().getFullYear(),
+              ngayMua: o.ngayDat ? o.ngayDat.split('T')[0] : new Date().toISOString().split('T')[0],
+              hanBaoHanh: new Date(Date.now() + 3 * 365 * 24 * 3600 * 1000).toISOString().split('T')[0],
+              mauSac: o.thongTinXe?.mauSac || 'Tiêu chuẩn',
+              trangThaiBaoHanh: 'ConHan',
+              nguonGoc: 'CuaHang',
+              soKhung: vin || (`RLHKD160CB${o.id.replace(/\D/g, '').padEnd(7, '0').slice(0, 7)}`),
+              soMay: o.thongTinXe?.soMay || (`KF12E-${o.id.replace(/\D/g, '').padEnd(7, '8').slice(0, 7)}`),
+              trangThaiDuyet: 'DaDuyet',
+              hinhAnh: vehImg,
+            };
+
+            vList.unshift(newVehFromOrder);
+
+            // Lưu vào cache crm_customer_vehicles để duy trì bền vững
+            try {
+              const cachedV = localStorage.getItem('crm_customer_vehicles');
+              const allCustVehs: Vehicle[] = cachedV ? JSON.parse(cachedV) : [];
+              if (!allCustVehs.some(v => v.id === newVehFromOrder.id || (vin && v.soKhung === vin))) {
+                allCustVehs.unshift(newVehFromOrder);
+                localStorage.setItem('crm_customer_vehicles', JSON.stringify(allCustVehs));
+              }
+            } catch {}
           }
-
-          return true;
         });
 
         // Chống hiển thị trùng lặp phương tiện của khách hàng (deduplication)
@@ -1798,13 +1838,19 @@ export default function CustomerDashboard({
 
     feedbackApi.getAll().then(allFb => {
       if (allFb) {
-        const cIdNum = parseInt(currentCustomer.id.replace(/\D/g, ''), 10);
+        const custId = currentCustomer.id;
+        const cIdNum = parseInt(custId.replace(/\D/g, ''), 10);
         const custPhone = currentCustomer.soDienThoai ? currentCustomer.soDienThoai.replace(/\D/g, '') : '';
+        const isMockCust1 = custId === 'KH001';
+
         const myFb = allFb.filter(f => {
-          if (f.customerId === currentCustomer.id) return true;
+          if (f.customerId === custId) return true;
           const fNum = parseInt((f.customerId || '').replace(/\D/g, ''), 10);
-          if (!isNaN(cIdNum) && !isNaN(fNum) && cIdNum === fNum) return true;
-          if (custPhone && f.soDienThoai && f.soDienThoai.replace(/\D/g, '') === custPhone) return true;
+          if (!isNaN(cIdNum) && !isNaN(fNum) && cIdNum === fNum) {
+            if (cIdNum === 1 && !isMockCust1) return false;
+            return true;
+          }
+          if (custPhone && custPhone !== '0901234567' && f.soDienThoai && f.soDienThoai.replace(/\D/g, '') === custPhone) return true;
           return false;
         });
         setMyCustomerFeedbacks(myFb);
@@ -2330,6 +2376,10 @@ export default function CustomerDashboard({
         setClaimDesc('');
         setClaimImages([]);
         appointmentApi.getAll().then(d => { if (d) setAllAppts(d); });
+        localStorage.setItem('crm_warranty_claim_sync_trigger', Date.now().toString());
+        window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'warranty_claim', claimId: res.appointment.id } }));
+        window.dispatchEvent(new CustomEvent('crm-admin-notification', { detail: { type: 'warranty_claim_created', claimId: res.appointment.id } }));
+        alert(`✓ Đã gửi yêu cầu kiểm tra bảo hành ${res.appointment.id} thành công!\nHồ sơ đã được đồng bộ sang mục "Quản lý bảo hành / Yêu cầu bảo hành" của Showroom.`);
       }
     } catch (err) {
       alert('Có lỗi khi gửi yêu cầu bảo hành.');
@@ -2471,12 +2521,26 @@ export default function CustomerDashboard({
         const cPhone = c.soDienThoai ? c.soDienThoai.replace(/\D/g, '') : '';
         if (custPhone && cPhone && custPhone === cPhone) return true;
         if (c.khachHang && currentCustomer.hoTen && c.khachHang.trim().toLowerCase() === currentCustomer.hoTen.trim().toLowerCase()) return true;
-        if (c.id === 'YCBH00156' && (currentCustomer.id === 'KH001' || custNum === 1)) return true;
         return false;
       });
       extraCount = myCompleted.filter(c => 
         !myAppts.some(a => (a.trangThai === 'DaHoanThanh' || a.trangThai === 'HoanThanh') && (a.id === c.id || a.id === c.maLichHen || (c.maLichHen && a.maLichHen === c.maLichHen)))
       ).length;
+
+      // Cộng thêm các giao dịch gia hạn bảo hành thành công của khách hàng
+      const extList = warrantyApi.getExtensionTransactions();
+      const myExtCount = extList.filter(tx => {
+        if (!currentCustomer) return false;
+        if (tx.customerId && tx.customerId === currentCustomer.id) return true;
+        const custNum = parseInt(currentCustomer.id.replace(/\D/g, ''), 10);
+        const txCustNum = tx.customerId ? parseInt(tx.customerId.replace(/\D/g, ''), 10) : NaN;
+        if (!isNaN(custNum) && !isNaN(txCustNum) && custNum === txCustNum) return true;
+        const custPhone = currentCustomer.soDienThoai ? currentCustomer.soDienThoai.replace(/\D/g, '') : '';
+        const txPhone = tx.soDienThoai ? tx.soDienThoai.replace(/\D/g, '') : '';
+        if (custPhone && txPhone && custPhone === txPhone) return true;
+        return false;
+      }).length;
+      extraCount += myExtCount;
     } catch {}
     return baseCount + extraCount;
   }, [myAppts, currentCustomer]);
@@ -2512,8 +2576,20 @@ export default function CustomerDashboard({
           });
         }
       });
+
+    // Xe trong danh sách phương tiện của khách hàng (myVehicles)
+    myVehicles.forEach(v => {
+      const name = v.tenXe || 'Xe máy chính hãng';
+      const already = myCustomerFeedbacks.some(f =>
+        (f.xeDangDung && (f.xeDangDung.toLowerCase().includes(name.toLowerCase()) || name.toLowerCase().includes(f.xeDangDung.toLowerCase()))) ||
+        (f.productName && (f.productName.toLowerCase().includes(name.toLowerCase()) || name.toLowerCase().includes(f.productName.toLowerCase()))) ||
+        (f.productId && (f.productId === v.id || f.productId === (v as any).vehicleId))
+      );
+      if (!already) count++;
+    });
+
     return count;
-  }, [myOrders, myCustomerFeedbacks, currentCustomer]);
+  }, [myOrders, myVehicles, myCustomerFeedbacks, currentCustomer]);
 
   const sidebarNavItems = [
     { id: 0, label: 'Phương tiện của tôi', count: myVehicles.length, icon: '🏍️' },
@@ -2713,10 +2789,13 @@ export default function CustomerDashboard({
                   vehicle={extendingWarrantyVehicle}
                   customer={currentCustomer}
                   onClose={() => setExtendingWarrantyVehicle(null)}
-                  onSuccess={() => {
+                  onSuccess={(updatedVeh: any) => {
                     setExtSuccessToast('Gia hạn bảo hành mở rộng Care+ thành công!');
                     setTimeout(() => setExtSuccessToast(null), 6000);
                     loadCustomerData();
+                    if (updatedVeh) {
+                      setSelectedVehicleWarrantyDetail(updatedVeh);
+                    }
                   }}
                 />
               ) : requestingWarrantyVehicle ? (
@@ -3106,7 +3185,7 @@ export default function CustomerDashboard({
                         ordersSubTab === 'Xe' ? 'bg-red-700 text-white shadow' : 'text-zinc-400 hover:text-white'
                       }`}
                     >
-                      🏍️ Xe ({myOrders.filter(o => o.loaiDon === 'Xe' || o.thongTinXe).length})
+                      🏍️ Xe ({myOrders.filter(o => o.loaiDon === 'Xe' || !!o.thongTinXe || (o.id && o.id.includes('XE')) || (o.tongTien >= 10000000 && (!o.items || o.items.length === 0))).length})
                     </button>
                     <button
                       onClick={() => setOrdersSubTab('PhuTung')}
@@ -3114,7 +3193,7 @@ export default function CustomerDashboard({
                         ordersSubTab === 'PhuTung' ? 'bg-red-700 text-white shadow' : 'text-zinc-400 hover:text-white'
                       }`}
                     >
-                      📦 Phụ tùng ({myOrders.filter(o => o.loaiDon !== 'Xe' && !o.thongTinXe).length})
+                      📦 Phụ tùng ({myOrders.filter(o => !(o.loaiDon === 'Xe' || !!o.thongTinXe || (o.id && o.id.includes('XE')) || (o.tongTien >= 10000000 && (!o.items || o.items.length === 0)))).length})
                     </button>
                   </div>
                 </div>
@@ -3154,7 +3233,7 @@ export default function CustomerDashboard({
                 {/* Orders List */}
                 {(() => {
                   const filtered = myOrders.filter(o => {
-                    const isXe = o.loaiDon === 'Xe' || !!o.thongTinXe;
+                    const isXe = o.loaiDon === 'Xe' || !!o.thongTinXe || (o.id && o.id.includes('XE')) || (o.tongTien >= 10000000 && (!o.items || o.items.length === 0));
                     if (ordersSubTab === 'Xe' && !isXe) return false;
                     if (ordersSubTab === 'PhuTung' && isXe) return false;
                     if (orderStatusFilter !== 'TatCa' && o.trangThai !== orderStatusFilter) return false;
@@ -3174,7 +3253,7 @@ export default function CustomerDashboard({
                   return (
                     <div className="space-y-4">
                       {filtered.map(order => {
-                        const isXe = order.loaiDon === 'Xe' || !!order.thongTinXe;
+                        const isXe = order.loaiDon === 'Xe' || !!order.thongTinXe || (order.id && order.id.includes('XE')) || (order.tongTien >= 10000000 && (!order.items || order.items.length === 0));
                         const isCompleted = order.trangThai === 'HoanThanh' || order.trangThai === 'DaGiao' || (isXe && (order.thongTinXe as any)?.daNhanXe);
                         const cfg = orderStatusConfig[order.trangThai] || { label: order.trangThai, color: '#71717a', bg: '#27272a' };
 
@@ -3328,11 +3407,31 @@ export default function CustomerDashboard({
                                     (f.productName && f.productName.toLowerCase().trim() === it.tenSanPham.toLowerCase().trim() && (f.orderId === order.id || !f.orderId))
                                   );
 
+                                  const partThumb = it.hinhAnh || (mockParts.find(p => p.id === pIdStr || p.tenSanPham.toLowerCase().includes(it.tenSanPham.toLowerCase()))?.hinhAnh) || '/images/phutung/motul_7100.png';
+                                  const partBrand = it.thuongHieu || (mockParts.find(p => p.id === pIdStr || p.tenSanPham.toLowerCase().includes(it.tenSanPham.toLowerCase()))?.thuongHieu) || 'Chính hãng';
+
                                   return (
-                                    <div key={idx} className="flex flex-col sm:flex-row sm:items-center justify-between text-xs py-2 border-b border-zinc-800/60 last:border-none gap-2">
-                                      <span className="text-zinc-200 font-medium">
-                                        {it.tenSanPham} <span className="text-zinc-500 font-mono">×{it.soLuong}</span>
-                                      </span>
+                                    <div key={idx} className="flex flex-col sm:flex-row sm:items-center justify-between text-xs py-3 border-b border-zinc-800/60 last:border-none gap-3">
+                                      <div className="flex items-center gap-3 min-w-0">
+                                        <img
+                                          src={partThumb}
+                                          alt={it.tenSanPham}
+                                          className="w-12 h-12 rounded-xl bg-zinc-900 border border-zinc-800 object-contain p-1.5 shrink-0"
+                                          onError={(e) => {
+                                            (e.target as HTMLImageElement).src = '/images/phutung/motul_7100.png';
+                                          }}
+                                        />
+                                        <div className="min-w-0">
+                                          <div className="text-zinc-100 font-bold text-xs leading-snug truncate">{it.tenSanPham}</div>
+                                          <div className="flex items-center gap-2 mt-0.5 text-[11px] text-zinc-400 font-mono flex-wrap">
+                                            <span className="text-amber-400 font-semibold">{partBrand}</span>
+                                            <span>·</span>
+                                            <span className="text-zinc-500">{pIdStr}</span>
+                                            <span>·</span>
+                                            <span className="text-zinc-300 font-bold">SL: ×{it.soLuong}</span>
+                                          </div>
+                                        </div>
+                                      </div>
                                       <div className="flex items-center gap-3 self-end sm:self-auto flex-wrap">
                                         <span className="font-mono font-bold text-white">{formatVND(it.donGia * it.soLuong)}</span>
                                         {isCompleted && (
@@ -4121,6 +4220,7 @@ export default function CustomerDashboard({
                       { key: 'SuaChua', label: '🛠️ Sửa chữa' },
                       { key: 'LaiThu', label: '🏍️ Lái thử' },
                       { key: 'BaoHanh', label: '🛡️ Bảo hành' },
+                      { key: 'GiaHanBaoHanh', label: '✨ Gia hạn bảo hành' },
                       { key: 'NhanXe', label: '🎁 Nhận xe mới' },
                     ].map(st => (
                       <button
@@ -4193,6 +4293,38 @@ export default function CustomerDashboard({
                         });
                       }
                     });
+
+                    // Gộp thêm các giao dịch gia hạn bảo hành mở rộng thành công của khách hàng
+                    const extensionTxList = warrantyApi.getExtensionTransactions();
+                    const myExtensions = extensionTxList.filter(tx => {
+                      if (!currentCustomer) return false;
+                      if (tx.customerId && tx.customerId === currentCustomer.id) return true;
+                      const custNum = parseInt(currentCustomer.id.replace(/\D/g, ''), 10);
+                      const txCustNum = tx.customerId ? parseInt(tx.customerId.replace(/\D/g, ''), 10) : NaN;
+                      if (!isNaN(custNum) && !isNaN(txCustNum) && custNum === txCustNum) return true;
+                      const custPhone = currentCustomer.soDienThoai ? currentCustomer.soDienThoai.replace(/\D/g, '') : '';
+                      const txPhone = tx.soDienThoai ? tx.soDienThoai.replace(/\D/g, '') : '';
+                      if (custPhone && txPhone && custPhone === txPhone) return true;
+                      return false;
+                    });
+
+                    myExtensions.forEach(tx => {
+                      completedAppts.unshift({
+                        id: tx.id,
+                        customerId: currentCustomer.id,
+                        hoTenKH: tx.khachHang || currentCustomer.hoTen,
+                        soDienThoai: tx.soDienThoai || currentCustomer.soDienThoai,
+                        loaiDichVu: 'GiaHanBaoHanh' as any,
+                        ngayHen: tx.ngayGiaHan || new Date().toISOString().split('T')[0],
+                        gioHen: '10:00',
+                        trangThai: 'DaHoanThanh',
+                        ghiChu: `${tx.goiGiaHan} · Phí: ${formatVND(tx.soTien)} · Quyền lợi: ${tx.quyenLoiGoi} (Hạn mới: ${tx.thoiHanMoi})`,
+                        tenXe: tx.tenXe || tx.xeBienSo?.split('(')[0]?.trim() || 'Xe máy',
+                        bienSo: tx.bienSo || tx.xeBienSo?.match(/\(([^)]+)\)/)?.[1] || 'Chính chủ',
+                        nhanVienPhuTrach: tx.nhanVien || 'Hệ thống tự động',
+                        createdDate: tx.ngayGiaHan,
+                      });
+                    });
                   } catch {}
 
                   const filtered = completedAppts.filter(a => {
@@ -4200,6 +4332,7 @@ export default function CustomerDashboard({
                     if (serviceHistSubTab === 'SuaChua' && a.loaiDichVu !== 'SuaChua') return false;
                     if (serviceHistSubTab === 'LaiThu' && a.loaiDichVu !== 'LaiThu') return false;
                     if (serviceHistSubTab === 'BaoHanh' && a.loaiDichVu !== 'BaoHanh') return false;
+                    if (serviceHistSubTab === 'GiaHanBaoHanh' && (a.loaiDichVu as any) !== 'GiaHanBaoHanh') return false;
                     if (serviceHistSubTab === 'NhanXe' && a.loaiDichVu !== 'NhanXe') return false;
                     if (serviceSearch.trim()) {
                       const matchPlate = matchVietnameseSearch(a.bienSo || '', serviceSearch);
@@ -4651,6 +4784,31 @@ export default function CustomerDashboard({
                         });
                       }
                     });
+
+                  // 2. Xe trong danh sách phương tiện sở hữu của khách hàng (myVehicles)
+                  myVehicles.forEach(v => {
+                    const name = v.tenXe || 'Xe máy chính hãng';
+                    const already = myCustomerFeedbacks.some(f =>
+                      (f.xeDangDung && (f.xeDangDung.toLowerCase().includes(name.toLowerCase()) || name.toLowerCase().includes(f.xeDangDung.toLowerCase()))) ||
+                      (f.productName && (f.productName.toLowerCase().includes(name.toLowerCase()) || name.toLowerCase().includes(f.productName.toLowerCase()))) ||
+                      (f.productId && (f.productId === v.id || f.productId === (v as any).vehicleId))
+                    );
+                    const alreadyInWaiting = waitingReviews.some(w => w.title.toLowerCase() === name.toLowerCase());
+                    if (!already && !alreadyInWaiting) {
+                      const xeImg = getVehicleCatalogImage(name, v.hinhAnh);
+                      waitingReviews.push({
+                        id: `veh-xe-${v.id}`,
+                        orderId: v.id,
+                        badge: 'PHƯƠNG TIỆN CỦA TÔI',
+                        badgeColor: 'text-purple-400',
+                        title: name,
+                        subTitle: `Biển số: ${v.bienSo || 'Chưa có biển'} · Phương tiện đang sử dụng`,
+                        type: 'XeMau',
+                        productId: v.id,
+                        image: xeImg,
+                      });
+                    }
+                  });
 
                   const countWaitingXe = waitingReviews.filter(w => w.type === 'XeMau').length;
                   const countWaitingPt = waitingReviews.filter(w => w.type === 'PhuTung').length;
@@ -5586,6 +5744,43 @@ export default function CustomerDashboard({
             });
           } catch {}
 
+          // 2.5. Từ lịch sử giao dịch gia hạn bảo hành của chính xe này (Ảnh 2 Fix)
+          try {
+            const extTxList = warrantyApi.getExtensionTransactions();
+            extTxList.forEach(tx => {
+              const matchVehId = tx.vehicleId === v.id;
+              const cleanTxPlate = (tx.bienSo || tx.xeBienSo || '').toUpperCase().replace(/[\s\-\.]/g, '');
+              const matchPlate = !isChuaCoBien && cleanTxPlate && cleanTxPlate.includes(cleanVPlate);
+              const matchVin = vVin && tx.soKhung && tx.soKhung.toUpperCase().trim() === vVin;
+              const matchName = vName && tx.tenXe && tx.tenXe.toLowerCase().trim().includes(vName);
+              const matchCust = currentCustomer && (tx.customerId === currentCustomer.id || (currentCustomer.soDienThoai && tx.soDienThoai && tx.soDienThoai.replace(/\D/g, '') === currentCustomer.soDienThoai.replace(/\D/g, '')));
+
+              if (matchVehId || matchPlate || matchVin || (matchCust && matchName)) {
+                let txD = new Date();
+                if (tx.ngayGiaHan) {
+                  const parts = tx.ngayGiaHan.includes('/') ? tx.ngayGiaHan.split('/') : tx.ngayGiaHan.split('-');
+                  if (parts.length === 3) {
+                    txD = parts[0].length === 4 ? new Date(tx.ngayGiaHan) : new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
+                  }
+                }
+                const dTime = isNaN(txD.getTime()) ? Date.now() : txD.getTime();
+                const mYear = `${String(txD.getMonth() + 1).padStart(2, '0')}/${txD.getFullYear()}`;
+
+                list.push({
+                  id: tx.id,
+                  ngayDichVu: tx.ngayGiaHan || new Date().toLocaleDateString('vi-VN'),
+                  monthYear: mYear,
+                  loaiDichVu: 'GiaHanBaoHanh',
+                  loaiBadgeText: 'Gia hạn bảo hành',
+                  nhanVien: tx.nhanVien || 'Hệ thống tự động',
+                  chiPhi: tx.soTien || 600000,
+                  noiDung: `Gia hạn bảo hành ${tx.goiGiaHan} (+${tx.thoiHanMoi}). Quyền lợi: ${tx.quyenLoiGoi || 'Toàn diện'}.`,
+                  rawDate: dTime,
+                });
+              }
+            });
+          } catch {}
+
           // 3. CHỈ hiển thị 5 mốc lịch sử dịch vụ mẫu cho ĐÚNG chiếc xe Honda SH 160i nguyên bản có sẵn của KH001 (biển 29-E1 888.88)
           // TUYỆT ĐỐI KHÔNG inject vào các xe khác hoặc xe mới mua!
           if (cleanVPlate.includes('29E188888') || cleanVPlate.includes('29E18888') || v.id === 'XE001' || v.id === 'XE01') {
@@ -6360,7 +6555,11 @@ export default function CustomerDashboard({
                             />
                             <div>
                               <div className="font-bold text-zinc-100 text-xs leading-snug">{it.tenSanPham}</div>
-                              <div className="text-[11px] text-zinc-400 font-mono mt-0.5">Số lượng: {it.soLuong}</div>
+                              <div className="text-[11px] text-zinc-400 font-mono mt-0.5 flex items-center gap-1.5 flex-wrap">
+                                <span className="text-amber-400 font-semibold">{it.thuongHieu || 'Chính hãng'}</span>
+                                <span>·</span>
+                                <span className="text-zinc-500">Mã: {it.partId || (it.maPhuTung ? `PT00${it.maPhuTung}` : 'PT001')}</span>
+                              </div>
                             </div>
                           </div>
                           <div className="col-span-2 text-center font-mono text-zinc-200">
@@ -6968,7 +7167,7 @@ export default function CustomerDashboard({
       {/* ── MODAL: XEM HÓA ĐƠN & BIÊN BẢN DỊCH VỤ (LSLH01 & LSLH02) ── */}
       {selectedServiceInvoice && (() => {
         const appt = selectedServiceInvoice;
-        const loai = appt.loaiDichVu;
+        const loai = appt.loaiDichVu as string;
 
         // Tìm đơn hàng xe tương ứng nếu là nhận xe
         const matchedOrder = myOrders.find(o =>
@@ -7202,6 +7401,60 @@ export default function CustomerDashboard({
               totalText: '0 đ',
               isFree: true
             }
+          ];
+        } else if (loai === 'GiaHanBaoHanh') {
+          docTitle = 'HÓA ĐƠN GIA HẠN BẢO HÀNH MỞ RỘNG (CARE+)';
+          docCode = `#HD-GHBH-${appt.id}`;
+          docBadge = '✓ ĐÃ GIA HẠN THÀNH CÔNG';
+          customerSignLabel = 'KHÁCH HÀNG SỞ HỮU XE';
+          staffSignLabel = 'ĐẠI DIỆN SHOWROOM MOTOSHOP';
+          staffRole = 'Phụ trách Quản lý Bảo hành & Hậu mãi';
+
+          displayVehicleName = appt.tenXe || 'Xe máy chính hãng';
+          displayBienSo = appt.bienSo || 'Chính chủ';
+
+          // Tìm thông tin giao dịch gia hạn tương ứng
+          const allExts = warrantyApi.getExtensionTransactions();
+          const matchedTx = allExts.find(tx => tx.id === appt.id || tx.vehicleId === (appt as any).vehicleId || (tx.tenXe && appt.tenXe && tx.tenXe.includes(appt.tenXe)));
+          const pkgName = matchedTx?.goiGiaHan || 'Gói Toàn diện 2 năm';
+          const pkgPrice = matchedTx?.soTien || 600000;
+          const pkgExp = matchedTx?.thoiHanMoi || 'Cộng thêm 24 tháng';
+          const pkgBenefit = matchedTx?.quyenLoiGoi || 'Bảo vệ toàn diện động cơ, hộp số, hệ thống điện tử chính hãng';
+
+          totalPaymentText = formatVND(pkgPrice);
+          invoiceNote = `Gói ${pkgName} đã được kích hoạt thành công trên sổ bảo hành điện tử của xe. Thời hạn mới: ${pkgExp}.`;
+
+          docItems = [
+            {
+              stt: '01',
+              name: `Gói dịch vụ bảo hành mở rộng chính hãng: ${pkgName}`,
+              desc: `${pkgBenefit}. Bảo vệ tối ưu giá trị xe và chi phí sửa chữa phát sinh tại toàn bộ hệ thống đại lý.`,
+              unit: 'Gói',
+              qty: 1,
+              priceText: formatVND(pkgPrice),
+              totalText: formatVND(pkgPrice),
+              isFree: false,
+            },
+            {
+              stt: '02',
+              name: 'Cập nhật Sổ bảo hành điện tử chính hãng',
+              desc: `Kích hoạt gia hạn thời hạn bảo hành phương tiện đến ${pkgExp}, đồng bộ tra cứu tức thì trên toàn quốc.`,
+              unit: 'Hồ sơ',
+              qty: 1,
+              priceText: 'Miễn phí',
+              totalText: '0 đ',
+              isFree: true,
+            },
+            {
+              stt: '03',
+              name: 'Dịch vụ cứu hộ & hỗ trợ kỹ thuật xe máy 24/7',
+              desc: 'Cứu hộ tận nơi miễn phí trong bán kính 20km từ các đại lý ủy quyền trong suốt thời hạn bảo hành mở rộng.',
+              unit: 'Dịch vụ',
+              qty: 1,
+              priceText: 'Tặng kèm',
+              totalText: '0 đ',
+              isFree: true,
+            },
           ];
         } else {
           // Mặc định: BaoDuong

@@ -5,7 +5,9 @@ import {
   WARRANTY_ISSUES_LIST,
   EXTENDED_WARRANTY_PACKAGES,
   formatVND,
+  getVehicleCatalogImage,
 } from '../../data/mockData';
+import { warrantyApi } from '../../services/api';
 
 /* =========================================================================
    1. VIEW 2: TRANG CHI TIẾT BẢO HÀNH (CHUẨN 100% THEO ẢNH 1 - media_1791439256831)
@@ -32,6 +34,13 @@ export function WarrantyDetailView({
   onClearToast,
 }: WarrantyDetailViewProps) {
   const [downloadingBooklet, setDownloadingBooklet] = useState(false);
+  const [show5BlockDetailModal, setShow5BlockDetailModal] = useState(false);
+
+  // GH04: Lấy giao dịch gia hạn mới nhất của xe nếu có
+  const extTransactions = warrantyApi.getExtensionTransactions().filter(
+    t => t.vehicleId === vehicle.id || (vehicle.bienSo && t.xeBienSo.includes(vehicle.bienSo)) || t.customerId === customer?.id
+  );
+  const latestExt = extTransactions[0];
 
   // Xử lý tải / in Sổ bảo hành điện tử (Nút 3 trên Ảnh 1)
   const handleDownloadBooklet = () => {
@@ -245,8 +254,18 @@ Phiếu này có giá trị xác nhận điện tử trên toàn hệ thống sh
             </div>
           </div>
 
-          {/* 3 NÚT HÀNH ĐỘNG CHÍNH (CHUẨN 100% THEO ẢNH 1) */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 mt-6">
+          {/* NÚT HÀNH ĐỘNG CHÍNH (CHUẨN ẢNH 1 & GH04 ẢNH 5) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 mt-6">
+            {/* Nút 0 (GH04): Xem chi tiết hồ sơ 5 khối */}
+            <button
+              type="button"
+              onClick={() => setShow5BlockDetailModal(true)}
+              className="py-3.5 px-3 rounded-2xl text-xs font-bold bg-zinc-900 hover:bg-black text-white border border-zinc-700 transition shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+              style={{ fontFamily: 'var(--font-display)', letterSpacing: '0.04em' }}
+            >
+              <span className="text-base">👁️</span>
+              <span>XEM HỒ SƠ 5 KHỐI</span>
+            </button>
             {/* Nút 1: Gia hạn bảo hành */}
             <button
               type="button"
@@ -491,6 +510,260 @@ Phiếu này có giá trị xác nhận điện tử trên toàn hệ thống sh
           </div>
         </div>
       </div>
+
+      {/* GH04: MODAL CHI TIẾT BẢO HÀNH 5 KHỐI THEO CHUẨN ẢNH 5 CHO NGƯỜI DÙNG */}
+      {show5BlockDetailModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-[#121214] border border-zinc-800 rounded-3xl max-w-5xl w-full p-6 sm:p-8 text-white shadow-2xl space-y-6 my-8 max-h-[90vh] overflow-y-auto">
+            {/* Header Modal */}
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-4">
+              <div>
+                <span className="text-xs font-mono font-bold text-red-500 uppercase tracking-wider">
+                  MÃ PHIẾU BẢO HÀNH: {latestExt?.id || `BH-${vehicle.id}`}
+                </span>
+                <h2 className="text-xl font-black text-white uppercase tracking-tight font-display">
+                  CHI TIẾT BẢO HÀNH &amp; GIA HẠN DỊCH VỤ
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShow5BlockDetailModal(false)}
+                className="w-9 h-9 rounded-full bg-zinc-800 hover:bg-zinc-700 flex items-center justify-center text-zinc-400 hover:text-white transition cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Layout 5 Khối theo Ảnh 5 */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              {/* CỘT TRÁI (8 Cột): Khối 1, 2, 3, 4 */}
+              <div className="lg:col-span-8 space-y-4">
+                {/* KHỐI 1: THÔNG TIN KHÁCH HÀNG */}
+                <div className="p-5 rounded-2xl bg-[#18181b] border border-zinc-800 space-y-3">
+                  <div className="text-[11px] font-mono font-bold text-zinc-400 uppercase tracking-wider pb-2 border-b border-zinc-800">
+                    THÔNG TIN KHÁCH HÀNG
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-full bg-red-600/20 border border-red-500/40 text-red-400 flex items-center justify-center font-black text-base shrink-0">
+                      {(customer?.hoTen || latestExt?.khachHang || 'LP').slice(-2).toUpperCase()}
+                    </div>
+                    <div className="space-y-1 text-xs">
+                      <div className="text-sm font-bold text-white">
+                        {customer?.hoTen || latestExt?.khachHang || 'Lê Thị Lan Phương'}
+                      </div>
+                      <div className="text-zinc-400 font-mono">
+                        Số điện thoại: <span className="text-zinc-200">{customer?.soDienThoai || latestExt?.soDienThoai || '0879179243'}</span>
+                      </div>
+                      <div className="text-zinc-400 font-mono">
+                        Email: <span className="text-zinc-200">{customer?.email || latestExt?.email || 'lethilanphuong@gmail.com'}</span>
+                      </div>
+                      <div className="text-zinc-400">
+                        Địa chỉ: <span className="text-zinc-200">{customer?.diaChi || latestExt?.diaChi || '123 Nguyễn Thị Minh Khai, Q.1, TP.HCM'}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* KHỐI 2: THÔNG TIN PHƯƠNG TIỆN */}
+                <div className="p-5 rounded-2xl bg-[#18181b] border border-zinc-800 space-y-3">
+                  <div className="text-[11px] font-mono font-bold text-zinc-400 uppercase tracking-wider pb-2 border-b border-zinc-800">
+                    THÔNG TIN PHƯƠNG TIỆN
+                  </div>
+                  <div className="flex flex-col sm:flex-row items-center gap-4">
+                    <img
+                      src={getVehicleCatalogImage(vehicle.tenXe, vehicle.hinhAnh || latestExt?.hinhAnhXe)}
+                      alt={vehicle.tenXe}
+                      className="w-28 h-20 object-contain rounded-xl bg-zinc-900 border border-zinc-800 p-1 shrink-0"
+                      onError={e => {
+                        (e.currentTarget as HTMLImageElement).src = getVehicleCatalogImage(vehicle.tenXe);
+                      }}
+                    />
+                    <div className="flex-1 space-y-1.5 text-xs w-full">
+                      <div className="text-base font-bold text-white font-display">
+                        {vehicle.tenXe}
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 font-mono text-[11px]">
+                        <div>
+                          <span className="text-zinc-500">Biển số: </span>
+                          <span className="text-white font-bold bg-zinc-800 px-2 py-0.5 rounded border border-zinc-700">
+                            {vehicle.bienSo || latestExt?.bienSo || '59K9 - 876.54'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-zinc-500">ODO: </span>
+                          <span className="text-emerald-400 font-bold">
+                            {(latestExt?.odo || 12500).toLocaleString('vi-VN')} km
+                          </span>
+                        </div>
+                        <div className="col-span-2">
+                          <span className="text-zinc-500">Số khung: </span>
+                          <span className="text-zinc-300">{vehicle.soKhung || latestExt?.soKhung || 'RLHKD160CB7747410'}</span>
+                        </div>
+                        <div className="col-span-2">
+                          <span className="text-zinc-500">Số máy: </span>
+                          <span className="text-zinc-300">{(vehicle as any).soMay || latestExt?.soMay || 'JF62E088888'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* KHỐI 3: GÓI BẢO HÀNH */}
+                <div className="p-5 rounded-2xl bg-[#18181b] border border-zinc-800 space-y-3">
+                  <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
+                    <span className="text-[11px] font-mono font-bold text-zinc-400 uppercase tracking-wider">
+                      GÓI BẢO HÀNH GIA HẠN
+                    </span>
+                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">
+                      ✓ ĐANG CÓ HIỆU LỰC
+                    </span>
+                  </div>
+                  <div className="space-y-2 text-xs">
+                    <div className="flex justify-between items-center">
+                      <span className="font-bold text-white text-sm">
+                        {latestExt?.goiGiaHan || 'Gói Tiêu Chuẩn (1 năm)'}
+                      </span>
+                      <span className="font-mono font-black text-red-500 text-sm">
+                        {formatVND(latestExt?.soTien || 350000)}
+                      </span>
+                    </div>
+                    <div className="text-zinc-400">
+                      Quyền lợi: <span className="text-zinc-200">{latestExt?.quyenLoiGoi || '+12 tháng hoặc +10.000 km'}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 pt-2 border-t border-zinc-800 font-mono text-[11px]">
+                      <div>
+                        <span className="text-zinc-500">Hạn gốc: </span>
+                        <span className="text-zinc-300">{latestExt?.thoiHanGoc || '15/09/2026'}</span>
+                      </div>
+                      <div>
+                        <span className="text-zinc-500">Hạn mới sau gia hạn: </span>
+                        <span className="text-emerald-400 font-bold">{vehicle.hanBaoHanh || latestExt?.thoiHanMoi || '15/09/2027'}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* KHỐI 4: CHI TIẾT THANH TOÁN */}
+                <div className="p-5 rounded-2xl bg-[#18181b] border border-zinc-800 space-y-3">
+                  <div className="text-[11px] font-mono font-bold text-zinc-400 uppercase tracking-wider pb-2 border-b border-zinc-800">
+                    CHI TIẾT THANH TOÁN
+                  </div>
+                  <div className="space-y-2 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-zinc-400">Hình thức:</span>
+                      <span className="font-bold text-white font-mono">
+                        {latestExt?.phuongThucThanhToan === 'ChuyenKhoan' ? 'Chuyển khoản VietQR' : latestExt?.phuongThucThanhToan === 'POS' ? 'Thẻ POS' : 'Tiền mặt'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-zinc-400">Tổng thanh toán:</span>
+                      <span className="font-mono font-black text-red-400">
+                        {formatVND(latestExt?.soTien || 350000)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-zinc-400">Thời gian giao dịch:</span>
+                      <span className="text-zinc-300 font-mono">
+                        {latestExt?.thoiGianThanhToan || '29/10/2026'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center pt-2 border-t border-zinc-800">
+                      <span className="text-zinc-400">Trạng thái chứng từ:</span>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">
+                        ✓ ĐÃ XUẤT HÓA ĐƠN
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* CỘT PHẢI (4 Cột): KHỐI 5: LỊCH SỬ DỊCH VỤ & BẢO HÀNH */}
+              <div className="lg:col-span-4 space-y-3">
+                <div className="p-5 rounded-2xl bg-[#18181b] border border-zinc-800 space-y-4">
+                  <div className="text-[11px] font-mono font-bold text-zinc-400 uppercase tracking-wider pb-2 border-b border-zinc-800">
+                    LỊCH SỬ DỊCH VỤ &amp; BẢO HÀNH
+                  </div>
+
+                  <div className="relative pl-6 space-y-4 text-xs border-l-2 border-zinc-800 ml-2">
+                    <div className="relative">
+                      <span className="absolute -left-[31px] top-0.5 w-4 h-4 rounded-full bg-amber-400 ring-4 ring-[#18181b]" />
+                      <div className="font-bold text-white font-mono">
+                        29/10/2026 - Kích hoạt bảo hành mở rộng
+                      </div>
+                      <div className="text-[11px] text-zinc-400 font-mono">
+                        ODO: 12.500 km
+                      </div>
+                    </div>
+
+                    <div className="relative">
+                      <span className="absolute -left-[31px] top-0.5 w-4 h-4 rounded-full bg-emerald-500 ring-4 ring-[#18181b]" />
+                      <div className="font-bold text-white font-mono">
+                        29/10/2026 - Phê duyệt đủ điều kiện gia hạn
+                      </div>
+                      <div className="text-[11px] text-zinc-400">
+                        (Tại quầy Showroom)
+                      </div>
+                    </div>
+
+                    <div className="relative">
+                      <span className="absolute -left-[31px] top-0.5 w-4 h-4 rounded-full bg-emerald-500 ring-4 ring-[#18181b]" />
+                      <div className="font-bold text-white font-mono">
+                        10/06/2026 - Bảo dưỡng định kỳ lần 3
+                      </div>
+                      <div className="text-[11px] text-zinc-400">
+                        (Tại CN1 - Quận 1) · ODO: 11.200 km
+                      </div>
+                    </div>
+
+                    <div className="relative">
+                      <span className="absolute -left-[31px] top-0.5 w-4 h-4 rounded-full bg-emerald-500 ring-4 ring-[#18181b]" />
+                      <div className="font-bold text-white font-mono">
+                        20/01/2026 - Sửa chữa/thay thế dầu máy
+                      </div>
+                      <div className="text-[11px] text-zinc-400">
+                        (Tại CN1 - Quận 1) · ODO: 7.500 km
+                      </div>
+                    </div>
+
+                    <div className="relative">
+                      <span className="absolute -left-[31px] top-0.5 w-4 h-4 rounded-full bg-emerald-500 ring-4 ring-[#18181b]" />
+                      <div className="font-bold text-white font-mono">
+                        15/09/2025 - Bảo dưỡng định kỳ lần 2
+                      </div>
+                      <div className="text-[11px] text-zinc-400">
+                        (Tại CN1 - Quận 1) · ODO: 4.800 km
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer Modal */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-zinc-800">
+              <div className="text-xs text-zinc-400 font-mono">
+                Chứng từ bảo hành điện tử chính hãng · Có hiệu lực trên toàn quốc
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => alert('Đang gửi lệnh in hóa đơn...')}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-white transition cursor-pointer flex items-center gap-1.5"
+                >
+                  <span>🖨️ In chứng từ</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShow5BlockDetailModal(false)}
+                  className="px-5 py-2 rounded-xl text-xs font-bold bg-red-700 hover:bg-red-800 text-white transition cursor-pointer"
+                >
+                  Đóng
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

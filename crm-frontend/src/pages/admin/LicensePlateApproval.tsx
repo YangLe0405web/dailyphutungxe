@@ -26,6 +26,10 @@ export default function LicensePlateApproval() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [viewingDetailVehicle, setViewingDetailVehicle] = useState<Vehicle | null>(null);
 
+  // Modal Phê duyệt & Cấp biển số chính thức
+  const [approvingVehicle, setApprovingVehicle] = useState<Vehicle | null>(null);
+  const [officialPlateInput, setOfficialPlateInput] = useState('');
+
   // Toast notification
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [highlightId, setHighlightId] = useState<string | null>(null);
@@ -115,7 +119,9 @@ export default function LicensePlateApproval() {
       if (v.anhCaVet) return true;
       // 5. Xe ngoài hệ thống
       if (v.nguonGoc === 'NgoaiHeThong') return true;
-      // 6. Xe đã có biển số thực tế
+      // 6. Xe chưa có biển số hoặc biển số tạm
+      if (!v.bienSo || v.bienSo === 'Chưa có biển số' || v.bienSo.includes('Chưa có') || v.bienSo.startsWith('TAM-')) return true;
+      // 7. Xe đã có biển số thực tế
       if (v.bienSo && v.bienSo !== 'Chưa có biển số' && !v.bienSo.includes('Chưa có')) return true;
       return false;
     });
@@ -123,9 +129,13 @@ export default function LicensePlateApproval() {
 
   // Thống kê KPI Cards
   const stats = useMemo(() => {
-    const pendingPlates = plateRecords.filter(v => (v.trangThaiDuyetBienSo === 'ChoDuyet' || Boolean(v.bienSoChoDuyet) || v.trangThaiDuyetBienSo === 'ChoCapNhat') && v.trangThaiDuyetBienSo !== 'DaDuyet' && v.trangThaiDuyetBienSo !== 'TuChoi').length;
+    const pendingPlates = plateRecords.filter(v =>
+      v.trangThaiDuyetBienSo !== 'DaDuyet' &&
+      v.trangThaiDuyetBienSo !== 'TuChoi' &&
+      (v.trangThaiDuyetBienSo === 'ChoDuyet' || Boolean(v.bienSoChoDuyet) || v.trangThaiDuyetBienSo === 'ChoCapNhat' || !v.bienSo || v.bienSo === 'Chưa có biển số' || v.bienSo.includes('Chưa có'))
+    ).length;
     const pendingOutside = plateRecords.filter(v => v.nguonGoc === 'NgoaiHeThong' && ((v.trangThaiDuyet === 'ChoDuyet' || v.trangThaiDuyetBienSo === 'ChoDuyet') && v.trangThaiDuyetBienSo !== 'TuChoi')).length;
-    const approvedTotal = plateRecords.filter(v => v.trangThaiDuyetBienSo === 'DaDuyet' || (v.trangThaiDuyet === 'DaDuyet' && v.bienSo && v.bienSo !== 'Chưa có biển số')).length;
+    const approvedTotal = plateRecords.filter(v => v.trangThaiDuyetBienSo === 'DaDuyet' || (v.trangThaiDuyet === 'DaDuyet' && v.bienSo && v.bienSo !== 'Chưa có biển số' && !v.bienSo.includes('Chưa có'))).length;
     const rejectedTotal = plateRecords.filter(v => v.trangThaiDuyetBienSo === 'TuChoi' || v.trangThaiDuyet === 'TuChoi').length;
     return { pendingPlates, pendingOutside, approvedTotal, rejectedTotal };
   }, [plateRecords]);
@@ -136,7 +146,6 @@ export default function LicensePlateApproval() {
       const cust = customerMap.get(v.customerId) || customerMap.get(String(parseInt(v.customerId.replace(/\D/g, ''), 10)));
       const custName = cust ? cust.hoTen.toLowerCase() : '';
       const custPhone = cust ? cust.soDienThoai : '';
-      const q = search.toLowerCase().trim();
 
       // Search match
       const matchSearch =
@@ -160,9 +169,9 @@ export default function LicensePlateApproval() {
       // Status match
       let matchStatus = true;
       if (filterStatus === 'ChoDuyet') {
-        matchStatus = (v.trangThaiDuyetBienSo === 'ChoDuyet' || Boolean(v.bienSoChoDuyet) || v.trangThaiDuyetBienSo === 'ChoCapNhat') && v.trangThaiDuyetBienSo !== 'DaDuyet' && v.trangThaiDuyetBienSo !== 'TuChoi';
+        matchStatus = v.trangThaiDuyetBienSo !== 'DaDuyet' && v.trangThaiDuyetBienSo !== 'TuChoi' && (v.trangThaiDuyetBienSo === 'ChoDuyet' || Boolean(v.bienSoChoDuyet) || v.trangThaiDuyetBienSo === 'ChoCapNhat' || !v.bienSo || v.bienSo === 'Chưa có biển số' || v.bienSo.includes('Chưa có'));
       } else if (filterStatus === 'DaDuyet') {
-        matchStatus = v.trangThaiDuyetBienSo === 'DaDuyet' || Boolean(v.trangThaiDuyet === 'DaDuyet' && v.bienSo && v.bienSo !== 'Chưa có biển số');
+        matchStatus = v.trangThaiDuyetBienSo === 'DaDuyet' || Boolean(v.trangThaiDuyet === 'DaDuyet' && v.bienSo && v.bienSo !== 'Chưa có biển số' && !v.bienSo.includes('Chưa có'));
       } else if (filterStatus === 'TuChoi') {
         matchStatus = v.trangThaiDuyetBienSo === 'TuChoi' || v.trangThaiDuyet === 'TuChoi';
       }
@@ -171,40 +180,64 @@ export default function LicensePlateApproval() {
     });
   }, [plateRecords, search, filterSource, filterStatus, customerMap]);
 
-  // Xử lý Phê duyệt biển số
-  const handleApprove = async (vehicle: Vehicle) => {
-    const proposedPlate = vehicle.bienSoChoDuyet || vehicle.bienSo;
-    if (!proposedPlate || proposedPlate === 'Chưa có biển số') {
-      alert('Không tìm thấy biển số đề xuất để duyệt!');
-      return;
-    }
+  // Mở modal Phê duyệt & Cấp biển số chính thức
+  const openApproveModal = (vehicle: Vehicle) => {
+    setApprovingVehicle(vehicle);
+    const candidate = vehicle.bienSoChoDuyet && vehicle.bienSoChoDuyet !== 'Chưa có biển số' && !vehicle.bienSoChoDuyet.includes('Chưa có')
+      ? vehicle.bienSoChoDuyet
+      : (vehicle.bienSo && vehicle.bienSo !== 'Chưa có biển số' && !vehicle.bienSo.includes('Chưa có') && !vehicle.bienSo.startsWith('TAM-')
+        ? vehicle.bienSo
+        : '59-K1 888.88');
+    setOfficialPlateInput(candidate);
+  };
 
-    if (!window.confirm(`Xác nhận phê duyệt biển số chính thức "${proposedPlate}" cho xe "${vehicle.tenXe}"?`)) {
+  // Xác nhận Phê duyệt & Cấp biển số
+  const handleConfirmApprove = async () => {
+    if (!approvingVehicle) return;
+    const plateToAssign = officialPlateInput.trim();
+    if (!plateToAssign || plateToAssign === 'Chưa có biển số' || plateToAssign.includes('Chưa có')) {
+      alert('Vui lòng nhập biển số xe chính thức hợp lệ!');
       return;
     }
 
     setIsSubmitting(true);
     try {
-      await vehicleApi.approveLicensePlate(vehicle.id, proposedPlate, vehicle);
-      showToast(`✓ Đã phê duyệt thành công biển số ${proposedPlate} cho xe ${vehicle.tenXe}!`);
+      await vehicleApi.approveLicensePlate(approvingVehicle.id, plateToAssign, approvingVehicle);
+      showToast(`✓ Đã phê duyệt và cấp biển số "${plateToAssign}" cho xe "${approvingVehicle.tenXe}" thành công!`);
+
+      // Cập nhật state local ngay tức thì
       setVehicles(prev =>
-        prev.map(v =>
-          (v.id === vehicle.id || parseInt(v.id.replace(/\D/g, ''), 10) === parseInt(vehicle.id.replace(/\D/g, ''), 10))
+        prev.map(v => {
+          const isTarget = v.id === approvingVehicle.id ||
+            (approvingVehicle.soKhung && v.soKhung && v.soKhung.trim().toUpperCase() === approvingVehicle.soKhung.trim().toUpperCase()) ||
+            (parseInt(v.id.replace(/\D/g, ''), 10) === parseInt(approvingVehicle.id.replace(/\D/g, ''), 10));
+          return isTarget
             ? {
                 ...v,
-                bienSo: proposedPlate,
+                bienSo: plateToAssign,
                 bienSoChoDuyet: undefined,
                 trangThaiDuyetBienSo: 'DaDuyet',
                 trangThaiDuyet: 'DaDuyet',
+                lyDoTuChoiBienSo: undefined,
               }
-            : v
-        )
+            : v;
+        })
       );
+      setApprovingVehicle(null);
+      setOfficialPlateInput('');
+      if (viewingDetailVehicle && (viewingDetailVehicle.id === approvingVehicle.id || (approvingVehicle.soKhung && viewingDetailVehicle.soKhung === approvingVehicle.soKhung))) {
+        setViewingDetailVehicle(prev => prev ? { ...prev, bienSo: plateToAssign, bienSoChoDuyet: undefined, trangThaiDuyetBienSo: 'DaDuyet', trangThaiDuyet: 'DaDuyet' } : null);
+      }
     } catch (err: any) {
-      showToast(`Lỗi phê duyệt biển số: ${err.message || 'Không thể cập nhật'}`, 'error');
+      showToast(`Lỗi phê duyệt biển số: ${err?.message || 'Không thể cập nhật'}`, 'error');
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  // Fallback gọi duyệt nhanh
+  const handleApprove = (vehicle: Vehicle) => {
+    openApproveModal(vehicle);
   };
 
   // Xử lý Từ chối biển số
@@ -218,7 +251,6 @@ export default function LicensePlateApproval() {
     setIsSubmitting(true);
     try {
       await vehicleApi.rejectLicensePlate(rejectingVehicle.id, rejectReason.trim(), rejectingVehicle);
-      // Cập nhật ngay lập tức vào state vehicles để phản ánh tức thì trên bảng
       setVehicles(prev =>
         prev.map(v =>
           v.id === rejectingVehicle.id
@@ -464,12 +496,13 @@ export default function LicensePlateApproval() {
               ) : (
                 filteredRecords.map(v => {
                   const cust = customerMap.get(v.customerId) || customerMap.get(String(parseInt(v.customerId.replace(/\D/g, ''), 10)));
-                  const isDaDuyet = v.trangThaiDuyetBienSo === 'DaDuyet';
+                  const isDaDuyet = v.trangThaiDuyetBienSo === 'DaDuyet' || (v.trangThaiDuyet === 'DaDuyet' && v.bienSo && v.bienSo !== 'Chưa có biển số' && !v.bienSo.includes('Chưa có') && !v.bienSoChoDuyet && v.trangThaiDuyetBienSo !== 'ChoDuyet' && v.trangThaiDuyetBienSo !== 'ChoCapNhat');
                   const isTuChoi = v.trangThaiDuyetBienSo === 'TuChoi';
-                  const isChoDuyet = !isDaDuyet && !isTuChoi && (v.trangThaiDuyetBienSo === 'ChoDuyet' || Boolean(v.bienSoChoDuyet));
+                  const isChoDuyet = !isDaDuyet && !isTuChoi;
+                  const hasProposed = Boolean(v.bienSoChoDuyet && v.bienSoChoDuyet !== 'Chưa có biển số' && !v.bienSoChoDuyet.includes('Chưa có'));
                   const isCuaHang = v.nguonGoc === 'CuaHang';
                   const currentPlate = v.bienSo || 'Chưa có biển số';
-                  const proposedPlate = v.bienSoChoDuyet || v.bienSo;
+                  const proposedPlate = v.bienSoChoDuyet || (v.bienSo && v.bienSo !== 'Chưa có biển số' && !v.bienSo.includes('Chưa có') ? v.bienSo : '');
                   const effectiveCaVetImg = v.anhCaVet || (v.id ? localStorage.getItem('crm_cavet_' + v.id) : null) || (v.soKhung ? localStorage.getItem('crm_cavet_' + v.soKhung) : null);
 
                   const isHighlighted = Boolean(
@@ -550,8 +583,14 @@ export default function LicensePlateApproval() {
                             {currentPlate.includes('Chưa có') || currentPlate.includes('TAM-') ? 'Chưa có' : currentPlate}
                           </span>
                           <span className="text-zinc-400 font-bold">➔</span>
-                          <span className="px-2.5 py-1 rounded-lg text-xs font-black bg-zinc-900 text-amber-400 border border-amber-500/40 shadow-2xs">
-                            {proposedPlate || 'Chưa có'}
+                          <span className={`px-2.5 py-1 rounded-lg text-xs font-black border shadow-2xs ${
+                            hasProposed
+                              ? 'bg-zinc-900 text-amber-400 border-amber-500/40'
+                              : isDaDuyet
+                              ? 'bg-emerald-950 text-emerald-300 border-emerald-500/40'
+                              : 'bg-zinc-100 text-zinc-600 border-zinc-300'
+                          }`}>
+                            {hasProposed ? v.bienSoChoDuyet : isDaDuyet ? v.bienSo : 'Chờ cấp biển'}
                           </span>
                         </div>
                       </td>
@@ -566,7 +605,7 @@ export default function LicensePlateApproval() {
                               onClick={() => setPreviewCaVetImage({
                                 url: effectiveCaVetImg,
                                 title: `Cà vẹt xe ${v.tenXe} (${cust?.hoTen || 'Khách hàng'})`,
-                                plate: proposedPlate,
+                                plate: proposedPlate || 'Chưa cấp biển',
                                 vin: v.soKhung,
                               })}
                               className="w-14 h-9 object-cover rounded-md border border-zinc-300 shadow-2xs cursor-pointer hover:scale-110 hover:border-red-500 transition duration-200"
@@ -576,7 +615,7 @@ export default function LicensePlateApproval() {
                               onClick={() => setPreviewCaVetImage({
                                 url: effectiveCaVetImg,
                                 title: `Cà vẹt xe ${v.tenXe} (${cust?.hoTen || 'Khách hàng'})`,
-                                plate: proposedPlate,
+                                plate: proposedPlate || 'Chưa cấp biển',
                                 vin: v.soKhung,
                               })}
                               className="text-[10px] text-red-600 hover:underline font-bold cursor-pointer"
@@ -591,10 +630,16 @@ export default function LicensePlateApproval() {
 
                       {/* Trạng thái duyệt */}
                       <td className="p-3.5 text-center">
-                        {isChoDuyet && (
+                        {isChoDuyet && hasProposed && (
                           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-blue-100 text-blue-800 border border-blue-300 animate-pulse">
                             <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-ping" />
                             <span>⏳ Chờ duyệt</span>
+                          </span>
+                        )}
+                        {isChoDuyet && !hasProposed && (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                            <span>📋</span>
+                            <span>Chờ cấp biển</span>
                           </span>
                         )}
                         {isDaDuyet && (
@@ -623,12 +668,12 @@ export default function LicensePlateApproval() {
                             <>
                               <button
                                 type="button"
-                                onClick={() => handleApprove(v)}
+                                onClick={() => openApproveModal(v)}
                                 disabled={isSubmitting}
                                 className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs transition cursor-pointer flex items-center gap-1"
-                                title="Phê duyệt biển số chính thức"
+                                title={hasProposed ? "Phê duyệt biển số đề xuất" : "Cấp biển số chính thức"}
                               >
-                                <span>✓</span> <span>Duyệt</span>
+                                <span>✓</span> <span>{hasProposed ? 'Duyệt' : 'Cấp biển'}</span>
                               </button>
                               <button
                                 type="button"
@@ -643,6 +688,16 @@ export default function LicensePlateApproval() {
                                 <span>✕</span> <span>Từ chối</span>
                               </button>
                             </>
+                          )}
+                          {isDaDuyet && (
+                            <button
+                              type="button"
+                              onClick={() => openApproveModal(v)}
+                              className="px-2 py-1.5 rounded-lg text-xs font-semibold bg-zinc-100 hover:bg-zinc-200 text-zinc-700 border border-zinc-200 transition cursor-pointer"
+                              title="Cập nhật / cấp lại biển số"
+                            >
+                              🔄
+                            </button>
                           )}
 
                           <button
@@ -872,18 +927,162 @@ export default function LicensePlateApproval() {
               >
                 Đóng
               </button>
-              {(!['DaDuyet', 'TuChoi'].includes(viewingDetailVehicle.trangThaiDuyetBienSo || '') && (viewingDetailVehicle.trangThaiDuyetBienSo === 'ChoDuyet' || viewingDetailVehicle.bienSoChoDuyet)) && (
+              {viewingDetailVehicle.trangThaiDuyetBienSo !== 'DaDuyet' && (
                 <button
                   type="button"
-                  onClick={async () => {
-                    await handleApprove(viewingDetailVehicle);
+                  onClick={() => {
+                    const target = viewingDetailVehicle;
                     setViewingDetailVehicle(null);
+                    openApproveModal(target);
                   }}
-                  className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow cursor-pointer"
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow cursor-pointer flex items-center gap-1.5"
                 >
-                  Phê duyệt ngay
+                  <span>✓</span> <span>Phê duyệt / Cấp biển số ngay</span>
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════ MODAL 4: PHÊ DUYỆT & CẤP BIỂN SỐ XE CHÍNH THỨC ══════════ */}
+      {approvingVehicle && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-lg shadow-2xl border border-zinc-200 animate-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-200">
+              <div className="flex items-center gap-2">
+                <span className="p-2 rounded-xl bg-emerald-100 text-emerald-800 text-lg">🛡️</span>
+                <div>
+                  <h3 className="font-extrabold text-base text-zinc-900 uppercase" style={{ fontFamily: 'var(--font-display)' }}>
+                    PHÊ DUYỆT & CẤP BIỂN SỐ XE CHÍNH THỨC
+                  </h3>
+                  <p className="text-xs text-zinc-500 mt-0.5">
+                    Hồ sơ: {approvingVehicle.id} — {approvingVehicle.tenXe}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setApprovingVehicle(null)}
+                className="text-zinc-400 hover:text-zinc-600 font-bold p-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Vehicle Info Box */}
+            <div className="py-4 space-y-3.5 text-xs">
+              <div className="p-3.5 rounded-2xl bg-zinc-50 border border-zinc-200 space-y-1.5">
+                <div className="flex justify-between">
+                  <span className="text-zinc-500">Khách hàng sở hữu:</span>
+                  <strong className="text-zinc-900">{customerMap.get(approvingVehicle.customerId)?.hoTen || 'Khách hàng'}</strong>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-zinc-500">Số điện thoại liên hệ:</span>
+                  <span className="font-mono font-bold text-zinc-800">{customerMap.get(approvingVehicle.customerId)?.soDienThoai || 'Chưa có'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-zinc-500">Số khung (VIN):</span>
+                  <span className="font-mono font-bold text-zinc-900">{approvingVehicle.soKhung || 'Chưa cập nhật'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-zinc-500">Biển số đề xuất từ khách:</span>
+                  <span className="font-mono font-bold text-amber-600">{approvingVehicle.bienSoChoDuyet || 'Chưa gửi đề xuất'}</span>
+                </div>
+              </div>
+
+              {/* License Plate Input */}
+              <div>
+                <label className="block font-bold text-zinc-800 mb-1.5 text-xs uppercase tracking-wide">
+                  Biển số xe chính thức được cấp *
+                </label>
+                <input
+                  type="text"
+                  value={officialPlateInput}
+                  onChange={e => setOfficialPlateInput(e.target.value.toUpperCase())}
+                  placeholder="VD: 59-K1 888.88 hoặc 29-B1 999.99"
+                  className="w-full px-4 py-3 rounded-xl border-2 border-emerald-500 text-sm font-mono font-black text-center tracking-widest text-zinc-900 focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-emerald-50/30"
+                />
+              </div>
+
+              {/* Quick Preset Buttons */}
+              <div>
+                <span className="text-[11px] font-semibold text-zinc-500 block mb-1.5">Gợi ý biển số nhanh chuẩn Việt Nam:</span>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {approvingVehicle.bienSoChoDuyet && (
+                    <button
+                      type="button"
+                      onClick={() => setOfficialPlateInput(approvingVehicle.bienSoChoDuyet!)}
+                      className="px-2.5 py-1.5 rounded-lg border border-amber-300 bg-amber-50 text-amber-900 font-mono text-[11px] font-bold hover:bg-amber-100 cursor-pointer text-center truncate"
+                    >
+                      Dùng biển khách gửi
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setOfficialPlateInput('59-K1 888.88')}
+                    className="px-2.5 py-1.5 rounded-lg border border-zinc-300 bg-white text-zinc-800 font-mono text-[11px] font-bold hover:bg-zinc-100 cursor-pointer text-center"
+                  >
+                    TP.HCM (59-K1 888.88)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOfficialPlateInput('29-B1 999.99')}
+                    className="px-2.5 py-1.5 rounded-lg border border-zinc-300 bg-white text-zinc-800 font-mono text-[11px] font-bold hover:bg-zinc-100 cursor-pointer text-center"
+                  >
+                    Hà Nội (29-B1 999.99)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOfficialPlateInput('65-B1 668.68')}
+                    className="px-2.5 py-1.5 rounded-lg border border-zinc-300 bg-white text-zinc-800 font-mono text-[11px] font-bold hover:bg-zinc-100 cursor-pointer text-center"
+                  >
+                    Cần Thơ (65-B1 668.68)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOfficialPlateInput('43-C1 777.77')}
+                    className="px-2.5 py-1.5 rounded-lg border border-zinc-300 bg-white text-zinc-800 font-mono text-[11px] font-bold hover:bg-zinc-100 cursor-pointer text-center"
+                  >
+                    Đà Nẵng (43-C1 777.77)
+                  </button>
+                </div>
+              </div>
+
+              {/* Sync checkboxes */}
+              <div className="pt-2 border-t border-zinc-100 space-y-1.5 text-[11px] text-zinc-600">
+                <div className="flex items-center gap-2">
+                  <span className="text-emerald-600 font-bold">✓</span>
+                  <span>Tự động cập nhật hồ sơ xe của khách hàng & bảo hành 3 năm</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-emerald-600 font-bold">✓</span>
+                  <span>Tự động đồng bộ sang đơn hàng xe máy & hợp đồng bảo hiểm kèm theo</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-emerald-600 font-bold">✓</span>
+                  <span>Gửi thông báo xác nhận thành công tới tài khoản khách hàng</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-zinc-200">
+              <button
+                type="button"
+                onClick={() => setApprovingVehicle(null)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-zinc-100 hover:bg-zinc-200 text-zinc-700 cursor-pointer"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmApprove}
+                disabled={isSubmitting || !officialPlateInput.trim()}
+                className="px-5 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md cursor-pointer transition flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {isSubmitting ? 'Đang cập nhật...' : '✓ Xác nhận Phê duyệt & Cấp biển số'}
+              </button>
             </div>
           </div>
         </div>

@@ -362,7 +362,8 @@ export default function SalesPage({
   const filteredOrders = useMemo(() => {
     const list = orders.filter(o => {
       // 1. Phân loại đơn: Xe hoặc Phụ tùng
-      const orderType = o.loaiDon || 'PhuTung';
+      const isVeh = o.loaiDon === 'Xe' || !!o.thongTinXe || (o.id && o.id.includes('XE')) || (o.tongTien >= 10000000 && (!o.items || o.items.length === 0));
+      const orderType = isVeh ? 'Xe' : 'PhuTung';
       if (activeOrderTypeTab !== 'TatCa' && orderType !== activeOrderTypeTab) return false;
 
       // 2. Trạng thái đơn hàng
@@ -576,7 +577,7 @@ export default function SalesPage({
           <span>🏍️</span>
           <span>Đơn Hàng Xe Mới</span>
           <span className="px-2 py-0.5 rounded-full text-xs font-mono bg-red-100 text-red-700">
-            {orders.filter(o => o.loaiDon === 'Xe').length}
+            {orders.filter(o => o.loaiDon === 'Xe' || !!o.thongTinXe || (o.id && o.id.includes('XE'))).length}
           </span>
         </button>
 
@@ -592,7 +593,7 @@ export default function SalesPage({
           <span>🔧</span>
           <span>Đơn Hàng Phụ Tùng & Phụ Kiện</span>
           <span className="px-2 py-0.5 rounded-full text-xs font-mono bg-zinc-100 text-zinc-700">
-            {orders.filter(o => o.loaiDon !== 'Xe').length}
+            {orders.filter(o => !(o.loaiDon === 'Xe' || !!o.thongTinXe || (o.id && o.id.includes('XE')))).length}
           </span>
         </button>
       </div>
@@ -786,7 +787,7 @@ export default function SalesPage({
                 </tr>
               ) : (
                 filteredOrders.map(order => {
-                  const isVehicle = order.loaiDon === 'Xe';
+                  const isVehicle = order.loaiDon === 'Xe' || !!order.thongTinXe || (order.id && order.id.includes('XE')) || (order.tongTien >= 10000000 && (!order.items || order.items.length === 0));
                   const chCfg = channelConfigs[order.kenhBan || 'Online'] || channelConfigs.Online;
 
                   return (
@@ -883,7 +884,7 @@ export default function SalesPage({
                           <div className="text-xs font-medium text-zinc-900 truncate max-w-[200px]">
                             {order.items && order.items.length > 0
                               ? order.items.map(i => `${i.tenSanPham} (x${i.soLuong})`).join(', ')
-                              : 'Phụ tùng chính hãng'}
+                              : (order.thongTinXe?.tenXe || 'Phụ tùng chính hãng')}
                           </div>
                           <div className="text-[10px] text-zinc-400 font-mono">
                             {order.items?.length || 0} sản phẩm
@@ -926,7 +927,7 @@ export default function SalesPage({
                                 <div className="text-xs font-medium text-zinc-900 truncate max-w-[200px]">
                                   {order.items && order.items.length > 0
                                     ? order.items.map(i => `${i.tenSanPham} (x${i.soLuong})`).join(', ')
-                                    : 'Phụ tùng chính hãng'}
+                                    : (order.thongTinXe?.tenXe || 'Phụ tùng chính hãng')}
                                 </div>
                                 <div className="text-[10px] text-zinc-400 font-mono">
                                   {order.items?.length || 0} sản phẩm
@@ -3563,7 +3564,7 @@ function OrderDetailModal({
   onUpdateStatus?: (status: OrderStatus) => void;
   onUpdatePaymentStatus?: (paymentStatus: PaymentStatus) => void;
 }) {
-  const isVehicle = order.loaiDon === 'Xe';
+  const isVehicle = order.loaiDon === 'Xe' || !!order.thongTinXe || (order.id && order.id.includes('XE'));
 
   // Helper lấy ảnh thumbnail phụ tùng
   const getPartThumbnail = (item: { tenSanPham: string; maPhuTung?: number; hinhAnh?: string }) => {
@@ -3991,7 +3992,7 @@ function PrintInvoiceModal({
   onClose: () => void;
   onCompleteOrder?: (orderId: string) => void;
 }) {
-  const isVehicle = order.loaiDon === 'Xe';
+  const isVehicle = order.loaiDon === 'Xe' || !!order.thongTinXe || (order.id && order.id.includes('XE'));
   const printRef = useRef<HTMLDivElement>(null);
   const remainingAmount = order.thongTinXe?.soTienConLai || 0;
   const hasRemainingBalance = isVehicle && remainingAmount > 0 && order.trangThaiThanhToan !== 'DaThanhToan';
@@ -4023,7 +4024,7 @@ function PrintInvoiceModal({
             <button
               type="button"
               onClick={handlePrint}
-              disabled={hasRemainingBalance && !daThuDuTien}
+              disabled={Boolean(hasRemainingBalance && !daThuDuTien)}
               className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow transition ${
                 hasRemainingBalance && !daThuDuTien
                   ? 'bg-zinc-300 text-zinc-500 cursor-not-allowed'

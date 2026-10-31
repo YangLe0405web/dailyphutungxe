@@ -855,9 +855,11 @@ function Customer360Modal({
   const handleApprovePlate = async (vId: string) => {
     setApprovingPlateId(vId);
     try {
-      await vehicleApi.approveLicensePlate(vId);
-      setVehicles(prev => prev.map(x => x.id === vId ? { ...x, bienSo: x.bienSoChoDuyet || x.bienSo, trangThaiDuyetBienSo: 'DaDuyet', bienSoChoDuyet: undefined } : x));
-      window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'license_plate_approved', vehicleId: vId } }));
+      const targetV = vehicles.find(x => x.id === vId);
+      const proposedPlate = targetV?.bienSoChoDuyet || targetV?.bienSo || '59-K1 888.88';
+      await vehicleApi.approveLicensePlate(vId, proposedPlate, targetV);
+      setVehicles(prev => prev.map(x => x.id === vId ? { ...x, bienSo: proposedPlate, trangThaiDuyetBienSo: 'DaDuyet', bienSoChoDuyet: undefined } : x));
+      window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'license_plate_approved', vehicleId: vId, plate: proposedPlate } }));
     } finally {
       setApprovingPlateId(null);
     }

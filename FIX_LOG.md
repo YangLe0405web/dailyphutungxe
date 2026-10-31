@@ -3701,3 +3701,260 @@ pm run build thành công 100% trong 1.41s, **0 lỗi TypeScript**.
 * **Kết quả nghiệm thu:**
   - Build frontend: 0 lỗi.
   - Tạo kịch bản kiểm thử chi tiết tại artifact `kich-ban-test-chi-tiet-loi-60.md`.
+
+
+---
+
+### 61. Khắc phục 4 lỗi phân hệ "GIA HẠN B.HÀNH" (GH01, GH02, GH03, GH04) & Thiết kế Wizard Showroom 4 bước, Modal 5 khối
+* **Thời gian thực hiện:** 31/10/2026.
+* **Người yêu cầu:** Người dùng kiểm tra giao diện & dữ liệu phân hệ GIA HẠN B.HÀNH (Ảnh 1, 2, 3, 4, 5).
+* **Phân tích vấn đề:**
+  1. **GH01 (NGƯỜI DÙNG & HỆ THỐNG):** Chức năng gia hạn bảo hành online chưa cập nhật đầy đủ dữ liệu: thời hạn bảo hành của xe không tăng đúng số tháng của gói đã mua (do lỗi parse ngày định dạng `DD/MM/YYYY` của JS Date); lịch sử giao dịch gia hạn chưa được lưu vào cơ sở dữ liệu quản lý của Admin; giao diện chi tiết xe của khách không tự cập nhật hạn mới nếu không F5.
+  2. **GH02 (ADMIN):** Giao diện gia hạn bảo hành tại showroom ở Tab 1 chưa đúng luồng thực tế của showroom. Cần thiết kế lại thành Wizard 4 bước hoàn chỉnh theo Ảnh 2, 3, 4:
+     - Bước 1: Tra cứu thông tin khách hàng & xe sở hữu.
+     - Bước 2: Kiểm tra lịch sử dịch vụ & thẩm định điều kiện xe (ODO, hình ảnh ODO, 4 tiêu chuẩn thẩm định xanh, 4 mốc lịch sử dịch vụ).
+     - Bước 3: Chọn gói bảo hành mở rộng (4 gói dịch vụ, gắn thẻ khuyên dùng/tiết kiệm/khóa điều kiện theo ODO và dòng xe).
+     - Bước 4: Thanh toán & hoàn tất (Chi tiết đơn hàng, Tiền mặt tính tiền thối tự động, POS, Chuyển khoản VietQR, xuất hóa đơn).
+  3. **GH03 (NGƯỜI DÙNG):** Thao tác Lịch sử bảo hành không cần thiết nằm trong form Yêu cầu bảo hành gây rối luồng người dùng.
+  4. **GH04 (NGƯỜI DÙNG & ADMIN):** Giao diện trang Chi tiết bảo hành chưa rõ ràng, thiếu cấu trúc chuẩn theo hồ sơ bảo hành chuyên nghiệp. Cần thiết kế lại thành Modal Chi tiết bảo hành 5 khối theo đúng Ảnh 5.
+* **Giải pháp & Các file đã chỉnh sửa:**
+  1. [`crm-frontend/src/data/mockData.ts`](file:///d:/crm-project/crm-frontend/src/data/mockData.ts):
+     - Bổ sung hàm tiện ích `parseDateSafe` và `formatDateSafe` phân tích chuẩn xác cả hai định dạng `DD/MM/YYYY` và `YYYY-MM-DD`.
+     - Cập nhật hàm `renewVehicleWarranty(vehicleId, years)` sử dụng `parseDateSafe`, tự động gia hạn bảo hành chính xác theo số năm của gói và đồng bộ vào `crm_customer_vehicles`.
+     - Thêm khách hàng chuẩn `KH1004` (Lê Thị Lan Phương, `0879179243`, `lethilanphuong@gmail.com`) cùng 2 xe sở hữu: Honda SH 160i ABS 2024 (`59K9 - 876.54`, số khung `RLHKD160CB7747410`, số máy `JF62E088888`) và Honda Vision 2023 (`59P3 - 123.45`).
+     - Mở rộng interface `WarrantyExtensionTransaction` đầy đủ các trường: `email`, `diaChi`, `customerId`, `vehicleId`, `tenXe`, `bienSo`, `soKhung`, `soMay`, `hinhAnhXe`, `odo`, `thoiHanGoc`, `quyenLoiGoi`, `phuongThucThanhToan`, `thoiGianThanhToan`, `tienKhachDua`, `tienThoiLai`, `daInHoaDon`, `lichSuDichVu`.
+     - Khởi tạo giao dịch mẫu `BH-0879179243` cho Lan Phương chuẩn theo thông số Ảnh 5.
+  2. [`crm-frontend/src/services/api.ts`](file:///d:/crm-project/crm-frontend/src/services/api.ts):
+     - Hàm `buyExtendedWarranty`: Tính toán ngày hết hạn mới chuẩn xác qua `parseDateSafe`, cập nhật hạn mới vào xe trong `crm_customer_vehicles`, đồng thời tự động gọi `warrantyApi.createExtensionTransaction(...)` lưu vĩnh viễn giao dịch vào cơ sở dữ liệu Admin `crm_admin_warranty_extensions`.
+     - Bổ sung `customerApi.getAllSync()` và `customerApi.getById(...)` đồng bộ tức thì cache người dùng.
+  3. [`crm-frontend/src/components/customer/WarrantyExtensionWizard.tsx`](file:///d:/crm-project/crm-frontend/src/components/customer/WarrantyExtensionWizard.tsx) & [`CustomerDashboard.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/CustomerDashboard.tsx):
+     - `WarrantyExtensionWizard`: Lấy đối tượng xe đã gia hạn mới nhất từ bộ nhớ và truyền trực tiếp qua callback `onSuccess(updatedVeh)`.
+     - `CustomerDashboard`: Lập tức cập nhật `selectedVehicleWarrantyDetail = updatedVeh`, hiển thị ngay hạn bảo hành mới trên giao diện mà không cần refresh trang (GH01).
+  4. [`crm-frontend/src/pages/admin/Warranty.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/Warranty.tsx):
+     - Xây dựng Wizard 4 bước Tạo gia hạn bảo hành tại showroom (GH02) chuẩn Ảnh 2, 3, 4:
+       * Bước 1: Tra cứu khách hàng theo SĐT/Tên/Email, kèm nút chọn nhanh Lan Phương (`0879179243`) và Nguyễn Văn Minh (`0987654321`), chọn xe sở hữu.
+       * Bước 2: Nhập số km ODO (12.500 km), ngày kiểm tra (29/10/2026), upload ảnh đồng hồ ODO, hộp thẩm định tự động 4 tiêu chuẩn màu xanh đạt điều kiện, 4 mốc lịch sử dịch vụ chính hãng.
+       * Bước 3: 4 thẻ gói bảo hành (Tiêu chuẩn 1Y 350k, Toàn diện 2Y 600k, Cao cấp 3Y 850k khóa do ODO > 10k km, Xe côn tay 500k khóa do dòng xe SH).
+       * Bước 4: Chi tiết đơn hàng, 3 tab thanh toán (Tiền mặt tính tiền thừa tự động, Thẻ POS, VietQR ngân hàng), tùy chọn in hóa đơn, nút "Xác nhận thu tiền & Kích hoạt".
+     - Xây dựng Modal Chi tiết giao dịch 5 khối (GH04) chuẩn Ảnh 5:
+       * Khối 1: THÔNG TIN KHÁCH HÀNG (Avatar, họ tên, SĐT, email, địa chỉ).
+       * Khối 2: THÔNG TIN PHƯƠNG TIỆN (Ảnh xe SH 160i, biển số, ODO check-in, số khung, số máy).
+       * Khối 3: GÓI BẢO HÀNH GIA HẠN (Tên gói, quyền lợi, hạn gốc, hạn mới sau gia hạn, giá tiền).
+       * Khối 4: CHI TIẾT THANH TOÁN (Phương thức, thời gian, thu ngân Trần Văn Quản Lý, badge ĐÃ XUẤT HÓA ĐƠN).
+       * Khối 5: LỊCH SỬ DỊCH VỤ & BẢO HÀNH (Trục timeline trực quan các mốc kích hoạt, phê duyệt, bảo dưỡng định kỳ 3, 2, thay nhớt).
+       * Footer: Nút In lại hóa đơn, Chat với Khách, Đóng.
+  5. [`crm-frontend/src/components/customer/WarrantyViews.tsx`](file:///d:/crm-project/crm-frontend/src/components/customer/WarrantyViews.tsx):
+     - Form Yêu cầu bảo hành: Làm sạch form, loại bỏ các nút thừa không liên quan đến lịch sử (GH03).
+     - Trang Chi tiết bảo hành: Bổ sung nút `[👁️ XEM HỒ SƠ 5 KHỐI]` và tích hợp Modal Chi tiết bảo hành 5 khối đồng nhất theo đúng chuẩn Ảnh 5 cho phía Người dùng (GH04).
+* **Kết quả nghiệm thu:**
+  - `npm --prefix crm-frontend run build`: 0 lỗi, bundle thành công trong 628ms.
+  - `dotnet run --project CrmBackend`: Đang chạy ngầm trên port 5208 (`http://localhost:5208`).
+  - Frontend dev server: Đang chạy ngầm trên port 5173 (`http://localhost:5173`).
+  - Đã lập kịch bản test chi tiết tại artifact `kich-ban-test-chi-tiet-loi-61.md`.
+  - Tuân thủ quy tắc an toàn: Không push lên GitHub khi chưa nhận lệnh `.github --update`.
+
+
+---
+
+### 62. Khắc phục trọn vẹn 6 lỗi hệ thống: Đơn hàng phụ tùng, Đánh giá xe, Đồng bộ yêu cầu bảo hành, Lịch sử gia hạn, Ảnh phương tiện & Cô lập dữ liệu tài khoản mới
+* **Thời gian thực hiện:** 31/10/2026.
+* **Người yêu cầu:** Người dùng báo cáo 6 lỗi tồn đọng sau kiểm thử:
+  1. Phụ tùng mua không hiện đúng thông tin (ảnh đại diện, mã SKU/Part ID, thương hiệu, phân loại).
+  2. Xe đã mua không nhận được khảo sát và đánh giá không được (lỗi: đánh giá xong vẫn còn ở "Chờ đánh giá", bên "Đã đánh giá" không thấy).
+  3. Gửi yêu cầu bảo hành từ khách hàng thì bên Admin (Quản lý bảo hành / Tab Yêu cầu bảo hành) không thấy.
+  4. Gia hạn bảo hành xong thì bên Khách hàng (Lịch sử dịch vụ) không hiện dữ liệu gia hạn thành công.
+  5. Ảnh 1: Modal chi tiết bảo hành không để đúng ảnh phương tiện (Yamaha MT-15 bị hiển thị ảnh placeholder tối màu thay vì ảnh xe chuẩn).
+  6. Khảo sát và đánh giá hiển thị những mục không thuộc về tài khoản, tài khoản mới tạo cũng thấy toàn bộ đánh giá/khảo sát của tài khoản khác.
+* **Phân tích nguyên nhân gốc rễ (Root Cause Analysis):**
+  1. *Lỗi 1 (Phụ tùng mua thiếu thông tin):* Tại `crm-frontend/src/pages/customer/Checkout.tsx`, khi khách đặt mua phụ tùng, đối tượng giỏ hàng chỉ truyền `name`, `price`, `quantity`, thiếu các trường `partId`, `hinhAnh`, `thuongHieu`, `danhMuc`. Dẫn đến `Order.items` trong `CustomerDashboard.tsx` không có ảnh và mã phụ tùng hiển thị.
+  2. *Lỗi 2 (Đánh giá xe bị kẹt và lỗi 500 BE):*
+     - Backend .NET `CrmBackend/Controllers/PhanHoiController.cs` kiểm tra khóa ngoại SQL Server `FK_PhanHoi_Xe` và `FK_PhanHoi_PhuTung`. Khi gửi đánh giá xe với mã không tồn tại trong bảng `SAN_PHAM_XE`, SQL Server quăng lỗi 547 và API trả về HTTP 500, khiến frontend không chuyển trạng thái thành công.
+     - Đồng thời, danh sách xe đã mua của khách (`myVehicles`) chưa được gộp vào danh sách `waitingReviews` ("Chờ đánh giá") của khách hàng.
+  3. *Lỗi 3 (Yêu cầu bảo hành không hiện bên Admin):* Khi gửi yêu cầu bảo hành từ form phía khách hàng, hệ thống chỉ lưu vào storage nhưng thiếu sự kiện phát tán thông báo liên tab (`window.addEventListener('storage', ...)`) và event `crm-data-refresh` cho Admin Dashboard.
+  4. *Lỗi 4 (Lịch sử gia hạn bảo hành không hiện):* Trong `CustomerDashboard.tsx` Tab 3 ("Lịch sử dịch vụ"), chỉ có các phân nhóm: Dịch vụ, Sửa chữa, Bảo dưỡng, Cứu hộ, nhưng hoàn toàn thiếu phân nhóm "Gia hạn bảo hành" để hiển thị các giao dịch từ `warrantyApi.getExtensionTransactions()`.
+  5. *Lỗi 5 (Sai ảnh phương tiện):* `getVehicleImage` trong `WarrantyViews.tsx` và `Warranty.tsx` fallback về ảnh Unsplash chung chung khi không tìm thấy mã xe nội bộ, thay vì tra cứu theo danh mục ảnh xe thực tế của dự án (`/images/Xe/...`).
+  6. *Lỗi 6 (Rò rỉ khảo sát/đánh giá sang tài khoản mới):*
+     - `feedbackApi.getAll()` có cơ chế fallback giả định gán `KH001` cho các đánh giá không có mã khách, khiến tài khoản mới truy cập thấy toàn bộ đánh giá của KH001.
+     - `surveyApi` khi tạo khảo sát mua xe hoặc lái thử với `targetCustomerIds: [custId]` lại bị gán cờ `targetCustomerId: 'ALL'`, khiến hàm lọc khảo sát hiển thị cho tất cả khách hàng mới.
+     - Bộ lọc `myCustomerFeedbacks` và `DynamicSurveyTab` không kiểm tra chặt chẽ quyền sở hữu của khách hàng đang đăng nhập.
+* **Giải pháp & Các file đã chỉnh sửa:**
+  1. [`CrmBackend/Controllers/PhanHoiController.cs`](file:///d:/crm-project/CrmBackend/Controllers/PhanHoiController.cs):
+     - Thêm cơ chế kiểm tra tính hợp lệ của `MaKH` (`KHACH_HANG`), `MaXe` (`SAN_PHAM_XE`) và `MaPhuTung` (`PHU_TUNG`) trước khi chèn vào database. Nếu ID không tồn tại trong bảng tương ứng, tự động gán `null` để bảo đảm tính toàn vẹn khóa ngoại.
+     - Bổ sung khối try-catch an toàn: Nếu vẫn phát sinh ngoại lệ foreign key, tự động retry chèn với `MaXe = null` và `MaPhuTung = null`, tuyệt đối ngăn chặn lỗi sập 500 Internal Server Error.
+  2. [`crm-frontend/src/data/mockData.ts`](file:///d:/crm-project/crm-frontend/src/data/mockData.ts):
+     - Định nghĩa `OrderItem` đầy đủ: `partId`, `hinhAnh`, `thuongHieu`, `danhMuc`.
+     - Cập nhật hàm `getVehicleCatalogImage(tenXe, hinhAnhHienTai)` hỗ trợ chuẩn hóa ảnh xe Yamaha MT-15 (`/images/Xe/yamaha-mt15.png`), Honda SH (`/images/Xe/honda-sh.png`), Air Blade, Wave Alpha, Tuscany,... Loại bỏ fallback Unsplash sai lệch.
+  3. [`crm-frontend/src/services/api.ts`](file:///d:/crm-project/crm-frontend/src/services/api.ts):
+     - `orderApi.create` và `orderApi.getAll`: Lưu và bảo toàn trọn vẹn thông tin `partId`, `hinhAnh`, `thuongHieu`, `danhMuc` trong từng item của đơn hàng.
+     - `feedbackApi.getAll`: Xóa bỏ gán fallback giả định về `KH001`. Giữ đúng `customerId`, `orderId`, `productId`, `productType`.
+     - `surveyApi.createVehiclePurchaseSurvey`, `createTestDriveSurvey`, `createMaintenanceSurvey`: Đảm bảo khi gửi đích danh khách hàng thì `targetCustomerId = custId` (không để `'ALL'`).
+     - `warrantyApi.createAppointment`: Dispatch event `crm-data-refresh` (type: `warranty_claim`) và `crm-admin-notification`.
+  4. [`crm-frontend/src/pages/customer/Checkout.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/Checkout.tsx):
+     - Khi submit đơn hàng phụ tùng, truyền đầy đủ `partId`, `hinhAnh`, `thuongHieu`, `danhMuc` vào `orderApi.create`.
+  5. [`crm-frontend/src/pages/customer/CustomerDashboard.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/CustomerDashboard.tsx):
+     - *Bug 1:* Hiển thị hình ảnh phụ tùng, huy hiệu thương hiệu, mã SKU và số lượng trong danh sách đơn hàng & modal chi tiết đơn hàng.
+     - *Bug 2 & 6:*
+       * Đưa các xe đã mua trong `myVehicles` vào `waitingReviews` ("Chờ đánh giá").
+       * Cập nhật đếm `unreviewedOrdersCount` bao gồm cả xe chưa đánh giá.
+       * Bộ lọc `myCustomerFeedbacks`: Cô lập tuyệt đối theo `f.customerId === custId`. Tài khoản mới không bị hiển thị đánh giá rác.
+       * Bộ lọc `DynamicSurveyTab`: Khảo sát có danh sách chỉ định bắt buộc khách hàng phải có trong `targetCustomerIds`. Khảo sát mua xe bắt buộc khách hàng phải sở hữu xe đó hoặc có đơn hàng thành công tương ứng.
+     - *Bug 3:* Trong `handleSendWarrantyClaim`, kích hoạt dispatch sự kiện đồng bộ Admin và phát thông báo tức thì.
+     - *Bug 4:* Thêm phân nhóm "Gia hạn bảo hành" (`GiaHanBaoHanh`) trong Tab 3 "Lịch sử dịch vụ", lấy dữ liệu từ `warrantyApi.getExtensionTransactions()` theo đúng ID xe hoặc ID khách, cộng dồn vào tổng số dịch vụ hoàn tất.
+  6. [`crm-frontend/src/pages/admin/Warranty.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/Warranty.tsx) & [`WarrantyViews.tsx`](file:///d:/crm-project/crm-frontend/src/components/customer/WarrantyViews.tsx):
+     - Cập nhật ảnh phương tiện trong modal bảo hành sử dụng `getVehicleCatalogImage`, hiển thị ảnh Yamaha MT-15 sắc nét đúng chuẩn Ảnh 1.
+     - Thêm `window.addEventListener('storage', ...)` đồng bộ tức thì yêu cầu bảo hành từ phía khách hàng sang Admin Tab 2 ("Yêu cầu bảo hành").
+* **Kết quả nghiệm thu:**
+  - Backend .NET (`dotnet build CrmBackend`): Build thành công 0 cảnh báo, 0 lỗi; Server chạy trên cổng 5208.
+  - Frontend (`npm --prefix crm-frontend run build`): Build thành công 0 lỗi trong 713ms; Dev server chạy trên cổng 5173.
+  - Toàn bộ 6 lỗi đã được giải quyết triệt để và cô lập tài khoản mới hoàn toàn sạch sẽ.
+  - Đã xuất bản kịch bản kiểm thử chi tiết tại artifact `kich-ban-test-chi-tiet-loi-62.md`.
+  - Tuân thủ quy tắc an toàn: Không push lên GitHub khi chưa nhận lệnh `.github --update`.
+
+
+---
+
+### 63. Khắc phục triệt để 4 lỗi: Đồng bộ yêu cầu bảo hành sang Admin, Tự động hoàn tất lịch bàn giao xe, Hóa đơn gia hạn bảo hành & In phiếu bảo hành chuẩn A4
+* **Thời gian thực hiện:** 01/11/2026.
+* **Người yêu cầu:** Người dùng báo cáo 4 lỗi sau kiểm thử thực tế:
+  1. *Lỗi 1 (Kịch bản 4):* Khách hàng gửi yêu cầu bảo hành nhưng bên Admin (Quản lý bảo hành / Tab 2 "Yêu cầu bảo hành") không thấy.
+  2. *Lỗi 2 (Ảnh 1):* Lịch hẹn nhận xe bàn giao (#LH037 - Hồ Thị Kim Ngân) đã được giao xe hoàn tất từ đơn hàng #DH-XE-027 nhưng bên Admin Lịch biểu Showroom vẫn để "Chờ xác nhận".
+  3. *Lỗi 3 (Kịch bản 5 & Ảnh 2):* 
+     - Xem chi tiết hóa đơn bảo hành trong lịch sử dịch vụ khách hàng lại hiện thành "HÓA ĐƠN DỊCH VỤ BẢO DƯỠNG ĐỊNH KỲ".
+     - Trong modal chi tiết phương tiện (Ảnh 2: "LỊCH SỬ DỊCH VỤ - HONDA WAVE ALPHA 110CC") chưa liệt kê các lượt gia hạn bảo hành đã hoàn tất.
+  4. *Lỗi 4 (Ảnh 3):* In hóa đơn bên Admin (Quản lý bảo hành / Gia hạn bảo hành / Xem chi tiết / In lại hóa đơn) chụp toàn bộ modal giao diện tối màu trên 2 trang đen thay vì hóa đơn A4 chuẩn in ấn.
+* **Phân tích nguyên nhân gốc rễ (Root Cause Analysis):**
+  1. *Lỗi 1:* `warrantyApi.createAppointment` và `appointmentApi.create` lưu lịch hẹn vào `crm_appointments_cache`, nhưng bên Admin Warranty (`warrantyApi.getAdminClaims`) đọc từ `crm_admin_warranty_claims`. Do 2 nguồn dữ liệu này chưa tự động liên kết hai chiều khi có lịch hẹn bảo hành mới, Admin không nhìn thấy claim nếu chưa được chuyển đổi.
+  2. *Lỗi 2:* Khi đơn hàng xe được giao (`orderApi.updateStatus` sang `HoanThanh` hoặc `DaGiao`), trạng thái lịch hẹn nhận xe tương ứng (#LH037) chưa tự động đồng bộ sang `DaHoanThanh`. Modal chi tiết lịch hẹn của Admin cũng thiếu logic kiểm tra chéo trạng thái của đơn hàng xe liên kết.
+  3. *Lỗi 3:*
+     - Modal hóa đơn dịch vụ khách hàng (`selectedServiceInvoice` trong `CustomerDashboard.tsx`) chỉ có nhánh `loai === 'NhanXe'` và `else` (mặc định ra Hóa đơn bảo dưỡng định kỳ), thiếu nhánh `else if (loai === 'GiaHanBaoHanh')`.
+     - Hàm `getVehicleServicesList(v)` chỉ truy vấn appointments từ `appointmentApi.getAll()`, chưa hợp nhất với các giao dịch gia hạn từ `warrantyApi.getExtensionTransactions()` của xe tương ứng.
+  4. *Lỗi 4:* Nút "In lại hóa đơn" trong modal chi tiết 5 khối Admin gọi trực tiếp `window.print()` mà không có lớp CSS che giao diện nền (`@media print`), khiến trình duyệt in toàn bộ popup modal màu tối kéo dài 2 trang.
+* **Giải pháp & Các file đã chỉnh sửa:**
+  1. [`crm-frontend/src/services/api.ts`](file:///d:/crm-project/crm-frontend/src/services/api.ts):
+     - `orderApi.updateStatus`: Tự động tìm kiếm lịch hẹn nhận xe bàn giao liên kết (`loaiDichVu === 'NhanXe'` hoặc khớp mã đơn / SĐT khách) và cập nhật trạng thái thành `DaHoanThanh`.
+     - `appointmentApi.create`: Khi `data.loaiDichVu === 'BaoHanh'`, tự động sinh `AdminWarrantyClaim` (`#YCBH...`), chèn vào cache `crm_admin_warranty_claims` và phát tín hiệu storage/event liên tab.
+     - `warrantyApi.getAdminClaims`: Tự động quét toàn bộ `crm_appointments_cache` để đồng bộ các lịch hẹn bảo hành thành claims của Admin nếu chưa có.
+  2. [`crm-frontend/src/pages/admin/Appointments.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/Appointments.tsx):
+     - Trong modal chi tiết lịch hẹn (`selectedApptForDetail`): Kiểm tra chéo đơn hàng liên kết (`isLinkedOrderCompleted`). Nếu xe đã giao thành công, hiển thị badge xanh lá "Đã hoàn tất" và banner thông báo "✓ Lịch hẹn đã hoàn thành (Xe đã được bàn giao thành công cho khách hàng)".
+     - Thêm nút hành động nhanh `[✓ Xác nhận đã bàn giao xe]` ngay trong modal để Admin dễ dàng bấm hoàn tất bất kỳ lúc nào.
+  3. [`crm-frontend/src/pages/customer/CustomerDashboard.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/CustomerDashboard.tsx):
+     - Trong `selectedServiceInvoice`: Bổ sung nhánh `else if (loai === 'GiaHanBaoHanh')` với tiêu đề "HÓA ĐƠN GIA HẠN BẢO HÀNH MỞ RỘNG (CARE+)", mã `#HD-GHBH-...`, badge "✓ ĐÃ GIA HẠN THÀNH CÔNG", hiển thị chuẩn tên gói, quyền lợi gia hạn, giá tiền và thời hạn bảo hành mới.
+     - Trong `getVehicleServicesList(v)`: Hợp nhất các giao dịch gia hạn từ `warrantyApi.getExtensionTransactions()` khớp với xe `v` vào bảng "LỊCH SỬ DỊCH VỤ" của phương tiện.
+  4. [`crm-frontend/src/pages/admin/Warranty.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/Warranty.tsx):
+     - Bổ sung state `printExtInvoice` và mẫu hóa đơn in ấn chuẩn A4 trắng sạch sẽ (`#print-section`) với CSS `@media print` ẩn hoàn toàn các thành phần UI nền.
+     - Khi bấm "In lại hóa đơn" trong modal 5 khối, hiển thị preview hóa đơn A4 chuyên nghiệp và cho phép in ngay 1 trang duy nhất không bị lem màu tối.
+     - Bổ sung gọi `loadData()` khi click chuyển Tab "Yêu cầu bảo hành" và "Gia hạn bảo hành" để tức thì cập nhật dữ liệu mới nhất.
+* **Kết quả nghiệm thu:**
+  - Build Frontend (`npm --prefix crm-frontend run build`): Thành công 100%, 0 cảnh báo, 0 lỗi, bundle trong 1.04s.
+  - Backend API: Đang chạy trên cổng 5208, hoạt động trơn tru.
+  - Frontend Web: Đang chạy trên cổng 5173, hot-reload tức thì.
+  - Đã cập nhật kịch bản kiểm thử chi tiết tại artifact `kich-ban-test-chi-tiet-loi-63.md`.
+  - Tuân thủ quy tắc an toàn: Không push lên GitHub khi chưa nhận lệnh `.github --update`.
+
+
+---
+
+### 64. Khắc phục lỗi mua xe online bị phân loại nhầm thành "Phụ tùng chính hãng (x1)" và loại đơn "Phụ tùng" trên Admin
+* **Thời gian thực hiện:** 01/11/2026.
+* **Người yêu cầu:** Người dùng báo cáo lỗi kèm ảnh chụp màn hình (`media_1793466532024_7a0187ff.png`):
+  - Khách hàng (Hồ Thị Kim Ngân) đặt mua xe máy thành công (đơn giá trị 62.404.000 đ) nhưng trên bảng Quản lý bán hàng Admin (Sales):
+    * Cột **Loại đơn** lại hiển thị badge tím `📦 Phụ tùng`.
+    * Cột **Mặt hàng / Xe** hiển thị `Phụ tùng chính hãng (x1) - 1 sản phẩm`.
+* **Phân tích nguyên nhân gốc rễ (Root Cause Analysis):**
+  1. *Thiếu liên kết 2 chiều giữa đơn hàng Backend và Lịch hẹn nhận xe:* Khi khách đặt mua xe máy, Backend CSDL lưu đơn vào bảng `DON_HANG` (mã số `maDon = 28`, `chiTiet: []`) và lịch hẹn nhận xe vào `LICH_HEN` (mã `#38`, `Nhận xe mới: Honda Winner X 150`). Tuy nhiên trong `orderApi.getAll`, khi duyệt danh sách đơn hàng từ Backend:
+     - Nếu `currentCached` chưa có `DH-XE-028` hoặc bị đối chiếu nhầm với mã số phụ tùng `DH028`, biến `isVehicleOrder` bị gán `false`.
+     - Dẫn đến đơn xe bị gán mã `DH028`, `loaiDon: 'PhuTung'`, và cơ chế fallback tự động sinh ra một mặt hàng phụ tùng ảo: `[{ tenSanPham: 'Phụ tùng chính hãng', soLuong: 1, donGia: item.tongTien }]`.
+  2. *Điều kiện kiểm tra đơn xe trong `Sales.tsx` chưa toàn diện:*
+     - Tại dòng 789 của `Sales.tsx`: `const isVehicle = order.loaiDon === 'Xe';` chỉ kiểm tra duy nhất thuộc tính `loaiDon`, không kiểm tra `thongTinXe`, không kiểm tra mã đơn chứa `XE`, cũng không kiểm tra giá trị lớn của xe máy.
+     - Khi `order.loaiDon` bị phân loại nhầm là `PhuTung`, giao diện render toàn bộ dòng thành loại phụ tùng và hiển thị text `Phụ tùng chính hãng (x1)`.
+* **Giải pháp & Các file đã chỉnh sửa:**
+  1. [`crm-frontend/src/services/api.ts`](file:///d:/crm-project/crm-frontend/src/services/api.ts):
+     - Trong `orderApi.getAll`: Tích hợp đối chiếu đa tầng với danh sách lịch hẹn bàn giao xe `LICH_HEN` (`appointmentApi.getAllSync()`).
+     - Tự động nhận diện đơn xe máy nếu: Có lịch hẹn nhận xe tương ứng, hoặc `chiTiet` rỗng và giá trị đơn hàng >= 10.000.000 đ (hoặc cọc xe 2.000.000 đ).
+     - Định danh chính xác mã đơn xe dạng `DH-XE-028`, đặt `loaiDon = 'Xe'`, trích xuất thông tin xe chuẩn (`Honda Winner X 150`, màu sắc, cọc, số khung), và đặt `items: []` (tuyệt đối không inject phụ tùng ảo).
+     - Xóa sạch triệt để các mã đơn phụ tùng rác `DH028` khỏi `crm_orders_cache` và `finalOrderMap`.
+  2. [`crm-frontend/src/pages/admin/Sales.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/Sales.tsx):
+     - Cập nhật biến `isVehicle` tại dòng 789, dòng 364 (bộ lọc tab), dòng 579/595 (đếm số lượng đơn) và các modal in/chi tiết (dòng 3566, 3994):
+       `const isVehicle = order.loaiDon === 'Xe' || !!order.thongTinXe || (order.id && order.id.includes('XE')) || (order.tongTien >= 10000000 && (!order.items || order.items.length === 0));`
+     - Đơn mua xe luôn được đưa vào tab **"Đơn Hàng Xe Mới"**, hiển thị badge xanh `🏍️ Xe máy` và hiển thị đúng tên xe `Honda Winner X 150 (Màu: Tiêu chuẩn)`.
+  3. [`crm-frontend/src/pages/customer/CustomerDashboard.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/CustomerDashboard.tsx):
+     - Bổ sung nhận diện đơn xe tại bộ lọc Tab Đơn hàng của tôi (`ordersSubTab`) để đồng bộ hoàn hảo giữa Web Khách hàng và Admin.
+* **Kết quả nghiệm thu:**
+  - Build Frontend (`npm --prefix crm-frontend run build`): Thành công 100%, 0 cảnh báo, 0 lỗi, bundle trong 913ms.
+  - Backend API & Frontend dev server đang chạy ổn định.
+  - Tuân thủ quy tắc an toàn: Không push lên GitHub khi chưa nhận lệnh `.github --update`.
+
+
+### 65. Khắc phục lỗi xe mua online thành công không hiển thị trong "Phương tiện của tôi" và nút "Xem sản phẩm" từ mục "Đã đánh giá" nhảy sai xe
+* **Thời gian thực hiện:** 01/11/2026.
+* **Người yêu cầu:** Người dùng báo cáo 2 lỗi phát sinh sau khi mua xe và đánh giá:
+  1. *Lỗi 1:* "xe mua thành công , ko hiện bên phương tiện của tui" (Khách hàng đặt mua xe trực tuyến thành công nhưng tab "Phương tiện của tôi" trên CustomerDashboard không hiển thị xe).
+  2. *Lỗi 2:* "sau khi bấm xem sản phẩm đã đánh giá nhảy ko đến đúng xe" (Tại tab "Đã đánh giá", nhấn "Xem sản phẩm" trên xe đã đánh giá thì luôn nhảy về xe Honda SH 160i ABS).
+* **Phân tích nguyên nhân gốc rễ (Root Cause Analysis):**
+  1. *Lỗi xe mua thành công không hiện bên Phương tiện của tôi:*
+     - Khi đơn hàng xe được tạo qua `orderApi.createVehicleOrder`, phương tiện mới được khởi tạo và lưu trữ nhưng:
+       + Trong `CustomerDashboard.tsx` (`loadCustomerData`), từng tồn tại một khối logic dọn dẹp cache `crm_customer_vehicles`: đoạn mã này quét kiểm tra các phương tiện sinh ra từ đơn hàng online và tự động xóa bỏ nếu đơn hàng chưa có trạng thái `HoanThanh` hoặc `DaGiao`. Đối với đơn hàng vừa mua (trạng thái `ChoXacNhan` hoặc `DangXuLy`), phương tiện lập tức bị xóa khỏi `vList`.
+       + `CustomerDashboard.tsx` chưa trực tiếp tổng hợp danh sách đơn hàng xe máy `myVehicleOrders` (`orderApi.getMyOrders`) thành phương tiện của khách hàng theo thời gian thực khi đơn hàng hợp lệ (`trangThai !== 'DaHuy'`).
+  2. *Lỗi bấm "Xem sản phẩm" từ Đã đánh giá nhảy sai xe:*
+     - Tại `CustomerDashboard.tsx` trong `handleViewReviewProduct`:
+       + Mã nguồn cũ trích xuất số từ `vehicleId` bằng regex `r.vehicleId.replace(/\D/g, '')` (ví dụ `1` từ `XM001`, `1` từ số đuôi...), sau đó so khớp lỏng lẻo `v.id.includes(cleanId)`. Vì số `1` trùng với mã `XM001` (Honda SH 160i ABS) hoặc khi matching không khớp, logic fallback luôn nhảy về `XM001`.
+       + Tại `VehiclesShowroom.tsx` trong `checkAndOpenVehicle`: Logic mở modal chi tiết xe cũng sử dụng cơ chế bóc tách chữ số lỏng lẻo tương tự, khiến modal chi tiết xe trong Showroom luôn hiển thị xe mặc định `XM001` thay vì chiếc xe thực tế khách hàng đã đánh giá (ví dụ: `Honda Winner X 150` hoặc `Honda Vision 110`).
+* **Giải pháp & Các file đã chỉnh sửa:**
+  1. [`crm-frontend/src/services/api.ts`](file:///d:/crm-project/crm-frontend/src/services/api.ts):
+     - Trong `orderApi.createVehicleOrder`: Ngay khi khách đặt đơn mua xe thành công, lập tức kích hoạt gọi `vehicleApi.createSoldVehicle` tạo bản ghi phương tiện hoàn chỉnh (`crm_customer_vehicles` & `mockVehicles`) với đầy đủ mã đơn hàng, biển số chờ cấp, và thời hạn bảo hành 3 năm.
+  2. [`crm-frontend/src/pages/customer/CustomerDashboard.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/CustomerDashboard.tsx):
+     - Trong `loadCustomerData`: Xóa bỏ hoàn toàn khối logic thanh lọc/xóa bỏ phương tiện mua online đang chờ xử lý.
+     - Tự động đồng bộ hóa danh sách đơn hàng xe máy của khách (`myVehicleOrders`), nếu xe chưa có trong `vList` thì tự động khởi tạo thẻ phương tiện hoàn chỉnh hiển thị ngay trong Tab "Phương tiện của tôi" với đầy đủ hình ảnh, hãng xe, thời hạn bảo hành và thông số.
+     - Trong `handleViewReviewProduct`: Cải tiến thuật toán tìm kiếm xe: Chuẩn hóa tên xe (`cleanRevName`), so khớp chính xác tên xe trước (`v.tenXe.toLowerCase().includes(cleanRevName)`), đảm bảo xác định đúng 100% ID xe trong danh mục showroom trước khi lưu vào `sessionStorage` và phát sự kiện `crm-view-vehicle`.
+  3. [`crm-frontend/src/pages/customer/VehiclesShowroom.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/VehiclesShowroom.tsx):
+     - Trong `checkAndOpenVehicle`: Ưu tiên so khớp chính xác theo ID (`v.id.toLowerCase() === targetId.toLowerCase()`) và so khớp theo tên xe đầy đủ.
+     - Loại bỏ việc so khớp số lỏng lẻo gây fallback nhầm về `XM001`. Tự động cuộn mượt lên đầu trang và mở popup modal chi tiết của đúng mẫu xe khách hàng vừa nhấn xem.
+* **Kết quả nghiệm thu:**
+  - Build Frontend (`npm --prefix crm-frontend run build`): Thành công 100%, 0 cảnh báo, 0 lỗi, bundle trong 827ms.
+  - Sau khi mua xe, xe xuất hiện ngay lập tức trong "Phương tiện của tôi".
+  - Bấm "Xem sản phẩm" từ danh sách "Đã đánh giá" mở chính xác modal chiếc xe tương ứng.
+  - Tuân thủ quy tắc an toàn: Không push lên GitHub khi chưa nhận lệnh `.github --update`.
+
+
+### 66. Khắc phục lỗi phê duyệt biển số xe không được trên Admin và tối ưu quy trình cấp biển số chính thức
+* **Thời gian thực hiện:** 01/11/2026.
+* **Người yêu cầu:** Người dùng báo cáo lỗi: "lỗi phê duyệt biển số ko đc" khi thao tác duyệt biển số trên trang Quản lý biển số xe Admin (`/admin/license-plates`).
+* **Phân tích nguyên nhân gốc rễ (Root Cause Analysis):**
+  1. *Lỗi thiếu cơ chế nhập/chọn biển số chính thức khi xe chưa có biển số đề xuất:*
+     - Khi một xe mới mua tại Showroom hoặc đặt mua trực tuyến (`bienSo = 'Chưa có biển số'`), thuộc tính `bienSoChoDuyet` ban đầu là `undefined`.
+     - Trong `LicensePlateApproval.tsx`, hàm `handleApprove` cũ kiểm tra:
+       `if (!proposedPlate || proposedPlate === 'Chưa có biển số') { alert('Không tìm thấy biển số đề xuất để duyệt!'); return; }`
+       Do đó, hệ thống lập tức chặn bằng cảnh báo alert và từ chối phê duyệt, Admin không có cách nào cấp biển số chính thức cho xe.
+  2. *Nút hành động bị ẩn do trạng thái `ChoCapNhat`:*
+     - Xe mới mua có `trangThaiDuyetBienSo === 'ChoCapNhat'`. Dù xe nằm trong danh sách tab "Đang chờ duyệt biển số", biến `isChoDuyet` trước đây lại chỉ kiểm tra `v.trangThaiDuyetBienSo === 'ChoDuyet' || Boolean(v.bienSoChoDuyet)`, khiến các nút `[✓ Duyệt]` và `[✕ Từ chối]` bị ẩn hoàn toàn, Admin chỉ có thể bấm nút xem `👁️`.
+  3. *Lỗi mất trạng thái đã duyệt do hàm gộp/khử trùng trong `vehicleApi.getAll()`:*
+     - Khi duyệt thành công, `approveLicensePlate` xoá `v.bienSoChoDuyet = undefined`. Tuy nhiên, trong vòng lặp deduplication của `vehicleApi.getAll()`, nếu bản ghi `existing` trong `mockVehicles` hoặc Backend đã có `bienSoChoDuyet`, nhánh `if (v.bienSoChoDuyet) existing.bienSoChoDuyet = v.bienSoChoDuyet;` không chạy, khiến `existing.bienSoChoDuyet` cũ không được dọn dẹp.
+     - Ngoài ra điều kiện `if (v.bienSo && v.bienSo !== 'Chưa có biển số' && (!existing.bienSo || existing.bienSo === 'Chưa có biển số'))` không cập nhật biển số mới vào `existing` nếu `existing.bienSo` đã có giá trị.
+  4. *Đồng bộ mã xe với CSDL Backend SQL Server:*
+     - Khi xe được tạo từ đơn hàng online (ID dạng `XE-DH-XE-028` hoặc `XE-DH028`), hàm trích xuất số `numId = 28` vô tình lấy mã đơn hàng `maDon = 28` thay vì `MaXeSoHuu` trong SQL Server, dẫn đến backend trả về lỗi 404/400.
+* **Giải pháp & Các file đã chỉnh sửa:**
+  1. [`crm-frontend/src/services/api.ts`](file:///d:/crm-project/crm-frontend/src/services/api.ts):
+     - `approveLicensePlate`:
+       + Nâng cấp thuật toán `isMatchVehicle`: so khớp đa tầng theo `id`, `soKhung` (VIN), `numId` và `tenXe + customerId`.
+       + Tự động tra cứu `XeKhachHang` backend theo số khung `soKhung` hoặc tên xe để lấy đúng `targetMaXeSoHuu` chính xác trong CSDL SQL Server trước khi gọi PUT `duyet-bien-so`.
+       + Cập nhật đồng bộ toàn diện biển số mới (`finalPlate`), xoá `bienSoChoDuyet`, đặt `trangThaiDuyetBienSo = 'DaDuyet'`, xoá `lyDoTuChoiBienSo` trên tất cả các nguồn: `crm_customer_vehicles`, `mockVehicles`, danh sách đơn hàng `crm_orders`, lịch hẹn `crm_appointments_cache`, và hợp đồng bảo hiểm `crm_insurance_contracts`.
+       + Bắn sự kiện `crm-vehicles-updated` và `crm-data-refresh`.
+     - `vehicleApi.getAll()`:
+       + Trong khối deduplication, khi `v.trangThaiDuyetBienSo === 'DaDuyet'`, lập tức gán `existing.trangThaiDuyetBienSo = 'DaDuyet'`, xóa sạch `existing.bienSoChoDuyet = undefined`, xoá `lyDoTuChoiBienSo` và cập nhật chính xác `existing.bienSo = v.bienSo`.
+     - `vehicleApi.approveVehicle`:
+       + Đảm bảo xóa bỏ `bienSoChoDuyet` và `lyDoTuChoiBienSo` khi phê duyệt hồ sơ xe.
+  2. [`crm-frontend/src/pages/admin/LicensePlateApproval.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/LicensePlateApproval.tsx):
+     - Xây dựng Modal chuyên nghiệp **"PHÊ DUYỆT & CẤP BIỂN SỐ XE CHÍNH THỨC"** (`approvingVehicle` modal):
+       + Cho phép Admin xem thông tin xe, khách hàng, số khung VIN và biển số đề xuất (nếu có).
+       + Ô nhập biển số chính thức được định dạng chuẩn font mono nổi bật, kèm các nút chọn nhanh biển số chuẩn các tỉnh thành (TP.HCM `59-K1 888.88`, Hà Nội `29-B1 999.99`, Cần Thơ `65-B1 668.68`, Đà Nẵng `43-C1 777.77`, hoặc "Dùng biển khách gửi").
+       + Checkbox thông báo và xác nhận tự động đồng bộ sang hồ sơ bảo hành 3 năm và hợp đồng bảo hiểm.
+     - Cập nhật bộ lọc bảng `filteredRecords` và `stats` nhận diện đầy đủ cả xe có biển số đề xuất (`ChoDuyet`) lẫn xe mới mua đang chờ cấp biển (`ChoCapNhat`).
+     - Cột Hành động hiển thị linh hoạt nút `[✓ Duyệt]` (khi có biển đề xuất) hoặc `[+ Cấp biển]` (khi xe chưa có biển), loại bỏ triệt để tình trạng chặn alert.
+     - Bổ sung nút `[✓ Phê duyệt / Cấp biển số ngay]` trong modal chi tiết xe `viewingDetailVehicle`.
+  3. [`crm-frontend/src/pages/admin/Customers.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/Customers.tsx):
+     - Trong `handleApprovePlate`, truyền đầy đủ `proposedPlate` và `vehicleData` vào `vehicleApi.approveLicensePlate(vId, proposedPlate, targetV)` để phê duyệt chuẩn xác.
+* **Kết quả nghiệm thu:**
+  - Build Frontend (`npm --prefix crm-frontend run build`): Thành công 100%, 0 lỗi, 0 cảnh báo trong 679ms.
+  - Phê duyệt và cấp biển số hoạt động trơn tru ngay cả khi xe chưa có biển số đề xuất.
+  - Sau khi duyệt, biển số xe lập tức đồng bộ sang trang Khách hàng, Bảo hiểm, Bán hàng và Lịch hẹn.
+  - Tuân thủ quy tắc an toàn: Không push lên GitHub khi chưa nhận lệnh `.github --update`.

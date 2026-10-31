@@ -1792,23 +1792,41 @@ export default function AppointmentsPage({
 
             <div className="space-y-3.5 text-xs overflow-y-auto pr-1 flex-1">
               {/* Thẻ khách hàng & Xe */}
-              <div className="p-3.5 rounded-2xl bg-zinc-50 border border-zinc-200/80 space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <div className="font-bold text-zinc-900 text-sm">{selectedApptForDetail.hoTenKH}</div>
-                  <StatusBadge status={selectedApptForDetail.trangThai} configs={apptStatuses} />
-                </div>
-                <div>
-                  SĐT: <strong className="font-mono text-zinc-800">{selectedApptForDetail.soDienThoai}</strong> · Mã KH: <span className="font-mono">{selectedApptForDetail.customerId}</span>
-                </div>
-                <div>
-                  Phương tiện: <strong className="text-zinc-900">{selectedApptForDetail.tenXe}</strong> (Biển số: <strong className="font-mono">{selectedApptForDetail.bienSo || 'Chưa bấm biển'}</strong>)
-                </div>
-                {selectedApptForDetail.nhanVienPhuTrach && (
-                  <div>
-                    Kỹ thuật viên phụ trách: <strong className="text-emerald-700 font-bold">{selectedApptForDetail.nhanVienPhuTrach}</strong>
+              {(() => {
+                const isLinkedOrderCompleted = (selectedApptForDetail.loaiDichVu === 'NhanXe' || selectedApptForDetail.maDonHangXe) && allOrders.some(o => {
+                  const matchId = (selectedApptForDetail.maDonHangXe && selectedApptForDetail.maDonHangXe === o.id) ||
+                    (selectedApptForDetail.maLichHen && (o.maLichHen === selectedApptForDetail.maLichHen || o.thongTinXe?.maLichHen === selectedApptForDetail.maLichHen)) ||
+                    (selectedApptForDetail.id && parseInt(o.id.replace(/\D/g, ''), 10) === parseInt(selectedApptForDetail.id.replace(/\D/g, ''), 10)) ||
+                    (selectedApptForDetail.soDienThoai && o.soDienThoai && selectedApptForDetail.soDienThoai.replace(/\D/g, '') === o.soDienThoai.replace(/\D/g, ''));
+                  return matchId && (o.trangThai === 'HoanThanh' || o.trangThai === 'DaGiao');
+                });
+                const detailEffectiveStatus = isLinkedOrderCompleted ? 'DaHoanThanh' : selectedApptForDetail.trangThai;
+
+                return (
+                  <div className="p-3.5 rounded-2xl bg-zinc-50 border border-zinc-200/80 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <div className="font-bold text-zinc-900 text-sm">{selectedApptForDetail.hoTenKH}</div>
+                      <StatusBadge status={detailEffectiveStatus} configs={apptStatuses} />
+                    </div>
+                    {detailEffectiveStatus === 'DaHoanThanh' && (
+                      <div className="p-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-bold flex items-center gap-1.5">
+                        <span>✓</span> <span>Lịch hẹn đã hoàn thành (Xe đã được bàn giao thành công cho khách hàng)</span>
+                      </div>
+                    )}
+                    <div>
+                      SĐT: <strong className="font-mono text-zinc-800">{selectedApptForDetail.soDienThoai}</strong> · Mã KH: <span className="font-mono">{selectedApptForDetail.customerId}</span>
+                    </div>
+                    <div>
+                      Phương tiện: <strong className="text-zinc-900">{selectedApptForDetail.tenXe}</strong> (Biển số: <strong className="font-mono">{selectedApptForDetail.bienSo || 'Chưa bấm biển'}</strong>)
+                    </div>
+                    {selectedApptForDetail.nhanVienPhuTrach && (
+                      <div>
+                        Kỹ thuật viên phụ trách: <strong className="text-emerald-700 font-bold">{selectedApptForDetail.nhanVienPhuTrach}</strong>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
+                );
+              })()}
 
               {/* Loại dịch vụ & Thời gian */}
               <div className="grid grid-cols-2 gap-2">
@@ -2056,6 +2074,22 @@ export default function AppointmentsPage({
                     title="Chuyển sang quy trình lập đơn mua xe và nhận xe mới (POS Bán Xe)"
                   >
                     <span>🎁</span> <span>Nhận xe mới</span>
+                  </button>
+                )}
+
+                {/* Nút bấm nhanh xác nhận đã bàn giao xe hoàn tất */}
+                {selectedApptForDetail.loaiDichVu === 'NhanXe' && selectedApptForDetail.trangThai !== 'DaHoanThanh' && selectedApptForDetail.trangThai !== 'DaHuy' && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await appointmentApi.updateStatus(selectedApptForDetail.id, 'DaHoanThanh');
+                      setAppointments(prev => prev.map(a => a.id === selectedApptForDetail.id ? { ...a, trangThai: 'DaHoanThanh' } : a));
+                      setSelectedApptForDetail(prev => prev ? { ...prev, trangThai: 'DaHoanThanh' } : null);
+                      alert(`✓ Đã xác nhận hoàn thành lịch bàn giao xe #${selectedApptForDetail.id}!`);
+                    }}
+                    className="px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm transition cursor-pointer flex items-center gap-1"
+                  >
+                    <span>✓</span> <span>Xác nhận đã bàn giao xe</span>
                   </button>
                 )}
               </div>

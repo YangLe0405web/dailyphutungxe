@@ -59,6 +59,8 @@ import {
   type AdminWarrantyClaim,
   mockWarrantyExtensionTransactions,
   mockAdminWarrantyClaims,
+  parseDateSafe,
+  formatDateSafe,
 } from '../data/mockData';
 import { addAdminNotification, addCustomerNotification } from './notifications';
 export { addAdminNotification, addCustomerNotification };
@@ -252,6 +254,21 @@ export const customerApi = {
     try {
       localStorage.setItem('crm_custom_customers', JSON.stringify(list));
     } catch {}
+  },
+
+  getAllSync(): Customer[] {
+    try {
+      const cached = localStorage.getItem('crm_custom_customers');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return mockCustomers;
+  },
+
+  getById(id: string): Customer | undefined {
+    return this.getAllSync().find((c: Customer) => c.id === id);
   },
 
   async update(maKhInt: number, data: Partial<Customer>): Promise<boolean> {
@@ -980,11 +997,16 @@ export const vehicleApi = {
           // Ưu tiên các thông tin trạng thái duyệt biển số và ảnh cà vẹt mới nhất từ cache
           if (v.bienSoChoDuyet) existing.bienSoChoDuyet = v.bienSoChoDuyet;
           if (v.anhCaVet) existing.anhCaVet = v.anhCaVet;
-          if (v.trangThaiDuyetBienSo === 'ChoDuyet' || v.trangThaiDuyetBienSo === 'TuChoi' || v.trangThaiDuyetBienSo === 'DaDuyet') {
+          if (v.trangThaiDuyetBienSo === 'ChoDuyet' || v.trangThaiDuyetBienSo === 'TuChoi') {
             existing.trangThaiDuyetBienSo = v.trangThaiDuyetBienSo;
+          } else if (v.trangThaiDuyetBienSo === 'DaDuyet') {
+            existing.trangThaiDuyetBienSo = 'DaDuyet';
+            existing.bienSoChoDuyet = undefined;
+            if (v.bienSo) existing.bienSo = v.bienSo;
+            delete (existing as any).lyDoTuChoiBienSo;
           }
           if (v.lyDoTuChoiBienSo) existing.lyDoTuChoiBienSo = v.lyDoTuChoiBienSo;
-          if (v.bienSo && v.bienSo !== 'Chưa có biển số' && (!existing.bienSo || existing.bienSo === 'Chưa có biển số')) {
+          if (v.bienSo && v.bienSo !== 'Chưa có biển số' && (!existing.bienSo || existing.bienSo === 'Chưa có biển số' || v.trangThaiDuyetBienSo === 'DaDuyet')) {
             existing.bienSo = v.bienSo;
           }
         }
@@ -1006,6 +1028,16 @@ export const vehicleApi = {
       localStorage.setItem('crm_customer_vehicles', JSON.stringify(cleanedResult));
     } catch {}
     return cleanedResult;
+  },
+  getAllSync(): Vehicle[] {
+    try {
+      const raw = localStorage.getItem('crm_customer_vehicles');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return mockVehicles;
   },
 
   async registerVehicle(data: Omit<Vehicle, 'id'>): Promise<Vehicle> {
@@ -1394,12 +1426,15 @@ export const vehicleApi = {
     let finalPlate = proposedPlateParam || '';
     let custId = vehicleData?.customerId || '';
     const numId = parseInt(vehicleId.replace(/\D/g, ''), 10);
+    const targetVin = (vehicleData?.soKhung || '').trim().toUpperCase();
 
-    const findVeh = (arr: Vehicle[]): Vehicle | undefined => {
-      return arr.find(v =>
-        v.id === vehicleId ||
-        (!isNaN(numId) && numId > 0 && parseInt(v.id.replace(/\D/g, ''), 10) === numId)
-      );
+    const isMatchVehicle = (v: Vehicle): boolean => {
+      if (v.id === vehicleId) return true;
+      if (vehicleData?.id && v.id === vehicleData.id) return true;
+      if (targetVin && v.soKhung && v.soKhung.trim().toUpperCase() === targetVin) return true;
+      if (!isNaN(numId) && numId > 0 && parseInt(v.id.replace(/\D/g, ''), 10) === numId) return true;
+      if (v.tenXe && vehicleName && v.tenXe.toLowerCase().trim() === vehicleName.toLowerCase().trim() && (v.customerId === custId || parseInt(v.customerId.replace(/\D/g, ''), 10) === parseInt(custId.replace(/\D/g, ''), 10))) return true;
+      return false;
     };
 
     // Lấy biển số dự kiến từ tham số, cache hoặc mockVehicles
@@ -1408,9 +1443,9 @@ export const vehicleApi = {
       const cached = localStorage.getItem('crm_customer_vehicles');
       if (cached) {
         const list: Vehicle[] = JSON.parse(cached);
-        const match = findVeh(list);
+        const match = list.find(isMatchVehicle);
         if (match) {
-          if (!candidatePlate) {
+          if (!candidatePlate || candidatePlate === 'Chưa có biển số') {
             candidatePlate = match.bienSoChoDuyet || (match.bienSo !== 'Chưa có biển số' ? match.bienSo : '') || '';
           }
           if (!vehicleName) vehicleName = match.tenXe;
@@ -1419,8 +1454,8 @@ export const vehicleApi = {
       }
     } catch {}
 
-    if (!candidatePlate) {
-      const vMatch = findVeh(mockVehicles);
+    if (!candidatePlate || candidatePlate === 'Chưa có biển số') {
+      const vMatch = mockVehicles.find(isMatchVehicle);
       if (vMatch) {
         candidatePlate = vMatch.bienSoChoDuyet || (vMatch.bienSo !== 'Chưa có biển số' ? vMatch.bienSo : '') || '';
         if (!vehicleName) vehicleName = vMatch.tenXe;
@@ -1428,40 +1463,71 @@ export const vehicleApi = {
       }
     }
 
+    // Nếu vẫn chưa có biển số (ví dụ xe mới mua chưa đề xuất biển số), tự cấp biển số hợp lệ chuẩn TP.HCM
+    if (!candidatePlate || candidatePlate === 'Chưa có biển số') {
+      candidatePlate = '59-K1 888.88';
+    }
+
     finalPlate = candidatePlate;
 
     // Đồng bộ và kiểm tra tính duy nhất trên Backend C# SQL Server
-    if (!isNaN(numId) && numId > 0 && finalPlate && finalPlate !== 'Chưa có biển số') {
+    if (finalPlate && finalPlate !== 'Chưa có biển số') {
       try {
-        const res = await fetchWithTimeout(`${API_BASE_URL}/XeKhachHang/duyet-bien-so/${numId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ bienSoXe: finalPlate }),
-        });
-        if (res.status === 400) {
-          const errData = await res.json().catch(() => ({}));
-          console.warn('[approveLicensePlate] Backend returned 400:', errData.message);
+        let targetMaXeSoHuu = (!isNaN(numId) && numId > 0) ? numId : 0;
+        // Kiểm tra đối chiếu xem ID có trong bảng XE_KHACH_HANG backend không
+        try {
+          const listRes = await fetchWithTimeout(`${API_BASE_URL}/XeKhachHang`);
+          if (listRes.ok) {
+            const bList = await listRes.json();
+            if (Array.isArray(bList)) {
+              const bMatch = bList.find((bx: any) =>
+                (targetVin && bx.soKhung && bx.soKhung.trim().toUpperCase() === targetVin) ||
+                (targetMaXeSoHuu > 0 && bx.maXeSoHuu === targetMaXeSoHuu) ||
+                (bx.tenXe && vehicleName && bx.tenXe.toLowerCase().trim() === vehicleName.toLowerCase().trim() && (bx.maKH === parseInt(custId.replace(/\D/g, ''), 10)))
+              );
+              if (bMatch?.maXeSoHuu) {
+                targetMaXeSoHuu = bMatch.maXeSoHuu;
+              }
+            }
+          }
+        } catch {}
+
+        if (targetMaXeSoHuu > 0) {
+          const res = await fetchWithTimeout(`${API_BASE_URL}/XeKhachHang/duyet-bien-so/${targetMaXeSoHuu}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bienSoXe: finalPlate }),
+          });
+          if (res.status === 400) {
+            const errData = await res.json().catch(() => ({}));
+            console.warn('[approveLicensePlate] Backend returned 400:', errData.message);
+          }
         }
       } catch (beErr: any) {
         console.warn('[approveLicensePlate] Backend sync warning:', beErr);
       }
     }
 
+    // Cập nhật triệt để vào cache crm_customer_vehicles
     try {
       const cached = localStorage.getItem('crm_customer_vehicles');
       const list: Vehicle[] = cached ? JSON.parse(cached) : [];
-      const match = findVeh(list);
-      if (match) {
-        if (finalPlate) {
-          match.bienSo = finalPlate;
+      let updatedCount = 0;
+      list.forEach(v => {
+        if (isMatchVehicle(v)) {
+          v.bienSo = finalPlate;
+          v.trangThaiDuyetBienSo = 'DaDuyet';
+          v.trangThaiDuyet = 'DaDuyet';
+          v.bienSoChoDuyet = undefined;
+          delete (v as any).lyDoTuChoiBienSo;
+          vehicleName = v.tenXe;
+          finalPlate = v.bienSo;
+          custId = v.customerId;
+          updatedCount++;
         }
-        match.trangThaiDuyetBienSo = 'DaDuyet';
-        match.trangThaiDuyet = 'DaDuyet';
-        match.bienSoChoDuyet = undefined;
-        vehicleName = match.tenXe;
-        finalPlate = match.bienSo;
-        custId = match.customerId;
-      } else {
+      });
+
+      if (updatedCount === 0) {
         const fallbackObj: Vehicle = (vehicleData as Vehicle) || {
           id: vehicleId,
           customerId: custId || 'KH001',
@@ -1478,23 +1544,71 @@ export const vehicleApi = {
         fallbackObj.trangThaiDuyet = 'DaDuyet';
         fallbackObj.trangThaiDuyetBienSo = 'DaDuyet';
         fallbackObj.bienSoChoDuyet = undefined;
+        delete (fallbackObj as any).lyDoTuChoiBienSo;
         list.unshift(fallbackObj);
       }
       localStorage.setItem('crm_customer_vehicles', JSON.stringify(list));
     } catch {}
 
-    const vMatch = findVeh(mockVehicles);
-    if (vMatch) {
-      if (finalPlate) {
+    // Cập nhật vào mockVehicles
+    mockVehicles.forEach(vMatch => {
+      if (isMatchVehicle(vMatch)) {
         vMatch.bienSo = finalPlate;
+        vMatch.trangThaiDuyetBienSo = 'DaDuyet';
+        vMatch.trangThaiDuyet = 'DaDuyet';
+        vMatch.bienSoChoDuyet = undefined;
+        delete (vMatch as any).lyDoTuChoiBienSo;
+        vehicleName = vMatch.tenXe;
+        finalPlate = vMatch.bienSo;
+        custId = vMatch.customerId;
       }
-      vMatch.trangThaiDuyetBienSo = 'DaDuyet';
-      vMatch.trangThaiDuyet = 'DaDuyet';
-      vMatch.bienSoChoDuyet = undefined;
-      vehicleName = vMatch.tenXe;
-      finalPlate = vMatch.bienSo;
-      custId = vMatch.customerId;
-    }
+    });
+
+    // Đồng bộ biển số vào đơn hàng mua xe liên kết trong crm_orders
+    try {
+      const cachedOrders = localStorage.getItem('crm_orders');
+      if (cachedOrders) {
+        const orders: Order[] = JSON.parse(cachedOrders);
+        let orderChanged = false;
+        orders.forEach(o => {
+          if (o.thongTinXe) {
+            const matchCust = o.customerId === custId || parseInt(o.customerId.replace(/\D/g, ''), 10) === parseInt(custId.replace(/\D/g, ''), 10);
+            const matchVin = targetVin && o.thongTinXe.soKhungVIN && o.thongTinXe.soKhungVIN.trim().toUpperCase() === targetVin;
+            const matchName = o.thongTinXe.tenXe && vehicleName && o.thongTinXe.tenXe.toLowerCase().trim() === vehicleName.toLowerCase().trim();
+            const matchId = o.id.includes(vehicleId) || (vehicleId && vehicleId.includes(o.id));
+            if (matchCust && (matchVin || matchName || matchId)) {
+              o.thongTinXe.bienSo = finalPlate;
+              o.thongTinXe.bienSoChoDuyet = undefined;
+              o.thongTinXe.trangThaiDuyetBienSo = 'DaDuyet';
+              orderChanged = true;
+            }
+          }
+        });
+        if (orderChanged) {
+          localStorage.setItem('crm_orders', JSON.stringify(orders));
+        }
+      }
+    } catch {}
+
+    // Đồng bộ biển số vào lịch hẹn liên kết trong crm_appointments_cache
+    try {
+      const cachedAppts = localStorage.getItem('crm_appointments_cache');
+      if (cachedAppts) {
+        const appts = JSON.parse(cachedAppts);
+        let apptChanged = false;
+        appts.forEach((a: any) => {
+          const matchCust = a.customerId === custId || parseInt((a.customerId || '').replace(/\D/g, ''), 10) === parseInt(custId.replace(/\D/g, ''), 10);
+          const matchVeh = a.vehicleId === vehicleId || (a.tenXe && vehicleName && a.tenXe.toLowerCase().trim() === vehicleName.toLowerCase().trim());
+          if (matchCust && matchVeh && (!a.bienSo || a.bienSo === 'Chưa có biển số' || a.bienSo.includes('Chưa có'))) {
+            a.bienSo = finalPlate;
+            apptChanged = true;
+          }
+        });
+        if (apptChanged) {
+          localStorage.setItem('crm_appointments_cache', JSON.stringify(appts));
+        }
+      }
+    } catch {}
 
     if (custId) {
       addCustomerNotification({
@@ -1520,7 +1634,7 @@ export const vehicleApi = {
       }
       let insChanged = false;
       allIns.forEach(ins => {
-        const matchVeh = ins.vehicleId === vehicleId || (!isNaN(numId) && numId > 0 && parseInt((ins.vehicleId || '').replace(/\D/g, ''), 10) === numId);
+        const matchVeh = ins.vehicleId === vehicleId || (!isNaN(numId) && numId > 0 && parseInt((ins.vehicleId || '').replace(/\D/g, ''), 10) === numId) || (targetVin && ins.soKhung && ins.soKhung.trim().toUpperCase() === targetVin);
         const matchCust = ins.customerId === custId || (custId && parseInt(ins.customerId.replace(/\D/g, ''), 10) === parseInt(custId.replace(/\D/g, ''), 10));
         if ((matchVeh || matchCust) && (!ins.bienSo || ins.bienSo === 'Chưa có biển số' || ins.bienSo.includes('Chưa có'))) {
           ins.bienSo = finalPlate;
@@ -1535,7 +1649,8 @@ export const vehicleApi = {
       console.warn('[approveLicensePlate] Insurance sync warning:', insErr);
     }
 
-    window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'license_plate_approved', vehicleId } }));
+    window.dispatchEvent(new CustomEvent('crm-vehicles-updated'));
+    window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'license_plate_approved', vehicleId, plate: finalPlate } }));
     return true;
   },
 
@@ -1607,10 +1722,12 @@ export const vehicleApi = {
           match.trangThaiDuyet = 'DaDuyet';
           match.trangThaiDuyetBienSo = 'DaDuyet';
           if (match.bienSoChoDuyet) match.bienSo = match.bienSoChoDuyet;
+          match.bienSoChoDuyet = undefined;
+          delete (match as any).lyDoTuChoiBienSo;
           approvedVehicle = match;
           if (!custId) custId = match.customerId;
           if (!vehicleName) vehicleName = match.tenXe;
-          if (!plate) plate = match.bienSo || match.bienSoChoDuyet || '';
+          if (!plate) plate = match.bienSo || '';
           localStorage.setItem('crm_customer_vehicles', JSON.stringify(list));
         }
       }
@@ -1621,6 +1738,8 @@ export const vehicleApi = {
       vMatch.trangThaiDuyet = 'DaDuyet';
       vMatch.trangThaiDuyetBienSo = 'DaDuyet';
       if (vMatch.bienSoChoDuyet) vMatch.bienSo = vMatch.bienSoChoDuyet;
+      vMatch.bienSoChoDuyet = undefined;
+      delete (vMatch as any).lyDoTuChoiBienSo;
       if (!approvedVehicle) approvedVehicle = vMatch;
       if (!custId) custId = vMatch.customerId;
       if (!vehicleName) vehicleName = vMatch.tenXe;
@@ -1854,22 +1973,76 @@ export const orderApi = {
             if (rawCached) currentCached = JSON.parse(rawCached);
           } catch {}
 
+          // Lấy danh sách lịch hẹn để đối chiếu các đơn hàng xe đã liên kết
+          let allAppts: Appointment[] = [];
+          try {
+            allAppts = appointmentApi.getAllSync();
+          } catch {}
+
           list = data.map((item: any, idx: number) => {
             const numId = item.maDon;
-            // Đối chiếu tìm đơn hàng tương ứng trong cache hoặc mockOrders (chính xác theo mã đơn số numId)
-            const matchedExisting = currentCached.find(m =>
-              m.id === `DH-XE-${numId < 10 ? `00${numId}` : `0${numId}`}` ||
-              m.id === `DH-XE-${numId}` ||
-              m.id === `DH00${numId}` ||
-              m.id === `DH0${numId}` ||
-              m.id === `DH${numId}` ||
-              parseInt(m.id.replace(/\D/g, ''), 10) === numId
+
+            // 1. Đối chiếu tìm đơn xe trong cache hoặc mockOrders
+            const matchedVehicle = currentCached.find(m =>
+              (m.loaiDon === 'Xe' || !!m.thongTinXe || (m.id && m.id.includes('XE'))) &&
+              (
+                m.id === `DH-XE-${numId < 10 ? `00${numId}` : `0${numId}`}` ||
+                m.id === `DH-XE-${numId}` ||
+                parseInt(m.id.replace(/\D/g, ''), 10) === numId
+              )
             ) || mockOrders.find(m =>
-              m.id === `DH-XE-${numId < 10 ? `00${numId}` : `0${numId}`}` ||
-              parseInt(m.id.replace(/\D/g, ''), 10) === numId
+              (m.loaiDon === 'Xe' || !!m.thongTinXe || (m.id && m.id.includes('XE'))) &&
+              (
+                m.id === `DH-XE-${numId < 10 ? `00${numId}` : `0${numId}`}` ||
+                parseInt(m.id.replace(/\D/g, ''), 10) === numId
+              )
             );
 
-            const isVehicleOrder = matchedExisting?.loaiDon === 'Xe' || !!matchedExisting?.thongTinXe || (matchedExisting?.id && matchedExisting.id.includes('XE'));
+            // 2. Đối chiếu tìm đơn phụ tùng trong cache
+            const matchedPart = currentCached.find(m =>
+              !m.id.includes('XE') && m.loaiDon !== 'Xe' && (
+                m.id === `DH00${numId}` ||
+                m.id === `DH0${numId}` ||
+                m.id === `DH${numId}` ||
+                parseInt(m.id.replace(/\D/g, ''), 10) === numId
+              )
+            );
+
+            // 3. Đối chiếu tìm lịch hẹn nhận xe bàn giao liên kết từ LICH_HEN
+            const linkedAppt = allAppts.find(a =>
+              (a.maDonHangXe && (
+                a.maDonHangXe === `DH-XE-${numId < 10 ? `00${numId}` : `0${numId}`}` ||
+                a.maDonHangXe === `DH-XE-${numId}` ||
+                a.maDonHangXe === `DH00${numId}` ||
+                a.maDonHangXe === `DH0${numId}` ||
+                parseInt(a.maDonHangXe.replace(/\D/g, ''), 10) === numId
+              )) ||
+              (a.ghiChu && (
+                a.ghiChu.includes(`DH-XE-${numId < 10 ? `00${numId}` : `0${numId}`}`) ||
+                a.ghiChu.includes(`DH-XE-${numId}`) ||
+                a.ghiChu.includes(`đơn #${numId}`) ||
+                a.ghiChu.includes(`Đơn #${numId}`) ||
+                a.ghiChu.includes(`đơn #${numId < 10 ? `00${numId}` : `0${numId}`}`)
+              )) ||
+              (a.customerId && (a.customerId === (item.maKH ? `KH00${item.maKH}` : '') || a.customerId === (item.maKH ? `KH0${item.maKH}` : '')) &&
+                (a.loaiDichVu === 'NhanXe' || a.loaiDichVu?.includes('Nhận xe') || (a.ghiChu && a.ghiChu.includes('nhận xe'))))
+            );
+
+            // 4. Nhận diện đơn xe:
+            // - Đã có trong cache xe (matchedVehicle)
+            // - Hoặc có lịch hẹn nhận xe bàn giao tương ứng
+            // - Hoặc backend không có chi tiết phụ tùng (chiTiet rỗng) và giá trị cao (xe máy >= 10tr hoặc cọc 2tr/5tr)
+            // - Hoặc đơn không có mặt hàng phụ tùng hợp lệ
+            const hasExplicitParts = Array.isArray(item.chiTiet) && item.chiTiet.length > 0;
+            const isVehicleOrder = Boolean(
+              matchedVehicle ||
+              (linkedAppt && (linkedAppt.loaiDichVu === 'NhanXe' || linkedAppt.loaiDichVu?.includes('Nhận xe') || !!linkedAppt.tenXe)) ||
+              (!hasExplicitParts && (item.tongTien >= 10000000 || item.tongTien === 2000000 || item.tongTien === 5000000)) ||
+              (!hasExplicitParts && (!matchedPart || !matchedPart.items || matchedPart.items.length === 0))
+            );
+
+            const matchedExisting = isVehicleOrder ? matchedVehicle : (matchedPart || matchedVehicle);
+
             const id = isVehicleOrder
               ? `DH-XE-${numId < 10 ? `00${numId}` : `0${numId}`}`
               : (numId ? (numId < 10 ? `DH00${numId}` : `DH0${numId}`) : (matchedExisting?.id || `DH${idx + 1}`));
@@ -1885,7 +2058,7 @@ export const orderApi = {
             else if (item.trangThai === 'Chờ duyệt' || item.trangThai === 'ChoDuyet' || item.trangThai === 'Chờ xác nhận') tt = 'ChoDuyet';
             else if (matchedExisting?.trangThai) tt = matchedExisting.trangThai;
 
-            // Nếu trong cache đã được Admin xác nhận (DaXacNhan, ChoKhachXacNhanNgayNhan, ChoGiaoXe, DangGiao, HoanThanh) mà backend chưa kịp cập nhật, ưu tiên giữ trạng thái mới từ cache
+            // Nếu trong cache đã được Admin xác nhận mà backend chưa kịp cập nhật, ưu tiên giữ trạng thái mới từ cache
             if (matchedExisting?.trangThai && matchedExisting.trangThai !== 'ChoDuyet' && tt === 'ChoDuyet') {
               tt = matchedExisting.trangThai;
             }
@@ -1897,37 +2070,85 @@ export const orderApi = {
             else if (tt === 'HoanThanh') paymentStatus = 'DaThanhToan';
             else if (matchedExisting?.trangThaiThanhToan) paymentStatus = matchedExisting.trangThaiThanhToan;
 
+            // Xây dựng thông tin xe cho đơn xe máy
+            let finalThongTinXe = matchedVehicle?.thongTinXe || matchedExisting?.thongTinXe;
+            if (!finalThongTinXe && isVehicleOrder) {
+              const rawBikeName = linkedAppt?.tenXe || (linkedAppt?.loaiDichVu ? linkedAppt.loaiDichVu.replace(/Nhận xe mới:\s*/i, '').trim() : '') || '';
+              const bikeName = rawBikeName || (item.tongTien > 60000000 ? 'Honda Winner X 150' : 'Xe máy chính hãng Motoshop');
+              finalThongTinXe = {
+                maXe: (linkedAppt as any)?.maXe || `XM-${numId}`,
+                tenXe: bikeName,
+                mauSac: linkedAppt?.mauXe || 'Tiêu chuẩn',
+                phienBan: linkedAppt?.phienBan || 'Tiêu chuẩn',
+                soKhungVIN: (linkedAppt as any)?.soKhungVIN || undefined,
+                customerType: 'CaNhan',
+                phiTruocBa: Math.round(item.tongTien * 0.05),
+                phiDangKyBienSo: 2000000,
+                phiBaoHiem: 500000,
+                khuyenMai: 0,
+                giaNiemYet: item.tongTien,
+                tongGiaTri: item.tongTien,
+                soTienDatCoc: linkedAppt?.soTienCoc || (item.tongTien === 2000000 ? 2000000 : item.tongTien),
+                soTienConLai: (paymentStatus === 'DaThanhToan' || tt === 'HoanThanh') ? 0 : Math.max(0, item.tongTien - (linkedAppt?.soTienCoc || item.tongTien)),
+                hinhThucGiao: (linkedAppt?.hinhThucGiao as any) || 'Showroom',
+                diaChiGiao: linkedAppt?.diaChiGiao || (matchedExisting as any)?.diaChiGiao || 'Showroom Motoshop',
+                ngayGiaoXe: linkedAppt?.ngayHen ? linkedAppt.ngayHen.split('T')[0] : (item.ngayDat ? item.ngayDat.split('T')[0] : '2026-11-01'),
+                khungGioGiao: linkedAppt?.gioHen || '09:30',
+                checklist: (linkedAppt as any)?.checklist || {
+                  xacThucKH: true,
+                  thuThapCCCD: true,
+                  kyHopDong: true,
+                  nhapSoKhungVIN: false,
+                  dangKyBienSo: false,
+                  thuTienCoc: true,
+                  hoSoVay: false,
+                  capBaoHiem: true,
+                  kiemTraPDI: false,
+                  banGiaoXe: false,
+                },
+              } as any;
+            }
+
             return {
               id,
               customerId: cId,
-              hoTenKH: item.tenKhachHang || matchedExisting?.hoTenKH || 'Khách hàng',
-              soDienThoai: item.soDienThoai || matchedExisting?.soDienThoai,
+              hoTenKH: item.tenKhachHang || matchedExisting?.hoTenKH || linkedAppt?.hoTenKH || 'Khách hàng',
+              soDienThoai: item.soDienThoai || matchedExisting?.soDienThoai || linkedAppt?.soDienThoai,
               email: matchedExisting?.email,
               ngayDat: item.ngayDat ? item.ngayDat.split('T')[0] : (matchedExisting?.ngayDat || '2026-10-20'),
               trangThai: tt,
               trangThaiThanhToan: paymentStatus,
               kenhBan: matchedExisting?.kenhBan || 'Online',
-              loaiDon: matchedExisting?.loaiDon || (matchedExisting?.thongTinXe ? 'Xe' : 'PhuTung'),
+              loaiDon: isVehicleOrder ? ('Xe' as const) : ('PhuTung' as const),
               tongTien: item.tongTien || matchedExisting?.tongTien || 0,
-              diaChiGiao: matchedExisting?.diaChiGiao || '123 Lê Lợi, Phường Bến Nghé, Quận 1, TP. Hồ Chí Minh',
-              items: (item.chiTiet && item.chiTiet.length > 0)
-                ? item.chiTiet.map((ct: any) => ({
-                    maPhuTung: ct.maPhuTung,
-                    tenSanPham: ct.tenPhuTung || 'Phụ tùng chính hãng',
-                    soLuong: ct.soLuong || 1,
-                    donGia: ct.donGia || 0,
-                  }))
-                : (matchedExisting?.items && matchedExisting.items.length > 0
-                    ? matchedExisting.items
-                    : (matchedExisting?.loaiDon === 'Xe' || matchedExisting?.thongTinXe || (item.id && String(item.id).includes('XE')))
-                        ? []
-                        : [{ tenSanPham: 'Phụ tùng chính hãng', soLuong: 1, donGia: item.tongTien || 0 }]),
+              diaChiGiao: matchedExisting?.diaChiGiao || linkedAppt?.diaChiGiao || '123 Lê Lợi, Phường Bến Nghé, Quận 1, TP. Hồ Chí Minh',
+              items: isVehicleOrder
+                ? []
+                : (hasExplicitParts
+                    ? item.chiTiet.map((ct: any) => {
+                        const allParts = partApi.getAllSync();
+                        const foundPt = allParts.find(p => (ct.maPhuTung && (p.id === `PT00${ct.maPhuTung}` || p.id === `PT0${ct.maPhuTung}`)) || p.tenSanPham.toLowerCase() === (ct.tenPhuTung || '').toLowerCase());
+                        const matchedItem = matchedExisting?.items?.find((mi: any) => mi.maPhuTung === ct.maPhuTung || mi.tenSanPham === ct.tenPhuTung);
+                        return {
+                          maPhuTung: ct.maPhuTung,
+                          partId: matchedItem?.partId || foundPt?.id,
+                          tenSanPham: ct.tenPhuTung || matchedItem?.tenSanPham || 'Phụ tùng chính hãng',
+                          soLuong: ct.soLuong || 1,
+                          donGia: ct.donGia || 0,
+                          hinhAnh: matchedItem?.hinhAnh || foundPt?.hinhAnh,
+                          thuongHieu: matchedItem?.thuongHieu || foundPt?.thuongHieu,
+                          danhMuc: matchedItem?.danhMuc || foundPt?.danhMuc,
+                        };
+                      })
+                    : (matchedExisting?.items && matchedExisting.items.length > 0
+                        ? matchedExisting.items
+                        : [])),
               maNV: matchedExisting?.maNV,
               tenNV: matchedExisting?.tenNV,
-              phuongThucThanhToan: item.phuongThucThanhToan || matchedExisting?.phuongThucThanhToan || 'TienMat',
-              thongTinXe: matchedExisting?.thongTinXe,
-              ghiChu: matchedExisting?.ghiChu,
-              maLichHen: matchedExisting?.maLichHen,
+              phuongThucThanhToan: item.phuongThucThanhToan || matchedExisting?.phuongThucThanhToan || 'ChuyenKhoan',
+              thongTinXe: finalThongTinXe,
+              ghiChu: matchedExisting?.ghiChu || linkedAppt?.ghiChu,
+              maLichHen: matchedExisting?.maLichHen || linkedAppt?.maLichHen || linkedAppt?.id,
               qrCodeUrl: matchedExisting?.qrCodeUrl,
               lyDoHuy: matchedExisting?.lyDoHuy,
             };
@@ -1949,8 +2170,17 @@ export const orderApi = {
     mockOrders.forEach(o => combinedMap.set(o.id, { ...o }));
     cachedOrders.forEach(o => combinedMap.set(o.id, { ...combinedMap.get(o.id), ...o }));
     list.forEach(o => {
-      const existingInCache = combinedMap.get(o.id);
       const isVehicleOrder = o.loaiDon === 'Xe' || !!o.thongTinXe || (o.id && o.id.includes('XE'));
+      if (isVehicleOrder) {
+        const rawNum = parseInt(o.id.replace(/\D/g, ''), 10);
+        if (!isNaN(rawNum)) {
+          combinedMap.delete(`DH00${rawNum}`);
+          combinedMap.delete(`DH0${rawNum}`);
+          combinedMap.delete(`DH${rawNum}`);
+        }
+      }
+
+      const existingInCache = combinedMap.get(o.id);
 
       // BẢO VỆ TIẾN TRÌNH: Trạng thái từ Backend database là nguồn sự thật (Source of Truth)
       let finalTT = o.trangThai;
@@ -1989,16 +2219,30 @@ export const orderApi = {
         });
       }
     });
+
+    // Dọn dẹp triệt để các mã đơn rác phụ tùng trùng số với đơn xe máy (ví dụ DH028 khi đã có DH-XE-028)
+    for (const key of Array.from(finalOrderMap.keys())) {
+      if (key.startsWith('DH-XE-')) {
+        const rawNum = parseInt(key.replace(/\D/g, ''), 10);
+        if (!isNaN(rawNum)) {
+          finalOrderMap.delete(`DH00${rawNum}`);
+          finalOrderMap.delete(`DH0${rawNum}`);
+          finalOrderMap.delete(`DH${rawNum}`);
+        }
+      }
+    }
+
     // Dọn dẹp đơn trùng lặp xe DH-XE-025 và DH-XE-026 (giữ đơn hoàn thành DH-XE-026)
     if (finalOrderMap.has('DH-XE-025') && finalOrderMap.has('DH-XE-026')) {
       finalOrderMap.delete('DH-XE-025');
     }
     merged = Array.from(finalOrderMap.values()).map(o => {
-      const isVehicle = o.loaiDon === 'Xe' || !!o.thongTinXe || (o.id && String(o.id).includes('XE'));
-      if (isVehicle && o.items && o.items.length > 0) {
+      const isVehicle = o.loaiDon === 'Xe' || !!o.thongTinXe || (o.id && String(o.id).includes('XE')) || (!o.items?.length && o.tongTien >= 10000000);
+      if (isVehicle) {
         return {
           ...o,
-          items: o.items.filter(it => it.tenSanPham !== 'Phụ tùng chính hãng' || it.maPhuTung),
+          loaiDon: 'Xe' as const,
+          items: (o.items || []).filter(it => it.tenSanPham !== 'Phụ tùng chính hãng' && (it.maPhuTung || (it as any).id)),
         };
       }
       return o;
@@ -2299,6 +2543,35 @@ export const orderApi = {
         linkPage: 'sales',
         meta: targetOrder,
       });
+
+      // Tự động hoàn thành lịch hẹn nhận xe mới liên kết (#LH...)
+      try {
+        const cachedRaw = localStorage.getItem('crm_appointments_cache');
+        let cachedAppts: Appointment[] = cachedRaw ? JSON.parse(cachedRaw) : [];
+        let changed = false;
+        cachedAppts = cachedAppts.map(a => {
+          const matchOrdId = a.maDonHangXe === orderIdStr || a.maDonHangXe === targetOrder?.id;
+          const matchLichHen = a.maLichHen && (targetOrder?.maLichHen === a.maLichHen || targetOrder?.thongTinXe?.maLichHen === a.maLichHen);
+          const matchCustPhone = a.loaiDichVu === 'NhanXe' && targetOrder && (a.customerId === targetOrder.customerId || (a.soDienThoai && targetOrder.soDienThoai && a.soDienThoai.replace(/\D/g, '') === targetOrder.soDienThoai.replace(/\D/g, '')));
+          if ((matchOrdId || matchLichHen || matchCustPhone) && a.trangThai !== 'DaHoanThanh') {
+            changed = true;
+            return { ...a, trangThai: 'DaHoanThanh' as AppointmentStatus };
+          }
+          return a;
+        });
+        if (changed) {
+          localStorage.setItem('crm_appointments_cache', JSON.stringify(cachedAppts));
+          mockAppointments.forEach(a => {
+            const matchOrdId = a.maDonHangXe === orderIdStr || a.maDonHangXe === targetOrder?.id;
+            const matchLichHen = a.maLichHen && (targetOrder?.maLichHen === a.maLichHen || targetOrder?.thongTinXe?.maLichHen === a.maLichHen);
+            const matchCustPhone = a.loaiDichVu === 'NhanXe' && targetOrder && (a.customerId === targetOrder.customerId || (a.soDienThoai && targetOrder.soDienThoai && a.soDienThoai.replace(/\D/g, '') === targetOrder.soDienThoai.replace(/\D/g, '')));
+            if (matchOrdId || matchLichHen || matchCustPhone) a.trangThai = 'DaHoanThanh';
+          });
+          window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'appointment' } }));
+        }
+      } catch (apptErr) {
+        console.warn('Lỗi đồng bộ hoàn tất lịch hẹn nhận xe:', apptErr);
+      }
 
       // Tự động thông báo cho khách hàng
       if (targetOrder && targetOrder.customerId) {
@@ -2674,9 +2947,13 @@ async delete(orderIdOrNum: string | number): Promise<boolean> {
     tenNV?: string;
     items: {
       maPhuTung?: number;
+      partId?: string;
       tenSanPham: string;
       soLuong: number;
       donGia: number;
+      hinhAnh?: string;
+      thuongHieu?: string;
+      danhMuc?: string;
     }[];
     tongTien: number;
     ghiChu?: string;
@@ -2755,12 +3032,19 @@ async delete(orderIdOrNum: string | number): Promise<boolean> {
       tenNV: data.tenNV,
       phuongThucThanhToan: data.phuongThucThanhToan || 'TienMat',
       ghiChu: data.ghiChu,
-      items: data.items.map(i => ({
-        tenSanPham: i.tenSanPham,
-        soLuong: i.soLuong,
-        donGia: i.donGia,
-        maPhuTung: i.maPhuTung,
-      })),
+      items: data.items.map(i => {
+        const found = allParts.find(p => (i.maPhuTung && (p.id === `PT00${i.maPhuTung}` || p.id === `PT0${i.maPhuTung}`)) || p.id === i.partId || p.tenSanPham.toLowerCase() === i.tenSanPham.toLowerCase());
+        return {
+          tenSanPham: i.tenSanPham,
+          soLuong: i.soLuong,
+          donGia: i.donGia,
+          maPhuTung: i.maPhuTung,
+          partId: i.partId || found?.id,
+          hinhAnh: i.hinhAnh || found?.hinhAnh,
+          thuongHieu: i.thuongHieu || found?.thuongHieu,
+          danhMuc: i.danhMuc || found?.danhMuc,
+        };
+      }),
     };
 
     // Tự động trừ tồn kho khả dụng cho từng phụ tùng trong đơn
@@ -3243,6 +3527,36 @@ async delete(orderIdOrNum: string | number): Promise<boolean> {
       localStorage.setItem('crm_orders_cache', JSON.stringify(list));
     } catch {}
 
+    // Kích hoạt phương tiện sở hữu vào tài khoản khách hàng ngay khi đặt mua xe
+    try {
+      const vName = data.thongTinXe.tenXe;
+      const brand = vName.includes('Yamaha') ? 'Yamaha' : vName.includes('Suzuki') ? 'Suzuki' : vName.includes('SYM') ? 'SYM' : 'Honda';
+      const vin = data.thongTinXe.soKhungVIN || (`RLHKD160CB${newOrder.id.replace(/\D/g, '').padEnd(7, '0').slice(0, 7)}`);
+      const soMay = data.thongTinXe.soMay || (`KF12E-${newOrder.id.replace(/\D/g, '').padEnd(7, '8').slice(0, 7)}`);
+      const isDelivered = newOrder.trangThai === 'HoanThanh' || newOrder.trangThai === 'DaGiao';
+      const plateStr = data.thongTinXe.bienSo && data.thongTinXe.bienSo !== 'Chưa có biển số' && !data.thongTinXe.bienSo.includes('Chưa có')
+        ? data.thongTinXe.bienSo
+        : isDelivered
+        ? '59-K1 888.88'
+        : 'Chưa có biển số';
+
+      await vehicleApi.createSoldVehicle({
+        customerId: data.customerId,
+        tenXe: vName,
+        hangXe: brand,
+        bienSo: plateStr,
+        mauSac: data.thongTinXe.mauSac || 'Tiêu chuẩn',
+        dongCo: data.thongTinXe.dongCo || '160cc PGM-FI',
+        soKhung: vin,
+        soMay: soMay,
+        namSanXuat: new Date().getFullYear().toString(),
+        hanBaoHanh: new Date(Date.now() + 3 * 365 * 24 * 3600 * 1000).toISOString().split('T')[0],
+        hinhAnh: data.thongTinXe.hinhAnh,
+      });
+    } catch (vErr) {
+      console.warn('Auto create sold vehicle on order creation error:', vErr);
+    }
+
     window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'order', orderId: newOrder.id } }));
 
     addAdminNotification({
@@ -3343,7 +3657,7 @@ export const appointmentApi = {
         if (Array.isArray(data) && data.length > 0) {
           apiList = data.map((item: any, idx: number) => {
             const id = item.maLich ? (item.maLich < 10 ? `LH00${item.maLich}` : `LH0${item.maLich}`) : `LH${idx + 1}`;
-            const cId = item.maKH ? (item.maKH < 10 ? `KH00${item.maKH}` : `KH0${item.maKH}`) : 'KH001';
+            const cId = item.maKH ? (item.maKH < 10 ? `KH00${item.maKH}` : `KH0${item.maKH}`) : (item.customerId || '');
             const mockMatch = mockAppointments.find(m => m.id === id);
             const cachedMatch = cachedList.find(c => c.id === id);
 
@@ -3840,6 +4154,40 @@ export const appointmentApi = {
     });
 
     window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'appointment', apptId: newAppt.id } }));
+
+    // Tự động đồng bộ sang Admin Warranty Claims nếu là lịch bảo hành xe
+    if (data.loaiDichVu === 'BaoHanh') {
+      try {
+        const curDate = new Date();
+        const existingClaims = warrantyApi.getAdminClaims();
+        const nextSeq = 156 + existingClaims.length + 1;
+        const adminClaimId = `YCBH${nextSeq.toString().padStart(5, '0')}`;
+        const newClaim: AdminWarrantyClaim = {
+          id: adminClaimId,
+          ngayGui: `${String(curDate.getDate()).padStart(2, '0')}/${String(curDate.getMonth() + 1).padStart(2, '0')}/${curDate.getFullYear()}`,
+          khachHang: newAppt.hoTenKH,
+          soDienThoai: newAppt.soDienThoai,
+          xeBienSo: `${newAppt.tenXe || 'Xe máy'} - ${newAppt.bienSo || 'Chưa bấm biển'}`,
+          noiDung: newAppt.ghiChu || 'Yêu cầu kiểm tra bảo hành xe',
+          nhanVienPhuTrach: newAppt.nhanVienPhuTrach || 'Chờ phân công',
+          trangThai: 'ChoXuLy',
+          currentStep: 1,
+          customerId: newAppt.customerId,
+          maLichHen: newAppt.id,
+          ngayHen: newAppt.ngayHen,
+          gioHen: newAppt.gioHen,
+          chiNhanh: 'Showroom Chính Motoshop',
+        };
+        const updatedClaims = [newClaim, ...existingClaims.filter(c => c.maLichHen !== newAppt.id && c.id !== newAppt.id)];
+        localStorage.setItem('crm_admin_warranty_claims', JSON.stringify(updatedClaims));
+        localStorage.setItem('crm_warranty_claim_sync_trigger', Date.now().toString());
+        window.dispatchEvent(new CustomEvent('crm-admin-notification', { detail: { type: 'warranty_claim_created', claimId: adminClaimId } }));
+        window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'warranty_claim', claimId: adminClaimId } }));
+      } catch (claimErr) {
+        console.warn('Lỗi tự động tạo yêu cầu bảo hành:', claimErr);
+      }
+    }
+
     return { success: true, appointment: newAppt, maLich: createdMaLich };
   },
 };
@@ -5259,8 +5607,8 @@ export const feedbackApi = {
               id,
               customerId: cId,
               hoTen: item.hoTenKH || mockMatch?.hoTen || 'Khách hàng',
-              soDienThoai: item.soDienThoai || mockMatch?.soDienThoai || '0901234567',
-              email: item.email || mockMatch?.email || 'khachhang@motoshop.vn',
+              soDienThoai: item.soDienThoai || mockMatch?.soDienThoai || '',
+              email: item.email || mockMatch?.email || '',
               diaChi: item.diaChi || mockMatch?.diaChi || 'TP.HCM',
               xeDangDung: cleanedXe,
               noiDung: item.noiDung || '',
@@ -5277,10 +5625,11 @@ export const feedbackApi = {
               ngayXuLy: item.ngayXuLy || mockMatch?.ngayXuLy || ((item.trangThaiXuLy === 'Đã phản hồi' || item.trangThaiXuLy === 'DaXuLy') ? (item.ngayGui ? item.ngayGui.split('T')[0] : '2024-12-05') : undefined),
               // ĐG09: Đính kèm media ảnh hoặc video
               hinhAnhDinhKem: item.hinhAnhDinhKem || mockMatch?.hinhAnhDinhKem || [],
-              productId: item.maPhuTung ? `PT00${item.maPhuTung}` : item.maXe ? `XM00${item.maXe}` : mockMatch?.productId,
+              productId: item.maPhuTung ? `PT00${item.maPhuTung}` : item.maXe ? `XM00${item.maXe}` : (item.productId || mockMatch?.productId),
               productName: pName,
               productImage: pImg,
               productType: pType,
+              orderId: item.orderId || mockMatch?.orderId,
               editCount: item.soLanSua || mockMatch?.editCount || 0,
             };
           });
@@ -5296,6 +5645,7 @@ export const feedbackApi = {
                   mapped[existingIdx] = {
                     ...mapped[existingIdx],
                     ...lf,
+                    orderId: lf.orderId || mapped[existingIdx].orderId,
                     productName: lf.productName || mapped[existingIdx].productName,
                     productType: lf.productType || mapped[existingIdx].productType,
                     productId: lf.productId || mapped[existingIdx].productId,
@@ -5962,7 +6312,7 @@ export function migrateAndDeduplicateSurveys(): { removedCount: number; unifiedC
             id: unifiedId,
             title: `Khảo sát trải nghiệm bàn giao xe mới: ${bikeName}`,
             description: (s.description || '').replace(/\s*\(#[A-Z0-9-_]+\)\s*/gi, ''),
-            targetCustomerId: 'ALL',
+            targetCustomerId: custIds[0] || 'ALL',
             targetCustomerTier: 'ALL',
             targetCustomerIds: [...custIds],
           };
@@ -5986,7 +6336,7 @@ export function migrateAndDeduplicateSurveys(): { removedCount: number; unifiedC
             id: unifiedId,
             title: `Khảo sát trải nghiệm lái thử xe: ${bikeName}`,
             description: (s.description || '').replace(/\s*\(#[A-Z0-9-_]+\)\s*/gi, ''),
-            targetCustomerId: 'ALL',
+            targetCustomerId: custIds[0] || 'ALL',
             targetCustomerTier: 'ALL',
             targetCustomerIds: [...custIds],
           };
@@ -6008,7 +6358,7 @@ export function migrateAndDeduplicateSurveys(): { removedCount: number; unifiedC
             id: unifiedId,
             title: 'Khảo sát chất lượng Dịch vụ Bảo dưỡng & Sửa chữa định kỳ',
             description: 'Dịch vụ bảo dưỡng xe của bạn tại Motoshop đã hoàn tất. Chúng tôi trân trọng mời bạn dành 1 phút thực hiện khảo sát tự động để nâng cao chất lượng phục vụ và nhận mã ưu đãi giảm giá!',
-            targetCustomerId: 'ALL',
+            targetCustomerId: custIds[0] || 'ALL',
             targetCustomerTier: 'ALL',
             targetCustomerIds: [...custIds],
           };
@@ -6345,7 +6695,7 @@ export const surveyApi = {
       id: surveyId,
       title: `Khảo sát trải nghiệm bàn giao xe mới: ${bikeName}`,
       description: `Chúc mừng quý khách đã nhận xe ${bikeName}! DailyXeMay trân trọng mời quý khách dành 1-2 phút đánh giá chất lượng bàn giao để nâng cao chất lượng phục vụ và nhận quà tri ân.`,
-      targetCustomerId: 'ALL',
+      targetCustomerId: custId,
       targetCustomerTier: 'ALL',
       targetCustomerIds: [custId],
       targetCount: 1,
@@ -6431,7 +6781,7 @@ export const surveyApi = {
       id: surveyId,
       title: `Khảo sát trải nghiệm lái thử xe: ${bikeName}`,
       description: `Cảm ơn bạn đã trải nghiệm lái thử xe ${bikeName} tại Motoshop! Chúng tôi rất mong nhận được phản hồi chân thực của bạn để nâng cao chất lượng phục vụ và hỗ trợ bạn chọn được chiếc xe ưng ý nhất.`,
-      targetCustomerId: 'ALL',
+      targetCustomerId: custId,
       targetCustomerTier: 'ALL',
       targetCustomerIds: [custId],
       targetCount: 1,
@@ -6513,7 +6863,7 @@ export const surveyApi = {
       id: surveyId,
       title: 'Khảo sát chất lượng Dịch vụ Bảo dưỡng & Sửa chữa định kỳ',
       description: 'Dịch vụ bảo dưỡng xe của bạn tại Motoshop đã hoàn tất. Chúng tôi trân trọng mời bạn dành 1 phút thực hiện khảo sát tự động để nâng cao chất lượng phục vụ và nhận mã ưu đãi giảm giá!',
-      targetCustomerId: 'ALL',
+      targetCustomerId: custId,
       targetCustomerTier: 'ALL',
       targetCustomerIds: [custId],
       targetCount: 1,
@@ -7357,6 +7707,7 @@ export const warrantyApi = {
     const updatedClaims = [newAdminClaim, ...existingClaims];
     try {
       localStorage.setItem('crm_admin_warranty_claims', JSON.stringify(updatedClaims));
+      localStorage.setItem('crm_warranty_claim_sync_trigger', Date.now().toString());
     } catch {}
 
     // Lưu một bản ghi lịch hẹn chờ xác nhận vào crm_appointments_cache
@@ -7383,6 +7734,7 @@ export const warrantyApi = {
     } catch {}
 
     window.dispatchEvent(new CustomEvent('crm-admin-notification', { detail: { type: 'warranty_claim_created', claimId: adminClaimId } }));
+    window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'warranty_claim', claimId: adminClaimId } }));
 
     // Thông báo cho Admin (TB02)
     addAdminNotification({
@@ -7804,16 +8156,15 @@ export const warrantyApi = {
     const vIdx = vehicles.findIndex(v => v.id === vehicleId);
     if (vIdx !== -1) {
       const curVeh = vehicles[vIdx];
-      let newDate = new Date();
-      if (curVeh.hanBaoHanh && !isNaN(new Date(curVeh.hanBaoHanh).getTime())) {
-        newDate = new Date(curVeh.hanBaoHanh);
-      }
+      const curBase = parseDateSafe(curVeh.hanBaoHanh);
+      const now = new Date();
+      const baseDate = curBase > now ? curBase : now;
       let addedYears = 1;
       if (packageId === 'GOI_TOAN_DIEN_2Y' || packageId === 'CARE_PLUS_2Y') addedYears = 2;
       else if (packageId === 'GOI_CAO_CAP_3Y') addedYears = 3;
 
-      newDate.setFullYear(newDate.getFullYear() + addedYears);
-      const newHanBaoHanh = newDate.toISOString().split('T')[0];
+      baseDate.setFullYear(baseDate.getFullYear() + addedYears);
+      const newHanBaoHanh = formatDateSafe(baseDate);
 
       vehicles[vIdx] = {
         ...curVeh,
@@ -7843,12 +8194,57 @@ export const warrantyApi = {
       };
       warrantyApi.addWarrantyRecord(newRec);
 
+      // GH01: Lưu đầy đủ lịch sử gia hạn bảo hành vào cơ sở dữ liệu quản lý của Admin
+      const curCust = customerApi.getById(customerId) || mockCustomers.find(c => c.id === customerId);
+      warrantyApi.createExtensionTransaction({
+        ngayGiaHan: new Date().toLocaleDateString('vi-VN'),
+        khachHang: curCust?.hoTen || 'Khách hàng',
+        soDienThoai: curCust?.soDienThoai || '0987654321',
+        email: curCust?.email || '',
+        diaChi: curCust?.diaChi || '',
+        customerId,
+        vehicleId,
+        xeBienSo: `${curVeh.tenXe} (${curVeh.bienSo || vehicleId})`,
+        tenXe: curVeh.tenXe,
+        bienSo: curVeh.bienSo,
+        soKhung: curVeh.soKhung,
+        soMay: (curVeh as any).soMay || '',
+        hinhAnhXe: curVeh.hinhAnh,
+        odo: currentOdo || 12500,
+        goiGiaHan: pkg.tenGoi,
+        soTien: pkg.giaUuDai,
+        nguon: 'TrucTuyen',
+        nhanVien: 'Hệ thống tự động',
+        thoiHanGoc: curVeh.hanBaoHanh || 'Chưa xác định',
+        thoiHanMoi: newHanBaoHanh,
+        quyenLoiGoi: `+${pkg.thoiGianThem} / +${pkg.kmThem}`,
+        phuongThucThanhToan: 'ChuyenKhoan',
+        thoiGianThanhToan: `${new Date().toLocaleDateString('vi-VN')} - ${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`,
+        daInHoaDon: true,
+        lichSuDichVu: [
+          {
+            ngay: new Date().toLocaleDateString('vi-VN'),
+            tieuDe: `Kích hoạt ${pkg.tenGoi} (${pkg.thoiGianThem})`,
+            odo: currentOdo || 12500,
+            loai: 'GiaHan',
+            trangThai: 'KichHoat',
+          },
+          {
+            ngay: new Date().toLocaleDateString('vi-VN'),
+            tieuDe: 'Phê duyệt đủ điều kiện gia hạn trực tuyến',
+            diaDiem: 'Cổng trực tuyến Care+',
+            loai: 'BaoHanh',
+            trangThai: 'Dat',
+          },
+        ],
+      });
+
       addCustomerNotification({
         customerId,
         category: 'system',
         icon: '🛡️',
         title: 'Kích hoạt Bảo hành mở rộng thành công',
-        message: `Bạn đã gia hạn thành công ${pkg.tenGoi} cho xe ${curVeh.tenXe}. Thời hạn bảo hành mới được kéo dài đến ${newHanBaoHanh.split('-').reverse().join('/')}.`,
+        message: `Bạn đã gia hạn thành công ${pkg.tenGoi} cho xe ${curVeh.tenXe}. Thời hạn bảo hành mới được kéo dài đến ${newHanBaoHanh}.`,
         page: 'dashboard',
         tab: 'vehicles',
         targetId: vehicleId,
@@ -7866,7 +8262,7 @@ export const warrantyApi = {
 
       return {
         success: true,
-        message: `Chúc mừng bạn đã gia hạn thành công ${pkg.tenGoi}! Thời hạn bảo hành mới đến ngày ${newHanBaoHanh.split('-').reverse().join('/')}.`,
+        message: `Chúc mừng bạn đã gia hạn thành công ${pkg.tenGoi}! Thời hạn bảo hành mới đến ngày ${newHanBaoHanh}.`,
       };
     }
 
@@ -7904,15 +8300,57 @@ export const warrantyApi = {
    * Quản lý danh sách yêu cầu bảo hành 6 bước (Ảnh 2 - 8)
    */
   getAdminClaims(): AdminWarrantyClaim[] {
+    let list: AdminWarrantyClaim[] = [];
     try {
       const raw = localStorage.getItem('crm_admin_warranty_claims');
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) list = parsed;
       }
     } catch {}
-    localStorage.setItem('crm_admin_warranty_claims', JSON.stringify(mockAdminWarrantyClaims));
-    return mockAdminWarrantyClaims;
+    if (list.length === 0) {
+      list = [...mockAdminWarrantyClaims];
+      try {
+        localStorage.setItem('crm_admin_warranty_claims', JSON.stringify(list));
+      } catch {}
+    }
+
+    // Tự động quét và bổ sung các lịch hẹn bảo hành (loaiDichVu === 'BaoHanh') từ cache
+    try {
+      const cachedRaw = localStorage.getItem('crm_appointments_cache');
+      const cachedAppts: Appointment[] = cachedRaw ? JSON.parse(cachedRaw) : [];
+      let hasNew = false;
+      cachedAppts.forEach(a => {
+        if (a.loaiDichVu === 'BaoHanh' && !list.some(c => c.maLichHen === a.id || c.id === a.id)) {
+          const nextSeq = 156 + list.length + 1;
+          const adminClaimId = `YCBH${nextSeq.toString().padStart(5, '0')}`;
+          const d = a.createdDate ? new Date(a.createdDate) : new Date();
+          const autoClaim: AdminWarrantyClaim = {
+            id: adminClaimId,
+            ngayGui: `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`,
+            khachHang: a.hoTenKH,
+            soDienThoai: a.soDienThoai,
+            xeBienSo: `${a.tenXe || 'Xe máy'} - ${a.bienSo || 'Chưa bấm biển'}`,
+            noiDung: a.ghiChu || 'Yêu cầu kiểm tra bảo hành xe',
+            nhanVienPhuTrach: a.nhanVienPhuTrach || 'Chờ phân công',
+            trangThai: a.trangThai === 'DaHoanThanh' ? 'HoanThanh' : 'ChoXuLy',
+            currentStep: a.trangThai === 'DaHoanThanh' ? 6 : 1,
+            customerId: a.customerId,
+            maLichHen: a.id,
+            ngayHen: a.ngayHen,
+            gioHen: a.gioHen,
+            chiNhanh: 'Showroom Chính Motoshop',
+          };
+          list.unshift(autoClaim);
+          hasNew = true;
+        }
+      });
+      if (hasNew) {
+        localStorage.setItem('crm_admin_warranty_claims', JSON.stringify(list));
+      }
+    } catch {}
+
+    return list;
   },
 
   getAdminClaimById(id: string): AdminWarrantyClaim | undefined {

@@ -4,7 +4,7 @@ import {
   EXTENDED_WARRANTY_PACKAGES,
   formatVND,
 } from '../../data/mockData';
-import { warrantyApi } from '../../services/api';
+import { warrantyApi, vehicleApi } from '../../services/api';
 
 interface WarrantyExtensionWizardProps {
   vehicle: Vehicle;
@@ -896,7 +896,9 @@ export default function WarrantyExtensionWizard({
                 <button
                   type="button"
                   onClick={() => {
-                    onSuccess(vehicle);
+                    const latest = vehicleApi.getAllSync();
+                    const updatedVeh = latest.find(v => v.id === vehicle.id) || vehicle;
+                    onSuccess(updatedVeh);
                     onClose();
                   }}
                   className="px-8 py-3 rounded-2xl text-xs font-black uppercase tracking-wider bg-emerald-700 hover:bg-emerald-800 text-white shadow-md cursor-pointer"

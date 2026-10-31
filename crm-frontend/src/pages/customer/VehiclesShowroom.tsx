@@ -1479,14 +1479,21 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
             }))
           ];
 
-          const found = list.find(v =>
-            (vId && (v.id === vId || (v as any).maXe === vId || (v.id.replace(/\D/g, '') && vId.replace(/\D/g, '') && v.id.replace(/\D/g, '') === vId.replace(/\D/g, '')))) ||
-            (cleanTarget && (
-              v.tenXe.toLowerCase() === cleanTarget ||
-              v.tenXe.toLowerCase().includes(cleanTarget) ||
-              cleanTarget.includes(v.tenXe.toLowerCase())
-            ))
-          );
+          // 1. ƯU TIÊN SỐ 1: Khớp chuẩn xác theo tên xe (Name Match tuyệt đối không bị nhảy nhầm xe)
+          let found = cleanTarget
+            ? list.find(v => v.tenXe.toLowerCase().trim() === cleanTarget) ||
+              list.find(v => {
+                const vNameClean = v.tenXe.toLowerCase().replace(/abs|cbs|smartkey|2024|2025|2026|\(|\)/gi, '').trim();
+                const targetClean = cleanTarget.replace(/abs|cbs|smartkey|2024|2025|2026|\(|\)/gi, '').trim();
+                return vNameClean === targetClean || v.tenXe.toLowerCase().includes(targetClean) || targetClean.includes(vNameClean);
+              })
+            : undefined;
+
+          // 2. ƯU TIÊN SỐ 2: Khớp theo mã định danh xe chính xác tuyệt đối (không so sánh số lẻ)
+          if (!found && vId) {
+            found = list.find(v => v.id === vId || (v as any).maXe === vId);
+          }
+
           if (found) {
             sessionStorage.removeItem('crm_view_vehicle_name');
             sessionStorage.removeItem('crm_view_vehicle_id');

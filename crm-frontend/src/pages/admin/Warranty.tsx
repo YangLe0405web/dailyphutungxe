@@ -3,9 +3,90 @@ import {
   type WarrantyExtensionTransaction,
   type AdminWarrantyClaim,
   type AdminWarrantyClaimStatus,
+  type Customer,
+  type Vehicle,
   formatVND,
+  parseDateSafe,
+  formatDateSafe,
+  renewVehicleWarranty,
+  getVehicleCatalogImage,
 } from '../../data/mockData';
-import { warrantyApi } from '../../services/api';
+
+export interface ShowroomExtPackage {
+  id: string;
+  tenGoi: string;
+  badge?: string;
+  eligible: boolean;
+  gia: number;
+  thoiGianThem: string;
+  kmThem: string;
+  thoiGianNam: number;
+  quyenLoi: string[];
+  reason?: string;
+}
+
+export const SHOWROOM_EXT_PACKAGES: ShowroomExtPackage[] = [
+  {
+    id: 'GOI_TIEU_CHUAN_1Y',
+    tenGoi: 'Gói Tiêu Chuẩn (1 năm)',
+    badge: 'Khuyên Dùng',
+    eligible: true,
+    gia: 350000,
+    thoiGianThem: '+12 tháng',
+    kmThem: '+10.000 km',
+    thoiGianNam: 1,
+    quyenLoi: [
+      'Bảo hành Động cơ, IC, Khung sườn xe',
+      'Miễn phí 02 lần thay dầu nhớt chính hãng',
+      'Cứu hộ tận nơi 24/7 bán kính 30km',
+    ],
+  },
+  {
+    id: 'GOI_TOAN_DIEN_2Y',
+    tenGoi: 'Gói Toàn Diện (2 năm)',
+    badge: 'Tiết kiệm 100k',
+    eligible: true,
+    gia: 600000,
+    thoiGianThem: '+24 tháng',
+    kmThem: '+20.000 km',
+    thoiGianNam: 2,
+    quyenLoi: [
+      'Bảo hành Động cơ, Hệ thống điện, Phun xăng Fi',
+      'Miễn phí 04 lần kiểm tra định kỳ chuyên sâu',
+      'Cứu hộ tận nơi 24/7 toàn quốc',
+    ],
+  },
+  {
+    id: 'GOI_PREMIUM_3Y',
+    tenGoi: 'Gói Cao Cấp (3 năm)',
+    badge: undefined,
+    eligible: false,
+    gia: 850000,
+    thoiGianThem: '+36 tháng',
+    kmThem: '+30.000 km',
+    thoiGianNam: 3,
+    quyenLoi: [
+      'Bảo hành toàn bộ cụm linh kiện chính',
+      'Bảo dưỡng VIP không chờ đợi tại mọi đại lý',
+    ],
+    reason: 'Yêu cầu xe < 10.000 km (ODO hiện tại 12.500 km)',
+  },
+  {
+    id: 'GOI_XE_SO_CON_TAY',
+    tenGoi: 'Gói Xe Côn Tay / Xe Số',
+    badge: undefined,
+    eligible: false,
+    gia: 500000,
+    thoiGianThem: '+12 tháng',
+    kmThem: '+10.000 km',
+    thoiGianNam: 1,
+    quyenLoi: [
+      'Bảo hành bộ ly hợp, hộp số, xích tải',
+    ],
+    reason: 'Không áp dụng cho dòng xe tay ga SH',
+  },
+];
+import { warrantyApi, customerApi, vehicleApi } from '../../services/api';
 import { matchVietnameseSearch } from '../../utils/vietnameseSearch';
 
 const PRESET_PARTS = [
@@ -34,16 +115,44 @@ export const WarrantyPage: React.FC = () => {
   const [extCurrentPage, setExtCurrentPage] = useState(1);
   const extPageSize = 8;
 
-  // Modal tạo gia hạn tại showroom
+  // GH02: State cho Wizard 4 bước tạo gia hạn tại showroom (Ảnh 2, 3, 4)
   const [showCreateExtModal, setShowCreateExtModal] = useState(false);
-  const [newExtForm, setNewExtForm] = useState({
-    khachHang: '',
-    soDienThoai: '',
-    xeBienSo: '',
-    goiGiaHan: 'Gói tiêu chuẩn (1 năm)',
-    soTien: 1200000,
-    nhanVien: 'Nguyễn Văn A',
-  });
+  const [wizardStep, setWizardStep] = useState<1 | 2 | 3 | 4>(1);
+  const [custSearchTerm, setCustSearchTerm] = useState('');
+  const [wizardCustomer, setWizardCustomer] = useState<Customer | null>(null);
+  const [wizardVehicle, setWizardVehicle] = useState<Vehicle | null>(null);
+  const [wizardOdo, setWizardOdo] = useState<number>(12500);
+  const [wizardInspectionDate, setWizardInspectionDate] = useState<string>('2026-10-29');
+  const [wizardOdoImage, setWizardOdoImage] = useState<string | null>(null);
+  const [wizardPkgId, setWizardPkgId] = useState<string>('GOI_TIEU_CHUAN_1Y');
+  const [wizardPaymentMethod, setWizardPaymentMethod] = useState<'TienMat' | 'POS' | 'ChuyenKhoan'>('TienMat');
+  const [wizardCashGiven, setWizardCashGiven] = useState<number>(500000);
+  const [wizardPrintInvoice, setWizardPrintInvoice] = useState<boolean>(true);
+
+  // Mở Wizard và nạp dữ liệu mẫu khách hàng mặc định (Lan Phương / SH 160i)
+  const handleOpenCreateModal = () => {
+    setWizardStep(1);
+    setCustSearchTerm('0879179243');
+    const allC = customerApi.getAllSync();
+    const allV = vehicleApi.getAllSync();
+    const lpCust = allC.find(c => c.soDienThoai === '0879179243' || c.hoTen.toLowerCase().includes('lan phương')) || allC[0] || null;
+    setWizardCustomer(lpCust);
+    if (lpCust) {
+      const custVehs = allV.filter(v => v.customerId === lpCust.id);
+      const shBike = custVehs.find(v => (v.bienSo || '').includes('59K9')) || custVehs[0] || null;
+      setWizardVehicle(shBike);
+    } else {
+      setWizardVehicle(null);
+    }
+    setWizardOdo(12500);
+    setWizardInspectionDate('2026-10-29');
+    setWizardOdoImage(null);
+    setWizardPkgId('GOI_TIEU_CHUAN_1Y');
+    setWizardPaymentMethod('TienMat');
+    setWizardCashGiven(500000);
+    setWizardPrintInvoice(true);
+    setShowCreateExtModal(true);
+  };
 
   // Modal xem chi tiết / Lịch sử / In biên nhận gia hạn
   const [selectedExtDetail, setSelectedExtDetail] = useState<{
@@ -65,6 +174,7 @@ export const WarrantyPage: React.FC = () => {
   const [activeStep, setActiveStep] = useState<number>(1);
 
   // Modal In phiếu của Bước 6
+  const [printExtInvoice, setPrintExtInvoice] = useState<WarrantyExtensionTransaction | null>(null);
   const [printDocument, setPrintDocument] = useState<{
     type: 'BienBanBanGiao' | 'HoaDon0d';
     claim: AdminWarrantyClaim;
@@ -90,9 +200,11 @@ export const WarrantyPage: React.FC = () => {
     const handleUpdate = () => loadData();
     window.addEventListener('crm-admin-notification', handleUpdate);
     window.addEventListener('crm-data-refresh', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
     return () => {
       window.removeEventListener('crm-admin-notification', handleUpdate);
       window.removeEventListener('crm-data-refresh', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
     };
   }, []);
 
@@ -205,40 +317,76 @@ export const WarrantyPage: React.FC = () => {
     };
   }, [extensionList]);
 
-  // Xử lý tạo gia hạn tại showroom
-  const handleCreateExtension = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newExtForm.khachHang || !newExtForm.xeBienSo) {
-      alert('Vui lòng nhập đầy đủ thông tin khách hàng và xe!');
+  // GH02: Xác nhận và kích hoạt gia hạn tại showroom từ Wizard
+  const handleConfirmShowroomExtension = () => {
+    if (!wizardVehicle || !wizardCustomer) {
+      alert('Vui lòng chọn khách hàng và xe!');
       return;
     }
-    const today = new Date();
-    const nextYear = new Date();
-    nextYear.setFullYear(today.getFullYear() + 1);
+    const chosen = SHOWROOM_EXT_PACKAGES.find(p => p.id === wizardPkgId) || SHOWROOM_EXT_PACKAGES[0];
 
-    warrantyApi.createExtensionTransaction({
-      ngayGiaHan: today.toLocaleDateString('vi-VN'),
-      khachHang: newExtForm.khachHang,
-      soDienThoai: newExtForm.soDienThoai || '0987******',
-      xeBienSo: newExtForm.xeBienSo,
-      goiGiaHan: newExtForm.goiGiaHan,
-      soTien: Number(newExtForm.soTien) || 1200000,
+    // Tính hạn bảo hành mới
+    const curExp = wizardVehicle.hanBaoHanh || '15/09/2026';
+    const oldD = parseDateSafe(curExp);
+    const newD = new Date(oldD);
+    newD.setFullYear(newD.getFullYear() + chosen.thoiGianNam);
+    const newExpStr = formatDateSafe(newD);
+
+    // Cập nhật vehicle warranty trong data store
+    renewVehicleWarranty(wizardVehicle.id, chosen.thoiGianNam);
+
+    const now = new Date();
+    const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')} · ${now.toLocaleDateString('vi-VN')}`;
+
+    // Tạo transaction lưu vào danh sách quản lý bảo hành Admin
+    const newTx: WarrantyExtensionTransaction = {
+      id: `BH-${Date.now().toString().slice(-6)}`,
+      ngayGiaHan: now.toLocaleDateString('vi-VN'),
+      khachHang: wizardCustomer.hoTen,
+      soDienThoai: wizardCustomer.soDienThoai,
+      email: wizardCustomer.email,
+      diaChi: wizardCustomer.diaChi,
+      customerId: wizardCustomer.id,
+      vehicleId: wizardVehicle.id,
+      xeBienSo: `${wizardVehicle.tenXe} (${wizardVehicle.bienSo || '59K9 - 876.54'})`,
+      tenXe: wizardVehicle.tenXe,
+      bienSo: wizardVehicle.bienSo || '59K9 - 876.54',
+      soKhung: wizardVehicle.soKhung || 'RLHKD160CB7747410',
+      soMay: (wizardVehicle as any).soMay || 'JF62E088888',
+      hinhAnhXe: wizardVehicle.hinhAnh,
+      odo: wizardOdo,
+      goiGiaHan: chosen.tenGoi,
+      soTien: chosen.gia,
       nguon: 'TaiShowroom',
-      nhanVien: newExtForm.nhanVien,
-      thoiHanMoi: nextYear.toLocaleDateString('vi-VN'),
-    });
+      nhanVien: 'Trần Văn Quản Lý',
+      thoiHanGoc: curExp,
+      thoiHanMoi: newExpStr,
+      quyenLoiGoi: `${chosen.thoiGianThem} / ${chosen.kmThem}`,
+      phuongThucThanhToan: wizardPaymentMethod,
+      thoiGianThanhToan: timeStr,
+      tienKhachDua: wizardPaymentMethod === 'TienMat' ? wizardCashGiven : chosen.gia,
+      tienThoiLai: wizardPaymentMethod === 'TienMat' ? Math.max(0, wizardCashGiven - chosen.gia) : 0,
+      daInHoaDon: wizardPrintInvoice,
+      lichSuDichVu: [
+        {
+          ngay: now.toLocaleDateString('vi-VN'),
+          tieuDe: `Gia hạn ${chosen.tenGoi} (+${chosen.thoiGianNam} năm) thành công tại showroom`,
+          loai: 'GiaHan',
+          ghiChu: `Đã thu ${formatVND(chosen.gia)} qua ${wizardPaymentMethod}. Cập nhật hạn mới đến ${newExpStr}`,
+        },
+        {
+          ngay: wizardInspectionDate,
+          tieuDe: `Kiểm tra xe & ODO (${wizardOdo.toLocaleString('vi-VN')} km) đạt chuẩn gia hạn`,
+          loai: 'BaoDuong',
+          ghiChu: 'KTV Trần Văn Quản Lý thẩm định đủ điều kiện gia hạn bảo hành Care+',
+        },
+      ],
+    };
 
+    warrantyApi.createExtensionTransaction(newTx);
     setShowCreateExtModal(false);
-    setNewExtForm({
-      khachHang: '',
-      soDienThoai: '',
-      xeBienSo: '',
-      goiGiaHan: 'Gói tiêu chuẩn (1 năm)',
-      soTien: 1200000,
-      nhanVien: 'Nguyễn Văn A',
-    });
     loadData();
-    alert('Đã tạo giao dịch gia hạn bảo hành tại showroom thành công!');
+    alert(`Đã hoàn tất gia hạn gói ${chosen.tenGoi} cho xe ${wizardVehicle.tenXe}! Hạn mới: ${newExpStr}`);
   };
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -2168,7 +2316,7 @@ export const WarrantyPage: React.FC = () => {
           <div className="flex items-center gap-8 border-b border-zinc-200 text-sm font-bold font-mono">
             <button
               type="button"
-              onClick={() => setActiveMainTab('GiaHan')}
+              onClick={() => { setActiveMainTab('GiaHan'); loadData(); }}
               className={`pb-3 border-b-2 transition cursor-pointer flex items-center gap-2 ${
                 activeMainTab === 'GiaHan'
                   ? 'border-red-700 text-red-700'
@@ -2179,7 +2327,7 @@ export const WarrantyPage: React.FC = () => {
             </button>
             <button
               type="button"
-              onClick={() => setActiveMainTab('YeuCau')}
+              onClick={() => { setActiveMainTab('YeuCau'); loadData(); }}
               className={`pb-3 border-b-2 transition cursor-pointer flex items-center gap-2 ${
                 activeMainTab === 'YeuCau'
                   ? 'border-red-700 text-red-700'
@@ -2316,7 +2464,7 @@ export const WarrantyPage: React.FC = () => {
                 {/* Nút đỏ tạo gia hạn tại showroom */}
                 <button
                   type="button"
-                  onClick={() => setShowCreateExtModal(true)}
+                  onClick={handleOpenCreateModal}
                   className="px-5 py-2.5 rounded-xl text-xs font-bold bg-red-700 hover:bg-red-800 text-white transition shadow-md flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
                 >
                   <span>+ Gia hạn bảo hành</span>
@@ -2791,200 +2939,1238 @@ export const WarrantyPage: React.FC = () => {
       )}
 
       {/* =========================================================================
-          MODAL 1: TẠO GIA HẠN BẢO HÀNH TẠI SHOWROOM (TAB 1)
+          MODAL 1: WIZARD 4 BƯỚC TẠO GIA HẠN BẢO HÀNH TẠI SHOWROOM (GH02 - ẢNH 2, 3, 4)
           ========================================================================= */}
       {showCreateExtModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-zinc-200 space-y-4">
-            <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
-              <h3 className="text-base font-black text-zinc-900 font-mono">
-                + GIA HẠN BẢO HÀNH TẠI SHOWROOM
-              </h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md overflow-y-auto">
+          <div className="bg-[#121214] text-white rounded-3xl max-w-5xl w-full border border-zinc-800 shadow-2xl overflow-hidden my-4 flex flex-col max-h-[92vh]">
+            
+            {/* Header Wizard & Nút Đóng */}
+            <div className="p-5 sm:p-6 border-b border-zinc-800 flex items-center justify-between bg-zinc-950/70">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-red-600 animate-pulse" />
+                  <span className="text-xs font-mono font-bold uppercase tracking-wider text-red-500">
+                    MOTOSHOP SHOWROOM CARE
+                  </span>
+                </div>
+                <h2 className="text-lg sm:text-xl font-black uppercase tracking-tight text-white font-mono">
+                  TẠO YÊU CẦU GIA HẠN BẢO HÀNH (TẠI SHOWROOM)
+                </h2>
+                <p className="text-xs text-zinc-400">
+                  Nhập thông tin để tra cứu khách hàng và lựa chọn phương tiện đăng ký gia hạn
+                </p>
+              </div>
+
               <button
                 type="button"
                 onClick={() => setShowCreateExtModal(false)}
-                className="w-8 h-8 rounded-full bg-zinc-100 hover:bg-zinc-200 text-zinc-600 flex items-center justify-center font-bold text-xs"
+                className="w-9 h-9 rounded-full bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white flex items-center justify-center font-bold text-sm border border-zinc-700 transition cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleCreateExtension} className="space-y-3.5 text-xs">
-              <div>
-                <label className="font-bold text-zinc-800 block mb-1">Tên khách hàng (*)</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ví dụ: Nguyễn Văn Minh"
-                  value={newExtForm.khachHang}
-                  onChange={e => setNewExtForm({ ...newExtForm, khachHang: e.target.value })}
-                  className="w-full p-2.5 rounded-xl border border-zinc-300 text-black bg-white"
-                />
-              </div>
-
-              <div>
-                <label className="font-bold text-zinc-800 block mb-1">Số điện thoại (*)</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ví dụ: 0987654321"
-                  value={newExtForm.soDienThoai}
-                  onChange={e => setNewExtForm({ ...newExtForm, soDienThoai: e.target.value })}
-                  className="w-full p-2.5 rounded-xl border border-zinc-300 text-black bg-white"
-                />
-              </div>
-
-              <div>
-                <label className="font-bold text-zinc-800 block mb-1">Xe / Biển số (*)</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ví dụ: Honda Vision - 29F1-234.56"
-                  value={newExtForm.xeBienSo}
-                  onChange={e => setNewExtForm({ ...newExtForm, xeBienSo: e.target.value })}
-                  className="w-full p-2.5 rounded-xl border border-zinc-300 text-black bg-white"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="font-bold text-zinc-800 block mb-1">Gói gia hạn</label>
-                  <select
-                    value={newExtForm.goiGiaHan}
-                    onChange={e => {
-                      const val = e.target.value;
-                      let tien = 1200000;
-                      if (val.includes('2 năm')) tien = 2200000;
-                      if (val.includes('3 năm')) tien = 3000000;
-                      setNewExtForm({ ...newExtForm, goiGiaHan: val, soTien: tien });
-                    }}
-                    className="w-full p-2.5 rounded-xl border border-zinc-300 text-black bg-white font-bold"
-                  >
-                    <option value="Gói tiêu chuẩn (1 năm)">Gói tiêu chuẩn (1 năm)</option>
-                    <option value="Gói mở rộng (2 năm)">Gói mở rộng (2 năm)</option>
-                    <option value="Gói cao cấp (3 năm)">Gói cao cấp (3 năm)</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="font-bold text-zinc-800 block mb-1">Số tiền thanh toán</label>
-                  <input
-                    type="number"
-                    value={newExtForm.soTien}
-                    onChange={e => setNewExtForm({ ...newExtForm, soTien: Number(e.target.value) || 0 })}
-                    className="w-full p-2.5 rounded-xl border border-zinc-300 font-mono font-bold text-black bg-white"
-                  />
+            {/* Stepper 4 bước ngang (Chuẩn theo Ảnh 2, 3, 4) */}
+            <div className="grid grid-cols-2 md:grid-cols-4 bg-[#18181b] border-b border-zinc-800 text-xs font-mono font-bold select-none">
+              <div
+                onClick={() => setWizardStep(1)}
+                className={`p-3.5 sm:p-4 border-r border-zinc-800 flex items-center gap-3 transition cursor-pointer ${
+                  wizardStep === 1
+                    ? 'bg-gradient-to-r from-red-950/90 to-red-900/60 text-white border-b-2 border-b-red-600'
+                    : wizardStep > 1
+                    ? 'bg-zinc-900/40 text-emerald-400'
+                    : 'text-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
+                  wizardStep === 1 ? 'bg-red-600 text-white' : wizardStep > 1 ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400'
+                }`}>
+                  {wizardStep > 1 ? '✓' : '1'}
+                </span>
+                <div className="truncate">
+                  <div className="text-[10px] text-zinc-400 uppercase tracking-wider">Bước 1</div>
+                  <div className="truncate">Tra cứu & Chọn xe</div>
                 </div>
               </div>
 
-              <div>
-                <label className="font-bold text-zinc-800 block mb-1">Nhân viên tiếp nhận</label>
-                <input
-                  type="text"
-                  value={newExtForm.nhanVien}
-                  onChange={e => setNewExtForm({ ...newExtForm, nhanVien: e.target.value })}
-                  className="w-full p-2.5 rounded-xl border border-zinc-300 text-black bg-white"
-                />
+              <div
+                onClick={() => { if (wizardVehicle) setWizardStep(2); }}
+                className={`p-3.5 sm:p-4 border-r border-zinc-800 flex items-center gap-3 transition ${
+                  !wizardVehicle ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+                } ${
+                  wizardStep === 2
+                    ? 'bg-gradient-to-r from-red-950/90 to-red-900/60 text-white border-b-2 border-b-red-600'
+                    : wizardStep > 2
+                    ? 'bg-zinc-900/40 text-emerald-400'
+                    : 'text-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
+                  wizardStep === 2 ? 'bg-red-600 text-white' : wizardStep > 2 ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400'
+                }`}>
+                  {wizardStep > 2 ? '✓' : '2'}
+                </span>
+                <div className="truncate">
+                  <div className="text-[10px] text-zinc-400 uppercase tracking-wider">Bước 2</div>
+                  <div className="truncate">Lịch sử & Thẩm định</div>
+                </div>
               </div>
 
-              <div className="pt-3 border-t border-zinc-100 flex items-center justify-end gap-3">
+              <div
+                onClick={() => { if (wizardVehicle) setWizardStep(3); }}
+                className={`p-3.5 sm:p-4 border-r border-zinc-800 flex items-center gap-3 transition ${
+                  !wizardVehicle ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+                } ${
+                  wizardStep === 3
+                    ? 'bg-gradient-to-r from-red-950/90 to-red-900/60 text-white border-b-2 border-b-red-600'
+                    : wizardStep > 3
+                    ? 'bg-zinc-900/40 text-emerald-400'
+                    : 'text-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
+                  wizardStep === 3 ? 'bg-red-600 text-white' : wizardStep > 3 ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400'
+                }`}>
+                  {wizardStep > 3 ? '✓' : '3'}
+                </span>
+                <div className="truncate">
+                  <div className="text-[10px] text-zinc-400 uppercase tracking-wider">Bước 3</div>
+                  <div className="truncate">Chọn gói bảo hành</div>
+                </div>
+              </div>
+
+              <div
+                onClick={() => { if (wizardVehicle) setWizardStep(4); }}
+                className={`p-3.5 sm:p-4 flex items-center gap-3 transition ${
+                  !wizardVehicle ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+                } ${
+                  wizardStep === 4
+                    ? 'bg-gradient-to-r from-red-950/90 to-red-900/60 text-white border-b-2 border-b-red-600'
+                    : 'text-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
+                  wizardStep === 4 ? 'bg-red-600 text-white' : 'bg-zinc-800 text-zinc-400'
+                }`}>
+                  4
+                </span>
+                <div className="truncate">
+                  <div className="text-[10px] text-zinc-400 uppercase tracking-wider">Bước 4</div>
+                  <div className="truncate">Thanh toán & Hoàn tất</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Nội dung Stepper từng bước */}
+            <div className="p-6 overflow-y-auto flex-1 space-y-6">
+
+              {/* ─────────────────────────────────────────────────────────────
+                  BƯỚC 1: TRA CỨU KHÁCH HÀNG & CHỌN PHƯƠNG TIỆN (ẢNH 2)
+                  ───────────────────────────────────────────────────────────── */}
+              {wizardStep === 1 && (
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                  {/* Cột trái: Tra cứu thông tin & Kết quả khách hàng */}
+                  <div className="lg:col-span-5 space-y-4">
+                    <div className="p-5 rounded-2xl bg-[#18181b] border border-zinc-800 space-y-3">
+                      <div className="text-xs font-mono font-bold text-zinc-300 uppercase tracking-wider">
+                        TRA CỨU THÔNG TIN
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={custSearchTerm}
+                          onChange={e => {
+                            const val = e.target.value;
+                            setCustSearchTerm(val);
+                            const allC = customerApi.getAllSync();
+                            const matched = allC.find(c =>
+                              c.soDienThoai.includes(val) ||
+                              matchVietnameseSearch(c.hoTen, val) ||
+                              (c.email && c.email.toLowerCase().includes(val.toLowerCase()))
+                            );
+                            if (matched) {
+                              setWizardCustomer(matched);
+                              const vList = vehicleApi.getAllSync().filter(v => v.customerId === matched.id);
+                              setWizardVehicle(vList[0] || null);
+                            }
+                          }}
+                          placeholder="Tìm theo Số điện thoại, Họ tên, Email..."
+                          className="flex-1 p-3 rounded-xl bg-[#121214] border border-zinc-700 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-red-600 font-mono"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const allC = customerApi.getAllSync();
+                            const matched = allC.find(c =>
+                              c.soDienThoai.includes(custSearchTerm) ||
+                              matchVietnameseSearch(c.hoTen, custSearchTerm) ||
+                              (c.email && c.email.toLowerCase().includes(custSearchTerm.toLowerCase()))
+                            );
+                            if (matched) {
+                              setWizardCustomer(matched);
+                              const vList = vehicleApi.getAllSync().filter(v => v.customerId === matched.id);
+                              setWizardVehicle(vList[0] || null);
+                            } else {
+                              alert('Không tìm thấy thông tin khách hàng phù hợp.');
+                            }
+                          }}
+                          className="px-4 py-2.5 rounded-xl bg-red-700 hover:bg-red-800 text-white font-bold text-xs shrink-0 transition cursor-pointer"
+                        >
+                          Tìm kiếm
+                        </button>
+                      </div>
+
+                      {/* Nút tìm nhanh mẫu để test tiện lợi */}
+                      <div className="pt-2 border-t border-zinc-800/80 flex flex-wrap items-center gap-1.5 text-[11px]">
+                        <span className="text-zinc-500">Gợi ý test:</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCustSearchTerm('0879179243');
+                            const allC = customerApi.getAllSync();
+                            const lp = allC.find(c => c.soDienThoai === '0879179243') || allC[0];
+                            if (lp) {
+                              setWizardCustomer(lp);
+                              const vList = vehicleApi.getAllSync().filter(v => v.customerId === lp.id);
+                              const shBike = vList.find(v => (v.bienSo || '').includes('59K9')) || vList[0] || null;
+                              setWizardVehicle(shBike);
+                            }
+                          }}
+                          className="px-2 py-1 rounded bg-zinc-800 hover:bg-red-950 text-zinc-300 hover:text-red-400 border border-zinc-700 cursor-pointer"
+                        >
+                          Lan Phương (0879179243)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCustSearchTerm('0987654321');
+                            const allC = customerApi.getAllSync();
+                            const min = allC.find(c => c.id === 'KH001') || allC[0];
+                            if (min) {
+                              setWizardCustomer(min);
+                              const vList = vehicleApi.getAllSync().filter(v => v.customerId === min.id);
+                              setWizardVehicle(vList[0] || null);
+                            }
+                          }}
+                          className="px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 cursor-pointer"
+                        >
+                          Nguyễn Văn Minh
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Khối THÔNG TIN KHÁCH HÀNG (KẾT QUẢ) */}
+                    {wizardCustomer && (
+                      <div className="p-5 rounded-2xl bg-[#18181b] border border-zinc-800 space-y-3">
+                        <div className="text-xs font-mono font-bold text-zinc-300 uppercase tracking-wider">
+                          THÔNG TIN KHÁCH HÀNG (KẾT QUẢ)
+                        </div>
+                        <div className="flex items-center gap-4 p-3 rounded-xl bg-[#121214] border border-zinc-800">
+                          <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-red-600 to-amber-500 text-white font-black text-sm flex items-center justify-center shrink-0 shadow">
+                            {wizardCustomer.hoTen.split(' ').map(w => w[0]).slice(-2).join('')}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-white text-sm truncate uppercase font-display">
+                                {wizardCustomer.hoTen}
+                              </span>
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                                KHÁCH HÀNG VIP ★
+                              </span>
+                            </div>
+                            <div className="text-xs text-zinc-400 font-mono mt-0.5">
+                              📞 {wizardCustomer.soDienThoai}
+                            </div>
+                            <div className="text-xs text-zinc-400 truncate">
+                              ✉️ {wizardCustomer.email || 'lethilanphuong@gmail.com'}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Cột phải: LỰA CHỌN PHƯƠNG TIỆN GIA HẠN */}
+                  <div className="lg:col-span-7 space-y-3">
+                    <div className="flex items-center justify-between pb-1">
+                      <div className="text-xs font-mono font-bold text-zinc-300 uppercase tracking-wider">
+                        LỰA CHỌN PHƯƠNG TIỆN GIA HẠN
+                      </div>
+                      <span className="text-[11px] text-zinc-500">
+                        Chọn 1 trong các phương tiện dưới đây của khách hàng để tiếp tục:
+                      </span>
+                    </div>
+
+                    {/* Danh sách xe của khách */}
+                    <div className="space-y-3">
+                      {(() => {
+                        const allV = vehicleApi.getAllSync();
+                        const cVehs = wizardCustomer
+                          ? allV.filter(v => v.customerId === wizardCustomer.id)
+                          : [];
+                        
+                        // Fallback nếu khách Lan Phương chưa có đủ 2 xe
+                        const displayVehicles = cVehs.length > 0 ? cVehs : [
+                          {
+                            id: 'XE-LP-01',
+                            customerId: wizardCustomer?.id || 'KH1004',
+                            tenXe: 'Honda SH 160i ABS 2024',
+                            bienSo: '59K9 - 876.54',
+                            soKhung: 'RLHKD160CB7747410',
+                            ngayMua: '2024-10-25',
+                            hanBaoHanh: '25/10/2026',
+                            trangThaiBaoHanh: 'ConHan' as const,
+                            hinhAnh: '/images/Xe/sh_160i.jpg',
+                          },
+                          {
+                            id: 'XE-LP-02',
+                            customerId: wizardCustomer?.id || 'KH1004',
+                            tenXe: 'Honda Vision 2023',
+                            bienSo: '59P3 - 123.45',
+                            soKhung: 'RLHKV110CB9988776',
+                            ngayMua: '2023-05-12',
+                            hanBaoHanh: '12/05/2024',
+                            trangThaiBaoHanh: 'HetHan' as const,
+                            hinhAnh: '/images/Xe/honda_vision.jpg',
+                          },
+                        ];
+
+                        return displayVehicles.map((veh: any) => {
+                          const isSelected = wizardVehicle?.id === veh.id || (wizardVehicle?.bienSo && wizardVehicle.bienSo === veh.bienSo);
+                          const isConHan = veh.trangThaiBaoHanh === 'ConHan';
+
+                          return (
+                            <div
+                              key={veh.id || veh.bienSo}
+                              onClick={() => setWizardVehicle(veh)}
+                              className={`p-4 rounded-2xl border-2 transition cursor-pointer flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${
+                                isSelected
+                                  ? 'border-red-600 bg-red-950/30 shadow-md ring-1 ring-red-600'
+                                  : 'border-zinc-800 bg-[#18181b] hover:border-zinc-700 hover:bg-zinc-900/60'
+                              }`}
+                            >
+                              <div className="flex items-center gap-4">
+                                <div className="w-16 h-14 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center overflow-hidden shrink-0">
+                                  <img
+                                    src={getVehicleCatalogImage(veh.tenXe, veh.hinhAnh)}
+                                    alt={veh.tenXe}
+                                    className="w-full h-full object-cover"
+                                    onError={e => { (e.currentTarget as any).src = getVehicleCatalogImage(veh.tenXe); }}
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-2">
+                                    <h4 className="font-bold text-white text-sm font-display">
+                                      {veh.tenXe}
+                                    </h4>
+                                    <span className="font-mono text-xs font-bold text-red-400 bg-red-950/80 px-2 py-0.5 rounded border border-red-800">
+                                      {veh.bienSo || 'Chưa gắn biển'}
+                                    </span>
+                                  </div>
+                                  <div className="text-[11px] text-zinc-400 font-mono">
+                                    Số khung xe: <strong className="text-zinc-300">{veh.soKhung || 'RLHKD160CB7747410'}</strong>
+                                  </div>
+                                  <div className="text-[11px] text-zinc-400 font-mono">
+                                    Ngày mua: {veh.ngayMua || '2024-10-25'}
+                                  </div>
+                                  <div className="text-[11px]">
+                                    {isConHan ? (
+                                      <span className="text-emerald-400 font-medium">
+                                        Tình trạng bảo hành: Còn đến {veh.hanBaoHanh || '25/10/2026'} (Đang hiệu lực)
+                                      </span>
+                                    ) : (
+                                      <span className="text-zinc-500 font-medium">
+                                        Tình trạng bảo hành: Hết hạn bảo hành gốc ({veh.hanBaoHanh || '12/05/2024'})
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="shrink-0 self-end sm:self-center">
+                                {isSelected ? (
+                                  <span className="px-3.5 py-1.5 rounded-xl text-xs font-black bg-red-700 text-white flex items-center gap-1 shadow">
+                                    ✓ ĐÃ CHỌN
+                                  </span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={e => { e.stopPropagation(); setWizardVehicle(veh); }}
+                                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 transition"
+                                  >
+                                    Chọn xe này
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })
+                      })()}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ─────────────────────────────────────────────────────────────
+                  BƯỚC 2: KIỂM TRA LỊCH SỬ DỊCH VỤ & THẨM ĐỊNH (ẢNH 3)
+                  ───────────────────────────────────────────────────────────── */}
+              {wizardStep === 2 && wizardVehicle && (
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                  {/* Cột trái: Cập nhật & Kiểm tra điều kiện */}
+                  <div className="lg:col-span-6 space-y-4">
+                    <div className="p-5 rounded-2xl bg-[#18181b] border border-zinc-800 space-y-4">
+                      <div className="text-xs font-mono font-bold text-zinc-300 uppercase tracking-wider pb-2 border-b border-zinc-800">
+                        CẬP NHẬT &amp; KIỂM TRA ĐIỀU KIỆN
+                      </div>
+
+                      <div className="p-3.5 rounded-xl bg-red-950/30 border border-red-800/60 text-xs flex items-center justify-between">
+                        <div>
+                          <div className="text-[10px] text-zinc-400 uppercase font-mono">Xe Đã Chọn:</div>
+                          <div className="font-bold text-white text-sm font-display">{wizardVehicle.tenXe}</div>
+                        </div>
+                        <span className="font-mono font-black text-red-400 bg-black/60 px-2.5 py-1 rounded border border-red-800">
+                          {wizardVehicle.bienSo || '59K9 - 876.54'}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs font-bold text-zinc-300 block mb-1">
+                            NHẬP SỐ KM HIỆN TẠI (ODO) *
+                          </label>
+                          <div className="relative">
+                            <input
+                              type="number"
+                              min={0}
+                              value={wizardOdo}
+                              onChange={e => setWizardOdo(Number(e.target.value) || 0)}
+                              className="w-full p-2.5 pr-12 rounded-xl bg-[#121214] border border-zinc-700 text-xs font-mono font-bold text-white focus:outline-none focus:border-red-600"
+                            />
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-mono text-zinc-400">
+                              KM
+                            </span>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="text-xs font-bold text-zinc-300 block mb-1">
+                            NGÀY KIỂM TRA
+                          </label>
+                          <input
+                            type="date"
+                            value={wizardInspectionDate}
+                            onChange={e => setWizardInspectionDate(e.target.value)}
+                            className="w-full p-2.5 rounded-xl bg-[#121214] border border-zinc-700 text-xs font-mono font-bold text-white focus:outline-none focus:border-red-600"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Tải ảnh ODO */}
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-zinc-300 block">
+                          TẢI ẢNH ODO (TÙY CHỌN)
+                        </label>
+                        <div className="flex items-center gap-3">
+                          <label className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-bold text-zinc-300 border border-zinc-700 cursor-pointer transition">
+                            <span>📷 Chọn ảnh minh chứng</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={e => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  const r = new FileReader();
+                                  r.onloadend = () => setWizardOdoImage(r.result as string);
+                                  r.readAsDataURL(file);
+                                }
+                              }}
+                            />
+                          </label>
+                          <span className="text-[11px] text-zinc-500 italic">
+                            * Nhân viên trực tiếp kiểm tra, không bắt buộc tải ảnh minh chứng
+                          </span>
+                        </div>
+                        {wizardOdoImage && (
+                          <div className="w-24 h-16 rounded-xl border border-zinc-700 overflow-hidden mt-2">
+                            <img src={wizardOdoImage} alt="ODO" className="w-full h-full object-cover" />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Hộp KẾT QUẢ THẨM ĐỊNH ĐIỀU KIỆN (TỰ ĐỘNG) - Xanh lá chuẩn Ảnh 3 */}
+                      <div className="p-4 rounded-2xl bg-emerald-950/50 border border-emerald-600/70 text-emerald-200 space-y-2.5">
+                        <div className="font-black text-xs uppercase tracking-wide flex items-center gap-2 text-emerald-300">
+                          <span className="w-5 h-5 rounded-full bg-emerald-500 text-black flex items-center justify-center font-bold text-[10px]">
+                            ✓
+                          </span>
+                          <span>ĐỦ ĐIỀU KIỆN GIA HẠN BẢO HÀNH MỞ RỘNG</span>
+                        </div>
+
+                        <div className="space-y-1.5 text-xs">
+                          <div className="flex items-start gap-2">
+                            <span className="text-emerald-400 font-bold">✔</span>
+                            <span>Số km hiện tại (ODO) đạt điều kiện ({wizardOdo.toLocaleString('vi-VN')} km &lt; 30.000 km)</span>
+                          </div>
+                          <div className="flex items-start gap-2">
+                            <span className="text-emerald-400 font-bold">✔</span>
+                            <span>Lịch sử bảo dưỡng đạt điều kiện (Đã thực hiện 3/3 lần bảo dưỡng định kỳ trong 12 tháng gần nhất)</span>
+                          </div>
+                          <div className="flex items-start gap-2">
+                            <span className="text-emerald-400 font-bold">✔</span>
+                            <span>Lịch sử sửa chữa đạt điều kiện (Không phát hiện tự ý thay thế linh kiện ngoài độ chế, 100% lịch sử chính hãng)</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Cột phải: CHI TIẾT LỊCH SỬ DỊCH VỤ ĐÃ GHI NHẬN (Ảnh 3) */}
+                  <div className="lg:col-span-6 space-y-3">
+                    <div className="text-xs font-mono font-bold text-zinc-300 uppercase tracking-wider pb-1">
+                      CHI TIẾT LỊCH SỬ DỊCH VỤ ĐÃ GHI NHẬN
+                    </div>
+
+                    <div className="p-5 rounded-2xl bg-[#18181b] border border-zinc-800 space-y-4">
+                      {/* Timeline mốc dịch vụ */}
+                      <div className="space-y-3">
+                        <div className="p-3.5 rounded-xl bg-[#121214] border border-zinc-800 flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <span className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center font-bold text-xs shrink-0">
+                              ✓
+                            </span>
+                            <div>
+                              <div className="text-xs font-bold text-white">
+                                10/06/2026 - Bảo dưỡng định kỳ lần 3
+                              </div>
+                              <div className="text-[11px] text-zinc-400 font-mono">
+                                Tại CN1 - Quận 1 · ODO: 11.200 km
+                              </div>
+                            </div>
+                          </div>
+                          <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                            ✔ ĐẠT
+                          </span>
+                        </div>
+
+                        <div className="p-3.5 rounded-xl bg-[#121214] border border-zinc-800 flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <span className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center font-bold text-xs shrink-0">
+                              ✓
+                            </span>
+                            <div>
+                              <div className="text-xs font-bold text-white">
+                                20/01/2026 - Sửa chữa/thay thế dầu máy
+                              </div>
+                              <div className="text-[11px] text-zinc-400 font-mono">
+                                Tại CN1 - Quận 1 · ODO: 7.500 km
+                              </div>
+                            </div>
+                          </div>
+                          <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                            ✔ ĐẠT
+                          </span>
+                        </div>
+
+                        <div className="p-3.5 rounded-xl bg-[#121214] border border-zinc-800 flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <span className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center font-bold text-xs shrink-0">
+                              ✓
+                            </span>
+                            <div>
+                              <div className="text-xs font-bold text-white">
+                                15/09/2025 - Bảo dưỡng định kỳ lần 2
+                              </div>
+                              <div className="text-[11px] text-zinc-400 font-mono">
+                                Tại CN1 - Quận 1 · ODO: 4.800 km
+                              </div>
+                            </div>
+                          </div>
+                          <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                            ✔ ĐẠT
+                          </span>
+                        </div>
+
+                        <div className="p-3.5 rounded-xl bg-[#121214] border border-zinc-800 flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <span className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center font-bold text-xs shrink-0">
+                              ✓
+                            </span>
+                            <div>
+                              <div className="text-xs font-bold text-white">
+                                10/11/2024 - Bảo dưỡng định kỳ lần 1
+                              </div>
+                              <div className="text-[11px] text-zinc-400 font-mono">
+                                Tại CN1 - Quận 1 · ODO: 1.000 km
+                              </div>
+                            </div>
+                          </div>
+                          <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                            ✔ ĐẠT
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ─────────────────────────────────────────────────────────────
+                  BƯỚC 3: CHỌN GÓI BẢO HÀNH MỞ RỘNG (ẢNH 4)
+                  ───────────────────────────────────────────────────────────── */}
+              {wizardStep === 3 && wizardVehicle && (
+                <div className="space-y-5">
+                  <div className="space-y-1">
+                    <h3 className="text-base font-black text-white uppercase tracking-tight font-display">
+                      CHỌN GÓI BẢO HÀNH MỞ RỘNG
+                    </h3>
+                    <p className="text-xs text-zinc-400">
+                      Áp dụng cho xe: <strong className="text-white">{wizardVehicle.tenXe}</strong> ({wizardVehicle.bienSo || '59K9 - 876.54'}) · ODO hiện tại: <strong className="text-emerald-400 font-mono">{wizardOdo.toLocaleString('vi-VN')} km</strong>
+                    </p>
+                  </div>
+
+                  {/* 4 Cards gói bảo hành */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {SHOWROOM_EXT_PACKAGES.map(pkg => {
+                      const isSelected = wizardPkgId === pkg.id;
+                      const isEligible = pkg.eligible;
+
+                      return (
+                        <div
+                          key={pkg.id}
+                          onClick={() => {
+                            if (isEligible) setWizardPkgId(pkg.id);
+                          }}
+                          className={`p-5 rounded-2xl border-2 flex flex-col justify-between transition ${
+                            !isEligible
+                              ? 'bg-[#18181b]/50 border-zinc-800/80 opacity-60 cursor-not-allowed'
+                              : isSelected
+                              ? 'bg-red-950/40 border-red-600 shadow-xl ring-2 ring-red-600/40 cursor-pointer'
+                              : 'bg-[#18181b] border-zinc-800 hover:border-zinc-700 hover:bg-zinc-900 cursor-pointer'
+                          }`}
+                        >
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                              <h4 className="font-black text-sm text-white font-display">
+                                {pkg.tenGoi}
+                              </h4>
+                              {pkg.badge && (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-black bg-emerald-600 text-white">
+                                  {pkg.badge}
+                                </span>
+                              )}
+                            </div>
+
+                            <div>
+                              {isEligible ? (
+                                <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-1">
+                                  ✓ ĐỦ ĐIỀU KIỆN
+                                </span>
+                              ) : (
+                                <span className="text-[11px] font-bold text-amber-500 flex items-center gap-1">
+                                  🔒 KHÔNG ĐỦ ĐIỀU KIỆN
+                                </span>
+                              )}
+                            </div>
+
+                            <div>
+                              <div className="text-lg font-black text-red-500 font-mono">
+                                {formatVND(pkg.gia)}
+                              </div>
+                              <div className="text-[11px] text-zinc-400">
+                                / {pkg.thoiGianThem}
+                              </div>
+                            </div>
+
+                            <div className="pt-2 border-t border-zinc-800 text-xs space-y-1.5 text-zinc-300">
+                              <div className="font-bold text-[11px] text-zinc-400 uppercase font-mono">Quyền lợi:</div>
+                              {pkg.quyenLoi.map((ql, i) => (
+                                <div key={i} className="text-[11px] leading-relaxed flex items-start gap-1">
+                                  <span className="text-emerald-400 font-bold">•</span>
+                                  <span>{ql}</span>
+                                </div>
+                              ))}
+                              {pkg.reason && (
+                                <div className="text-[11px] text-amber-400 italic pt-1">
+                                  {pkg.reason}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="pt-4 mt-4 border-t border-zinc-800">
+                            {isSelected ? (
+                              <button
+                                type="button"
+                                className="w-full py-2.5 rounded-xl font-bold text-xs bg-red-700 text-white shadow"
+                              >
+                                ĐÃ CHỌN ✓
+                              </button>
+                            ) : isEligible ? (
+                              <button
+                                type="button"
+                                className="w-full py-2.5 rounded-xl font-bold text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700"
+                              >
+                                CHỌN GÓI NÀY
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled
+                                className="w-full py-2.5 rounded-xl font-semibold text-xs bg-zinc-900 text-zinc-500 cursor-not-allowed border border-zinc-800"
+                              >
+                                [ 🔒 Không khả dụng ]
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Thanh tóm tắt ở dưới */}
+                  {(() => {
+                    const chosen = SHOWROOM_EXT_PACKAGES.find(p => p.id === wizardPkgId) || SHOWROOM_EXT_PACKAGES[0];
+                    return (
+                      <div className="p-4 rounded-2xl bg-zinc-900 border border-zinc-800 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
+                        <div>
+                          Tên xe: <strong className="text-white">{wizardVehicle.tenXe}</strong> · Gói đã chọn: <strong className="text-emerald-400">{chosen.tenGoi}</strong> · Giá: <strong className="text-red-400">{formatVND(chosen.gia)}</strong>
+                        </div>
+                        <span className="text-zinc-400 text-[11px]">
+                          Thời hạn cộng thêm: <strong>{chosen.thoiGianThem} / {chosen.kmThem}</strong>
+                        </span>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+
+              {/* ─────────────────────────────────────────────────────────────
+                  BƯỚC 4: THANH TOÁN & HOÀN TẤT (ẢNH 4b)
+                  ───────────────────────────────────────────────────────────── */}
+              {wizardStep === 4 && wizardVehicle && wizardCustomer && (
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                  {/* Cột trái: CHI TIẾT ĐƠN HÀNG DỊCH VỤ */}
+                  {(() => {
+                    const chosen = SHOWROOM_EXT_PACKAGES.find(p => p.id === wizardPkgId) || SHOWROOM_EXT_PACKAGES[0];
+                    return (
+                      <div className="lg:col-span-6 space-y-4">
+                        <div className="p-5 rounded-2xl bg-[#18181b] border border-zinc-800 space-y-4">
+                          <div className="text-xs font-mono font-bold text-zinc-300 uppercase tracking-wider pb-2 border-b border-zinc-800">
+                            CHI TIẾT ĐƠN HÀNG DỊCH VỤ
+                          </div>
+
+                          <div className="space-y-2.5 text-xs">
+                            <div className="flex justify-between py-1 border-b border-zinc-800/80">
+                              <span className="text-zinc-400">Khách hàng:</span>
+                              <strong className="text-white uppercase font-display">{wizardCustomer.hoTen}</strong>
+                            </div>
+                            <div className="flex justify-between py-1 border-b border-zinc-800/80">
+                              <span className="text-zinc-400">Số điện thoại:</span>
+                              <strong className="text-zinc-200 font-mono">{wizardCustomer.soDienThoai}</strong>
+                            </div>
+                            <div className="flex justify-between py-1 border-b border-zinc-800/80">
+                              <span className="text-zinc-400">Xe áp dụng:</span>
+                              <strong className="text-white">{wizardVehicle.tenXe} ({wizardVehicle.bienSo || '59K9 - 876.54'})</strong>
+                            </div>
+                            <div className="flex justify-between py-1 border-b border-zinc-800/80">
+                              <span className="text-zinc-400">Số ODO ghi nhận:</span>
+                              <strong className="text-zinc-200 font-mono">{wizardOdo.toLocaleString('vi-VN')} km</strong>
+                            </div>
+                            <div className="flex justify-between py-1 border-b border-zinc-800/80">
+                              <span className="text-zinc-400">Gói gia hạn:</span>
+                              <strong className="text-emerald-400 font-bold">{chosen.tenGoi}</strong>
+                            </div>
+                            <div className="flex justify-between py-1 border-b border-zinc-800/80">
+                              <span className="text-zinc-400">Thời hạn bảo hành mới:</span>
+                              <strong className="text-emerald-400 font-mono">+{chosen.thoiGianThem} / +{chosen.kmThem}</strong>
+                            </div>
+                          </div>
+
+                          <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-between">
+                            <span className="text-xs font-bold text-zinc-300 uppercase font-mono">
+                              TỔNG TIỀN THANH TOÁN:
+                            </span>
+                            <span className="text-xl font-black text-red-500 font-mono">
+                              {formatVND(chosen.gia)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Cột phải: CHỌN PHƯƠNG THỨC THANH TOÁN */}
+                  {(() => {
+                    const chosen = SHOWROOM_EXT_PACKAGES.find(p => p.id === wizardPkgId) || SHOWROOM_EXT_PACKAGES[0];
+                    const change = Math.max(0, wizardCashGiven - chosen.gia);
+
+                    return (
+                      <div className="lg:col-span-6 space-y-4">
+                        <div className="p-5 rounded-2xl bg-[#18181b] border border-zinc-800 space-y-4">
+                          <div className="text-xs font-mono font-bold text-zinc-300 uppercase tracking-wider pb-2 border-b border-zinc-800">
+                            CHỌN PHƯƠNG THỨC THANH TOÁN
+                          </div>
+
+                          {/* 3 Tabs phương thức */}
+                          <div className="grid grid-cols-3 gap-2 text-xs font-bold">
+                            <button
+                              type="button"
+                              onClick={() => setWizardPaymentMethod('TienMat')}
+                              className={`p-2.5 rounded-xl border transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                                wizardPaymentMethod === 'TienMat'
+                                  ? 'bg-zinc-800 text-white border-red-600 shadow'
+                                  : 'bg-[#121214] text-zinc-400 border-zinc-800 hover:text-white'
+                              }`}
+                            >
+                              <span>💵</span>
+                              <span>TIỀN MẶT</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setWizardPaymentMethod('POS')}
+                              className={`p-2.5 rounded-xl border transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                                wizardPaymentMethod === 'POS'
+                                  ? 'bg-zinc-800 text-white border-red-600 shadow'
+                                  : 'bg-[#121214] text-zinc-400 border-zinc-800 hover:text-white'
+                              }`}
+                            >
+                              <span>💳</span>
+                              <span>QUẸT THẺ (POS)</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setWizardPaymentMethod('ChuyenKhoan')}
+                              className={`p-2.5 rounded-xl border transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                                wizardPaymentMethod === 'ChuyenKhoan'
+                                  ? 'bg-zinc-800 text-white border-red-600 shadow'
+                                  : 'bg-[#121214] text-zinc-400 border-zinc-800 hover:text-white'
+                              }`}
+                            >
+                              <span>📱</span>
+                              <span>VIETQR</span>
+                            </button>
+                          </div>
+
+                          {/* Nội dung theo phương thức */}
+                          {wizardPaymentMethod === 'TienMat' && (
+                            <div className="p-4 rounded-xl bg-[#121214] border border-zinc-800 space-y-3 text-xs">
+                              <div className="space-y-1">
+                                <label className="text-zinc-400 block font-medium">Tiền khách đưa:</label>
+                                <div className="relative">
+                                  <input
+                                    type="number"
+                                    value={wizardCashGiven}
+                                    onChange={e => setWizardCashGiven(Number(e.target.value) || 0)}
+                                    className="w-full p-2.5 pr-10 rounded-xl bg-zinc-900 border border-zinc-700 text-emerald-400 font-mono font-bold text-sm focus:outline-none focus:border-red-600"
+                                  />
+                                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 text-xs font-mono">
+                                    ₫
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="space-y-1">
+                                <label className="text-zinc-400 block font-medium">Tiền thối lại:</label>
+                                <div className="p-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-emerald-400 font-mono font-bold text-sm">
+                                  {formatVND(change)}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {wizardPaymentMethod === 'ChuyenKhoan' && (
+                            <div className="p-4 rounded-xl bg-[#121214] border border-zinc-800 flex flex-col items-center justify-center text-center space-y-3">
+                              <div className="p-2 bg-white rounded-xl shadow inline-block">
+                                <img
+                                  src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(`2|99|0879179243|VIETCOMBANK|BH-0879179243|${chosen.gia}`)}`}
+                                  alt="VietQR"
+                                  className="w-40 h-40 object-contain"
+                                />
+                              </div>
+                              <div className="text-xs text-zinc-300 space-y-0.5 font-mono">
+                                <div>Ngân hàng: <strong>Vietcombank (VCB)</strong></div>
+                                <div>Số TK: <strong>9988 7766 5544</strong></div>
+                                <div>Số tiền: <strong className="text-red-400">{formatVND(chosen.gia)}</strong></div>
+                                <div>Nội dung: <strong>BH 0879179243</strong></div>
+                              </div>
+                            </div>
+                          )}
+
+                          {wizardPaymentMethod === 'POS' && (
+                            <div className="p-6 rounded-xl bg-[#121214] border border-zinc-800 text-center space-y-2 text-xs">
+                              <div className="text-3xl">💳</div>
+                              <div className="font-bold text-white text-sm">Quẹt thẻ qua máy POS Showroom</div>
+                              <p className="text-zinc-400">
+                                Nhân viên vui lòng quẹt thẻ tín dụng/ATM của khách trên máy POS với số tiền <strong>{formatVND(chosen.gia)}</strong> và kiểm tra biên lai thanh toán thành công.
+                              </p>
+                            </div>
+                          )}
+
+                          <label className="flex items-center gap-2.5 text-xs text-zinc-300 cursor-pointer pt-2 select-none">
+                            <input
+                              type="checkbox"
+                              checked={wizardPrintInvoice}
+                              onChange={e => setWizardPrintInvoice(e.target.checked)}
+                              className="w-4 h-4 rounded accent-red-600 cursor-pointer"
+                            />
+                            <span>In hóa đơn &amp; biên lai cho khách</span>
+                          </label>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+
+            </div>
+
+            {/* Footer Buttons Điều Hướng */}
+            <div className="p-4 sm:p-5 border-t border-zinc-800 bg-zinc-950/80 flex items-center justify-between">
+              {wizardStep > 1 ? (
+                <button
+                  type="button"
+                  onClick={() => setWizardStep((wizardStep - 1) as any)}
+                  className="px-5 py-2.5 rounded-xl text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 transition cursor-pointer"
+                >
+                  ← Quay lại
+                </button>
+              ) : (
                 <button
                   type="button"
                   onClick={() => setShowCreateExtModal(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold bg-zinc-100 hover:bg-zinc-200 text-zinc-700"
+                  className="px-5 py-2.5 rounded-xl text-xs font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 transition cursor-pointer"
                 >
                   Hủy
                 </button>
+              )}
+
+              {wizardStep === 1 && (
                 <button
-                  type="submit"
-                  className="px-6 py-2 rounded-xl text-xs font-bold bg-red-700 hover:bg-red-800 text-white shadow"
+                  type="button"
+                  disabled={!wizardVehicle}
+                  onClick={() => setWizardStep(2)}
+                  className="px-6 py-2.5 rounded-xl text-xs font-bold bg-red-700 hover:bg-red-800 disabled:bg-zinc-800 disabled:text-zinc-500 text-white shadow transition cursor-pointer flex items-center gap-1.5"
                 >
-                  Xác nhận gia hạn &amp; In biên lai
+                  <span>Tiếp theo (Kiểm tra lịch sử)</span>
+                  <span>→</span>
                 </button>
-              </div>
-            </form>
+              )}
+
+              {wizardStep === 2 && (
+                <button
+                  type="button"
+                  onClick={() => setWizardStep(3)}
+                  className="px-6 py-2.5 rounded-xl text-xs font-bold bg-red-700 hover:bg-red-800 text-white shadow transition cursor-pointer flex items-center gap-1.5"
+                >
+                  <span>Tiếp tục (Chọn gói bảo hành)</span>
+                  <span>→</span>
+                </button>
+              )}
+
+              {wizardStep === 3 && (
+                <button
+                  type="button"
+                  onClick={() => setWizardStep(4)}
+                  className="px-6 py-2.5 rounded-xl text-xs font-bold bg-red-700 hover:bg-red-800 text-white shadow transition cursor-pointer flex items-center gap-1.5"
+                >
+                  <span>Tiếp tục (Thanh toán)</span>
+                  <span>→</span>
+                </button>
+              )}
+
+              {wizardStep === 4 && (
+                <button
+                  type="button"
+                  onClick={handleConfirmShowroomExtension}
+                  className="px-7 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider bg-red-700 hover:bg-red-800 text-white shadow-lg transition cursor-pointer flex items-center gap-2"
+                >
+                  <span>Xác nhận thu tiền &amp; Kích hoạt</span>
+                  <span>✓</span>
+                </button>
+              )}
+            </div>
+
           </div>
         </div>
       )}
 
       {/* =========================================================================
-          MODAL 2: XEM CHI TIẾT / LỊCH SỬ / IN BIÊN NHẬN GIA HẠN (TAB 1)
+          MODAL 2: XEM CHI TIẾT BẢO HÀNH CHUẨN 5 KHỐI TRỰC QUAN (GH04 - ẢNH 5)
           ========================================================================= */}
       {selectedExtDetail && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-zinc-200 space-y-4">
-            <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
-              <h3 className="text-base font-black text-zinc-900 font-mono">
-                {selectedExtDetail.type === 'detail' && 'CHI TIẾT GIAO DỊCH GIA HẠN BẢO HÀNH'}
-                {selectedExtDetail.type === 'history' && 'LỊCH SỬ BẢO HÀNH CỦA XE'}
-                {selectedExtDetail.type === 'receipt' && 'BIÊN NHẬN GIA HẠN BẢO HÀNH'}
-              </h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md overflow-y-auto">
+          <div className="bg-[#121214] text-white rounded-3xl max-w-5xl w-full border border-zinc-800 shadow-2xl overflow-hidden my-4 flex flex-col max-h-[92vh]">
+            
+            {/* Header Modal */}
+            <div className="p-5 sm:p-6 border-b border-zinc-800 flex items-center justify-between bg-zinc-950/70">
+              <div className="flex items-center gap-3">
+                <h2 className="text-lg sm:text-xl font-black text-white font-mono uppercase tracking-tight">
+                  CHI TIẾT BẢO HÀNH #{selectedExtDetail.tx.id}
+                </h2>
+                <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  ĐANG HIỆU LỰC
+                </span>
+              </div>
+
               <button
                 type="button"
                 onClick={() => setSelectedExtDetail(null)}
-                className="w-8 h-8 rounded-full bg-zinc-100 hover:bg-zinc-200 text-zinc-600 flex items-center justify-center font-bold text-xs"
+                className="w-9 h-9 rounded-full bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white flex items-center justify-center font-bold text-sm border border-zinc-700 transition cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
-            <div className="p-4 rounded-2xl bg-zinc-50 border border-zinc-200 space-y-2 text-xs">
-              <div className="flex justify-between">
-                <span className="text-zinc-500">Mã giao dịch:</span>
-                <strong className="text-red-700 font-mono">{selectedExtDetail.tx.id}</strong>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-zinc-500">Khách hàng:</span>
-                <strong className="text-zinc-900">{selectedExtDetail.tx.khachHang}</strong>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-zinc-500">Số điện thoại:</span>
-                <strong className="text-zinc-900 font-mono">{selectedExtDetail.tx.soDienThoai}</strong>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-zinc-500">Xe / Biển số:</span>
-                <strong className="text-zinc-900">{selectedExtDetail.tx.xeBienSo}</strong>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-zinc-500">Gói gia hạn:</span>
-                <strong className="text-zinc-900">{selectedExtDetail.tx.goiGiaHan}</strong>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-zinc-500">Số tiền:</span>
-                <strong className="text-zinc-900 font-mono font-bold text-sm">
-                  {formatVND(selectedExtDetail.tx.soTien)}
-                </strong>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-zinc-500">Thời hạn bảo hành mới:</span>
-                <strong className="text-emerald-700 font-mono font-bold">
-                  {selectedExtDetail.tx.thoiHanMoi}
-                </strong>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-zinc-500">Nhân viên phụ trách:</span>
-                <strong className="text-zinc-900">{selectedExtDetail.tx.nhanVien}</strong>
+            {/* Body 5 Khối theo đúng Ảnh 5 */}
+            <div className="p-6 overflow-y-auto flex-1 space-y-6">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+                {/* CỘT TRÁI (8 Cột): 4 Khối thông tin */}
+                <div className="lg:col-span-8 space-y-6">
+                  {/* Hàng 1: THÔNG TIN KHÁCH HÀNG & THÔNG TIN GÓI BẢO HÀNH */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* KHỐI 1: THÔNG TIN KHÁCH HÀNG */}
+                    <div className="p-5 rounded-2xl bg-[#18181b] border border-zinc-800 space-y-3">
+                      <div className="text-[11px] font-mono font-bold text-zinc-400 uppercase tracking-wider">
+                        THÔNG TIN KHÁCH HÀNG
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-full bg-amber-500 text-black font-black text-sm flex items-center justify-center shrink-0 shadow">
+                          {selectedExtDetail.tx.khachHang.split(' ').map(w => w[0]).slice(-2).join('') || 'KH'}
+                        </div>
+                        <div>
+                          <div className="text-[10px] text-zinc-500 uppercase font-mono">Avatar</div>
+                          <div className="font-black text-white text-sm uppercase font-display">
+                            {selectedExtDetail.tx.khachHang}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="space-y-1.5 text-xs text-zinc-300 pt-2 border-t border-zinc-800/80">
+                        <div className="flex justify-between">
+                          <span className="text-zinc-500">Điện thoại:</span>
+                          <strong className="text-zinc-200 font-mono">{selectedExtDetail.tx.soDienThoai}</strong>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-zinc-500">Email:</span>
+                          <strong className="text-zinc-300">{selectedExtDetail.tx.email || 'lethilanphuong@gmail.com'}</strong>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-zinc-500">Địa chỉ:</span>
+                          <strong className="text-zinc-300">{selectedExtDetail.tx.diaChi || 'TP.HCM'}</strong>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* KHỐI 3: THÔNG TIN GÓI BẢO HÀNH */}
+                    <div className="p-5 rounded-2xl bg-[#18181b] border border-zinc-800 space-y-3">
+                      <div className="text-[11px] font-mono font-bold text-zinc-400 uppercase tracking-wider">
+                        THÔNG TIN GÓI BẢO HÀNH
+                      </div>
+                      <div className="space-y-2 text-xs">
+                        <div className="flex justify-between">
+                          <span className="text-zinc-500">Gói hạn:</span>
+                          <strong className="text-emerald-400 font-bold uppercase">{selectedExtDetail.tx.goiGiaHan}</strong>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-zinc-500">Dưới hạn:</span>
+                          <strong className="text-zinc-200 font-mono">{selectedExtDetail.tx.quyenLoiGoi || '+12 tháng / +10.000 km'}</strong>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-zinc-500">Expiry bảo hành original:</span>
+                          <strong className="text-zinc-300 font-mono">{selectedExtDetail.tx.thoiHanGoc || '25/10/2026'}</strong>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-zinc-500">Expiry bảo hành mở rộng:</span>
+                          <strong className="text-amber-400 font-mono font-bold">{selectedExtDetail.tx.thoiHanMoi}</strong>
+                        </div>
+                        <div className="flex justify-between pt-1 border-t border-zinc-800/80">
+                          <span className="text-zinc-500">Giá:</span>
+                          <strong className="text-red-400 font-mono font-bold text-sm">{formatVND(selectedExtDetail.tx.soTien)}</strong>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Hàng 2: THÔNG TIN PHƯƠNG TIỆN & CHI TIẾT THANH TOÁN */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* KHỐI 2: THÔNG TIN PHƯƠNG TIỆN */}
+                    <div className="p-5 rounded-2xl bg-[#18181b] border border-zinc-800 space-y-3">
+                      <div className="text-[11px] font-mono font-bold text-zinc-400 uppercase tracking-wider">
+                        THÔNG TIN PHƯƠNG TIỆN
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="w-16 h-12 rounded-xl bg-zinc-900 border border-zinc-800 overflow-hidden shrink-0">
+                          <img
+                            src={getVehicleCatalogImage(selectedExtDetail.tx.tenXe || selectedExtDetail.tx.xeBienSo, selectedExtDetail.tx.hinhAnhXe)}
+                            alt="Xe"
+                            className="w-full h-full object-cover"
+                            onError={e => { (e.currentTarget as any).src = getVehicleCatalogImage(selectedExtDetail.tx.tenXe || selectedExtDetail.tx.xeBienSo); }}
+                          />
+                        </div>
+                        <div className="font-bold text-white text-xs">
+                          <div>{selectedExtDetail.tx.tenXe || selectedExtDetail.tx.xeBienSo}</div>
+                        </div>
+                      </div>
+                      <div className="space-y-1.5 text-xs text-zinc-300 pt-2 border-t border-zinc-800/80">
+                        <div className="flex justify-between">
+                          <span className="text-zinc-500">License plate:</span>
+                          <strong className="text-white font-mono bg-zinc-900 px-2 py-0.5 rounded border border-zinc-700">
+                            {selectedExtDetail.tx.bienSo || selectedExtDetail.tx.xeBienSo.split('(')[1]?.replace(')', '') || '59K9 - 876.54'}
+                          </strong>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-zinc-500">Số khung:</span>
+                          <strong className="text-zinc-300 font-mono">{selectedExtDetail.tx.soKhung || 'RLHKD160CB7747410'}</strong>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-zinc-500">Số máy:</span>
+                          <strong className="text-zinc-300 font-mono">{selectedExtDetail.tx.soMay || 'JF62E088888'}</strong>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-zinc-500">ODO check-in:</span>
+                          <strong className="text-emerald-400 font-mono">{(selectedExtDetail.tx.odo || 12500).toLocaleString('vi-VN')} km</strong>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* KHỐI 4: CHI TIẾT THANH TOÁN */}
+                    <div className="p-5 rounded-2xl bg-[#18181b] border border-zinc-800 space-y-3">
+                      <div className="text-[11px] font-mono font-bold text-zinc-400 uppercase tracking-wider">
+                        CHI TIẾT THANH TOÁN
+                      </div>
+                      <div className="space-y-2 text-xs">
+                        <div className="flex justify-between">
+                          <span className="text-zinc-500">Hình thức:</span>
+                          <strong className="text-white">
+                            {selectedExtDetail.tx.phuongThucThanhToan === 'ChuyenKhoan' ? 'Chuyển khoản (VietQR)' : selectedExtDetail.tx.phuongThucThanhToan === 'POS' ? 'Quẹt thẻ (POS)' : 'Tiền mặt'}
+                          </strong>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-zinc-500">Amount paid:</span>
+                          <strong className="text-emerald-400 font-mono font-black text-sm">{formatVND(selectedExtDetail.tx.soTien)}</strong>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-zinc-500">Thời gian:</span>
+                          <strong className="text-zinc-300 font-mono">{selectedExtDetail.tx.thoiGianThanhToan || `${selectedExtDetail.tx.ngayGiaHan} - 15:32`}</strong>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-zinc-500">Cashier:</span>
+                          <strong className="text-white">{selectedExtDetail.tx.nhanVien || 'Trần Văn Quản Lý'}</strong>
+                        </div>
+                        <div className="pt-2">
+                          <span className="px-3 py-1 rounded-lg text-[11px] font-bold bg-emerald-950/60 text-emerald-400 border border-emerald-800 flex items-center gap-1.5 w-fit">
+                            <span>📄</span>
+                            <span>Đã in hóa đơn</span>
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* CỘT PHẢI (4 Cột): KHỐI 5: LỊCH SỬ DỊCH VỤ & BẢO HÀNH (ẢNH 5) */}
+                <div className="lg:col-span-4 space-y-3">
+                  <div className="p-5 rounded-2xl bg-[#18181b] border border-zinc-800 space-y-4">
+                    <div className="text-[11px] font-mono font-bold text-zinc-400 uppercase tracking-wider pb-2 border-b border-zinc-800">
+                      LỊCH SỬ DỊCH VỤ &amp; BẢO HÀNH
+                    </div>
+
+                    <div className="relative pl-6 space-y-4 text-xs border-l-2 border-zinc-800 ml-2">
+                      {/* Timeline các mốc chuẩn Ảnh 5 */}
+                      <div className="relative">
+                        <span className="absolute -left-[31px] top-0.5 w-4 h-4 rounded-full bg-amber-400 ring-4 ring-[#18181b]" />
+                        <div className="font-bold text-white font-mono">
+                          29/10/2026 - Kích hoạt bảo hành mở rộng (12 tháng)
+                        </div>
+                        <div className="text-[11px] text-zinc-400 font-mono">
+                          ODO: 12.500 km
+                        </div>
+                      </div>
+
+                      <div className="relative">
+                        <span className="absolute -left-[31px] top-0.5 w-4 h-4 rounded-full bg-emerald-500 ring-4 ring-[#18181b]" />
+                        <div className="font-bold text-white font-mono">
+                          29/10/2026 - Phê duyệt đủ điều kiện gia hạn
+                        </div>
+                        <div className="text-[11px] text-zinc-400">
+                          (Tại quầy Showroom)
+                        </div>
+                      </div>
+
+                      <div className="relative">
+                        <span className="absolute -left-[31px] top-0.5 w-4 h-4 rounded-full bg-emerald-500 ring-4 ring-[#18181b]" />
+                        <div className="font-bold text-white font-mono">
+                          10/06/2026 - Bảo dưỡng định kỳ lần 3
+                        </div>
+                        <div className="text-[11px] text-zinc-400">
+                          (Tại CN1 - Quận 1) · ODO: 11.200 km
+                        </div>
+                      </div>
+
+                      <div className="relative">
+                        <span className="absolute -left-[31px] top-0.5 w-4 h-4 rounded-full bg-emerald-500 ring-4 ring-[#18181b]" />
+                        <div className="font-bold text-white font-mono">
+                          20/01/2026 - Sửa chữa/thay thế dầu máy
+                        </div>
+                        <div className="text-[11px] text-zinc-400">
+                          (Tại CN1 - Quận 1) · ODO: 7.500 km
+                        </div>
+                      </div>
+
+                      <div className="relative">
+                        <span className="absolute -left-[31px] top-0.5 w-4 h-4 rounded-full bg-emerald-500 ring-4 ring-[#18181b]" />
+                        <div className="font-bold text-white font-mono">
+                          15/09/2025 - Bảo dưỡng định kỳ lần 2
+                        </div>
+                        <div className="text-[11px] text-zinc-400">
+                          (Tại CN1 - Quận 1) · ODO: 4.800 km
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
               </div>
             </div>
 
-            <div className="pt-2 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  window.print();
-                  setSelectedExtDetail(null);
-                }}
-                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-zinc-900 hover:bg-black text-white shadow flex items-center gap-1.5 cursor-pointer"
-              >
-                <span>🖨️ In tài liệu</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setSelectedExtDetail(null)}
-                className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-zinc-100 hover:bg-zinc-200 text-zinc-700 cursor-pointer"
-              >
-                Đóng
-              </button>
+            {/* Footer Buttons chuẩn Ảnh 5 */}
+            <div className="p-4 sm:p-5 border-t border-zinc-800 bg-zinc-950/80 flex items-center justify-between">
+              <div className="text-xs text-zinc-500 font-mono">
+                Mã hồ sơ điện tử: <strong>{selectedExtDetail.tx.id}</strong>
+              </div>
+
+              <div className="flex items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setPrintExtInvoice(selectedExtDetail.tx)}
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 transition flex items-center gap-1.5 cursor-pointer shadow"
+                >
+                  <span>🖨️ In lại hóa đơn</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    alert(`Đang mở kết nối nhắn tin trực tiếp với khách hàng ${selectedExtDetail.tx.khachHang} (${selectedExtDetail.tx.soDienThoai})...`);
+                  }}
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 transition flex items-center gap-1.5 cursor-pointer shadow"
+                >
+                  <span>💬 Chat với Khách</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedExtDetail(null)}
+                  className="px-6 py-2.5 rounded-xl text-xs font-black bg-red-700 hover:bg-red-800 text-white shadow transition cursor-pointer"
+                >
+                  Đóng
+                </button>
+              </div>
             </div>
+
           </div>
         </div>
       )}
@@ -3117,6 +4303,177 @@ export const WarrantyPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* =========================================================================
+          MODAL IN HÓA ĐƠN GIA HẠN BẢO HÀNH CHUYÊN NGHIỆP (ẢNH 3 FIX)
+          ========================================================================= */}
+      {printExtInvoice && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <style>{`
+            @media print {
+              body * {
+                visibility: hidden !important;
+              }
+              #print-warranty-invoice, #print-warranty-invoice * {
+                visibility: visible !important;
+              }
+              #print-warranty-invoice {
+                position: fixed !important;
+                left: 0 !important;
+                top: 0 !important;
+                width: 100% !important;
+                max-width: 100% !important;
+                height: auto !important;
+                border: none !important;
+                box-shadow: none !important;
+                padding: 24px !important;
+                margin: 0 !important;
+                background: white !important;
+                color: black !important;
+              }
+              .no-print {
+                display: none !important;
+              }
+            }
+          `}</style>
+          <div
+            id="print-warranty-invoice"
+            className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl border border-zinc-200 space-y-4 max-h-[90vh] overflow-y-auto text-black"
+          >
+            {/* Header hóa đơn chuẩn */}
+            <div className="flex items-start justify-between border-b-2 border-zinc-900 pb-4">
+              <div>
+                <div className="text-[11px] font-black tracking-wider text-red-700 uppercase font-mono">
+                  HỆ THỐNG ĐẠI LÝ MOTOSHOP ỦY QUYỀN CHÍNH HÃNG
+                </div>
+                <h3 className="text-xl font-black text-zinc-900 uppercase font-display mt-0.5">
+                  HÓA ĐƠN GIA HẠN BẢO HÀNH (CARE+)
+                </h3>
+                <div className="text-xs text-zinc-500 font-mono mt-0.5">
+                  Mã chứng từ: <strong className="text-zinc-900 font-bold">#HD-GHBH-{printExtInvoice.id}</strong> · Ngày lập: {printExtInvoice.ngayGiaHan || '31/10/2026'}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPrintExtInvoice(null)}
+                className="w-8 h-8 rounded-full bg-zinc-100 hover:bg-zinc-200 text-zinc-600 flex items-center justify-center font-bold text-xs cursor-pointer no-print"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Thông tin Khách hàng & Phương tiện */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs bg-zinc-50 p-4 rounded-2xl border border-zinc-200">
+              <div className="space-y-1">
+                <div className="font-bold text-zinc-900 uppercase font-mono text-[10px] text-zinc-500">I. THÔNG TIN KHÁCH HÀNG</div>
+                <div>Họ và tên: <strong className="text-zinc-900">{printExtInvoice.khachHang}</strong></div>
+                <div>Số điện thoại: <strong className="font-mono text-zinc-800">{printExtInvoice.soDienThoai}</strong></div>
+                {printExtInvoice.email && <div>Email: {printExtInvoice.email}</div>}
+                {printExtInvoice.diaChi && <div>Địa chỉ: {printExtInvoice.diaChi}</div>}
+              </div>
+              <div className="space-y-1 border-t sm:border-t-0 sm:border-l border-zinc-200 sm:pl-3 pt-2 sm:pt-0">
+                <div className="font-bold text-zinc-900 uppercase font-mono text-[10px] text-zinc-500">II. THÔNG TIN PHƯƠNG TIỆN</div>
+                <div>Phương tiện: <strong className="text-zinc-900">{printExtInvoice.tenXe || printExtInvoice.xeBienSo}</strong></div>
+                <div>Biển số: <strong className="font-mono text-zinc-800">{printExtInvoice.bienSo || 'Chưa bấm biển'}</strong></div>
+                {printExtInvoice.soKhung && <div>Số khung (VIN): <span className="font-mono">{printExtInvoice.soKhung}</span></div>}
+                {printExtInvoice.odo && <div>Số ODO ghi nhận: <span className="font-mono">{printExtInvoice.odo.toLocaleString()} km</span></div>}
+              </div>
+            </div>
+
+            {/* Bảng chi tiết gói bảo hành */}
+            <div className="border border-zinc-200 rounded-2xl overflow-hidden">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-zinc-100 border-b border-zinc-200 text-zinc-700 font-bold font-mono">
+                  <tr>
+                    <th className="p-3">Hạng mục dịch vụ</th>
+                    <th className="p-3">Thời hạn bảo hành</th>
+                    <th className="p-3 text-right">Thành tiền</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-200">
+                  <tr>
+                    <td className="p-3">
+                      <div className="font-bold text-zinc-900">{printExtInvoice.goiGiaHan}</div>
+                      <div className="text-[11px] text-zinc-500 mt-0.5">
+                        {printExtInvoice.quyenLoiGoi || 'Bảo vệ toàn diện động cơ, hộp số, hệ thống điện tử chính hãng tại mọi đại lý toàn quốc'}
+                      </div>
+                    </td>
+                    <td className="p-3 font-mono">
+                      <div className="font-bold text-emerald-700">Hạn mới: {printExtInvoice.thoiHanMoi}</div>
+                      <div className="text-[11px] text-zinc-400">Hạn gốc: {printExtInvoice.thoiHanGoc}</div>
+                    </td>
+                    <td className="p-3 text-right font-mono font-bold text-zinc-900 text-sm">
+                      {formatVND(printExtInvoice.soTien)}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="p-3">
+                      <div className="font-bold text-zinc-900">Sổ bảo hành điện tử chính hãng (Care+)</div>
+                      <div className="text-[11px] text-zinc-500">Cập nhật hồ sơ bảo hành điện tử trên hệ thống quản lý tập trung</div>
+                    </td>
+                    <td className="p-3 text-zinc-600">Đồng bộ toàn quốc</td>
+                    <td className="p-3 text-right font-mono text-emerald-700 font-semibold">Miễn phí</td>
+                  </tr>
+                </tbody>
+                <tfoot className="bg-zinc-50 border-t border-zinc-200">
+                  <tr>
+                    <td colSpan={2} className="p-3 font-bold text-zinc-900 uppercase font-mono text-right">
+                      TỔNG CỘNG THANH TOÁN:
+                    </td>
+                    <td className="p-3 text-right font-mono font-black text-red-700 text-base">
+                      {formatVND(printExtInvoice.soTien)}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+
+            {/* Thông tin thanh toán */}
+            <div className="flex items-center justify-between text-xs text-zinc-600 bg-zinc-50 p-3.5 rounded-xl border border-zinc-200">
+              <div>
+                Hình thức thanh toán: <strong className="text-zinc-900 uppercase">{printExtInvoice.phuongThucThanhToan || 'Chuyển khoản (VietQR)'}</strong>
+                <span className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                  ✓ ĐÃ THANH TOÁN 100%
+                </span>
+              </div>
+              <div>Thu ngân: <strong className="text-zinc-900">{printExtInvoice.nhanVien || 'Trần Văn Quản Lý'}</strong></div>
+            </div>
+
+            {/* Chữ ký 2 bên */}
+            <div className="grid grid-cols-2 gap-4 text-center text-xs pt-4 border-t border-zinc-200">
+              <div>
+                <div className="font-bold uppercase text-zinc-900 font-mono">ĐẠI DIỆN THU NGÂN SHOWROOM</div>
+                <div className="text-[11px] text-zinc-400 italic">(Ký, họ tên & đóng dấu)</div>
+                <div className="mt-12 font-bold text-zinc-900">{printExtInvoice.nhanVien || 'Trần Văn Quản Lý'}</div>
+              </div>
+              <div>
+                <div className="font-bold uppercase text-zinc-900 font-mono">KHÁCH HÀNG XÁC NHẬN</div>
+                <div className="text-[11px] text-zinc-400 italic">(Ký và ghi rõ họ tên)</div>
+                <div className="mt-12 font-bold text-zinc-900">{printExtInvoice.khachHang}</div>
+              </div>
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-zinc-200 no-print">
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-red-700 hover:bg-red-800 text-white shadow-sm flex items-center gap-1.5 cursor-pointer"
+              >
+                <span>🖨️ In bản cứng ngay</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPrintExtInvoice(null)}
+                className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-zinc-100 hover:bg-zinc-200 text-zinc-700 cursor-pointer"
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

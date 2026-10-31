@@ -387,6 +387,17 @@ export interface VehicleOrderDetails {
   anhCaVet?: string;
 }
 
+export interface OrderItem {
+  tenSanPham: string;
+  soLuong: number;
+  donGia: number;
+  maPhuTung?: number;
+  partId?: string;
+  hinhAnh?: string;
+  thuongHieu?: string;
+  danhMuc?: string;
+}
+
 export interface Order {
   id: string;
   customerId: string;
@@ -400,7 +411,7 @@ export interface Order {
   loaiDon?: OrderType;
   tongTien: number;
   diaChiGiao: string;
-  items: { tenSanPham: string; soLuong: number; donGia: number; maPhuTung?: number }[];
+  items: OrderItem[];
   maNV?: string;
   tenNV?: string;
   phuongThucThanhToan?: 'TienMat' | 'ChuyenKhoan' | 'TraGop';
@@ -1096,7 +1107,7 @@ export const mockCustomers: Customer[] = [
   { id: 'KH007', hoTen: 'Vũ Minh Hải', email: 'vuminhhai85@gmail.com', soDienThoai: '0967890123', diaChi: '34 Nguyễn Đình Chiểu, Phú Nhuận, TP.HCM', ngaySinh: '1985-04-25', gioiTinh: 'Nam', trangThai: 'HoatDong', ngayDangKy: '2023-07-15', soXe: 'XE007', tongChiTieu: 5200000, avatar: '/images/KH/kh7.jpg' },
   { id: 'KH008', hoTen: 'Bùi Thị Hương', email: 'buithihuong94@gmail.com', soDienThoai: '0978901234', diaChi: '67 Phan Xích Long, Phú Nhuận, TP.HCM', ngaySinh: '1994-09-14', gioiTinh: 'Nu', trangThai: 'HoatDong', ngayDangKy: '2023-08-22', soXe: 'XE008', tongChiTieu: 5620000, avatar: '/images/KH/kh8.jpg' },
   { id: 'KH009', hoTen: 'Đỗ Khoa Nam', email: 'dokhoanam91@gmail.com', soDienThoai: '0989012345', diaChi: '102 Hoàng Văn Thụ, Tân Bình, TP.HCM', ngaySinh: '1991-02-10', gioiTinh: 'Nam', trangThai: 'HoatDong', ngayDangKy: '2023-09-19', soXe: 'XE009', tongChiTieu: 1850000, avatar: '/images/KH/kh9.jpg' },
-  { id: 'KH1004', hoTen: 'Lan Phương', email: 'lanphuong1004@gmail.com', soDienThoai: '0918100400', diaChi: '1004 Nguyễn Thị Minh Khai, Q.1, TP.HCM', ngaySinh: '1995-10-04', gioiTinh: 'Nu', trangThai: 'HoatDong', ngayDangKy: '2024-01-15', soXe: 'XE1004', tongChiTieu: 8500000, avatar: '/images/KH/kh2.jpg' },
+  { id: 'KH1004', hoTen: 'Lan Phương', email: 'lethilanphuong@gmail.com', soDienThoai: '0879179243', diaChi: 'TP.HCM', ngaySinh: '1995-10-04', gioiTinh: 'Nu', trangThai: 'HoatDong', ngayDangKy: '2024-01-15', soXe: 'XE-LP-01', tongChiTieu: 8500000, avatar: '/images/KH/kh2.jpg' },
   { id: 'KH010', hoTen: 'Trương Vũ Hoàng Lộc', email: 'lochoang48@gmail.com', soDienThoai: '0990123456', diaChi: '215 Lê Văn Sỹ, Q.3, TP.HCM', ngaySinh: '1989-10-05', gioiTinh: 'Nam', trangThai: 'HoatDong', ngayDangKy: '2023-10-05', soXe: 'XE010', tongChiTieu: 6400000, avatar: '/images/KH/kh10.jpg' },
 ];
 
@@ -1159,14 +1170,40 @@ export const mockVehicles: Vehicle[] = [
   { id: 'XE010', customerId: 'KH008', tenXe: 'Yamaha Janus 125', bienSo: '59T2-123.89', namSanXuat: 2021, ngayMua: '2021-08-22', hanBaoHanh: '2024-08-22', mauSac: 'Xanh bạc', trangThaiBaoHanh: 'HetHan', nguonGoc: 'CuaHang', soKhung: 'MHYJA125CB8901234', trangThaiDuyet: 'DaDuyet' },
   { id: 'XE011', customerId: 'KH009', tenXe: 'VinFast Feliz S', bienSo: '51L1-567.89', namSanXuat: 2022, ngayMua: '2022-09-19', hanBaoHanh: '2025-09-19', mauSac: 'Bạc', trangThaiBaoHanh: 'ConHan', nguonGoc: 'CuaHang', soKhung: 'VFEL125CB9012345', trangThaiDuyet: 'DaDuyet' },
   { id: 'XE012', customerId: 'KH010', tenXe: 'Honda Vario 160', bienSo: '59U1-678.12', namSanXuat: 2023, ngayMua: '2023-10-05', hanBaoHanh: '2026-10-05', mauSac: 'Đen cam', trangThaiBaoHanh: 'ConHan', nguonGoc: 'CuaHang', soKhung: 'RLHKO160CB0123456', trangThaiDuyet: 'DaDuyet' },
+  { id: 'XE-LP-01', customerId: 'KH1004', tenXe: 'Honda SH 160i ABS 2024', bienSo: '59K9 - 876.54', namSanXuat: 2024, ngayMua: '2024-10-25', hanBaoHanh: '25/10/2026', mauSac: 'Đen mờ', trangThaiBaoHanh: 'ConHan', nguonGoc: 'CuaHang', soKhung: 'RLHKD160CB7747410', soMay: 'JF62E088888', trangThaiDuyet: 'DaDuyet', hinhAnh: '/images/Xe/sh_160i.jpg' },
+  { id: 'XE-LP-02', customerId: 'KH1004', tenXe: 'Honda Vision 2023', bienSo: '59P3 - 123.45', namSanXuat: 2023, ngayMua: '2023-05-12', hanBaoHanh: '12/05/2024', mauSac: 'Đỏ mận', trangThaiBaoHanh: 'HetHan', nguonGoc: 'CuaHang', soKhung: 'RLHKV110CB9988776', soMay: 'JF58E123456', trangThaiDuyet: 'DaDuyet', hinhAnh: '/images/Xe/honda_vision.jpg' },
 ];
+
+export function parseDateSafe(dateStr?: string): Date {
+  if (!dateStr) return new Date();
+  const trimmed = dateStr.trim();
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(trimmed)) {
+    const parts = trimmed.split('/');
+    const d = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10) - 1;
+    const y = parseInt(parts[2], 10);
+    return new Date(y, m, d);
+  }
+  const parsed = new Date(trimmed);
+  if (!isNaN(parsed.getTime())) return parsed;
+  return new Date();
+}
+
+export function formatDateSafe(date: Date): string {
+  const d = String(date.getDate()).padStart(2, '0');
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const y = date.getFullYear();
+  return `${d}/${m}/${y}`;
+}
 
 export function renewVehicleWarranty(vehicleId: string, years: number): Vehicle | null {
   const v = mockVehicles.find(x => x.id === vehicleId);
   if (!v) return null;
-  const baseDate = new Date(v.hanBaoHanh) > new Date() ? new Date(v.hanBaoHanh) : new Date();
+  const currentBase = parseDateSafe(v.hanBaoHanh);
+  const now = new Date();
+  const baseDate = currentBase > now ? currentBase : now;
   baseDate.setFullYear(baseDate.getFullYear() + years);
-  v.hanBaoHanh = baseDate.toISOString().split('T')[0];
+  v.hanBaoHanh = formatDateSafe(baseDate);
   v.trangThaiBaoHanh = 'ConHan';
   return v;
 }
@@ -2469,17 +2506,45 @@ export const mockWarrantyRecords: WarrantyRecord[] = [
 export const mockWarrantyAppointments: WarrantyAppointment[] = [];
 
 /* ───────────────────────── ADMIN BẢO HÀNH (MOCK CHO ẢNH 1 - 8) ───────────────────────── */
+export interface WarrantyServiceTimelineItem {
+  ngay: string;
+  tieuDe: string;
+  diaDiem?: string;
+  odo?: number;
+  loai?: 'BaoDuong' | 'SuaChua' | 'BaoHanh' | 'GiaHan';
+  trangThai?: 'Dat' | 'HoanTat' | 'KichHoat';
+  ghiChu?: string;
+}
+
 export interface WarrantyExtensionTransaction {
-  id: string; // MĐJ00001
+  id: string; // MĐJ00001 hoặc #BH-0879179243
   ngayGiaHan: string; // 29/12/2023
-  khachHang: string; // Nguyễn Văn Minh / Khách hàng
-  soDienThoai: string; // 59T2-XXXXX / 0987******
-  xeBienSo: string; // Honda Vision - 29F1-234.56
-  goiGiaHan: string; // Gói gia hạn Tiêu chuẩn (1 năm)
-  soTien: number; // 1200000
+  khachHang: string; // Nguyễn Văn Minh / Lan Phương
+  soDienThoai: string; // 0879179243
+  email?: string; // lethilanphuong@gmail.com
+  diaChi?: string; // TP.HCM
+  customerId?: string;
+  vehicleId?: string;
+  xeBienSo: string; // Honda SH 160i ABS 2024 (59K9 - 876.54)
+  tenXe?: string;
+  bienSo?: string;
+  soKhung?: string; // RLHKD160CB7747410
+  soMay?: string; // JF62E088888
+  hinhAnhXe?: string;
+  odo?: number; // 12500
+  goiGiaHan: string; // GÓI TIÊU CHUẨN (1 NĂM)
+  soTien: number; // 350000
   nguon: 'TrucTuyen' | 'TaiShowroom';
-  nhanVien: string; // Nguyễn Văn A / Nguyễn Viên
-  thoiHanMoi: string; // 29/12/2024
+  nhanVien: string; // Trần Văn Quản Lý
+  thoiHanGoc?: string; // 25/10/2026
+  thoiHanMoi: string; // 25/10/2027
+  quyenLoiGoi?: string; // +12 tháng / +10.000 km
+  phuongThucThanhToan?: 'TienMat' | 'POS' | 'ChuyenKhoan';
+  thoiGianThanhToan?: string; // 29/10/2026 - 15:32
+  tienKhachDua?: number; // 500000
+  tienThoiLai?: number; // 150000
+  daInHoaDon?: boolean;
+  lichSuDichVu?: WarrantyServiceTimelineItem[];
 }
 
 export type AdminWarrantyClaimStatus = 'ChoXuLy' | 'DaTiepNhan' | 'DangSuaChua' | 'HoanThanh' | 'TuChoi' | 'DaXacNhan' | 'ChoPhuTung' | 'KiemTraXong' | 'DaHuy';
@@ -2567,6 +2632,145 @@ export interface AdminWarrantyClaim {
   b6_daGuiTinNhan?: boolean;
 }
 
-export const mockWarrantyExtensionTransactions: WarrantyExtensionTransaction[] = [];
+export const mockWarrantyExtensionTransactions: WarrantyExtensionTransaction[] = [
+  {
+    id: 'BH-0879179243',
+    ngayGiaHan: '29/10/2026',
+    khachHang: 'LAN PHƯƠNG',
+    soDienThoai: '0879179243',
+    email: 'lethilanphuong@gmail.com',
+    diaChi: 'TP.HCM',
+    customerId: 'KH1004',
+    vehicleId: 'XE-LP-01',
+    xeBienSo: 'Honda SH 160i ABS 2024 (59K9 - 876.54)',
+    tenXe: 'Honda SH 160i ABS 2024',
+    bienSo: '59K9 - 876.54',
+    soKhung: 'RLHKD160CB7747410',
+    soMay: 'JF62E088888',
+    hinhAnhXe: '/images/Xe/sh_160i.jpg',
+    odo: 12500,
+    goiGiaHan: 'GÓI TIÊU CHUẨN (1 NĂM)',
+    soTien: 350000,
+    nguon: 'TaiShowroom',
+    nhanVien: 'Trần Văn Quản Lý',
+    thoiHanGoc: '25/10/2026',
+    thoiHanMoi: '25/10/2027',
+    quyenLoiGoi: '+12 tháng / +10.000 km',
+    phuongThucThanhToan: 'TienMat',
+    thoiGianThanhToan: '29/10/2026 - 15:32',
+    tienKhachDua: 500000,
+    tienThoiLai: 150000,
+    daInHoaDon: true,
+    lichSuDichVu: [
+      { ngay: '29/10/2026', tieuDe: 'Kích hoạt bảo hành mở rộng (12 tháng)', odo: 12500, loai: 'GiaHan', trangThai: 'KichHoat' },
+      { ngay: '29/10/2026', tieuDe: 'Phê duyệt đủ điều kiện gia hạn', diaDiem: 'Tại quầy Showroom', loai: 'BaoHanh', trangThai: 'Dat' },
+      { ngay: '10/06/2026', tieuDe: 'Bảo dưỡng định kỳ lần 3', diaDiem: 'Tại CN1 - Quận 1', odo: 11200, loai: 'BaoDuong', trangThai: 'Dat' },
+      { ngay: '20/01/2026', tieuDe: 'Sửa chữa/thay thế dầu máy', diaDiem: 'Tại CN1 - Quận 1', odo: 7500, loai: 'SuaChua', trangThai: 'Dat' },
+      { ngay: '15/09/2025', tieuDe: 'Bảo dưỡng định kỳ lần 2', diaDiem: 'Tại CN1 - Quận 1', odo: 4800, loai: 'BaoDuong', trangThai: 'Dat' },
+      { ngay: '10/11/2024', tieuDe: 'Bảo dưỡng định kỳ lần 1', diaDiem: 'Tại CN1 - Quận 1', odo: 1000, loai: 'BaoDuong', trangThai: 'Dat' },
+    ],
+  },
+  {
+    id: 'MĐJ00002',
+    ngayGiaHan: '20/10/2026',
+    khachHang: 'Nguyễn Văn Minh',
+    soDienThoai: '0987654321',
+    email: 'minh.nguyen@gmail.com',
+    diaChi: 'Hà Nội',
+    customerId: 'KH001',
+    vehicleId: 'XE001',
+    xeBienSo: 'Honda Vision 2023 (29F1 - 234.56)',
+    tenXe: 'Honda Vision 2023',
+    bienSo: '29F1 - 234.56',
+    soKhung: 'RLHKV110CB1234567',
+    soMay: 'JF58E998877',
+    hinhAnhXe: '/images/Xe/honda_vision.jpg',
+    odo: 9800,
+    goiGiaHan: 'Gói toàn diện (2 năm)',
+    soTien: 600000,
+    nguon: 'TrucTuyen',
+    nhanVien: 'Hệ thống tự động',
+    thoiHanGoc: '20/10/2026',
+    thoiHanMoi: '20/10/2028',
+    quyenLoiGoi: '+24 tháng / +20.000 km',
+    phuongThucThanhToan: 'ChuyenKhoan',
+    thoiGianThanhToan: '20/10/2026 - 10:15',
+    daInHoaDon: true,
+    lichSuDichVu: [
+      { ngay: '20/10/2026', tieuDe: 'Kích hoạt bảo hành mở rộng toàn diện (24 tháng)', odo: 9800, loai: 'GiaHan', trangThai: 'KichHoat' },
+      { ngay: '15/04/2026', tieuDe: 'Bảo dưỡng định kỳ lần 2', diaDiem: 'Tại CN2 - Cầu Giấy', odo: 5000, loai: 'BaoDuong', trangThai: 'Dat' },
+    ],
+  },
+];
 
-export const mockAdminWarrantyClaims: AdminWarrantyClaim[] = [];
+export function getVehicleCatalogImage(tenXe?: string, hinhAnhHienTai?: string): string {
+  if (hinhAnhHienTai && !hinhAnhHienTai.includes('unsplash.com') && !hinhAnhHienTai.includes('placeholder') && !hinhAnhHienTai.includes('photo-1558981403')) {
+    return hinhAnhHienTai;
+  }
+  const name = (tenXe || '').toLowerCase();
+  if (name.includes('mt-15') || name.includes('mt 15') || name.includes('r15') || name.includes('naked') || name.includes('mt15')) return '/images/Xe/yamaha_yzf_r15_v4.jpg';
+  if (name.includes('sh 160') || name.includes('sh 125') || name.includes('sh160') || name.includes('sh125') || name.includes('honda sh')) return '/images/Xe/honda_sh_160i_abs_2024.jpg';
+  if (name.includes('sh mode')) return '/images/Xe/honda_sh_mode_125.png';
+  if (name.includes('air') || name.includes('air blade') || name.includes('airblade')) return '/images/Xe/honda_air_blade_160_abs.jpg';
+  if (name.includes('wave')) return '/images/Xe/honda_wave_alpha_110_2025.jpg';
+  if (name.includes('winner')) return '/images/Xe/honda_winner_x_150_abs.jpg';
+  if (name.includes('vision')) return '/images/Xe/honda_vision_110_the_thao.jpg';
+  if (name.includes('lead')) return '/images/Xe/honda_lead_125cc_dac_biet.jpg';
+  if (name.includes('future')) return '/images/Xe/honda_future_125_fi.jpg';
+  if (name.includes('vario')) return '/images/Xe/honda_vario_160.jpg';
+  if (name.includes('cbr')) return '/images/Xe/honda_cbr150r.jpg';
+  if (name.includes('exciter')) return '/images/Xe/yamaha_exciter_155_vva.jpg';
+  if (name.includes('grande')) return '/images/Xe/yamaha_grande_hybrid.jpg';
+  if (name.includes('janus')) return '/images/Xe/yamaha_janus_125.jpg';
+  if (name.includes('nvx')) return '/images/Xe/yamaha_nvx_155_vva.jpg';
+  if (name.includes('sirius')) return '/images/Xe/yamaha_sirius_fi.jpg';
+  if (name.includes('pg-1') || name.includes('pg 1')) return '/images/Xe/yamaha_pg_1.jpg';
+  if (name.includes('freego')) return '/images/Xe/yamaha_freego_125.png';
+  if (name.includes('tuscany')) return '/images/Xe/sym_tuscany_150.jpg';
+  if (name.includes('vespa sprint')) return '/images/Xe/vespa_sprint_s_125.jpg';
+  if (name.includes('vespa')) return '/images/Xe/vespa_primavera_125.jpg';
+  if (name.includes('raider')) return '/images/Xe/suzuki_raider_r150.jpg';
+  if (name.includes('satria')) return '/images/Xe/suzuki_satria_f150.jpg';
+  if (name.includes('gsx')) return '/images/Xe/suzuki_gsx_r150.jpg';
+
+  return '/images/Xe/yamaha_yzf_r15_v4.jpg';
+}
+
+export const mockAdminWarrantyClaims: AdminWarrantyClaim[] = [
+  {
+    id: 'YCBH00156',
+    ngayGui: '31/10/2026',
+    khachHang: 'Phan Nhân',
+    soDienThoai: '0937865664',
+    customerId: 'KH037',
+    xeBienSo: 'Yamaha MT-15 Naked Bike (59-S3 888.99)',
+    vehicleId: 'XE001',
+    ngayHen: '2026-11-02',
+    gioHen: '09:00',
+    chiNhanh: 'Showroom DailyXeMay - Chi nhánh 1 (Quận 1)',
+    noiDung: 'Đèn pha LED chập chờn, phuộc trước phát tiếng kêu khi qua gờ giảm tốc',
+    nhanVienPhuTrach: 'Trần Văn Quản Lý',
+    trangThai: 'ChoXuLy',
+    currentStep: 1,
+  },
+  {
+    id: 'YCBH00157',
+    ngayGui: '30/10/2026',
+    khachHang: 'Nguyễn Văn An',
+    soDienThoai: '0901234567',
+    customerId: 'KH001',
+    xeBienSo: 'Honda SH 160i ABS (59-P1 123.45)',
+    vehicleId: 'XE002',
+    ngayHen: '2026-11-01',
+    gioHen: '14:30',
+    chiNhanh: 'Showroom DailyXeMay - Chi nhánh 1 (Quận 1)',
+    noiDung: 'Hệ thống phanh ABS báo đèn vàng nhấp nháy trên mặt đồng hồ',
+    nhanVienPhuTrach: 'Lê Văn Kỹ Thuật',
+    trangThai: 'DaTiepNhan',
+    currentStep: 2,
+    b1_khachDaDenShowroom: true,
+    b1_xacNhanDungXeBienSo: true,
+    b1_bienSoThucTe: '59-P1 123.45',
+    b1_soKmHienTai: 3200,
+  }
+];
