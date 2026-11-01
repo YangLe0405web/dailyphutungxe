@@ -1688,12 +1688,50 @@ export default function CustomerDashboard({
           return belongsToCustomer;
         });
 
-        // Tự động đồng bộ các xe đã mua từ đơn hàng thành công của khách vào danh sách phương tiện sở hữu
+        // Xác định danh sách các đơn hàng xe trực tuyến CHƯA HOÀN TẤT (đang chờ duyệt, chờ hẹn, đang giao...)
+        const incompleteVehicleOrderIds = new Set(
+          curOrders
+            .filter(o => {
+              const isXeOrder = o.loaiDon !== 'PhuTung' && (o.loaiDon === 'Xe' || (!!o.thongTinXe && (!o.items || o.items.length === 0)) || (o.id && o.id.includes('XE') && (!o.items || o.items.length === 0)) || (!o.items?.length && o.tongTien >= 10000000));
+              const isCompleted = o.trangThai === 'HoanThanh' || o.trangThai === 'DaGiao' || Boolean((o.thongTinXe as any)?.daNhanXe);
+              return isXeOrder && !isCompleted;
+            })
+            .map(o => o.id)
+        );
+
+        // Lọc bỏ các xe gắn với đơn hàng xe chưa hoàn thành khỏi danh sách phương tiện sở hữu
+        vList = vList.filter(v => {
+          const vOrderId = (v as any).orderId || (v.id.startsWith('XE-') ? v.id.replace(/^XE-/, '') : '');
+          if (vOrderId && incompleteVehicleOrderIds.has(vOrderId)) {
+            return false;
+          }
+          return true;
+        });
+
+        // Dọn dẹp cache crm_customer_vehicles để loại bỏ các xe thuộc đơn hàng chưa hoàn thành bị lưu sớm trước đó
+        if (incompleteVehicleOrderIds.size > 0) {
+          try {
+            const cachedV = localStorage.getItem('crm_customer_vehicles');
+            if (cachedV) {
+              const parsed: Vehicle[] = JSON.parse(cachedV);
+              const cleaned = parsed.filter(v => {
+                const vOrderId = (v as any).orderId || (v.id.startsWith('XE-') ? v.id.replace(/^XE-/, '') : '');
+                return !vOrderId || !incompleteVehicleOrderIds.has(vOrderId);
+              });
+              if (cleaned.length !== parsed.length) {
+                localStorage.setItem('crm_customer_vehicles', JSON.stringify(cleaned));
+              }
+            }
+          } catch {}
+        }
+
+        // Tự động đồng bộ các xe đã mua từ đơn hàng ĐÃ HOÀN TẤT THÀNH CÔNG của khách vào danh sách phương tiện sở hữu
         const myVehicleOrders = curOrders.filter(o => {
           const oCustNum = parseInt(o.customerId.replace(/\D/g, ''), 10);
           const matchCust = o.customerId === currentCustomer.id || (!isNaN(cIdNum) && !isNaN(oCustNum) && cIdNum === oCustNum) || (custPhone && o.soDienThoai && o.soDienThoai.replace(/\D/g, '') === custPhone);
-          const isXeOrder = o.loaiDon === 'Xe' || !!o.thongTinXe || (o.id && o.id.includes('XE')) || (!o.items?.length && o.tongTien >= 10000000);
-          return matchCust && isXeOrder && o.trangThai !== 'DaHuy';
+          const isXeOrder = o.loaiDon !== 'PhuTung' && (o.loaiDon === 'Xe' || (!!o.thongTinXe && (!o.items || o.items.length === 0)) || (o.id && o.id.includes('XE') && (!o.items || o.items.length === 0)) || (!o.items?.length && o.tongTien >= 10000000));
+          const isCompleted = o.trangThai === 'HoanThanh' || o.trangThai === 'DaGiao' || Boolean((o.thongTinXe as any)?.daNhanXe);
+          return matchCust && isXeOrder && isCompleted && o.trangThai !== 'DaHuy';
         });
 
         myVehicleOrders.forEach(o => {
@@ -1714,8 +1752,6 @@ export default function CustomerDashboard({
             const vehImg = o.thongTinXe?.hinhAnh || catalogMatch?.hinhAnh || fallbackImg;
             const plateStr = o.thongTinXe?.bienSo && o.thongTinXe.bienSo !== 'Chưa có biển số' && !o.thongTinXe.bienSo.includes('Chưa có')
               ? o.thongTinXe.bienSo
-              : isCompleted
-              ? '59-K1 888.88'
               : 'Chưa có biển số';
 
             const newVehFromOrder: Vehicle = {
@@ -3185,7 +3221,7 @@ export default function CustomerDashboard({
                         ordersSubTab === 'Xe' ? 'bg-red-700 text-white shadow' : 'text-zinc-400 hover:text-white'
                       }`}
                     >
-                      🏍️ Xe ({myOrders.filter(o => o.loaiDon === 'Xe' || !!o.thongTinXe || (o.id && o.id.includes('XE')) || (o.tongTien >= 10000000 && (!o.items || o.items.length === 0))).length})
+                      🏍️ Xe ({myOrders.filter(o => o.loaiDon !== 'PhuTung' && (o.loaiDon === 'Xe' || (!!o.thongTinXe && (!o.items || o.items.length === 0)) || (o.id && o.id.includes('XE') && (!o.items || o.items.length === 0)) || (o.tongTien >= 10000000 && (!o.items || o.items.length === 0)))).length})
                     </button>
                     <button
                       onClick={() => setOrdersSubTab('PhuTung')}
@@ -3193,7 +3229,7 @@ export default function CustomerDashboard({
                         ordersSubTab === 'PhuTung' ? 'bg-red-700 text-white shadow' : 'text-zinc-400 hover:text-white'
                       }`}
                     >
-                      📦 Phụ tùng ({myOrders.filter(o => !(o.loaiDon === 'Xe' || !!o.thongTinXe || (o.id && o.id.includes('XE')) || (o.tongTien >= 10000000 && (!o.items || o.items.length === 0)))).length})
+                      📦 Phụ tùng ({myOrders.filter(o => o.loaiDon === 'PhuTung' || (o.items && o.items.length > 0) || !(o.loaiDon === 'Xe' || !!o.thongTinXe || (o.id && o.id.includes('XE')))).length})
                     </button>
                   </div>
                 </div>
@@ -3233,7 +3269,7 @@ export default function CustomerDashboard({
                 {/* Orders List */}
                 {(() => {
                   const filtered = myOrders.filter(o => {
-                    const isXe = o.loaiDon === 'Xe' || !!o.thongTinXe || (o.id && o.id.includes('XE')) || (o.tongTien >= 10000000 && (!o.items || o.items.length === 0));
+                    const isXe = o.loaiDon !== 'PhuTung' && (o.loaiDon === 'Xe' || (!!o.thongTinXe && (!o.items || o.items.length === 0)) || (o.id && o.id.includes('XE') && (!o.items || o.items.length === 0)) || (o.tongTien >= 10000000 && (!o.items || o.items.length === 0)));
                     if (ordersSubTab === 'Xe' && !isXe) return false;
                     if (ordersSubTab === 'PhuTung' && isXe) return false;
                     if (orderStatusFilter !== 'TatCa' && o.trangThai !== orderStatusFilter) return false;
@@ -3253,7 +3289,7 @@ export default function CustomerDashboard({
                   return (
                     <div className="space-y-4">
                       {filtered.map(order => {
-                        const isXe = order.loaiDon === 'Xe' || !!order.thongTinXe || (order.id && order.id.includes('XE')) || (order.tongTien >= 10000000 && (!order.items || order.items.length === 0));
+                        const isXe = order.loaiDon !== 'PhuTung' && (order.loaiDon === 'Xe' || (!!order.thongTinXe && (!order.items || order.items.length === 0)) || (order.id && order.id.includes('XE') && (!order.items || order.items.length === 0)) || (order.tongTien >= 10000000 && (!order.items || order.items.length === 0)));
                         const isCompleted = order.trangThai === 'HoanThanh' || order.trangThai === 'DaGiao' || (isXe && (order.thongTinXe as any)?.daNhanXe);
                         const cfg = orderStatusConfig[order.trangThai] || { label: order.trangThai, color: '#71717a', bg: '#27272a' };
 
@@ -4757,7 +4793,7 @@ export default function CustomerDashboard({
                           });
                         }
                       }
-                      const isXeOrder = o.loaiDon === 'Xe' || !!o.thongTinXe || String(o.id).includes('XE');
+                      const isXeOrder = o.loaiDon !== 'PhuTung' && (o.loaiDon === 'Xe' || (!!o.thongTinXe && (!o.items || o.items.length === 0)) || (String(o.id).includes('XE') && (!o.items || o.items.length === 0)));
                       if (!isXeOrder && o.items && o.items.length > 0) {
                         o.items.forEach((it: any, idx: number) => {
                           const name = it.tenSanPham || it.tenPhuTung || `Phụ tùng #${idx + 1}`;
@@ -4787,6 +4823,13 @@ export default function CustomerDashboard({
 
                   // 2. Xe trong danh sách phương tiện sở hữu của khách hàng (myVehicles)
                   myVehicles.forEach(v => {
+                    const vOrderId = (v as any).orderId || (v.id.startsWith('XE-') ? v.id.replace(/^XE-/, '') : '');
+                    if (vOrderId) {
+                      const linkedOrder = myOrders.find(o => o.id === vOrderId);
+                      if (linkedOrder && linkedOrder.trangThai !== 'HoanThanh' && linkedOrder.trangThai !== 'DaGiao' && !(linkedOrder.thongTinXe as any)?.daNhanXe) {
+                        return; // Bỏ qua xe của đơn hàng online chưa hoàn tất bàn giao
+                      }
+                    }
                     const name = v.tenXe || 'Xe máy chính hãng';
                     const already = myCustomerFeedbacks.some(f =>
                       (f.xeDangDung && (f.xeDangDung.toLowerCase().includes(name.toLowerCase()) || name.toLowerCase().includes(f.xeDangDung.toLowerCase()))) ||
@@ -6343,7 +6386,7 @@ export default function CustomerDashboard({
 
       {/* Modal Xem chi tiết đơn hàng (Phụ tùng / Xe) theo chuẩn giao diện Ảnh 4 */}
       {selectedOrderDetail && (() => {
-        const isXe = selectedOrderDetail.loaiDon === 'Xe' || !!selectedOrderDetail.thongTinXe;
+        const isXe = selectedOrderDetail.loaiDon !== 'PhuTung' && (selectedOrderDetail.loaiDon === 'Xe' || (!!selectedOrderDetail.thongTinXe && (!selectedOrderDetail.items || selectedOrderDetail.items.length === 0)));
         const stepIdx = (selectedOrderDetail.trangThai === 'HoanThanh' || selectedOrderDetail.trangThai === 'DaGiao')
           ? 3
           : selectedOrderDetail.trangThai === 'DangGiao'

@@ -1,7 +1,8 @@
 # 🛡️ QUY TẮC BẢO TOÀN HỆ THỐNG & DANH SÁCH BẢN FIX BẤT DI BẤT DỊCH
 > **Mục đích:** Tài liệu này ghi nhớ toàn bộ các bản fix cốt lõi của hệ thống CRM Showroom Xe Máy & Dịch Vụ.
 > **QUY TẮC BẮT BUỘC CHO TRỢ LÝ AI & LẬP TRÌNH VIÊN:**
-> Trước khi thực hiện bất kỳ sửa lỗi hay thay đổi nào sau này, **BẮT BUỘC** phải đọc lại tài liệu này để kiểm tra xem có ảnh hưởng (chạm) tới các tính năng bên dưới hay không. Nếu có nguy cơ ảnh hưởng, **PHẢI BÁO CÁO VÀ HỎI Ý KIẾN NGƯỜI DÙNG** trước khi chỉnh sửa!
+> 1. **QUY TẮC TRÌNH DUYỆT KẾ HOẠCH (MANDATORY FIX PLAN):** Trước khi bắt tay vào sửa code cho bất kỳ lỗi nào, **BẮT BUỘC PHẢI GỬI KẾ HOẠCH FIX CHI TIẾT** (gồm: nguyên nhân gốc rễ, phương án khắc phục, các file dự kiến sửa, và đối chiếu 10 Invariants) cho người dùng xem và duyệt trước. Chỉ khi người dùng xác nhận đồng ý mới được tiến hành chỉnh sửa code!
+> 2. **QUY TẮC BẢO TOÀN HỆ THỐNG:** Trước khi thực hiện bất kỳ sửa lỗi hay thay đổi nào sau này, **BẮT BUỘC** phải đọc lại tài liệu này để kiểm tra xem có ảnh hưởng (chạm) tới các tính năng bên dưới hay không. Nếu có nguy cơ ảnh hưởng, **PHẢI BÁO CÁO VÀ HỎI Ý KIẾN NGƯỜI DÙNG** trước khi chỉnh sửa!
 
 ---
 

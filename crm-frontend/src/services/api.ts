@@ -894,6 +894,29 @@ export const customerApi = {
 // ────────────────────────────────────────────────────────────
 // 2. XE KHÁCH HÀNG & BẢO HÀNH API (VEHICLES & WARRANTY)
 // ────────────────────────────────────────────────────────────
+// Helper kiểm tra biển số rỗng hoặc chưa có biển số (kể cả không dấu, có dấu, ký tự lỗi CSDL)
+export const isNoPlate = (plate?: string | null): boolean => {
+  if (!plate) return true;
+  const p = plate.toUpperCase().trim();
+  return (
+    p === '' ||
+    p === 'CHƯA CÓ BIỂN SỐ' ||
+    p === 'CHUA CO BIEN SO' ||
+    p.includes('CHƯA CÓ') ||
+    p.includes('CHUA CO') ||
+    p.includes('CHƯA') ||
+    p.includes('CHUA') ||
+    p.includes('BI?N') ||
+    p.includes('BIEN SO') ||
+    p.includes('BIỂN SỐ') ||
+    p.startsWith('TAM-') ||
+    p.startsWith('T?M-') ||
+    p.startsWith('TẠM-') ||
+    p === 'CHỜ CẤP BIỂN' ||
+    p === 'CHO CAP BIEN'
+  );
+};
+
 export const vehicleApi = {
   async getAll(): Promise<Vehicle[]> {
     let list: Vehicle[] = [];
@@ -907,15 +930,16 @@ export const vehicleApi = {
             if (item.maKH === 14) cId = 'KH004';
             else if (item.maKH === 15) cId = 'KH006';
             else if (item.maKH === 16) cId = 'KH008';
-            const vId = item.maXeSoHuu ? (item.maXeSoHuu < 10 ? `XE00${item.maXeSoHuu}` : `XE0${item.maXeSoHuu}`) : 'XE001';
+            const vId = item.maXeSoHuu ? (item.maXeSoHuu < 10 ? `XE00${item.maXeSoHuu}` : (item.maXeSoHuu < 100 ? `XE0${item.maXeSoHuu}` : `XE${item.maXeSoHuu}`)) : 'XE001';
             const hanBH = item.hanBaoHanh ? item.hanBaoHanh.split('T')[0] : '2026-01-01';
             const isConHan = new Date(hanBH) > new Date();
+            const hasNoPlate = isNoPlate(item.bienSoXe);
 
             return {
               id: vId,
               customerId: cId,
               tenXe: item.tenXe || 'Honda SH 160i ABS',
-              bienSo: (!item.bienSoXe || item.bienSoXe === 'Chưa có biển số' || item.bienSoXe.includes('Chưa có') || item.bienSoXe.includes('Chua co') || item.bienSoXe.startsWith('TAM-') || item.bienSoXe.startsWith('T?M-')) ? 'Chưa có biển số' : item.bienSoXe,
+              bienSo: hasNoPlate ? 'Chưa có biển số' : item.bienSoXe.trim().toUpperCase(),
               hangXe: item.hangXe || (item.tenXe && item.tenXe.includes('Suzuki') ? 'Suzuki' : item.tenXe && item.tenXe.includes('Yamaha') ? 'Yamaha' : item.tenXe && item.tenXe.includes('SYM') ? 'SYM' : 'Honda'),
               namSanXuat: item.ngayMua ? new Date(item.ngayMua).getFullYear() : 2025,
               hanBaoHanh: hanBH,
@@ -926,7 +950,7 @@ export const vehicleApi = {
               soMay: item.soMay || '',
               nguonGoc: 'CuaHang' as const,
               ngayMua: item.ngayMua ? item.ngayMua.split('T')[0] : new Date().toISOString().split('T')[0],
-              trangThaiDuyetBienSo: (!item.bienSoXe || item.bienSoXe === 'Chưa có biển số' || item.bienSoXe.includes('Chưa có') || item.bienSoXe.includes('Chua co') || item.bienSoXe.startsWith('TAM-') || item.bienSoXe.startsWith('T?M-')) ? ('ChoCapNhat' as const) : ('DaDuyet' as const),
+              trangThaiDuyetBienSo: hasNoPlate ? ('ChoCapNhat' as const) : ('DaDuyet' as const),
               trangThaiDuyet: 'DaDuyet' as const,
             };
           });
@@ -974,9 +998,10 @@ export const vehicleApi = {
       const name = (v.tenXe || '').toUpperCase().trim();
       const color = (v.mauSac || '').toUpperCase().trim();
       const vin = (v.soKhung || '').toUpperCase().trim();
+      const isPlateEmpty = isNoPlate(plate);
       const dedupKey = vin
         ? `VIN_${vin}`
-        : (plate && plate !== 'CHƯA CÓ BIỂN SỐ' && !plate.includes('CHUA CO'))
+        : (!isPlateEmpty)
         ? `PLATE_${plate}`
         : `CUST_${v.customerId}_${name}_${color}`;
       if (seenCustVeh.has(dedupKey)) {
@@ -986,27 +1011,28 @@ export const vehicleApi = {
           const ePlate = (ev.bienSo || ev.bienSoChoDuyet || '').toUpperCase().trim();
           const eName = (ev.tenXe || '').toUpperCase().trim();
           const eColor = (ev.mauSac || '').toUpperCase().trim();
+          const ePlateEmpty = isNoPlate(ePlate);
           const eKey = eVin
             ? `VIN_${eVin}`
-            : (ePlate && ePlate !== 'CHƯA CÓ BIỂN SỐ' && !ePlate.includes('CHUA CO'))
+            : (!ePlateEmpty)
             ? `PLATE_${ePlate}`
             : `CUST_${ev.customerId}_${eName}_${eColor}`;
           return eKey === dedupKey;
         });
         if (existing) {
           // Ưu tiên các thông tin trạng thái duyệt biển số và ảnh cà vẹt mới nhất từ cache
-          if (v.bienSoChoDuyet) existing.bienSoChoDuyet = v.bienSoChoDuyet;
+          if (v.bienSoChoDuyet && !isNoPlate(v.bienSoChoDuyet)) existing.bienSoChoDuyet = v.bienSoChoDuyet;
           if (v.anhCaVet) existing.anhCaVet = v.anhCaVet;
           if (v.trangThaiDuyetBienSo === 'ChoDuyet' || v.trangThaiDuyetBienSo === 'TuChoi') {
             existing.trangThaiDuyetBienSo = v.trangThaiDuyetBienSo;
           } else if (v.trangThaiDuyetBienSo === 'DaDuyet') {
             existing.trangThaiDuyetBienSo = 'DaDuyet';
             existing.bienSoChoDuyet = undefined;
-            if (v.bienSo) existing.bienSo = v.bienSo;
+            if (v.bienSo && !isNoPlate(v.bienSo)) existing.bienSo = v.bienSo;
             delete (existing as any).lyDoTuChoiBienSo;
           }
           if (v.lyDoTuChoiBienSo) existing.lyDoTuChoiBienSo = v.lyDoTuChoiBienSo;
-          if (v.bienSo && v.bienSo !== 'Chưa có biển số' && (!existing.bienSo || existing.bienSo === 'Chưa có biển số' || v.trangThaiDuyetBienSo === 'DaDuyet')) {
+          if (v.bienSo && !isNoPlate(v.bienSo) && (isNoPlate(existing.bienSo) || v.trangThaiDuyetBienSo === 'DaDuyet')) {
             existing.bienSo = v.bienSo;
           }
         }
@@ -1423,30 +1449,32 @@ export const vehicleApi = {
 
   async approveLicensePlate(vehicleId: string, proposedPlateParam?: string, vehicleData?: Partial<Vehicle>): Promise<boolean> {
     let vehicleName = vehicleData?.tenXe || '';
-    let finalPlate = proposedPlateParam || '';
+    let finalPlate = (proposedPlateParam || '').trim().toUpperCase();
     let custId = vehicleData?.customerId || '';
-    const numId = parseInt(vehicleId.replace(/\D/g, ''), 10);
+    const isDirectXeId = /^XE\d+$/i.test(vehicleId);
+    const numId = isDirectXeId ? parseInt(vehicleId.replace(/\D/g, ''), 10) : 0;
     const targetVin = (vehicleData?.soKhung || '').trim().toUpperCase();
+    const custNum = custId ? parseInt(custId.replace(/\D/g, ''), 10) : 0;
 
     const isMatchVehicle = (v: Vehicle): boolean => {
       if (v.id === vehicleId) return true;
       if (vehicleData?.id && v.id === vehicleData.id) return true;
       if (targetVin && v.soKhung && v.soKhung.trim().toUpperCase() === targetVin) return true;
-      if (!isNaN(numId) && numId > 0 && parseInt(v.id.replace(/\D/g, ''), 10) === numId) return true;
-      if (v.tenXe && vehicleName && v.tenXe.toLowerCase().trim() === vehicleName.toLowerCase().trim() && (v.customerId === custId || parseInt(v.customerId.replace(/\D/g, ''), 10) === parseInt(custId.replace(/\D/g, ''), 10))) return true;
+      if (isDirectXeId && numId > 0 && parseInt(v.id.replace(/\D/g, ''), 10) === numId) return true;
+      if (v.tenXe && vehicleName && v.tenXe.toLowerCase().trim() === vehicleName.toLowerCase().trim() && (v.customerId === custId || (custNum > 0 && parseInt(v.customerId.replace(/\D/g, ''), 10) === custNum))) return true;
       return false;
     };
 
     // Lấy biển số dự kiến từ tham số, cache hoặc mockVehicles
-    let candidatePlate = proposedPlateParam || '';
+    let candidatePlate = finalPlate;
     try {
       const cached = localStorage.getItem('crm_customer_vehicles');
       if (cached) {
         const list: Vehicle[] = JSON.parse(cached);
         const match = list.find(isMatchVehicle);
         if (match) {
-          if (!candidatePlate || candidatePlate === 'Chưa có biển số') {
-            candidatePlate = match.bienSoChoDuyet || (match.bienSo !== 'Chưa có biển số' ? match.bienSo : '') || '';
+          if (!candidatePlate || isNoPlate(candidatePlate)) {
+            candidatePlate = (match.bienSoChoDuyet && !isNoPlate(match.bienSoChoDuyet) ? match.bienSoChoDuyet : (!isNoPlate(match.bienSo) ? match.bienSo : '')) || '';
           }
           if (!vehicleName) vehicleName = match.tenXe;
           if (!custId) custId = match.customerId;
@@ -1454,57 +1482,67 @@ export const vehicleApi = {
       }
     } catch {}
 
-    if (!candidatePlate || candidatePlate === 'Chưa có biển số') {
+    if (!candidatePlate || isNoPlate(candidatePlate)) {
       const vMatch = mockVehicles.find(isMatchVehicle);
       if (vMatch) {
-        candidatePlate = vMatch.bienSoChoDuyet || (vMatch.bienSo !== 'Chưa có biển số' ? vMatch.bienSo : '') || '';
+        candidatePlate = (vMatch.bienSoChoDuyet && !isNoPlate(vMatch.bienSoChoDuyet) ? vMatch.bienSoChoDuyet : (!isNoPlate(vMatch.bienSo) ? vMatch.bienSo : '')) || '';
         if (!vehicleName) vehicleName = vMatch.tenXe;
         if (!custId) custId = vMatch.customerId;
       }
     }
 
-    // Nếu vẫn chưa có biển số (ví dụ xe mới mua chưa đề xuất biển số), tự cấp biển số hợp lệ chuẩn TP.HCM
-    if (!candidatePlate || candidatePlate === 'Chưa có biển số') {
-      candidatePlate = '59-K1 888.88';
+    if (!candidatePlate || isNoPlate(candidatePlate)) {
+      throw new Error('Biển số xe không được để trống khi phê duyệt!');
     }
 
-    finalPlate = candidatePlate;
+    finalPlate = candidatePlate.trim().toUpperCase();
 
     // Đồng bộ và kiểm tra tính duy nhất trên Backend C# SQL Server
-    if (finalPlate && finalPlate !== 'Chưa có biển số') {
+    if (finalPlate && !isNoPlate(finalPlate)) {
+      let targetMaXeSoHuu = 0;
       try {
-        let targetMaXeSoHuu = (!isNaN(numId) && numId > 0) ? numId : 0;
-        // Kiểm tra đối chiếu xem ID có trong bảng XE_KHACH_HANG backend không
-        try {
-          const listRes = await fetchWithTimeout(`${API_BASE_URL}/XeKhachHang`);
-          if (listRes.ok) {
-            const bList = await listRes.json();
-            if (Array.isArray(bList)) {
-              const bMatch = bList.find((bx: any) =>
-                (targetVin && bx.soKhung && bx.soKhung.trim().toUpperCase() === targetVin) ||
-                (targetMaXeSoHuu > 0 && bx.maXeSoHuu === targetMaXeSoHuu) ||
-                (bx.tenXe && vehicleName && bx.tenXe.toLowerCase().trim() === vehicleName.toLowerCase().trim() && (bx.maKH === parseInt(custId.replace(/\D/g, ''), 10)))
+        const listRes = await fetchWithTimeout(`${API_BASE_URL}/XeKhachHang`);
+        if (listRes.ok) {
+          const bList = await listRes.json();
+          if (Array.isArray(bList)) {
+            // 1. Ưu tiên tra cứu theo số khung VIN
+            let bMatch = targetVin
+              ? bList.find((bx: any) => bx.soKhung && bx.soKhung.trim().toUpperCase() === targetVin)
+              : null;
+
+            // 2. Tra cứu theo mã khách hàng và tên xe
+            if (!bMatch && custNum > 0 && vehicleName) {
+              bMatch = bList.find((bx: any) =>
+                bx.maKH === custNum &&
+                bx.tenXe &&
+                bx.tenXe.toLowerCase().trim() === vehicleName.toLowerCase().trim()
               );
-              if (bMatch?.maXeSoHuu) {
-                targetMaXeSoHuu = bMatch.maXeSoHuu;
-              }
+            }
+
+            // 3. Tra cứu theo ID nếu là mã trực tiếp dạng XE... (không phải mã đơn XE-DH-...)
+            if (!bMatch && isDirectXeId && numId > 0) {
+              bMatch = bList.find((bx: any) => bx.maXeSoHuu === numId);
+            }
+
+            if (bMatch?.maXeSoHuu) {
+              targetMaXeSoHuu = bMatch.maXeSoHuu;
             }
           }
-        } catch {}
-
-        if (targetMaXeSoHuu > 0) {
-          const res = await fetchWithTimeout(`${API_BASE_URL}/XeKhachHang/duyet-bien-so/${targetMaXeSoHuu}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ bienSoXe: finalPlate }),
-          });
-          if (res.status === 400) {
-            const errData = await res.json().catch(() => ({}));
-            console.warn('[approveLicensePlate] Backend returned 400:', errData.message);
-          }
         }
-      } catch (beErr: any) {
-        console.warn('[approveLicensePlate] Backend sync warning:', beErr);
+      } catch (findErr) {
+        console.warn('[approveLicensePlate] Lỗi tra cứu XeKhachHang backend:', findErr);
+      }
+
+      if (targetMaXeSoHuu > 0) {
+        const res = await fetchWithTimeout(`${API_BASE_URL}/XeKhachHang/duyet-bien-so/${targetMaXeSoHuu}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: JSON.stringify({ bienSoXe: finalPlate }),
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.message || `Lỗi máy chủ (${res.status}): Không thể phê duyệt biển số xe!`);
+        }
       }
     }
 
@@ -1981,26 +2019,11 @@ export const orderApi = {
 
           list = data.map((item: any, idx: number) => {
             const numId = item.maDon;
+            const hasExplicitParts = Array.isArray(item.chiTiet) && item.chiTiet.length > 0;
 
-            // 1. Đối chiếu tìm đơn xe trong cache hoặc mockOrders
-            const matchedVehicle = currentCached.find(m =>
-              (m.loaiDon === 'Xe' || !!m.thongTinXe || (m.id && m.id.includes('XE'))) &&
-              (
-                m.id === `DH-XE-${numId < 10 ? `00${numId}` : `0${numId}`}` ||
-                m.id === `DH-XE-${numId}` ||
-                parseInt(m.id.replace(/\D/g, ''), 10) === numId
-              )
-            ) || mockOrders.find(m =>
-              (m.loaiDon === 'Xe' || !!m.thongTinXe || (m.id && m.id.includes('XE'))) &&
-              (
-                m.id === `DH-XE-${numId < 10 ? `00${numId}` : `0${numId}`}` ||
-                parseInt(m.id.replace(/\D/g, ''), 10) === numId
-              )
-            );
-
-            // 2. Đối chiếu tìm đơn phụ tùng trong cache
+            // 1. Đối chiếu tìm đơn phụ tùng trong cache
             const matchedPart = currentCached.find(m =>
-              !m.id.includes('XE') && m.loaiDon !== 'Xe' && (
+              (m.loaiDon === 'PhuTung' || (!m.thongTinXe && !m.id.includes('XE'))) && (
                 m.id === `DH00${numId}` ||
                 m.id === `DH0${numId}` ||
                 m.id === `DH${numId}` ||
@@ -2008,45 +2031,55 @@ export const orderApi = {
               )
             );
 
-            // 3. Đối chiếu tìm lịch hẹn nhận xe bàn giao liên kết từ LICH_HEN
-            const linkedAppt = allAppts.find(a =>
+            const hasParts = hasExplicitParts || Boolean(matchedPart && (matchedPart.loaiDon === 'PhuTung' || (matchedPart.items && matchedPart.items.length > 0 && !matchedPart.thongTinXe)));
+
+            // 2. Đối chiếu tìm đơn xe trong cache hoặc mockOrders (CHỈ tìm nếu KHÔNG PHẢI đơn phụ tùng)
+            const matchedVehicle = !hasParts ? (
+              currentCached.find(m =>
+                (m.loaiDon === 'Xe' || !!m.thongTinXe || (m.id && m.id.includes('XE'))) &&
+                (
+                  m.id === `DH-XE-${numId < 10 ? `00${numId}` : (numId < 100 ? `0${numId}` : numId)}` ||
+                  m.id === `DH-XE-${numId}`
+                )
+              ) || mockOrders.find(m =>
+                (m.loaiDon === 'Xe' || !!m.thongTinXe || (m.id && m.id.includes('XE'))) &&
+                (
+                  m.id === `DH-XE-${numId < 10 ? `00${numId}` : (numId < 100 ? `0${numId}` : numId)}` ||
+                  m.id === `DH-XE-${numId}`
+                )
+              )
+            ) : undefined;
+
+            // 3. Đối chiếu tìm lịch hẹn nhận xe bàn giao liên kết từ LICH_HEN (CHỈ khi không phải đơn phụ tùng)
+            const linkedAppt = !hasParts ? allAppts.find(a =>
               (a.maDonHangXe && (
-                a.maDonHangXe === `DH-XE-${numId < 10 ? `00${numId}` : `0${numId}`}` ||
+                a.maDonHangXe === `DH-XE-${numId < 10 ? `00${numId}` : (numId < 100 ? `0${numId}` : numId)}` ||
                 a.maDonHangXe === `DH-XE-${numId}` ||
-                a.maDonHangXe === `DH00${numId}` ||
-                a.maDonHangXe === `DH0${numId}` ||
-                parseInt(a.maDonHangXe.replace(/\D/g, ''), 10) === numId
+                a.maDonHangXe === `DH-XE-00${numId}`
               )) ||
               (a.ghiChu && (
-                a.ghiChu.includes(`DH-XE-${numId < 10 ? `00${numId}` : `0${numId}`}`) ||
+                a.ghiChu.includes(`DH-XE-${numId < 10 ? `00${numId}` : (numId < 100 ? `0${numId}` : numId)}`) ||
                 a.ghiChu.includes(`DH-XE-${numId}`) ||
-                a.ghiChu.includes(`đơn #${numId}`) ||
-                a.ghiChu.includes(`Đơn #${numId}`) ||
-                a.ghiChu.includes(`đơn #${numId < 10 ? `00${numId}` : `0${numId}`}`)
-              )) ||
-              (a.customerId && (a.customerId === (item.maKH ? `KH00${item.maKH}` : '') || a.customerId === (item.maKH ? `KH0${item.maKH}` : '')) &&
-                (a.loaiDichVu === 'NhanXe' || a.loaiDichVu?.includes('Nhận xe') || (a.ghiChu && a.ghiChu.includes('nhận xe'))))
-            );
+                a.ghiChu.includes(`đơn #DH-XE-${numId}`)
+              ))
+            ) : undefined;
 
             // 4. Nhận diện đơn xe:
-            // - Đã có trong cache xe (matchedVehicle)
-            // - Hoặc có lịch hẹn nhận xe bàn giao tương ứng
-            // - Hoặc backend không có chi tiết phụ tùng (chiTiet rỗng) và giá trị cao (xe máy >= 10tr hoặc cọc 2tr/5tr)
-            // - Hoặc đơn không có mặt hàng phụ tùng hợp lệ
-            const hasExplicitParts = Array.isArray(item.chiTiet) && item.chiTiet.length > 0;
-            const isVehicleOrder = Boolean(
-              matchedVehicle ||
+            // - Tuyệt đối KHÔNG PHẢI đơn xe nếu có chi tiết phụ tùng (hasParts = true)
+            // - Hoặc giá trị < 2 triệu (không có xe máy hay cọc xe nào dưới 2tr)
+            // - Hoặc cache xác nhận là PhuTung
+            const isVehicleOrder = !hasParts && item.tongTien >= 2000000 && Boolean(
+              (matchedVehicle && (matchedVehicle.loaiDon === 'Xe' || !!matchedVehicle.thongTinXe)) ||
               (linkedAppt && (linkedAppt.loaiDichVu === 'NhanXe' || linkedAppt.loaiDichVu?.includes('Nhận xe') || !!linkedAppt.tenXe)) ||
-              (!hasExplicitParts && (item.tongTien >= 10000000 || item.tongTien === 2000000 || item.tongTien === 5000000)) ||
-              (!hasExplicitParts && (!matchedPart || !matchedPart.items || matchedPart.items.length === 0))
-            );
+              (item.tongTien >= 10000000 || item.tongTien === 2000000 || item.tongTien === 5000000)
+            ) && (item.loaiDon !== 'PhuTung') && (!matchedPart || matchedPart.loaiDon !== 'PhuTung');
 
             const matchedExisting = isVehicleOrder ? matchedVehicle : (matchedPart || matchedVehicle);
 
             const id = isVehicleOrder
-              ? `DH-XE-${numId < 10 ? `00${numId}` : `0${numId}`}`
-              : (numId ? (numId < 10 ? `DH00${numId}` : `DH0${numId}`) : (matchedExisting?.id || `DH${idx + 1}`));
-            const cId = item.maKH ? (item.maKH < 10 ? `KH00${item.maKH}` : `KH0${item.maKH}`) : (matchedExisting?.customerId || 'KH001');
+              ? `DH-XE-${numId < 10 ? `00${numId}` : (numId < 100 ? `0${numId}` : numId)}`
+              : (numId ? (numId < 10 ? `DH00${numId}` : (numId < 100 ? `DH0${numId}` : `DH${numId}`)) : (matchedExisting?.id || `DH${idx + 1}`));
+            const cId = item.maKH ? (item.maKH < 10 ? `KH00${item.maKH}` : (item.maKH < 100 ? `KH0${item.maKH}` : `KH${item.maKH}`)) : (matchedExisting?.customerId || 'KH001');
 
             let tt: OrderStatus = 'ChoDuyet';
             if (item.trangThai === 'Hoàn thành' || item.trangThai === 'HoanThanh' || item.trangThai === 'Đã giao' || item.trangThai === 'DaGiao') tt = 'HoanThanh';
@@ -2071,42 +2104,45 @@ export const orderApi = {
             else if (matchedExisting?.trangThaiThanhToan) paymentStatus = matchedExisting.trangThaiThanhToan;
 
             // Xây dựng thông tin xe cho đơn xe máy
-            let finalThongTinXe = matchedVehicle?.thongTinXe || matchedExisting?.thongTinXe;
-            if (!finalThongTinXe && isVehicleOrder) {
-              const rawBikeName = linkedAppt?.tenXe || (linkedAppt?.loaiDichVu ? linkedAppt.loaiDichVu.replace(/Nhận xe mới:\s*/i, '').trim() : '') || '';
-              const bikeName = rawBikeName || (item.tongTien > 60000000 ? 'Honda Winner X 150' : 'Xe máy chính hãng Motoshop');
-              finalThongTinXe = {
-                maXe: (linkedAppt as any)?.maXe || `XM-${numId}`,
-                tenXe: bikeName,
-                mauSac: linkedAppt?.mauXe || 'Tiêu chuẩn',
-                phienBan: linkedAppt?.phienBan || 'Tiêu chuẩn',
-                soKhungVIN: (linkedAppt as any)?.soKhungVIN || undefined,
-                customerType: 'CaNhan',
-                phiTruocBa: Math.round(item.tongTien * 0.05),
-                phiDangKyBienSo: 2000000,
-                phiBaoHiem: 500000,
-                khuyenMai: 0,
-                giaNiemYet: item.tongTien,
-                tongGiaTri: item.tongTien,
-                soTienDatCoc: linkedAppt?.soTienCoc || (item.tongTien === 2000000 ? 2000000 : item.tongTien),
-                soTienConLai: (paymentStatus === 'DaThanhToan' || tt === 'HoanThanh') ? 0 : Math.max(0, item.tongTien - (linkedAppt?.soTienCoc || item.tongTien)),
-                hinhThucGiao: (linkedAppt?.hinhThucGiao as any) || 'Showroom',
-                diaChiGiao: linkedAppt?.diaChiGiao || (matchedExisting as any)?.diaChiGiao || 'Showroom Motoshop',
-                ngayGiaoXe: linkedAppt?.ngayHen ? linkedAppt.ngayHen.split('T')[0] : (item.ngayDat ? item.ngayDat.split('T')[0] : '2026-11-01'),
-                khungGioGiao: linkedAppt?.gioHen || '09:30',
-                checklist: (linkedAppt as any)?.checklist || {
-                  xacThucKH: true,
-                  thuThapCCCD: true,
-                  kyHopDong: true,
-                  nhapSoKhungVIN: false,
-                  dangKyBienSo: false,
-                  thuTienCoc: true,
-                  hoSoVay: false,
-                  capBaoHiem: true,
-                  kiemTraPDI: false,
-                  banGiaoXe: false,
-                },
-              } as any;
+            let finalThongTinXe = undefined;
+            if (isVehicleOrder) {
+              finalThongTinXe = matchedVehicle?.thongTinXe || (matchedExisting?.loaiDon === 'Xe' ? matchedExisting?.thongTinXe : undefined);
+              if (!finalThongTinXe) {
+                const rawBikeName = linkedAppt?.tenXe || (linkedAppt?.loaiDichVu ? linkedAppt.loaiDichVu.replace(/Nhận xe mới:\s*/i, '').trim() : '') || '';
+                const bikeName = rawBikeName || (item.tongTien > 60000000 ? 'Honda Winner X 150' : 'Xe máy chính hãng Motoshop');
+                finalThongTinXe = {
+                  maXe: (linkedAppt as any)?.maXe || `XM-${numId}`,
+                  tenXe: bikeName,
+                  mauSac: linkedAppt?.mauXe || 'Tiêu chuẩn',
+                  phienBan: linkedAppt?.phienBan || 'Tiêu chuẩn',
+                  soKhungVIN: (linkedAppt as any)?.soKhungVIN || undefined,
+                  customerType: 'CaNhan',
+                  phiTruocBa: Math.round(item.tongTien * 0.05),
+                  phiDangKyBienSo: 2000000,
+                  phiBaoHiem: 500000,
+                  khuyenMai: 0,
+                  giaNiemYet: item.tongTien,
+                  tongGiaTri: item.tongTien,
+                  soTienDatCoc: linkedAppt?.soTienCoc || (item.tongTien === 2000000 ? 2000000 : item.tongTien),
+                  soTienConLai: (paymentStatus === 'DaThanhToan' || tt === 'HoanThanh') ? 0 : Math.max(0, item.tongTien - (linkedAppt?.soTienCoc || item.tongTien)),
+                  hinhThucGiao: (linkedAppt?.hinhThucGiao as any) || 'Showroom',
+                  diaChiGiao: linkedAppt?.diaChiGiao || (matchedExisting as any)?.diaChiGiao || 'Showroom Motoshop',
+                  ngayGiaoXe: linkedAppt?.ngayHen ? linkedAppt.ngayHen.split('T')[0] : (item.ngayDat ? item.ngayDat.split('T')[0] : '2026-11-01'),
+                  khungGioGiao: linkedAppt?.gioHen || '09:30',
+                  checklist: (linkedAppt as any)?.checklist || {
+                    xacThucKH: true,
+                    thuThapCCCD: true,
+                    kyHopDong: true,
+                    nhapSoKhungVIN: false,
+                    dangKyBienSo: false,
+                    thuTienCoc: true,
+                    hoSoVay: false,
+                    capBaoHiem: true,
+                    kiemTraPDI: false,
+                    banGiaoXe: false,
+                  },
+                } as any;
+              }
             }
 
             return {
@@ -2146,7 +2182,7 @@ export const orderApi = {
               maNV: matchedExisting?.maNV,
               tenNV: matchedExisting?.tenNV,
               phuongThucThanhToan: item.phuongThucThanhToan || matchedExisting?.phuongThucThanhToan || 'ChuyenKhoan',
-              thongTinXe: finalThongTinXe,
+              thongTinXe: isVehicleOrder ? finalThongTinXe : undefined,
               ghiChu: matchedExisting?.ghiChu || linkedAppt?.ghiChu,
               maLichHen: matchedExisting?.maLichHen || linkedAppt?.maLichHen || linkedAppt?.id,
               qrCodeUrl: matchedExisting?.qrCodeUrl,
@@ -2170,14 +2206,18 @@ export const orderApi = {
     mockOrders.forEach(o => combinedMap.set(o.id, { ...o }));
     cachedOrders.forEach(o => combinedMap.set(o.id, { ...combinedMap.get(o.id), ...o }));
     list.forEach(o => {
-      const isVehicleOrder = o.loaiDon === 'Xe' || !!o.thongTinXe || (o.id && o.id.includes('XE'));
+      const isVehicleOrder = o.loaiDon === 'Xe' || (!!o.thongTinXe && (!o.items || o.items.length === 0)) || (o.id && o.id.includes('XE') && (!o.items || o.items.length === 0));
+      const rawNum = parseInt(o.id.replace(/\D/g, ''), 10);
       if (isVehicleOrder) {
-        const rawNum = parseInt(o.id.replace(/\D/g, ''), 10);
         if (!isNaN(rawNum)) {
           combinedMap.delete(`DH00${rawNum}`);
           combinedMap.delete(`DH0${rawNum}`);
           combinedMap.delete(`DH${rawNum}`);
         }
+      } else if (o.loaiDon === 'PhuTung' && !isNaN(rawNum)) {
+        // Dọn dẹp đơn xe ảo bị lưu nhầm trước đó nếu cùng số thứ tự đơn
+        combinedMap.delete(`DH-XE-${rawNum < 10 ? `00${rawNum}` : (rawNum < 100 ? `0${rawNum}` : rawNum)}`);
+        combinedMap.delete(`DH-XE-${rawNum}`);
       }
 
       const existingInCache = combinedMap.get(o.id);
@@ -2220,14 +2260,20 @@ export const orderApi = {
       }
     });
 
-    // Dọn dẹp triệt để các mã đơn rác phụ tùng trùng số với đơn xe máy (ví dụ DH028 khi đã có DH-XE-028)
+    // Dọn dẹp triệt để các mã đơn rác phụ tùng trùng số với đơn xe máy hoặc ngược lại
     for (const key of Array.from(finalOrderMap.keys())) {
       if (key.startsWith('DH-XE-')) {
         const rawNum = parseInt(key.replace(/\D/g, ''), 10);
         if (!isNaN(rawNum)) {
-          finalOrderMap.delete(`DH00${rawNum}`);
-          finalOrderMap.delete(`DH0${rawNum}`);
-          finalOrderMap.delete(`DH${rawNum}`);
+          const isRealPartOrder = list.some(l => l.loaiDon === 'PhuTung' && parseInt(l.id.replace(/\D/g, ''), 10) === rawNum);
+          if (isRealPartOrder) {
+            // Đơn xe này bị sinh nhầm từ đơn phụ tùng thật -> XÓA đơn xe ảo này!
+            finalOrderMap.delete(key);
+          } else {
+            finalOrderMap.delete(`DH00${rawNum}`);
+            finalOrderMap.delete(`DH0${rawNum}`);
+            finalOrderMap.delete(`DH${rawNum}`);
+          }
         }
       }
     }
@@ -2237,7 +2283,12 @@ export const orderApi = {
       finalOrderMap.delete('DH-XE-025');
     }
     merged = Array.from(finalOrderMap.values()).map(o => {
-      const isVehicle = o.loaiDon === 'Xe' || !!o.thongTinXe || (o.id && String(o.id).includes('XE')) || (!o.items?.length && o.tongTien >= 10000000);
+      const isVehicle = o.loaiDon !== 'PhuTung' && (
+        o.loaiDon === 'Xe' ||
+        (!!o.thongTinXe && (!o.items || o.items.length === 0)) ||
+        (o.id && String(o.id).includes('XE') && (!o.items || o.items.length === 0)) ||
+        (!o.items?.length && o.tongTien >= 10000000)
+      );
       if (isVehicle) {
         return {
           ...o,
@@ -2245,7 +2296,11 @@ export const orderApi = {
           items: (o.items || []).filter(it => it.tenSanPham !== 'Phụ tùng chính hãng' && (it.maPhuTung || (it as any).id)),
         };
       }
-      return o;
+      return {
+        ...o,
+        loaiDon: 'PhuTung' as const,
+        thongTinXe: undefined,
+      };
     });
 
     try {
@@ -2281,7 +2336,18 @@ export const orderApi = {
     const combinedMap = new Map<string, Order>();
     mockOrders.forEach(o => combinedMap.set(o.id, { ...o }));
     cachedList.forEach(o => combinedMap.set(o.id, { ...combinedMap.get(o.id), ...o }));
-    return Array.from(combinedMap.values());
+    return Array.from(combinedMap.values()).map(o => {
+      const isVehicle = o.loaiDon !== 'PhuTung' && (
+        o.loaiDon === 'Xe' ||
+        (!!o.thongTinXe && (!o.items || o.items.length === 0)) ||
+        (o.id && String(o.id).includes('XE') && (!o.items || o.items.length === 0)) ||
+        (!o.items?.length && o.tongTien >= 10000000)
+      );
+      if (!isVehicle) {
+        return { ...o, loaiDon: 'PhuTung' as const, thongTinXe: undefined };
+      }
+      return o;
+    });
   },
 
   async updateStatus(orderIdOrNum: string | number, trangThai: OrderStatus | string) {
@@ -2484,12 +2550,11 @@ export const orderApi = {
       // Tự động kích hoạt lịch hẹn nhận xe tương ứng sang 'DaXacNhan'
       try {
         const ord = targetOrder;
-        if (ord && (ord.loaiDon === 'Xe' || !!ord.thongTinXe || ord.id.includes('XE'))) {
+        if (ord && ord.loaiDon !== 'PhuTung' && (ord.loaiDon === 'Xe' || (!!ord.thongTinXe && (!ord.items || ord.items.length === 0)) || (ord.id && ord.id.includes('XE') && (!ord.items || ord.items.length === 0)))) {
           const allAppts = await appointmentApi.getAll();
           const matchedAppts = allAppts.filter(a =>
             (a.maDonHangXe && a.maDonHangXe === ord.id) ||
-            (a.maLichHen && (a.maLichHen === ord.maLichHen || a.maLichHen === ord.thongTinXe?.maLichHen)) ||
-            (a.customerId === ord.customerId && a.loaiDichVu === 'NhanXe')
+            (a.maLichHen && (a.maLichHen === ord.maLichHen || a.maLichHen === ord.thongTinXe?.maLichHen))
           );
           if (matchedAppts.length > 0) {
             for (const ma of matchedAppts) {
@@ -2586,7 +2651,7 @@ export const orderApi = {
           targetId: targetOrder.id,
         });
 
-        const isTargetVehicle = targetOrder.loaiDon === 'Xe' || !!targetOrder.thongTinXe || (targetOrder.id && targetOrder.id.includes('XE'));
+        const isTargetVehicle = targetOrder.loaiDon !== 'PhuTung' && (targetOrder.loaiDon === 'Xe' || (!!targetOrder.thongTinXe && (!targetOrder.items || targetOrder.items.length === 0)) || (targetOrder.id && targetOrder.id.includes('XE') && (!targetOrder.items || targetOrder.items.length === 0)));
 
         // KS01: Nếu là đơn phụ tùng -> Tự động gửi thông báo khảo sát mua sắm phụ tùng
         if (!isTargetVehicle) {
@@ -2603,7 +2668,7 @@ export const orderApi = {
         }
 
         // TB03: NẾU LÀ ĐƠN HÀNG XE -> Tách riêng thông báo "Nhận xe thành công" và "Mời đánh giá xe"
-        if (targetOrder && (targetOrder.loaiDon === 'Xe' || targetOrder.thongTinXe || (targetOrder.id && targetOrder.id.includes('XE')))) {
+        if (targetOrder && isTargetVehicle) {
           const bikeName = targetOrder.thongTinXe?.tenXe || 'xe mới';
 
           // Thông báo 3: Nhận xe thành công
@@ -2651,7 +2716,7 @@ export const orderApi = {
         }
 
         // NẾU LÀ ĐƠN HÀNG XE: Tự động kích hoạt xe vào tài khoản khách & gửi bài khảo sát xe mua mới cho khách hàng!
-        if (targetOrder && (targetOrder.loaiDon === 'Xe' || targetOrder.thongTinXe || (targetOrder.id && targetOrder.id.includes('XE')))) {
+        if (targetOrder && isTargetVehicle) {
           try {
             const bikeName = targetOrder.thongTinXe?.tenXe || 'Xe máy chính hãng';
             const brand = bikeName.includes('Yamaha') ? 'Yamaha' : bikeName.includes('Suzuki') ? 'Suzuki' : 'Honda';
@@ -2804,7 +2869,7 @@ export const orderApi = {
         } catch {}
       }
       // Tự động hoàn lại số lượng xe vào tồn kho
-      if (targetOrder.loaiDon === 'Xe' || targetOrder.thongTinXe) {
+      if (targetOrder.loaiDon !== 'PhuTung' && (targetOrder.loaiDon === 'Xe' || (targetOrder.thongTinXe && (!targetOrder.items || targetOrder.items.length === 0)))) {
         try {
           const cached = localStorage.getItem('crm_catalog_vehicles');
           let list: CatalogVehicle[] = cached ? JSON.parse(cached) : [...DEFAULT_CATALOG_VEHICLES];
@@ -3138,7 +3203,7 @@ async delete(orderIdOrNum: string | number): Promise<boolean> {
     }
 
     // Tự động hoàn lại số lượng xe vào tồn kho
-    if (order.loaiDon === 'Xe' || order.thongTinXe) {
+    if (order.loaiDon !== 'PhuTung' && (order.loaiDon === 'Xe' || (order.thongTinXe && (!order.items || order.items.length === 0)))) {
       try {
         const cached = localStorage.getItem('crm_catalog_vehicles');
         let list: CatalogVehicle[] = cached ? JSON.parse(cached) : [...DEFAULT_CATALOG_VEHICLES];
@@ -3527,34 +3592,33 @@ async delete(orderIdOrNum: string | number): Promise<boolean> {
       localStorage.setItem('crm_orders_cache', JSON.stringify(list));
     } catch {}
 
-    // Kích hoạt phương tiện sở hữu vào tài khoản khách hàng ngay khi đặt mua xe
-    try {
-      const vName = data.thongTinXe.tenXe;
-      const brand = vName.includes('Yamaha') ? 'Yamaha' : vName.includes('Suzuki') ? 'Suzuki' : vName.includes('SYM') ? 'SYM' : 'Honda';
-      const vin = data.thongTinXe.soKhungVIN || (`RLHKD160CB${newOrder.id.replace(/\D/g, '').padEnd(7, '0').slice(0, 7)}`);
-      const soMay = data.thongTinXe.soMay || (`KF12E-${newOrder.id.replace(/\D/g, '').padEnd(7, '8').slice(0, 7)}`);
-      const isDelivered = newOrder.trangThai === 'HoanThanh' || newOrder.trangThai === 'DaGiao';
-      const plateStr = data.thongTinXe.bienSo && data.thongTinXe.bienSo !== 'Chưa có biển số' && !data.thongTinXe.bienSo.includes('Chưa có')
-        ? data.thongTinXe.bienSo
-        : isDelivered
-        ? '59-K1 888.88'
-        : 'Chưa có biển số';
+    // Kích hoạt phương tiện sở hữu vào tài khoản khách hàng nếu đơn mua xe đã hoàn tất (ví dụ bán tại quầy giao ngay)
+    if (newOrder.trangThai === 'HoanThanh' || newOrder.trangThai === 'DaGiao' || (newOrder.thongTinXe as any)?.daNhanXe) {
+      try {
+        const vName = data.thongTinXe.tenXe;
+        const brand = vName.includes('Yamaha') ? 'Yamaha' : vName.includes('Suzuki') ? 'Suzuki' : vName.includes('SYM') ? 'SYM' : 'Honda';
+        const vin = data.thongTinXe.soKhungVIN || (`RLHKD160CB${newOrder.id.replace(/\D/g, '').padEnd(7, '0').slice(0, 7)}`);
+        const soMay = data.thongTinXe.soMay || (`KF12E-${newOrder.id.replace(/\D/g, '').padEnd(7, '8').slice(0, 7)}`);
+        const plateStr = data.thongTinXe.bienSo && data.thongTinXe.bienSo !== 'Chưa có biển số' && !data.thongTinXe.bienSo.includes('Chưa có')
+          ? data.thongTinXe.bienSo
+          : 'Chưa có biển số';
 
-      await vehicleApi.createSoldVehicle({
-        customerId: data.customerId,
-        tenXe: vName,
-        hangXe: brand,
-        bienSo: plateStr,
-        mauSac: data.thongTinXe.mauSac || 'Tiêu chuẩn',
-        dongCo: data.thongTinXe.dongCo || '160cc PGM-FI',
-        soKhung: vin,
-        soMay: soMay,
-        namSanXuat: new Date().getFullYear().toString(),
-        hanBaoHanh: new Date(Date.now() + 3 * 365 * 24 * 3600 * 1000).toISOString().split('T')[0],
-        hinhAnh: data.thongTinXe.hinhAnh,
-      });
-    } catch (vErr) {
-      console.warn('Auto create sold vehicle on order creation error:', vErr);
+        await vehicleApi.createSoldVehicle({
+          customerId: data.customerId,
+          tenXe: vName,
+          hangXe: brand,
+          bienSo: plateStr,
+          mauSac: data.thongTinXe.mauSac || 'Tiêu chuẩn',
+          dongCo: data.thongTinXe.dongCo || '160cc PGM-FI',
+          soKhung: vin,
+          soMay: soMay,
+          namSanXuat: new Date().getFullYear().toString(),
+          hanBaoHanh: new Date(Date.now() + 3 * 365 * 24 * 3600 * 1000).toISOString().split('T')[0],
+          hinhAnh: data.thongTinXe.hinhAnh,
+        });
+      } catch (vErr) {
+        console.warn('Auto create sold vehicle on order creation error:', vErr);
+      }
     }
 
     window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'order', orderId: newOrder.id } }));
@@ -3589,6 +3653,66 @@ async delete(orderIdOrNum: string | number): Promise<boolean> {
     }
 
     return { success: true, order: newOrder, maDon: createdMaDon };
+  },
+
+  async assignTechnician(orderIdOrNum: string | number, ktv: { id: string; hoTen: string; ghiChu?: string }) {
+    const orderIdStr = String(orderIdOrNum);
+    const numId = parseInt(orderIdStr.replace(/\D/g, ''), 10);
+
+    // 1. Cập nhật localStorage crm_orders_cache
+    try {
+      const cached = localStorage.getItem('crm_orders_cache');
+      let list: Order[] = cached ? JSON.parse(cached) : [...mockOrders];
+      let matchIdx = list.findIndex(o => o.id === orderIdStr);
+      if (matchIdx === -1 && !isNaN(numId) && numId > 0) {
+        matchIdx = list.findIndex(o => parseInt(o.id.replace(/\D/g, ''), 10) === numId);
+      }
+      if (matchIdx !== -1) {
+        list[matchIdx].maKTV = ktv.id;
+        list[matchIdx].tenKTV = ktv.hoTen;
+        if (list[matchIdx].thongTinXe) {
+          list[matchIdx].thongTinXe!.ktvPhuTrach = ktv.hoTen;
+          list[matchIdx].thongTinXe!.maKTV = ktv.id;
+          if (ktv.ghiChu) list[matchIdx].thongTinXe!.ghiChuKTV = ktv.ghiChu;
+        }
+      }
+      localStorage.setItem('crm_orders_cache', JSON.stringify(list));
+    } catch {}
+
+    // 2. Cập nhật localStorage crm_orders
+    try {
+      const crmOrders = localStorage.getItem('crm_orders');
+      if (crmOrders) {
+        let list: Order[] = JSON.parse(crmOrders);
+        let matchIdx = list.findIndex(o => o.id === orderIdStr || (!isNaN(numId) && parseInt(o.id.replace(/\D/g, ''), 10) === numId));
+        if (matchIdx !== -1) {
+          list[matchIdx].maKTV = ktv.id;
+          list[matchIdx].tenKTV = ktv.hoTen;
+          if (list[matchIdx].thongTinXe) {
+            list[matchIdx].thongTinXe!.ktvPhuTrach = ktv.hoTen;
+            list[matchIdx].thongTinXe!.maKTV = ktv.id;
+            if (ktv.ghiChu) list[matchIdx].thongTinXe!.ghiChuKTV = ktv.ghiChu;
+          }
+          localStorage.setItem('crm_orders', JSON.stringify(list));
+        }
+      }
+    } catch {}
+
+    // 3. Cập nhật in-memory mockOrders
+    mockOrders.forEach(o => {
+      if (o.id === orderIdStr || (!isNaN(numId) && parseInt(o.id.replace(/\D/g, ''), 10) === numId)) {
+        o.maKTV = ktv.id;
+        o.tenKTV = ktv.hoTen;
+        if (o.thongTinXe) {
+          o.thongTinXe.ktvPhuTrach = ktv.hoTen;
+          o.thongTinXe.maKTV = ktv.id;
+          if (ktv.ghiChu) o.thongTinXe.ghiChuKTV = ktv.ghiChu;
+        }
+      }
+    });
+
+    window.dispatchEvent(new CustomEvent('crm-data-refresh'));
+    return { success: true };
   },
 };
 

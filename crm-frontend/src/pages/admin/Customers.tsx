@@ -856,7 +856,11 @@ function Customer360Modal({
     setApprovingPlateId(vId);
     try {
       const targetV = vehicles.find(x => x.id === vId);
-      const proposedPlate = targetV?.bienSoChoDuyet || targetV?.bienSo || '59-K1 888.88';
+      const proposedPlate = targetV?.bienSoChoDuyet || (targetV?.bienSo && targetV.bienSo !== 'Chưa có biển số' && !targetV.bienSo.includes('Chưa có') ? targetV.bienSo : '');
+      if (!proposedPlate) {
+        alert('Xe chưa có biển số đề xuất từ Cà vẹt của khách! Vui lòng vào trang Quản lý biển số để đối chiếu giấy tờ và cấp biển số.');
+        return;
+      }
       await vehicleApi.approveLicensePlate(vId, proposedPlate, targetV);
       setVehicles(prev => prev.map(x => x.id === vId ? { ...x, bienSo: proposedPlate, trangThaiDuyetBienSo: 'DaDuyet', bienSoChoDuyet: undefined } : x));
       window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'license_plate_approved', vehicleId: vId, plate: proposedPlate } }));

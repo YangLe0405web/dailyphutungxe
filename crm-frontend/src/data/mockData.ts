@@ -385,6 +385,9 @@ export interface VehicleOrderDetails {
   bienSoChoDuyet?: string;
   trangThaiDuyetBienSo?: 'ChoCapNhat' | 'ChoDuyet' | 'DaDuyet' | 'TuChoi';
   anhCaVet?: string;
+  ktvPhuTrach?: string;
+  maKTV?: string;
+  ghiChuKTV?: string;
 }
 
 export interface OrderItem {
@@ -421,6 +424,8 @@ export interface Order {
   lyDoHuy?: string;
   maLichHen?: string;
   qrCodeUrl?: string;
+  maKTV?: string;
+  tenKTV?: string;
 }
 
 export interface AppointmentTimelineItem {

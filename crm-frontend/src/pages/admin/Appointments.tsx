@@ -803,7 +803,7 @@ export default function AppointmentsPage({
     const existingOrderIds = new Set(appointments.filter(a => a.maDonHangXe).map(a => a.maDonHangXe!));
 
     allOrders.forEach(o => {
-      const isVehicle = o.loaiDon === 'Xe' || !!o.thongTinXe || (o.id && o.id.includes('XE'));
+      const isVehicle = o.loaiDon !== 'PhuTung' && (o.loaiDon === 'Xe' || (!!o.thongTinXe && (!o.items || o.items.length === 0)) || (o.id && o.id.includes('XE') && (!o.items || o.items.length === 0)));
       if (!isVehicle) return;
       if (existingOrderIds.has(o.id)) return;
 
