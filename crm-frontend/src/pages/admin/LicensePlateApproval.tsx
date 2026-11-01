@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { vehicleApi, customerApi } from '../../services/api';
+import { vehicleApi, customerApi, isNoPlate } from '../../services/api';
 import { matchVietnameseSearch } from '../../utils/vietnameseSearch';
 import {
   type Vehicle,
@@ -25,6 +25,10 @@ export default function LicensePlateApproval() {
   const [rejectReason, setRejectReason] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [viewingDetailVehicle, setViewingDetailVehicle] = useState<Vehicle | null>(null);
+
+  // Modal Phê duyệt & Cấp biển số chính thức
+  const [approvingVehicle, setApprovingVehicle] = useState<Vehicle | null>(null);
+  const [officialPlateInput, setOfficialPlateInput] = useState('');
 
   // Toast notification
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
@@ -54,7 +58,6 @@ export default function LicensePlateApproval() {
   useEffect(() => {
     loadData();
     const handleRefresh = (e: any) => {
-      if (e?.detail?.type === 'license_plate_approved') return;
       loadData();
     };
     window.addEventListener('crm-data-refresh', handleRefresh);
@@ -115,7 +118,9 @@ export default function LicensePlateApproval() {
       if (v.anhCaVet) return true;
       // 5. Xe ngoài hệ thống
       if (v.nguonGoc === 'NgoaiHeThong') return true;
-      // 6. Xe đã có biển số thực tế
+      // 6. Xe chưa có biển số hoặc biển số tạm
+      if (!v.bienSo || v.bienSo === 'Chưa có biển số' || v.bienSo.includes('Chưa có') || v.bienSo.startsWith('TAM-')) return true;
+      // 7. Xe đã có biển số thực tế
       if (v.bienSo && v.bienSo !== 'Chưa có biển số' && !v.bienSo.includes('Chưa có')) return true;
       return false;
     });
@@ -123,9 +128,13 @@ export default function LicensePlateApproval() {
 
   // Thống kê KPI Cards
   const stats = useMemo(() => {
-    const pendingPlates = plateRecords.filter(v => (v.trangThaiDuyetBienSo === 'ChoDuyet' || Boolean(v.bienSoChoDuyet) || v.trangThaiDuyetBienSo === 'ChoCapNhat') && v.trangThaiDuyetBienSo !== 'DaDuyet' && v.trangThaiDuyetBienSo !== 'TuChoi').length;
+    const pendingPlates = plateRecords.filter(v =>
+      v.trangThaiDuyetBienSo !== 'DaDuyet' &&
+      v.trangThaiDuyetBienSo !== 'TuChoi' &&
+      (v.trangThaiDuyetBienSo === 'ChoDuyet' || Boolean(v.bienSoChoDuyet) || v.trangThaiDuyetBienSo === 'ChoCapNhat' || !v.bienSo || v.bienSo === 'Chưa có biển số' || v.bienSo.includes('Chưa có'))
+    ).length;
     const pendingOutside = plateRecords.filter(v => v.nguonGoc === 'NgoaiHeThong' && ((v.trangThaiDuyet === 'ChoDuyet' || v.trangThaiDuyetBienSo === 'ChoDuyet') && v.trangThaiDuyetBienSo !== 'TuChoi')).length;
-    const approvedTotal = plateRecords.filter(v => v.trangThaiDuyetBienSo === 'DaDuyet' || (v.trangThaiDuyet === 'DaDuyet' && v.bienSo && v.bienSo !== 'Chưa có biển số')).length;
+    const approvedTotal = plateRecords.filter(v => v.trangThaiDuyetBienSo === 'DaDuyet' || (v.trangThaiDuyet === 'DaDuyet' && v.bienSo && v.bienSo !== 'Chưa có biển số' && !v.bienSo.includes('Chưa có'))).length;
     const rejectedTotal = plateRecords.filter(v => v.trangThaiDuyetBienSo === 'TuChoi' || v.trangThaiDuyet === 'TuChoi').length;
     return { pendingPlates, pendingOutside, approvedTotal, rejectedTotal };
   }, [plateRecords]);
@@ -136,7 +145,6 @@ export default function LicensePlateApproval() {
       const cust = customerMap.get(v.customerId) || customerMap.get(String(parseInt(v.customerId.replace(/\D/g, ''), 10)));
       const custName = cust ? cust.hoTen.toLowerCase() : '';
       const custPhone = cust ? cust.soDienThoai : '';
-      const q = search.toLowerCase().trim();
 
       // Search match
       const matchSearch =
@@ -160,9 +168,9 @@ export default function LicensePlateApproval() {
       // Status match
       let matchStatus = true;
       if (filterStatus === 'ChoDuyet') {
-        matchStatus = (v.trangThaiDuyetBienSo === 'ChoDuyet' || Boolean(v.bienSoChoDuyet) || v.trangThaiDuyetBienSo === 'ChoCapNhat') && v.trangThaiDuyetBienSo !== 'DaDuyet' && v.trangThaiDuyetBienSo !== 'TuChoi';
+        matchStatus = v.trangThaiDuyetBienSo !== 'DaDuyet' && v.trangThaiDuyetBienSo !== 'TuChoi' && (v.trangThaiDuyetBienSo === 'ChoDuyet' || Boolean(v.bienSoChoDuyet) || v.trangThaiDuyetBienSo === 'ChoCapNhat' || !v.bienSo || v.bienSo === 'Chưa có biển số' || v.bienSo.includes('Chưa có'));
       } else if (filterStatus === 'DaDuyet') {
-        matchStatus = v.trangThaiDuyetBienSo === 'DaDuyet' || Boolean(v.trangThaiDuyet === 'DaDuyet' && v.bienSo && v.bienSo !== 'Chưa có biển số');
+        matchStatus = v.trangThaiDuyetBienSo === 'DaDuyet' || Boolean(v.trangThaiDuyet === 'DaDuyet' && v.bienSo && v.bienSo !== 'Chưa có biển số' && !v.bienSo.includes('Chưa có'));
       } else if (filterStatus === 'TuChoi') {
         matchStatus = v.trangThaiDuyetBienSo === 'TuChoi' || v.trangThaiDuyet === 'TuChoi';
       }
@@ -171,40 +179,61 @@ export default function LicensePlateApproval() {
     });
   }, [plateRecords, search, filterSource, filterStatus, customerMap]);
 
-  // Xử lý Phê duyệt biển số
-  const handleApprove = async (vehicle: Vehicle) => {
-    const proposedPlate = vehicle.bienSoChoDuyet || vehicle.bienSo;
-    if (!proposedPlate || proposedPlate === 'Chưa có biển số') {
-      alert('Không tìm thấy biển số đề xuất để duyệt!');
-      return;
-    }
+  // Mở modal Phê duyệt & Cấp biển số chính thức
+  const openApproveModal = (vehicle: Vehicle) => {
+    setApprovingVehicle(vehicle);
+    // Yêu cầu: Không được hiển thị sẵn biển số trong ô nhập, để trống để Admin đối chiếu Cà vẹt
+    setOfficialPlateInput('');
+  };
 
-    if (!window.confirm(`Xác nhận phê duyệt biển số chính thức "${proposedPlate}" cho xe "${vehicle.tenXe}"?`)) {
+  // Xác nhận Phê duyệt & Cấp biển số
+  const handleConfirmApprove = async () => {
+    if (!approvingVehicle) return;
+    const plateToAssign = officialPlateInput.trim().toUpperCase();
+    if (!plateToAssign || isNoPlate(plateToAssign)) {
+      alert('Vui lòng nhập biển số xe chính thức hợp lệ theo Cà vẹt!');
       return;
     }
 
     setIsSubmitting(true);
     try {
-      await vehicleApi.approveLicensePlate(vehicle.id, proposedPlate, vehicle);
-      showToast(`✓ Đã phê duyệt thành công biển số ${proposedPlate} cho xe ${vehicle.tenXe}!`);
+      await vehicleApi.approveLicensePlate(approvingVehicle.id, plateToAssign, approvingVehicle);
+      showToast(`✓ Đã phê duyệt và cấp biển số "${plateToAssign}" cho xe "${approvingVehicle.tenXe}" thành công!`);
+
+      // Cập nhật state local ngay tức thì
       setVehicles(prev =>
-        prev.map(v =>
-          (v.id === vehicle.id || parseInt(v.id.replace(/\D/g, ''), 10) === parseInt(vehicle.id.replace(/\D/g, ''), 10))
+        prev.map(v => {
+          const isTarget = v.id === approvingVehicle.id ||
+            (approvingVehicle.soKhung && v.soKhung && v.soKhung.trim().toUpperCase() === approvingVehicle.soKhung.trim().toUpperCase()) ||
+            (parseInt(v.id.replace(/\D/g, ''), 10) === parseInt(approvingVehicle.id.replace(/\D/g, ''), 10));
+          return isTarget
             ? {
                 ...v,
-                bienSo: proposedPlate,
+                bienSo: plateToAssign,
                 bienSoChoDuyet: undefined,
                 trangThaiDuyetBienSo: 'DaDuyet',
                 trangThaiDuyet: 'DaDuyet',
+                lyDoTuChoiBienSo: undefined,
               }
-            : v
-        )
+            : v;
+        })
       );
+      setApprovingVehicle(null);
+      setOfficialPlateInput('');
+      if (viewingDetailVehicle && (viewingDetailVehicle.id === approvingVehicle.id || (approvingVehicle.soKhung && viewingDetailVehicle.soKhung === approvingVehicle.soKhung))) {
+        setViewingDetailVehicle(prev => prev ? { ...prev, bienSo: plateToAssign, bienSoChoDuyet: undefined, trangThaiDuyetBienSo: 'DaDuyet', trangThaiDuyet: 'DaDuyet' } : null);
+      }
+      await loadData();
     } catch (err: any) {
-      showToast(`Lỗi phê duyệt biển số: ${err.message || 'Không thể cập nhật'}`, 'error');
+      showToast(`Lỗi phê duyệt biển số: ${err?.message || 'Không thể cập nhật'}`, 'error');
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  // Fallback gọi duyệt nhanh
+  const handleApprove = (vehicle: Vehicle) => {
+    openApproveModal(vehicle);
   };
 
   // Xử lý Từ chối biển số
@@ -218,7 +247,6 @@ export default function LicensePlateApproval() {
     setIsSubmitting(true);
     try {
       await vehicleApi.rejectLicensePlate(rejectingVehicle.id, rejectReason.trim(), rejectingVehicle);
-      // Cập nhật ngay lập tức vào state vehicles để phản ánh tức thì trên bảng
       setVehicles(prev =>
         prev.map(v =>
           v.id === rejectingVehicle.id
@@ -464,12 +492,13 @@ export default function LicensePlateApproval() {
               ) : (
                 filteredRecords.map(v => {
                   const cust = customerMap.get(v.customerId) || customerMap.get(String(parseInt(v.customerId.replace(/\D/g, ''), 10)));
-                  const isDaDuyet = v.trangThaiDuyetBienSo === 'DaDuyet';
+                  const isDaDuyet = v.trangThaiDuyetBienSo === 'DaDuyet' || (v.trangThaiDuyet === 'DaDuyet' && v.bienSo && !isNoPlate(v.bienSo) && !v.bienSoChoDuyet && v.trangThaiDuyetBienSo !== 'ChoDuyet' && v.trangThaiDuyetBienSo !== 'ChoCapNhat');
                   const isTuChoi = v.trangThaiDuyetBienSo === 'TuChoi';
-                  const isChoDuyet = !isDaDuyet && !isTuChoi && (v.trangThaiDuyetBienSo === 'ChoDuyet' || Boolean(v.bienSoChoDuyet));
+                  const isChoDuyet = !isDaDuyet && !isTuChoi;
+                  const hasProposed = Boolean(v.bienSoChoDuyet && !isNoPlate(v.bienSoChoDuyet));
                   const isCuaHang = v.nguonGoc === 'CuaHang';
-                  const currentPlate = v.bienSo || 'Chưa có biển số';
-                  const proposedPlate = v.bienSoChoDuyet || v.bienSo;
+                  const currentPlate = (!v.bienSo || isNoPlate(v.bienSo)) ? 'Chưa có biển số' : v.bienSo;
+                  const proposedPlate = (v.bienSoChoDuyet && !isNoPlate(v.bienSoChoDuyet)) ? v.bienSoChoDuyet : (!isNoPlate(v.bienSo) ? v.bienSo : '');
                   const effectiveCaVetImg = v.anhCaVet || (v.id ? localStorage.getItem('crm_cavet_' + v.id) : null) || (v.soKhung ? localStorage.getItem('crm_cavet_' + v.soKhung) : null);
 
                   const isHighlighted = Boolean(
@@ -550,8 +579,14 @@ export default function LicensePlateApproval() {
                             {currentPlate.includes('Chưa có') || currentPlate.includes('TAM-') ? 'Chưa có' : currentPlate}
                           </span>
                           <span className="text-zinc-400 font-bold">➔</span>
-                          <span className="px-2.5 py-1 rounded-lg text-xs font-black bg-zinc-900 text-amber-400 border border-amber-500/40 shadow-2xs">
-                            {proposedPlate || 'Chưa có'}
+                          <span className={`px-2.5 py-1 rounded-lg text-xs font-black border shadow-2xs ${
+                            hasProposed
+                              ? 'bg-zinc-900 text-amber-400 border-amber-500/40'
+                              : isDaDuyet
+                              ? 'bg-emerald-950 text-emerald-300 border-emerald-500/40'
+                              : 'bg-zinc-100 text-zinc-600 border-zinc-300'
+                          }`}>
+                            {hasProposed ? v.bienSoChoDuyet : isDaDuyet ? v.bienSo : 'Chờ cấp biển'}
                           </span>
                         </div>
                       </td>
@@ -566,7 +601,7 @@ export default function LicensePlateApproval() {
                               onClick={() => setPreviewCaVetImage({
                                 url: effectiveCaVetImg,
                                 title: `Cà vẹt xe ${v.tenXe} (${cust?.hoTen || 'Khách hàng'})`,
-                                plate: proposedPlate,
+                                plate: proposedPlate || 'Chưa cấp biển',
                                 vin: v.soKhung,
                               })}
                               className="w-14 h-9 object-cover rounded-md border border-zinc-300 shadow-2xs cursor-pointer hover:scale-110 hover:border-red-500 transition duration-200"
@@ -576,7 +611,7 @@ export default function LicensePlateApproval() {
                               onClick={() => setPreviewCaVetImage({
                                 url: effectiveCaVetImg,
                                 title: `Cà vẹt xe ${v.tenXe} (${cust?.hoTen || 'Khách hàng'})`,
-                                plate: proposedPlate,
+                                plate: proposedPlate || 'Chưa cấp biển',
                                 vin: v.soKhung,
                               })}
                               className="text-[10px] text-red-600 hover:underline font-bold cursor-pointer"
@@ -591,10 +626,16 @@ export default function LicensePlateApproval() {
 
                       {/* Trạng thái duyệt */}
                       <td className="p-3.5 text-center">
-                        {isChoDuyet && (
+                        {isChoDuyet && hasProposed && (
                           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-blue-100 text-blue-800 border border-blue-300 animate-pulse">
                             <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-ping" />
                             <span>⏳ Chờ duyệt</span>
+                          </span>
+                        )}
+                        {isChoDuyet && !hasProposed && (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                            <span>📋</span>
+                            <span>Chờ cấp biển</span>
                           </span>
                         )}
                         {isDaDuyet && (
@@ -623,12 +664,12 @@ export default function LicensePlateApproval() {
                             <>
                               <button
                                 type="button"
-                                onClick={() => handleApprove(v)}
+                                onClick={() => openApproveModal(v)}
                                 disabled={isSubmitting}
                                 className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs transition cursor-pointer flex items-center gap-1"
-                                title="Phê duyệt biển số chính thức"
+                                title={hasProposed ? "Phê duyệt biển số đề xuất" : "Cấp biển số chính thức"}
                               >
-                                <span>✓</span> <span>Duyệt</span>
+                                <span>✓</span> <span>{hasProposed ? 'Duyệt' : 'Cấp biển'}</span>
                               </button>
                               <button
                                 type="button"
@@ -643,6 +684,16 @@ export default function LicensePlateApproval() {
                                 <span>✕</span> <span>Từ chối</span>
                               </button>
                             </>
+                          )}
+                          {isDaDuyet && (
+                            <button
+                              type="button"
+                              onClick={() => openApproveModal(v)}
+                              className="px-2 py-1.5 rounded-lg text-xs font-semibold bg-zinc-100 hover:bg-zinc-200 text-zinc-700 border border-zinc-200 transition cursor-pointer"
+                              title="Cập nhật / cấp lại biển số"
+                            >
+                              🔄
+                            </button>
                           )}
 
                           <button
@@ -872,18 +923,233 @@ export default function LicensePlateApproval() {
               >
                 Đóng
               </button>
-              {(!['DaDuyet', 'TuChoi'].includes(viewingDetailVehicle.trangThaiDuyetBienSo || '') && (viewingDetailVehicle.trangThaiDuyetBienSo === 'ChoDuyet' || viewingDetailVehicle.bienSoChoDuyet)) && (
+              {viewingDetailVehicle.trangThaiDuyetBienSo !== 'DaDuyet' && (
                 <button
                   type="button"
-                  onClick={async () => {
-                    await handleApprove(viewingDetailVehicle);
+                  onClick={() => {
+                    const target = viewingDetailVehicle;
                     setViewingDetailVehicle(null);
+                    openApproveModal(target);
                   }}
-                  className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow cursor-pointer"
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow cursor-pointer flex items-center gap-1.5"
                 >
-                  Phê duyệt ngay
+                  <span>✓</span> <span>Phê duyệt / Cấp biển số ngay</span>
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════ MODAL 4: PHÊ DUYỆT & CẤP BIỂN SỐ XE CHÍNH THỨC ══════════ */}
+      {approvingVehicle && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-lg shadow-2xl border border-zinc-200 animate-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-200">
+              <div className="flex items-center gap-2">
+                <span className="p-2 rounded-xl bg-emerald-100 text-emerald-800 text-lg">🛡️</span>
+                <div>
+                  <h3 className="font-extrabold text-base text-zinc-900 uppercase" style={{ fontFamily: 'var(--font-display)' }}>
+                    PHÊ DUYỆT & CẤP BIỂN SỐ XE CHÍNH THỨC
+                  </h3>
+                  <p className="text-xs text-zinc-500 mt-0.5">
+                    Hồ sơ: {approvingVehicle.id} — {approvingVehicle.tenXe}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setApprovingVehicle(null)}
+                className="text-zinc-400 hover:text-zinc-600 font-bold p-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Vehicle Info Box */}
+            <div className="py-4 space-y-3.5 text-xs">
+              <div className="p-3.5 rounded-2xl bg-zinc-50 border border-zinc-200 space-y-1.5">
+                <div className="flex justify-between">
+                  <span className="text-zinc-500">Khách hàng sở hữu:</span>
+                  <strong className="text-zinc-900">{customerMap.get(approvingVehicle.customerId)?.hoTen || 'Khách hàng'}</strong>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-zinc-500">Số điện thoại liên hệ:</span>
+                  <span className="font-mono font-bold text-zinc-800">{customerMap.get(approvingVehicle.customerId)?.soDienThoai || 'Chưa có'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-zinc-500">Số khung (VIN):</span>
+                  <span className="font-mono font-bold text-zinc-900">{approvingVehicle.soKhung || 'Chưa cập nhật'}</span>
+                </div>
+                {(() => {
+                  const proposedFromCaVet = (approvingVehicle.bienSoChoDuyet && !isNoPlate(approvingVehicle.bienSoChoDuyet))
+                    ? approvingVehicle.bienSoChoDuyet
+                    : (() => {
+                        try {
+                          const cached = localStorage.getItem('crm_customer_vehicles');
+                          if (cached) {
+                            const list = JSON.parse(cached);
+                            const m = list.find((v: any) => v.id === approvingVehicle.id || (approvingVehicle.soKhung && v.soKhung === approvingVehicle.soKhung));
+                            if (m?.bienSoChoDuyet && !isNoPlate(m.bienSoChoDuyet)) return m.bienSoChoDuyet;
+                          }
+                        } catch {}
+                        return '';
+                      })();
+                  return (
+                    <div className="flex justify-between">
+                      <span className="text-zinc-500">Biển số đề xuất từ khách:</span>
+                      <span className="font-mono font-bold text-amber-600">{proposedFromCaVet || 'Chưa gửi đề xuất'}</span>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Ảnh Cà vẹt xe khách gửi làm căn cứ đối chiếu */}
+              {(() => {
+                const modalCaVetImg = approvingVehicle.anhCaVet || (approvingVehicle.id ? localStorage.getItem('crm_cavet_' + approvingVehicle.id) : null) || (approvingVehicle.soKhung ? localStorage.getItem('crm_cavet_' + approvingVehicle.soKhung) : null);
+                if (modalCaVetImg) {
+                  return (
+                    <div className="p-3.5 rounded-2xl bg-zinc-50 border border-zinc-200 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-zinc-800 text-xs flex items-center gap-1.5">
+                          <span>📄</span> Giấy tờ Cà vẹt xe khách hàng gửi:
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setPreviewCaVetImage({
+                            url: modalCaVetImg,
+                            title: `Cà vẹt xe ${approvingVehicle.tenXe} (${customerMap.get(approvingVehicle.customerId)?.hoTen || 'Khách hàng'})`,
+                            plate: approvingVehicle.bienSoChoDuyet || 'Chưa cấp biển',
+                            vin: approvingVehicle.soKhung,
+                          })}
+                          className="text-xs text-red-600 font-bold hover:underline cursor-pointer flex items-center gap-1"
+                        >
+                          <span>🔍</span> Phóng to xem Cà vẹt
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <img
+                          src={modalCaVetImg}
+                          alt="Cà vẹt xe"
+                          onClick={() => setPreviewCaVetImage({
+                            url: modalCaVetImg,
+                            title: `Cà vẹt xe ${approvingVehicle.tenXe} (${customerMap.get(approvingVehicle.customerId)?.hoTen || 'Khách hàng'})`,
+                            plate: approvingVehicle.bienSoChoDuyet || 'Chưa cấp biển',
+                            vin: approvingVehicle.soKhung,
+                          })}
+                          className="w-24 h-16 object-cover rounded-xl border border-zinc-300 shadow-2xs cursor-pointer hover:scale-105 transition"
+                        />
+                        <div className="text-[11px] text-zinc-600 space-y-1">
+                          <div>Biển số trên cà vẹt: <strong className="font-mono text-zinc-900 text-xs">{approvingVehicle.bienSoChoDuyet || 'Kiểm tra trên ảnh'}</strong></div>
+                          <div className="text-zinc-500">Đối chiếu kỹ số khung VIN, số máy trên giấy Cà vẹt trước khi phê duyệt.</div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+                return (
+                  <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-start gap-2">
+                    <span className="text-base">⚠️</span>
+                    <div>
+                      <strong>Khách hàng chưa gửi ảnh chụp Cà vẹt xe.</strong>
+                      <div className="text-[11px] text-amber-700 mt-0.5">
+                        Vui lòng đối chiếu giấy đăng ký xe thực tế của khách hàng trước khi nhập và phê duyệt biển số chính thức.
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* License Plate Input - Không điền sẵn */}
+              <div>
+                <label className="block font-bold text-zinc-800 mb-1.5 text-xs uppercase tracking-wide">
+                  Biển số xe chính thức được cấp *
+                </label>
+                <input
+                  type="text"
+                  value={officialPlateInput}
+                  onChange={e => setOfficialPlateInput(e.target.value.toUpperCase())}
+                  placeholder="Nhập biển số theo Cà vẹt xe khách gửi (VD: 59-K1 123.45)..."
+                  className="w-full px-4 py-3 rounded-xl border-2 border-emerald-500 text-sm font-mono font-black text-center tracking-widest text-zinc-900 focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-white"
+                />
+              </div>
+
+              {/* Nút tiện ích dùng đúng biển số từ Cà vẹt khách gửi */}
+              {(() => {
+                const proposedFromCaVet = (approvingVehicle.bienSoChoDuyet && !isNoPlate(approvingVehicle.bienSoChoDuyet))
+                  ? approvingVehicle.bienSoChoDuyet
+                  : (() => {
+                      try {
+                        const cached = localStorage.getItem('crm_customer_vehicles');
+                        if (cached) {
+                          const list = JSON.parse(cached);
+                          const m = list.find((v: any) => v.id === approvingVehicle.id || (approvingVehicle.soKhung && v.soKhung === approvingVehicle.soKhung));
+                          if (m?.bienSoChoDuyet && !isNoPlate(m.bienSoChoDuyet)) return m.bienSoChoDuyet;
+                        }
+                      } catch {}
+                      return '';
+                    })();
+
+                if (!proposedFromCaVet) return null;
+
+                const isMatched = officialPlateInput.trim().toUpperCase() === proposedFromCaVet.trim().toUpperCase();
+
+                return (
+                  <div className="space-y-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setOfficialPlateInput(proposedFromCaVet)}
+                      className="w-full px-3 py-2 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 font-mono text-xs font-bold cursor-pointer transition flex items-center justify-center gap-1.5 shadow-2xs"
+                    >
+                      <span>📋</span> Điền đúng biển số từ Cà vẹt: <strong>{proposedFromCaVet}</strong>
+                    </button>
+                    {officialPlateInput.trim() && (
+                      <div className="text-center text-[11px]">
+                        {isMatched ? (
+                          <span className="text-emerald-700 font-bold">✓ Đã khớp chính xác với biển số trên Cà vẹt</span>
+                        ) : (
+                          <span className="text-amber-700 font-semibold">ℹ️ Biển số nhập khác với đề xuất Cà vẹt ({proposedFromCaVet})</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Sync checkboxes */}
+              <div className="pt-2 border-t border-zinc-100 space-y-1.5 text-[11px] text-zinc-600">
+                <div className="flex items-center gap-2">
+                  <span className="text-emerald-600 font-bold">✓</span>
+                  <span>Tự động cập nhật hồ sơ xe của khách hàng & bảo hành 3 năm</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-emerald-600 font-bold">✓</span>
+                  <span>Tự động đồng bộ sang đơn hàng xe máy & hợp đồng bảo hiểm kèm theo</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-emerald-600 font-bold">✓</span>
+                  <span>Gửi thông báo xác nhận thành công tới tài khoản khách hàng</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-zinc-200">
+              <button
+                type="button"
+                onClick={() => setApprovingVehicle(null)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-zinc-100 hover:bg-zinc-200 text-zinc-700 cursor-pointer"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmApprove}
+                disabled={isSubmitting || !officialPlateInput.trim()}
+                className="px-5 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md cursor-pointer transition flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {isSubmitting ? 'Đang cập nhật...' : '✓ Xác nhận Phê duyệt & Cấp biển số'}
+              </button>
             </div>
           </div>
         </div>

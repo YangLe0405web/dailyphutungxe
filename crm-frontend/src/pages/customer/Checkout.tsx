@@ -177,9 +177,13 @@ export default function Checkout({ onBack, onSuccess, currentCustomer, onCustome
           const unitPrice = it.part.giaKhuyenMai ?? it.part.giaGoc;
           return {
             maPhuTung: numId,
+            partId: it.part.id,
             tenSanPham: it.part.tenSanPham,
             soLuong: it.soLuong,
             donGia: unitPrice,
+            hinhAnh: it.part.hinhAnh,
+            thuongHieu: it.part.thuongHieu,
+            danhMuc: it.part.danhMuc,
           };
         }),
         tongTien: grand,

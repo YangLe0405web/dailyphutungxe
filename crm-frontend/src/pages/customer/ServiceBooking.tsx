@@ -302,6 +302,14 @@ export default function ServiceBooking({
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [existingAppts, setExistingAppts] = useState<Appointment[]>(mockAppointments);
 
+  // Cảnh báo trùng lịch hẹn lái thử cùng ngày khác giờ
+  const [duplicateConfirmModal, setDuplicateConfirmModal] = useState<{
+    open: boolean;
+    existingTime: string;
+    vehicleName: string;
+    onProceed: () => void;
+  } | null>(null);
+
   // LH09: Kiểm tra ngày Chủ nhật (0 là Chủ nhật)
   const isSundayDate = (dStr: string) => {
     if (!dStr) return false;
@@ -559,16 +567,15 @@ export default function ServiceBooking({
   };
 
   // LH04: Kiểm tra trùng lịch hẹn của cùng một xe vào cùng ngày và khung giờ
+  // Yêu cầu: Không ẩn khung giờ lái thử đã đặt để các tài khoản khác vẫn có thể lựa chọn
   const isSlotBookedForVehicle = (slotTime: string) => {
     if (!date) return false;
+    if (svc === 'LaiThu') {
+      return false; // Giữ nguyên danh sách khung giờ lái thử, không ẩn/khóa trên giao diện
+    }
     return existingAppts.some(a => {
       if (a.trangThai === 'DaHuy' || a.trangThai === 'TuChoi') return false;
       if (a.ngayHen !== date || a.gioHen !== slotTime) return false;
-
-      if (svc === 'LaiThu') {
-        const testCar = allTestDriveVehicles.find(v => v.id === selectedTestDriveId);
-        return a.loaiDichVu === 'LaiThu' && a.tenXe?.toLowerCase() === testCar?.tenXe.toLowerCase();
-      }
 
       const targetPlate = !isAddingNewVehicle && selectedVehicleId 
         ? myVehicles.find(v => v.id === selectedVehicleId)?.bienSo 
@@ -732,23 +739,22 @@ export default function ServiceBooking({
       if (!slotCheck.valid) {
         errs['field-booking-time'] = slotCheck.reason || 'Cần đặt lịch trước ít nhất 3 tiếng';
       } else {
-        const duplicateAppt = existingAppts.find(a => {
-          if (a.trangThai === 'DaHuy' || a.trangThai === 'TuChoi') return false;
-          if (a.ngayHen !== date || a.gioHen !== time) return false;
-          if (svc === 'LaiThu') {
-            return a.loaiDichVu === 'LaiThu' && a.tenXe?.toLowerCase() === finalVehicleName.toLowerCase();
-          }
-          const normA = normalizePlate(a.bienSo);
-          const normTarget = normalizePlate(finalPlate);
-          if (normA && normTarget && normA === normTarget) return true;
-          if (a.customerId === currentCustomer.id && a.tenXe && finalVehicleName && a.tenXe.toLowerCase().trim() === finalVehicleName.toLowerCase().trim()) {
-            return true;
-          }
-          return false;
-        });
+        if (svc !== 'LaiThu') {
+          const duplicateAppt = existingAppts.find(a => {
+            if (a.trangThai === 'DaHuy' || a.trangThai === 'TuChoi') return false;
+            if (a.ngayHen !== date || a.gioHen !== time) return false;
+            const normA = normalizePlate(a.bienSo);
+            const normTarget = normalizePlate(finalPlate);
+            if (normA && normTarget && normA === normTarget) return true;
+            if (a.customerId === currentCustomer.id && a.tenXe && finalVehicleName && a.tenXe.toLowerCase().trim() === finalVehicleName.toLowerCase().trim()) {
+              return true;
+            }
+            return false;
+          });
 
-        if (duplicateAppt) {
-          errs['field-booking-time'] = 'Xe đã có lịch hẹn vào thời gian này. Vui lòng chọn ngày hoặc giờ khác.';
+          if (duplicateAppt) {
+            errs['field-booking-time'] = 'Xe đã có lịch hẹn vào thời gian này. Vui lòng chọn ngày hoặc giờ khác.';
+          }
         }
       }
     }
@@ -860,57 +866,111 @@ export default function ServiceBooking({
 
     const compiledGhiChu = detailNoteParts.join(' | ');
 
-    setIsSubmitting(true);
-    try {
-      const createdAppt = await appointmentApi.create({
-        customerId: currentCustomer.id,
-        hoTenKH: trimmedHoTen,
-        soDienThoai: trimmedPhone,
-        loaiDichVu: svc,
-        ngayHen: date,
-        gioHen: time,
-        tenXe: finalVehicleName,
-        bienSo: finalPlate,
-        ghiChu: compiledGhiChu,
+    const executeSubmitBooking = async (
+      vName: string,
+      plate: string,
+      compiledNote: string,
+      hoTen: string,
+      phone: string
+    ) => {
+      setIsSubmitting(true);
+      try {
+        const createdAppt = await appointmentApi.create({
+          customerId: currentCustomer.id,
+          hoTenKH: hoTen,
+          soDienThoai: phone,
+          loaiDichVu: svc,
+          ngayHen: date,
+          gioHen: time,
+          tenXe: vName,
+          bienSo: plate,
+          ghiChu: compiledNote,
+        });
+
+        const apptId = (createdAppt as any)?.appointment?.id || (createdAppt as any)?.id || String(createdAppt?.maLich || `LH${Date.now().toString().slice(-4)}`);
+
+        addCustomerNotification({
+          customerId: currentCustomer.id,
+          icon: '📅',
+          title: '📅 Đặt lịch hẹn dịch vụ thành công',
+          message: `Lịch hẹn ${svc === 'BaoDuong' ? 'Bảo dưỡng định kỳ' : svc === 'LaiThu' ? 'Lái thử xe' : 'Sửa chữa'} cho xe ${vName} lúc ${time} ngày ${date} đã được gửi thành công. Showroom sẽ sớm liên hệ xác nhận!`,
+          category: 'appointment',
+          page: 'dashboard',
+          tab: 'appts',
+          targetId: apptId,
+        });
+
+        // Cập nhật lại danh sách lịch hẹn hiện có
+        const freshAppts = await appointmentApi.getAll();
+        setExistingAppts(freshAppts);
+
+        setLastBookedSummary({
+          id: apptId,
+          svc,
+          vehicleName: vName,
+          plate: plate,
+          date,
+          time,
+          cost: estimatedTotalCost,
+          note: compiledNote,
+        });
+        setSubmitted(true);
+      } catch (err: any) {
+        addCustomerNotification({
+          customerId: currentCustomer.id,
+          icon: '⚠️',
+          title: '⚠️ Đặt lịch hẹn không thành công',
+          message: err?.message || 'Có lỗi xảy ra khi gửi lịch hẹn. Vui lòng kiểm tra lại thông tin!',
+          category: 'appointment',
+          page: 'booking',
+        });
+        setErrorMessage(err?.message || 'Có lỗi xảy ra khi gửi lịch hẹn. Vui lòng thử lại!');
+      } finally {
+        setIsSubmitting(false);
+      }
+    };
+
+    // Kiểm tra trùng lặp lịch hẹn lái thử (Yêu cầu 2, 3, 4, 5)
+    if (svc === 'LaiThu') {
+      const allCurrentAppts = appointmentApi.getAllSync();
+      const cleanVehicleTarget = finalVehicleName.toLowerCase().trim();
+      const cleanPhone = trimmedPhone.replace(/\D/g, '');
+
+      const sameCustomerTestDrives = allCurrentAppts.filter(a => {
+        if (a.trangThai === 'DaHuy' || a.trangThai === 'TuChoi') return false;
+        if (a.loaiDichVu !== 'LaiThu') return false;
+        if (a.ngayHen !== date) return false;
+        const isMatchCust = a.customerId === currentCustomer.id ||
+          (cleanPhone && a.soDienThoai && a.soDienThoai.replace(/\D/g, '') === cleanPhone);
+        if (!isMatchCust) return false;
+        return a.tenXe && a.tenXe.toLowerCase().trim() === cleanVehicleTarget;
       });
 
-      const apptId = (createdAppt as any)?.appointment?.id || (createdAppt as any)?.id || String(createdAppt?.maLich || `LH${Date.now().toString().slice(-4)}`);
+      // 1. Trùng toàn bộ thông tin (cùng xe, cùng ngày, cùng giờ):
+      const sameTimeAppt = sameCustomerTestDrives.find(a => a.gioHen === time);
+      if (sameTimeAppt) {
+        setErrorMessage('Bạn đã đặt lịch lái thử xe này vào thời gian trên.');
+        alert('Bạn đã đặt lịch lái thử xe này vào thời gian trên.');
+        return; // Không tạo lịch mới
+      }
 
-      addCustomerNotification({
-        customerId: currentCustomer.id,
-        icon: '📅',
-        title: '📅 Đặt lịch hẹn dịch vụ thành công',
-        message: `Lịch hẹn ${svc === 'BaoDuong' ? 'Bảo dưỡng định kỳ' : svc === 'LaiThu' ? 'Lái thử xe' : 'Sửa chữa'} cho xe ${finalVehicleName} lúc ${time} ngày ${date} đã được gửi thành công. Showroom sẽ sớm liên hệ xác nhận!`,
-        category: 'appointment',
-        page: 'dashboard',
-        tab: 'appts',
-        targetId: apptId,
-      });
-
-      setLastBookedSummary({
-        id: apptId,
-        svc,
-        vehicleName: finalVehicleName,
-        plate: finalPlate,
-        date,
-        time,
-        cost: estimatedTotalCost,
-        note: compiledGhiChu,
-      });
-      setSubmitted(true);
-    } catch (err: any) {
-      addCustomerNotification({
-        customerId: currentCustomer.id,
-        icon: '⚠️',
-        title: '⚠️ Đặt lịch hẹn không thành công',
-        message: err?.message || 'Có lỗi xảy ra khi gửi lịch hẹn. Vui lòng kiểm tra lại thông tin!',
-        category: 'appointment',
-        page: 'booking',
-      });
-      setErrorMessage(err?.message || 'Có lỗi xảy ra khi gửi lịch hẹn. Vui lòng thử lại!');
-    } finally {
-      setIsSubmitting(false);
+      // 2. Trùng xe, trùng ngày nhưng khác giờ: Cảnh báo xác nhận đặt thêm
+      const diffTimeAppt = sameCustomerTestDrives.find(a => a.gioHen !== time);
+      if (diffTimeAppt) {
+        setDuplicateConfirmModal({
+          open: true,
+          existingTime: diffTimeAppt.gioHen,
+          vehicleName: finalVehicleName,
+          onProceed: () => {
+            setDuplicateConfirmModal(null);
+            executeSubmitBooking(finalVehicleName, finalPlate, compiledGhiChu, trimmedHoTen, trimmedPhone);
+          }
+        });
+        return;
+      }
     }
+
+    await executeSubmitBooking(finalVehicleName, finalPlate, compiledGhiChu, trimmedHoTen, trimmedPhone);
   };
 
   // DKX01, DKX02, DKX03: Form chuẩn hóa thông tin xe mới (Hãng, Dòng xe, Động cơ, Biển số tự format, Số khung tuỳ chọn)
@@ -2355,6 +2415,39 @@ export default function ServiceBooking({
                 className="px-5 py-2 rounded-xl text-xs font-bold bg-red-700 text-white hover:bg-red-800 transition"
               >
                 Xong
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal cảnh báo và xác nhận đặt thêm lịch lái thử cùng ngày khác giờ */}
+      {duplicateConfirmModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-[#18181b] border border-amber-500/70 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl text-white">
+            <div className="flex items-center gap-3">
+              <span className="text-3xl text-amber-500">⚠️</span>
+              <h3 className="font-extrabold text-base text-amber-400 uppercase tracking-tight">
+                XÁC NHẬN ĐẶT THÊM LỊCH LÁI THỬ
+              </h3>
+            </div>
+            <p className="text-xs text-zinc-300 leading-relaxed">
+              Bạn đã đặt lịch lái thử xe này vào lúc <strong className="text-amber-400 font-mono text-sm">{duplicateConfirmModal.existingTime}</strong> cùng ngày. Bạn có chắc chắn muốn đặt thêm lịch không?
+            </p>
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-zinc-800">
+              <button
+                type="button"
+                onClick={() => setDuplicateConfirmModal(null)}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition cursor-pointer"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={duplicateConfirmModal.onProceed}
+                className="px-5 py-2 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-500 text-white transition cursor-pointer shadow-md"
+              >
+                Tiếp tục
               </button>
             </div>
           </div>
