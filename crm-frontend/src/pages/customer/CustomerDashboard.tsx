@@ -54,6 +54,8 @@ import {
   catalogVehicleApi,
   partApi,
   normalizeDateStr,
+  cleanBikeName,
+  safeLocalStorageSet,
 } from '../../services/api';
 import ImageUploader from '../../components/shared/ImageUploader';
 import { WarrantyDetailView, WarrantyClaimFormView, ExtendedWarrantyModal } from '../../components/customer/WarrantyViews';
@@ -134,6 +136,109 @@ interface DynamicSurveyTabProps {
   highlightTarget?: { type: string; id?: string } | null;
 }
 
+// Hàm kiểm tra bài khảo sát có thực sự thuộc về tài khoản này VÀ dịch vụ tương ứng ĐÃ HOÀN THÀNH không
+export function isSurveyEligibleForCustomer(
+  s: Survey,
+  customer: Customer | null,
+  myOrders: Order[] = [],
+  myAppts: Appointment[] = [],
+  myVehicles: Vehicle[] = []
+): boolean {
+  if (!customer) return false;
+
+  // 1. Loại bỏ triệt để các bài khảo sát mẫu tĩnh/dummy
+  if (['KS001', 'KS002', 'KS003', 'KS004', 'KSH02'].includes(s.id) || s.id.startsWith('KSH')) {
+    return false;
+  }
+
+  // 2. Trạng thái khảo sát phải đang diễn ra và còn trong hạn
+  const liveStatus = s.status || computeSurveyStatus(s);
+  if (liveStatus !== 'DangDienRa') return false;
+  const now = Date.now();
+  if (s.endDate && new Date(s.endDate).getTime() < now) return false;
+  if (s.startDate && new Date(s.startDate).getTime() > now) return false;
+
+  const cNum = parseInt(customer.id.replace(/\D/g, ''), 10);
+
+  // 3. Nếu khảo sát nhắm đích danh một customerId cụ thể khác -> KHÔNG HIỂN THỊ
+  if (s.targetCustomerId && s.targetCustomerId !== 'ALL' && s.targetCustomerId !== customer.id) {
+    const tNum = parseInt(s.targetCustomerId.replace(/\D/g, ''), 10);
+    if (isNaN(cNum) || isNaN(tNum) || cNum !== tNum) {
+      return false;
+    }
+  }
+
+  // Nếu bài khảo sát chỉ định danh sách khách hàng cụ thể mà mình không có trong đó -> KHÔNG HIỂN THỊ
+  if (s.targetCustomerIds && s.targetCustomerIds.length > 0) {
+    const isIncluded = s.targetCustomerIds.some(
+      id => id === customer.id || (!isNaN(cNum) && parseInt(id.replace(/\D/g, ''), 10) === cNum)
+    );
+    if (!isIncluded) return false;
+  }
+
+  // 4. Khảo sát Dịch vụ Bảo hành (KS-BH-...): BẮT BUỘC có dịch vụ bảo hành ĐÃ HOÀN THÀNH
+  if (s.id.startsWith('KS-BH-')) {
+    const hasCompletedAppt = myAppts.some(a =>
+      a.loaiDichVu === 'BaoHanh' &&
+      (a.trangThai === 'DaHoanThanh' || a.trangThai === 'HoanThanh')
+    );
+
+    let hasCompletedClaim = false;
+    try {
+      const claims = warrantyApi.getAdminClaims();
+      hasCompletedClaim = claims.some(c =>
+        (c.customerId === customer.id || (customer.soDienThoai && c.soDienThoai === customer.soDienThoai)) &&
+        c.trangThai === 'HoanThanh'
+      );
+    } catch {}
+
+    const lowerTitle = (s.title + ' ' + (s.description || '')).toLowerCase();
+    const hasMatchingVehicle = myVehicles.some(v =>
+      (v.bienSo && lowerTitle.includes(v.bienSo.toLowerCase())) ||
+      (v.tenXe && lowerTitle.includes(cleanBikeName(v.tenXe).toLowerCase()))
+    );
+    const isTargeted = s.targetCustomerId === customer.id ||
+      (s.targetCustomerIds || []).includes(customer.id) ||
+      (!isNaN(cNum) && (s.targetCustomerIds || []).some(id => parseInt(id.replace(/\D/g, ''), 10) === cNum));
+
+    return isTargeted && (hasCompletedAppt || hasCompletedClaim || hasMatchingVehicle);
+  }
+
+  // 5. Khảo sát Mua xe & Bàn giao xe (KS-XE-...): BẮT BUỘC có đơn mua xe ĐÃ HOÀN THÀNH / ĐÃ GIAO
+  if (s.id.startsWith('KS-XE-')) {
+    const hasCompletedXeOrder = myOrders.some(o =>
+      (o.loaiDon === 'Xe' || !!o.thongTinXe) &&
+      (o.trangThai === 'HoanThanh' || o.trangThai === 'DaGiao') &&
+      (s.id.includes(o.id) || s.targetCustomerId === customer.id || (s.targetCustomerIds || []).includes(customer.id))
+    );
+    return hasCompletedXeOrder;
+  }
+
+  // 6. Khảo sát Bảo dưỡng định kỳ (KS-BD-...): BẮT BUỘC có lịch bảo dưỡng ĐÃ HOÀN THÀNH
+  if (s.id.startsWith('KS-BD-')) {
+    const hasCompletedMaintenance = myAppts.some(a =>
+      (a.loaiDichVu === 'BaoDuong' || a.loaiDichVu === 'SuaChua') &&
+      (a.trangThai === 'DaHoanThanh' || a.trangThai === 'HoanThanh')
+    );
+    const isTargeted = s.targetCustomerId === customer.id || (s.targetCustomerIds || []).includes(customer.id);
+    return hasCompletedMaintenance && isTargeted;
+  }
+
+  // 7. Khảo sát Lái thử (KS-LT-...): BẮT BUỘC có lịch lái thử ĐÃ HOÀN THÀNH
+  if (s.id.startsWith('KS-LT-')) {
+    const hasCompletedTestDrive = myAppts.some(a =>
+      a.loaiDichVu === 'LaiThu' &&
+      (a.trangThai === 'DaHoanThanh' || a.trangThai === 'HoanThanh')
+    );
+    const isTargeted = s.targetCustomerId === customer.id || (s.targetCustomerIds || []).includes(customer.id);
+    return hasCompletedTestDrive && isTargeted;
+  }
+
+  // 8. Các bài khảo sát khác: CHỈ hiển thị nếu được Admin nhắm đích danh riêng cho tài khoản này
+  const isDirectlyTargeted = (s.targetCustomerId === customer.id) || ((s.targetCustomerIds || []).includes(customer.id));
+  return isDirectlyTargeted;
+}
+
 function DynamicSurveyTab({
   customer,
   myOrders = [],
@@ -150,87 +255,8 @@ function DynamicSurveyTab({
 
   const loadSurveys = () => {
     const all = surveyApi.getAll();
-    const custTier = getCustomerTier(customer.tongChiTieu).tier;
-    const now = Date.now();
-
-    // KS02: Hiển thị bài khảo sát mà khách đủ điều kiện theo ngữ cảnh
-    const eligible = all.filter(s => {
-      // Loại bỏ bài khảo sát mẫu KS002/KSH02 và các bài dummy
-      if (s.id === 'KS002' || s.id === 'KSH02' || s.id.startsWith('KSH')) return false;
-
-      // KS08: Khảo sát phải đang diễn ra, chưa hết hạn và đã đến ngày bắt đầu
-      const liveStatus = s.status || computeSurveyStatus(s);
-      if (liveStatus !== 'DangDienRa') return false;
-      if (s.endDate && new Date(s.endDate).getTime() < now) return false;
-      if (s.startDate && new Date(s.startDate).getTime() > now) return false;
-
-      const cNum = parseInt(customer.id.replace(/\D/g, ''), 10);
-      const hasSpecificTargetList = s.targetCustomerIds && s.targetCustomerIds.length > 0;
-      const isTargetedToMe =
-        (s.targetCustomerId && s.targetCustomerId !== 'ALL' && (s.targetCustomerId === customer.id || (!isNaN(cNum) && parseInt(s.targetCustomerId.replace(/\D/g, ''), 10) === cNum))) ||
-        (hasSpecificTargetList && (s.targetCustomerIds || []).some(id => id === customer.id || (!isNaN(cNum) && parseInt(id.replace(/\D/g, ''), 10) === cNum)));
-
-      if (isTargetedToMe) {
-        return true;
-      }
-
-      // CÁCH LY TRIỆT ĐỂ: Nếu bài khảo sát đã chỉ định danh sách khách hàng cụ thể mà mình không thuộc danh sách -> KHÔNG HIỂN THỊ
-      if (hasSpecificTargetList) {
-        return false;
-      }
-
-      // Nếu bài khảo sát nhắm đích danh một customerId cụ thể khác -> KHÔNG HIỂN THỊ
-      if (s.targetCustomerId && s.targetCustomerId !== 'ALL' && s.targetCustomerId !== customer.id) {
-        return false;
-      }
-
-      if (s.targetCustomerId === 'ALL' || !s.targetCustomerId) {
-        if (s.targetCustomerTier && s.targetCustomerTier !== 'ALL' && s.targetCustomerTier !== custTier) {
-          return false;
-        }
-
-        // Kiểm tra ngữ cảnh trải nghiệm dịch vụ của khách
-        const lower = (s.title + ' ' + (s.description || '')).toLowerCase();
-        const isBaoDuong = lower.includes('bảo dưỡng') || lower.includes('sửa chữa') || lower.includes('kỹ thuật') || lower.includes('bảo hành') || s.id.startsWith('KS-BD-') || s.id === 'KS001';
-        const isMuaXe = lower.includes('mua xe') || lower.includes('bàn giao xe') || lower.includes('xe mới') || s.id.startsWith('KS-XE-');
-        const isLaiThu = lower.includes('lái thử') || s.id.startsWith('KS-LT-');
-
-        if (isLaiThu) {
-          const hasCompletedTestDrive = myAppts.some(a =>
-            a.loaiDichVu === 'LaiThu' && (a.trangThai === 'DaHoanThanh' || a.trangThai === 'HoanThanh')
-          );
-          if (!hasCompletedTestDrive) return false;
-        }
-
-        // KS01: Khảo sát bảo dưỡng CHỈ hiển thị sau khi khách hàng đã hoàn tất dịch vụ bảo dưỡng/sửa chữa
-        if (isBaoDuong) {
-          const hasCompletedMaintenance = myAppts.some(a =>
-            (a.trangThai === 'DaHoanThanh' || a.trangThai === 'HoanThanh') &&
-            (a.loaiDichVu === 'BaoDuong' || a.loaiDichVu === 'SuaChua' || a.loaiDichVu === 'BaoHanh')
-          );
-          if (!hasCompletedMaintenance) return false;
-        }
-
-        if (isMuaXe) {
-          const hasXeOrder = myOrders.some(o => (o.loaiDon === 'Xe' || !!o.thongTinXe) && (o.trangThai === 'HoanThanh' || o.trangThai === 'DaGiao' || o.trangThai === 'ChoGiaoXe' || o.daXacNhanNgayNhan || (o as any).daXacNhanNgayNhan));
-          const hasDeliveryAppt = myAppts.some(a => a.loaiDichVu === 'NhanXe');
-          if (!hasXeOrder && !hasDeliveryAppt) return false;
-
-          // Nếu bài khảo sát nhắm đích danh một dòng xe cụ thể (VD: SH 160i, Air Blade, Sirius...), khách phải sở hữu hoặc có đơn mua đúng dòng xe đó
-          const specificModels = ['honda sh', 'sh 160', 'sh 125', 'air blade', 'sirius', 'wave', 'winner', 'vision', 'exciter', 'grande', 'nvx', 'lead', 'tuscany', 'vespa', 'gts', 'shark'];
-          const matchedModel = specificModels.find(m => lower.includes(m));
-          if (matchedModel) {
-            const hasMatchingBike = myOrders.some(o => (o.thongTinXe?.tenXe || '').toLowerCase().includes(matchedModel)) ||
-              myVehicles.some(v => (v.tenXe || '').toLowerCase().includes(matchedModel));
-            if (!hasMatchingBike) return false;
-          }
-        }
-
-        return true;
-      }
-      return false;
-    });
-
+    // Lọc nghiêm ngặt: Chỉ hiện khảo sát thuộc về chính tài khoản này VÀ dịch vụ ĐÃ HOÀN THÀNH
+    const eligible = all.filter(s => isSurveyEligibleForCustomer(s, customer, myOrders, myAppts, myVehicles));
     setActiveSurveys(eligible);
 
     const responses = surveyApi.getResponses();
@@ -1485,6 +1511,7 @@ export default function CustomerDashboard({
   const [claimBranch, setClaimBranch] = useState(WARRANTY_BRANCHES[0]);
   const [claimSubmitting, setClaimSubmitting] = useState(false);
   const [claimSuccessToast, setClaimSuccessToast] = useState<string | null>(null);
+  const [highlightApptId, setHighlightApptId] = useState<string | null>(null);
 
   const [extendingWarrantyVehicle, setExtendingWarrantyVehicle] = useState<Vehicle | null>(null);
   const [selectedExtPkgId, setSelectedExtPkgId] = useState<string>('CARE_PLUS_1Y');
@@ -1719,7 +1746,7 @@ export default function CustomerDashboard({
                 return !vOrderId || !incompleteVehicleOrderIds.has(vOrderId);
               });
               if (cleaned.length !== parsed.length) {
-                localStorage.setItem('crm_customer_vehicles', JSON.stringify(cleaned));
+                safeLocalStorageSet('crm_customer_vehicles', JSON.stringify(cleaned));
               }
             }
           } catch {}
@@ -1780,7 +1807,7 @@ export default function CustomerDashboard({
               const allCustVehs: Vehicle[] = cachedV ? JSON.parse(cachedV) : [];
               if (!allCustVehs.some(v => v.id === newVehFromOrder.id || (vin && v.soKhung === vin))) {
                 allCustVehs.unshift(newVehFromOrder);
-                localStorage.setItem('crm_customer_vehicles', JSON.stringify(allCustVehs));
+                safeLocalStorageSet('crm_customer_vehicles', JSON.stringify(allCustVehs));
               }
             } catch {}
           }
@@ -2136,15 +2163,21 @@ export default function CustomerDashboard({
     if (!currentCustomer) return;
     try {
       myOrders
-        .filter(o => (o.loaiDon === 'Xe' || !!o.thongTinXe) && (o.trangThai === 'HoanThanh' || o.trangThai === 'DaGiao' || o.trangThai === 'ChoGiaoXe' || o.daXacNhanNgayNhan || (o as any).daXacNhanNgayNhan))
+        .filter(o => (o.loaiDon === 'Xe' || !!o.thongTinXe) && (o.trangThai === 'HoanThanh' || o.trangThai === 'DaGiao'))
         .forEach(o => {
           surveyApi.createVehiclePurchaseSurvey(o, currentCustomer);
         });
 
       myAppts
-        .filter(a => (a.trangThai === 'DaHoanThanh' || a.trangThai === 'HoanThanh') && (a.loaiDichVu === 'BaoDuong' || a.loaiDichVu === 'SuaChua' || a.loaiDichVu === 'BaoHanh'))
+        .filter(a => (a.trangThai === 'DaHoanThanh' || a.trangThai === 'HoanThanh') && (a.loaiDichVu === 'BaoDuong' || a.loaiDichVu === 'SuaChua'))
         .forEach(a => {
           surveyApi.createMaintenanceSurvey(a, currentCustomer);
+        });
+
+      myAppts
+        .filter(a => (a.trangThai === 'DaHoanThanh' || a.trangThai === 'HoanThanh') && a.loaiDichVu === 'BaoHanh')
+        .forEach(a => {
+          surveyApi.createWarrantyServiceSurvey(a, currentCustomer.id);
         });
 
       myAppts
@@ -2387,6 +2420,46 @@ export default function CustomerDashboard({
       return;
     }
 
+    // 1. Kiểm tra ngày giờ đặt lịch phải ở tương lai
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    if (!claimDate || claimDate < todayStr) {
+      alert('Thời gian đặt lịch hẹn tiếp nhận phải ở tương lai! Vui lòng chọn ngày hôm nay hoặc các ngày tới.');
+      return;
+    }
+    if (claimDate === todayStr) {
+      const [slotH, slotM] = (claimTime || '08:30').split(':').map(Number);
+      const slotDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), slotH, slotM, 0, 0);
+      if (now.getTime() >= slotDate.getTime()) {
+        alert(`Khung giờ ${claimTime} hôm nay đã trôi qua! Vui lòng chọn khung giờ khác hoặc ngày tiếp nhận tiếp theo.`);
+        return;
+      }
+    }
+
+    // 2. Kiểm tra trùng lịch hẹn bảo hành cho cùng 1 xe tại cùng ngày và giờ
+    const targetVehId = requestingWarrantyVehicle.id;
+    const targetVin = (requestingWarrantyVehicle.soKhung || '').trim().toUpperCase();
+    const targetPlate = (requestingWarrantyVehicle.bienSo || '').trim().toUpperCase();
+
+    const existingDuplicate = allAppts.find(a => {
+      if (a.trangThai === 'DaHuy' || a.trangThai === 'TuChoi') return false;
+      // Cùng xe (theo VIN, biển số hoặc tên xe)
+      const sameVin = Boolean(targetVin && a.soKhungVIN && a.soKhungVIN.trim().toUpperCase() === targetVin);
+      const samePlate = Boolean(targetPlate && targetPlate !== 'CHƯA CÓ BIỂN SỐ' && a.bienSo && a.bienSo.trim().toUpperCase() === targetPlate);
+      const sameVehId = Boolean((a as any).vehicleId && ((a as any).vehicleId === targetVehId || parseInt(String((a as any).vehicleId).replace(/\D/g, ''), 10) === parseInt(targetVehId.replace(/\D/g, ''), 10)));
+      const sameName = Boolean(requestingWarrantyVehicle.tenXe && a.tenXe && a.tenXe.toLowerCase().trim() === requestingWarrantyVehicle.tenXe.toLowerCase().trim());
+      const isSameVehicle = sameVin || samePlate || sameVehId || sameName;
+      if (!isSameVehicle) return false;
+
+      // Cùng ngày và cùng giờ
+      return a.ngayHen === claimDate && a.gioHen === claimTime;
+    });
+
+    if (existingDuplicate) {
+      alert(`⚠️ Phương tiện "${requestingWarrantyVehicle.tenXe}" (${requestingWarrantyVehicle.bienSo || 'Chưa gắn biển'}) đã có lịch hẹn dịch vụ (#${existingDuplicate.id}) vào lúc ${claimTime} ngày ${claimDate}.\n\nVui lòng chọn khung giờ hoặc ngày khác để tránh bị trùng lịch!`);
+      return;
+    }
+
     setClaimSubmitting(true);
     try {
       const res = await warrantyApi.createAppointment({
@@ -2406,16 +2479,79 @@ export default function CustomerDashboard({
       });
 
       if (res.success) {
-        setClaimSuccessToast(`Đã gửi yêu cầu kiểm tra bảo hành ${res.appointment.id} thành công!`);
-        setTimeout(() => setClaimSuccessToast(null), 6000);
+        const createdApptId = res.appointment.id;
+        const targetCleanId = createdApptId.replace(/^#/, '');
+
+        setClaimSuccessToast(`Đã gửi yêu cầu kiểm tra bảo hành #${targetCleanId} thành công!`);
+        setTimeout(() => setClaimSuccessToast(null), 8000);
         setRequestingWarrantyVehicle(null);
+        setSelectedVehicleWarrantyDetail(null);
         setClaimDesc('');
         setClaimImages([]);
-        appointmentApi.getAll().then(d => { if (d) setAllAppts(d); });
+
+        // 1. Tạo bản ghi Appointment và đồng bộ ngay lập tức vào state allAppts trước khi chuyển tab
+        const newApptItem: Appointment = {
+          id: createdApptId,
+          customerId: currentCustomer.id,
+          hoTenKH: currentCustomer.hoTen,
+          soDienThoai: currentCustomer.soDienThoai,
+          loaiDichVu: 'BaoHanh',
+          ngayHen: claimDate,
+          gioHen: claimTime,
+          trangThai: 'ChoXacNhan',
+          ghiChu: claimDesc.trim() || (claimIssues && claimIssues.join(', ')) || 'Yêu cầu kiểm tra bảo hành xe',
+          tenXe: requestingWarrantyVehicle.tenXe,
+          bienSo: requestingWarrantyVehicle.bienSo,
+          nhanVienPhuTrach: 'Chờ phân công',
+          createdDate: res.appointment.ngayTao,
+        };
+
+        setAllAppts(prev => [
+          newApptItem,
+          ...prev.filter(a => a.id !== createdApptId && a.id.replace(/^#/, '') !== targetCleanId)
+        ]);
+
+        // 2. Chuyển ngay đến Tab 2: Lịch hẹn & mở sub-tab Bảo hành
+        setActiveTab(2); // Tab 2: Lịch hẹn
+        setApptsSubTab('BaoHanh'); // Mở sub-tab Bảo hành
+        setSelectedCalendarDay(null); // Reset lọc ngày lịch để hiển thị danh sách
+        setHighlightApptId(createdApptId);
+
+        // Nạp lại dữ liệu đồng bộ nền
+        appointmentApi.getAll().then(d => {
+          if (d && d.length > 0) {
+            setAllAppts(prev => {
+              const hasNew = d.some(a => a.id === createdApptId || a.id.replace(/^#/, '') === targetCleanId);
+              return hasNew ? d : [newApptItem, ...d.filter(a => a.id !== createdApptId && a.id.replace(/^#/, '') !== targetCleanId)];
+            });
+          }
+        });
+        loadCustomerData();
+
         localStorage.setItem('crm_warranty_claim_sync_trigger', Date.now().toString());
-        window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'warranty_claim', claimId: res.appointment.id } }));
-        window.dispatchEvent(new CustomEvent('crm-admin-notification', { detail: { type: 'warranty_claim_created', claimId: res.appointment.id } }));
-        alert(`✓ Đã gửi yêu cầu kiểm tra bảo hành ${res.appointment.id} thành công!\nHồ sơ đã được đồng bộ sang mục "Quản lý bảo hành / Yêu cầu bảo hành" của Showroom.`);
+        window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'warranty_claim', claimId: createdApptId } }));
+        window.dispatchEvent(new CustomEvent('crm-admin-notification', { detail: { type: 'warranty_claim_created', claimId: createdApptId } }));
+
+        // 3. Tự động cuộn màn hình mượt mà tới thẻ lịch hẹn vừa tạo (multi-frame retry)
+        const scrollToCard = () => {
+          const el = document.getElementById(`appt-card-${targetCleanId}`) ||
+                     document.getElementById(`appt-card-${createdApptId}`) ||
+                     document.getElementById(`appt-card-#${targetCleanId}`);
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return true;
+          }
+          return false;
+        };
+
+        setTimeout(scrollToCard, 100);
+        setTimeout(scrollToCard, 350);
+        setTimeout(scrollToCard, 700);
+
+        // 4. Tự động gỡ highlight sau 10 giây
+        setTimeout(() => {
+          setHighlightApptId(prev => (prev === createdApptId || (prev && prev.replace(/^#/, '') === targetCleanId)) ? null : prev);
+        }, 10000);
       }
     } catch (err) {
       alert('Có lỗi khi gửi yêu cầu bảo hành.');
@@ -2586,6 +2722,26 @@ export default function CustomerDashboard({
     if (kb === 'taiquay' || kb === 'cuahang' || kb === 'offline') return false;
     return true;
   };
+
+  // Đếm số bài khảo sát hệ thống đang chờ làm (chỉ đếm bài thuộc tài khoản đã hoàn thành)
+  const activeSystemSurveysCount = useMemo(() => {
+    if (!currentCustomer) return 0;
+    try {
+      const all = surveyApi.getAll();
+      const responses = surveyApi.getResponses();
+      const custPhone = currentCustomer.soDienThoai ? currentCustomer.soDienThoai.replace(/\D/g, '') : '';
+      const doneIds = responses
+        .filter(r => r.customerId === currentCustomer.id || (custPhone && r.soDienThoai && r.soDienThoai.replace(/\D/g, '') === custPhone))
+        .map(r => r.surveyId);
+
+      return all.filter(s => {
+        if (doneIds.includes(s.id)) return false;
+        return isSurveyEligibleForCustomer(s, currentCustomer, myOrders, myAppts, myVehicles);
+      }).length;
+    } catch {
+      return 0;
+    }
+  }, [currentCustomer, myOrders, myAppts, myVehicles]);
 
   const unreviewedOrdersCount = useMemo(() => {
     let count = 0;
@@ -4004,12 +4160,24 @@ export default function CustomerDashboard({
                                 <div
                                   key={a.id}
                                   onClick={() => setSelectedApptDetail(a)}
-                                  className="p-4 rounded-2xl bg-[#18181b] hover:bg-[#1f1f24] border border-zinc-800 hover:border-zinc-700 text-xs space-y-2.5 shadow-sm transition cursor-pointer group"
+                                  id={`appt-card-${a.id.replace(/^#/, '')}`}
+                                  className={`p-4 rounded-2xl text-xs space-y-2.5 transition cursor-pointer group ${
+                                    Boolean(highlightApptId && (Boolean(highlightApptId && (highlightApptId === a.id || highlightApptId.replace(/^#/, '') === a.id.replace(/^#/, ''))) || highlightApptId.replace(/^#/, '') === a.id.replace(/^#/, '')))
+                                      ? 'border-2 border-red-500 bg-red-950/80 ring-2 ring-red-500/60 shadow-xl shadow-red-950/80 animate-pulse'
+                                      : 'bg-[#18181b] hover:bg-[#1f1f24] border border-zinc-800 hover:border-zinc-700 shadow-sm'
+                                  }`}
                                 >
                                   <div className="flex items-center justify-between">
-                                    <span className="font-black text-red-500 text-sm tracking-wide uppercase">
-                                      {title}
-                                    </span>
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-black text-red-500 text-sm tracking-wide uppercase">
+                                        {title}
+                                      </span>
+                                      {highlightApptId === a.id && (
+                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-red-600 text-white animate-bounce shadow-md">
+                                          ⚡ LỊCH HẸN VỪA TẠO
+                                        </span>
+                                      )}
+                                    </div>
                                     <span className="text-xs font-mono px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-400">
                                       #{a.id}
                                     </span>
@@ -4146,12 +4314,26 @@ export default function CustomerDashboard({
                             const apptTime = new Date(`${appt.ngayHen}T${appt.gioHen || '08:00'}:00`).getTime();
                             const hoursLeft = (apptTime - Date.now()) / (1000 * 60 * 60);
                             const canCancel = (appt.trangThai === 'ChoXacNhan' || appt.trangThai === 'DaXacNhan') && hoursLeft >= 48;
+                            const isHighlighted = Boolean(highlightApptId && (highlightApptId === appt.id || highlightApptId.replace(/^#/, '') === appt.id.replace(/^#/, '')));
 
                             return (
-                              <div key={appt.id} className="p-5 rounded-3xl bg-[#141416] border border-zinc-800 space-y-3">
+                              <div
+                                id={`appt-card-${appt.id.replace(/^#/, '')}`}
+                                key={appt.id}
+                                className={`p-5 rounded-3xl space-y-3 transition ${
+                                  isHighlighted
+                                    ? 'border-2 border-red-500 bg-red-950/80 ring-2 ring-red-500/60 shadow-xl shadow-red-950/80 animate-pulse'
+                                    : 'bg-[#141416] border border-zinc-800'
+                                }`}
+                              >
                                 <div className="flex items-center justify-between flex-wrap gap-2">
                                   <div className="flex items-center gap-2">
                                     <span className="font-extrabold text-white text-sm uppercase">{SVC_LABELS[appt.loaiDichVu] || appt.loaiDichVu}</span>
+                                    {isHighlighted && (
+                                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-red-600 text-white animate-bounce shadow-md">
+                                        ⚡ LỊCH HẸN VỪA TẠO
+                                      </span>
+                                    )}
                                     <span className="text-xs font-mono px-2 py-0.5 rounded bg-zinc-800 text-zinc-400">#{appt.id}</span>
                                   </div>
                                   <StatusBadge {...cfg} />
@@ -4731,7 +4913,7 @@ export default function CustomerDashboard({
                     {[
                       { key: 'ChoDanhGia', label: '✍️ Chờ đánh giá xe & phụ tùng' },
                       { key: 'DaDanhGia', label: '☑️ Đã đánh giá' },
-                      { key: 'KhaoSatHeThong', label: '📋 Khảo sát mua xe & Dịch vụ' },
+                      { key: 'KhaoSatHeThong', label: activeSystemSurveysCount > 0 ? `📋 Khảo sát mua xe & Dịch vụ (${activeSystemSurveysCount})` : '📋 Khảo sát mua xe & Dịch vụ' },
                     ].map(st => (
                       <button
                         key={st.key}
@@ -6985,6 +7167,17 @@ export default function CustomerDashboard({
         <div className="fixed bottom-6 right-6 z-50 px-4 py-3 bg-emerald-600 text-white rounded-xl shadow-2xl flex items-center gap-2 text-xs font-bold animate-in slide-in-from-bottom">
           <span>✅</span>
           <span>{passwordToast}</span>
+        </div>
+      )}
+
+      {/* Warranty Claim Toast */}
+      {claimSuccessToast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-zinc-900 text-white px-5 py-4 rounded-2xl shadow-2xl border border-red-600/80 flex items-center gap-3 animate-in slide-in-from-bottom">
+          <span className="text-2xl">⚡</span>
+          <div className="text-xs">
+            <strong className="font-bold block text-red-400 uppercase tracking-wide">Yêu cầu bảo hành đã được gửi</strong>
+            <span className="text-zinc-200">{claimSuccessToast}</span>
+          </div>
         </div>
       )}
 

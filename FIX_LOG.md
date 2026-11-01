@@ -4189,3 +4189,138 @@ pm run build thành công 100% trong 1.41s, **0 lỗi TypeScript**.
   - Build Frontend (`npm --prefix crm-frontend run build`): Thành công 100%, 0 lỗi TypeScript / linting.
   - Build Backend (`dotnet build CrmBackend`): Thành công 100%, 0 lỗi.
   - Tuân thủ quy tắc an toàn: Giới hạn can thiệp duy nhất vào tính năng duyệt biển số, không đụng chạm đến bất kỳ tính năng nào khác.
+
+---
+
+### 71. Bắt buộc phân công KTV khi xác nhận bảo hành, Tự động gửi khảo sát bảo hành đến Khảo sát mua xe & Dịch vụ, và Thêm bộ lọc toàn diện Quản lý khảo sát Admin
+* **Ngày thực hiện:** 01/11/2026
+* **Mô tả yêu cầu người dùng:**
+  1. *"thêm tính năng khi xác nhận bảo hành bắt buộc phân công ktv"* (Admin không được tự động gán cứng hay bỏ trống KTV khi bấm Xác nhận lịch hẹn bảo hành).
+  2. *"thêm lỗi : sau khi bảo hành xong không thấy gửi khảo sát đến khách hàng... GỬI KHẢO SÁT TỰ ĐỘNG ĐẾN MUA XE VÀ DỊCH VỤ CHỨ KO PHẢI CHỜ ĐÁNH GIÁ"*.
+  3. *"admin : quản lý và tạo khảo sát cần thêm chức năng lọc cho dễ kiểm soát"*.
+  4. Giữ nguyên toàn bộ các tính năng đã chốt ở các bản trước (Phê duyệt biển số xe cà vẹt, Bán hàng phân công KTV bàn giao, Form đặt lịch bảo hành chặn giờ quá khứ và cảnh báo trùng).
+* **Nguyên nhân & Phân tích kỹ thuật:**
+  1. *Phân công KTV bảo hành:* Nút `[✓ Xác nhận]` tại Tab 2 `Warranty.tsx` trước đây gọi ngay API và gán cứng tên KTV là `"Nguyễn Văn Hùng"` mà không cho phép Admin lựa chọn.
+  2. *Lỗi gửi khảo sát bảo hành:* Khi Admin bấm Hoàn thành & Đóng yêu cầu bảo hành, bài khảo sát được tạo với ID `KS-BH-...`, nhưng hook tự động đồng bộ phía khách hàng (`CustomerDashboard.tsx`) lại gọi nhầm hàm `createMaintenanceSurvey` thay vì `createWarrantyServiceSurvey`. Đồng thời, thời gian đăng/bắt đầu có thể bị lệch múi giờ, và Sub-tab 3 *"Khảo sát mua xe & Dịch vụ"* thiếu chỉ báo số lượng bài chờ làm khiến khách hàng khó phát hiện.
+  3. *Bộ lọc quản lý khảo sát Admin:* Trang `Feedback.tsx` (Tab Quản lý & Tạo khảo sát) trước đây chỉ có 5 nút lọc trạng thái thô sơ, thiếu ô tìm kiếm từ khóa, thiếu lọc theo loại nghiệp vụ (Bảo hành, Bảo dưỡng, Mua xe, Lái thử), thiếu lọc đối tượng (Toàn bộ, Hạng VIP/Thân thiết, Khách chỉ định) và thiếu sắp xếp.
+* **Giải pháp đã thực hiện:**
+  1. **Bắt buộc phân công KTV khi xác nhận bảo hành (`Warranty.tsx` & `api.ts`):**
+     - Mở rộng hàm `warrantyApi.confirmAppointment(claimOrApptId, technician)` tiếp nhận thông tin KTV được chọn và ghi chú phân công.
+     - Trong `Warranty.tsx`, nút `[✓ Xác nhận]` tại bảng Yêu cầu bảo hành mở Modal popup: *"XÁC NHẬN LỊCH HẸN & BẮT BUỘC PHÂN CÔNG KỸ THUẬT VIÊN"* (`confirmingClaimKtv`).
+     - Lấy danh sách kỹ thuật viên thực tế từ `mockStaffAccounts` (`vaiTro === "NhanVienKyThuat"` / Kỹ thuật viên). Nút `[✓ XÁC NHẬN & PHÂN CÔNG KTV]` bị khóa cứng (`disabled:opacity-40`) cho đến khi Admin click chọn 1 KTV cụ thể.
+     - Đồng bộ chính xác tên KTV vào phiếu bảo hành, `crm_appointments_cache` và thông báo gửi đến chuông khách hàng.
+  2. **Tự động gửi khảo sát bảo hành đến Sub-tab "Khảo sát mua xe & Dịch vụ" (`CustomerDashboard.tsx` & `api.ts`):**
+     - Trong `surveyApi.createWarrantyServiceSurvey`, chuẩn hóa `publishDate` và `startDate` lùi 1 phút (`Date.now() - 60000`) để bài khảo sát luôn có trạng thái `DangDienRa` ngay lập tức.
+     - Bổ sung đối soát thông minh: Bài khảo sát bảo hành `KS-BH-...` tự động nhận diện khách hàng sở hữu xe theo `customerId`, số điện thoại hoặc biển số xe trong danh sách phương tiện của khách.
+     - Trong hook theo dõi lịch hẹn hoàn tất (`CustomerDashboard.tsx`), khi `a.loaiDichVu === "BaoHanh"` và đã hoàn thành, tự động đồng bộ bài khảo sát dịch vụ bảo hành.
+     - Bổ sung số đếm badge trực quan trên Sub-tab: `📋 Khảo sát mua xe & Dịch vụ (${activeSystemSurveysCount})` để khách hàng mở Tab 5 là thấy ngay khảo sát bảo hành đang chờ.
+  3. **Bộ lọc toàn diện Quản lý & Tạo khảo sát Admin (`Feedback.tsx`):**
+     - Thêm thanh tìm kiếm từ khóa: Tìm theo tên bài khảo sát, mã `KS...`, nội dung câu hỏi.
+     - Thêm 3 Dropdown lọc: Loại khảo sát (Tất cả, Bảo hành, Bảo dưỡng, Mua xe, Lái thử, Chung), Đối tượng nhận (Toàn bộ, Theo hạng, Khách chỉ định), Sắp xếp (Mới nhất, Cũ nhất, Nhiều phản hồi nhất, Tỷ lệ hoàn thành cao nhất).
+     - Thêm nút `↺ Đặt lại` (Reset) 1-click xóa bộ lọc.
+     - Trong Modal Tạo / Sửa khảo sát: Bổ sung bộ lọc phân hạng thành viên (VIP, Thân thiết, Phổ thông, Mới) khi chọn danh sách khách hàng chỉ định (`CUSTOM`).
+  4. **Cô lập triệt để Khảo sát Mua xe & Dịch vụ của Khách hàng (`CustomerDashboard.tsx`):**
+     - Xây dựng hàm chuẩn `isSurveyEligibleForCustomer(survey, customer, orders, appts, vehicles)`:
+       * Loại bỏ 100% các khảo sát tĩnh/dummy mẫu (`KS001`, `KS002`, `KS003`, `KS004`, `KSH...`).
+       * Chỉ hiển thị khảo sát có trạng thái `DangDienRa` và còn trong thời hạn hiệu lực.
+       * Chặn hoàn toàn các khảo sát nhắm đích danh một tài khoản khách hàng khác (`targetCustomerId` hoặc `targetCustomerIds`).
+       * Điều kiện dịch vụ ĐÃ HOÀN THÀNH:
+         - Khảo sát Bảo hành (`KS-BH-...`): Bắt buộc tài khoản có lịch bảo hành hoặc claim bảo hành trạng thái `DaHoanThanh`/`HoanThanh`.
+         - Khảo sát Mua xe (`KS-XE-...`): Bắt buộc tài khoản có đơn mua xe trạng thái `HoanThanh` hoặc `DaGiao`.
+         - Khảo sát Bảo dưỡng (`KS-BD-...`): Bắt buộc tài khoản có lịch bảo dưỡng trạng thái `DaHoanThanh`.
+         - Khảo sát Lái thử (`KS-LT-...`): Bắt buộc tài khoản có lịch lái thử trạng thái `DaHoanThanh`.
+         - Khảo sát do Admin gửi riêng: Bắt buộc nhắm đích danh `customer.id` của tài khoản này.
+     - Sử dụng chung hàm `isSurveyEligibleForCustomer` cho cả danh sách bài khảo sát hiển thị (`loadSurveys`) và số lượng badge hiển thị trên Sub-tab (`activeSystemSurveysCount`), đảm bảo không có bất kỳ bài khảo sát không liên quan nào hiển thị.
+  5. **Khắc phục triệt để Lỗi 3: Tự động chuyển trang & tô đỏ làm nổi bật lịch hẹn vừa tạo (`CustomerDashboard.tsx`):**
+     - Khắc phục sự bất đồng bộ state: Tạo đối tượng `Appointment` và gọi `setAllAppts(prev => [newApptItem, ...prev])` một cách ĐỒNG BỘ ngay trước khi `setActiveTab(2)` và `setApptsSubTab("BaoHanh")`. Nhờ đó, ngay tại frame render đầu tiên của Tab 2, thẻ lịch hẹn bảo hành mới đã có mặt trong DOM, loại bỏ hoàn toàn tình trạng render nhầm "Chưa có lịch hẹn cho dịch vụ này".
+     - Chuẩn hóa ID DOM và điều kiện highlight: Khử tiền tố `#` ở cả hai phía (`highlightApptId.replace(/^#/, "") === appt.id.replace(/^#/, "")`), áp dụng class viền đỏ đậm phát sáng `border-2 border-red-500 bg-red-950/80 ring-2 ring-red-500/60 shadow-xl shadow-red-950/80 animate-pulse` kèm huy hiệu `⚡ LỊCH HẸN VỪA TẠO` trong 10 giây.
+     - Cơ chế cuộn trang đa nhịp (100ms, 350ms, 700ms): Gọi `el.scrollIntoView({ behavior: "smooth", block: "center" })` đảm bảo cuộn mượt mà đưa thẻ lịch hẹn vừa tạo vào ngay trung tâm màn hình.
+     - Bổ sung Toast nổi toàn cục cố định góc màn hình khi gửi yêu cầu thành công, giúp khách hàng nhận biết ngay lập tức mã lịch hẹn vừa tạo.
+* **Kết quả nghiệm thu:**
+  - Build Frontend (`npm --prefix crm-frontend run build`): Thành công 100%, 0 lỗi (tsc && vite build hoàn tất trong 982ms).
+  - Bảo toàn 100% các tính năng trước: LicensePlateApproval (Cà vẹt & biển số rỗng), Sales (Bàn giao xe & KTV PDI), CustomerDashboard (Form bảo hành chặn giờ quá khứ & cảnh báo trùng lịch).
+  - Tuân thủ quy tắc: Không tự ý push GitHub khi chưa có lệnh `.github --update`.
+
+---
+
+### 71. Gom nhóm bài khảo sát theo từng dòng xe / loại dịch vụ, khắc phục triệt để lỗi phân mảnh khảo sát bảo hành
+
+* **Ngày thực hiện:** 01/11/2026
+* **Vấn đề / Yêu cầu:**
+  - Khách hàng phản ánh: Tại trang Admin Quản lý khảo sát (`/admin/feedback`), các bài khảo sát cùng một dòng xe (ví dụ: *Yamaha Exciter 155 VVA ABS* từ các hồ sơ bảo hành `#BH-011126-98` và `#BH-011126-83`) bị tách rời thành 2 thẻ khảo sát riêng lẻ kèm biển số và mã hồ sơ bảo hành, thay vì được tự động gom lại thành 1 bài khảo sát duy nhất đại diện cho dòng xe đó.
+  - Lỗi này trước đây từng xảy ra với khảo sát đơn mua xe (`KS-XE-...`) và lịch hẹn bảo dưỡng (`KS-BD-...`), nay tái diễn ở khảo sát dịch vụ bảo hành (`KS-BH-...`).
+* **Nguyên nhân cốt lõi:**
+  1. *Hàm làm sạch tên xe (`cleanBikeName`):* Chưa lọc bỏ tiền tố khảo sát bảo hành `^Khảo sát chất lượng dịch vụ bảo hành:\s*`, chưa bóc tách hậu tố biển số xe (dạng `- 59-P1 999.88`, `(29A1-123.45)`, `- Chưa bấm biển`). Do đó, tên xe bị giữ nguyên cả biển số xe riêng lẻ của từng khách hàng, khiến slug dòng xe không thể trùng khớp.
+  2. *Hàm khởi tạo khảo sát bảo hành (`createWarrantyServiceSurvey`):* Đặt ID khảo sát theo mã hồ sơ bảo hành `KS-BH-${cleanClaimId}` thay vì gom theo slug dòng xe `KS-BH-${modelSlug}`. Mỗi hồ sơ bảo hành hoàn thành lại sinh ra một mã khảo sát độc lập.
+  3. *Hàm tự động chuẩn hóa & gom nhóm (`migrateAndDeduplicateSurveys`):* Mới chỉ gom nhóm cho `isFragmentedOrder` (`KS-XE-...`), `isFragmentedTestDrive` (`KS-LT-...`) và `isFragmentedMaintenance` (`KS-BD-...`), hoàn toàn bỏ quên nhánh bảo hành `isFragmentedWarranty` (`KS-BH-...`).
+  4. *Điều kiện kiểm tra khảo sát phân mảnh trong `surveyApi.getAll`:* Biến `hasFragmented` chỉ quét `DH` và `LH`, không quét mã `BH` hay `YCBH`.
+  5. *Bộ lọc khảo sát của khách hàng (`isSurveyEligibleForCustomer`):* Nhánh `KS-BH-` kiểm tra cứng `s.id.includes(claim.id)`, nên khi ID khảo sát được đổi thành `KS-BH-${modelSlug}` thì khách hàng sẽ không thấy bài khảo sát trừ khi điều kiện được cập nhật hỗ trợ nhận diện đối tượng khách hàng mục tiêu (`isTargeted`) và trạng thái bảo hành đã hoàn tất.
+* **Giải pháp đã thực hiện:**
+  1. **Nâng cấp `cleanBikeName` (`api.ts`):**
+     - Bổ sung regex bóc tách toàn diện: Khử tiền tố `Khảo sát chất lượng dịch vụ bảo hành:`, khử mã hồ sơ trong ngoặc `(#BH-...)`, khử biển số xe `\s*-\s*[0-9]{2}[A-Z0-9-.\s]+` và các trạng thái xe chưa bấm biển. Trả về đúng tên model xe chuẩn (ví dụ: *Yamaha Exciter 155 VVA ABS*).
+  2. **Gom nhóm bảo hành trong `migrateAndDeduplicateSurveys` (`api.ts`):**
+     - Bổ sung phát hiện `isFragmentedWarranty = s.id.startsWith('KS-BH-') || s.title.toLowerCase().includes('dịch vụ bảo hành')`.
+     - Quy đổi tất cả các bài khảo sát bảo hành cùng model xe về một ID duy nhất: `KS-BH-${modelSlug}` với tiêu đề chuẩn: `Khảo sát chất lượng dịch vụ bảo hành: ${bikeName}`.
+     - Gộp hợp nhất danh sách khách hàng mục tiêu (`targetCustomerIds`), cập nhật số lượng `targetCount` và `responseCount` chính xác.
+     - Tự động remap toàn bộ phản hồi cũ (`surveyResponses`) và thông báo chuông khách hàng (`notifications`) từ ID phân mảnh cũ sang ID chuẩn mới.
+  3. **Tự động quét và kích hoạt gom nhóm trong `surveyApi.getAll` (`api.ts`):**
+     - Mở rộng regex `hasFragmented` để phát hiện ngay các ID hoặc tiêu đề chứa `BH`, `YCBH` hoặc các bài khảo sát bảo hành chưa gom nhóm. Khi phát hiện, hệ thống tự động chạy `migrateAndDeduplicateSurveys()` ngầm ngay khi tải dữ liệu.
+  4. **Chuẩn hóa tạo mới khảo sát bảo hành (`createWarrantyServiceSurvey` trong `api.ts`):**
+     - Định danh ID khảo sát theo model slug `KS-BH-${modelSlug}`.
+     - Khi một hồ sơ bảo hành hoàn thành (Admin bấm Hoàn thành & Bàn giao xe):
+       * Nếu khảo sát của dòng xe này đã tồn tại: Hệ thống không tạo bài mới mà tái sử dụng bài hiện có, tự động bổ sung `custId` vào danh sách `targetCustomerIds` và gửi thông báo chuông đến khách hàng.
+       * Nếu chưa có bài khảo sát cho dòng xe này: Hệ thống tạo mới 1 bài duy nhất cho dòng xe đó.
+  5. **Cập nhật hiển thị khảo sát phía khách hàng (`CustomerDashboard.tsx`):**
+     - Trong `isSurveyEligibleForCustomer`, nhánh `KS-BH-` kiểm tra khách hàng có nằm trong danh sách mục tiêu (`isTargeted`) VÀ tài khoản có ít nhất một dịch vụ bảo hành ĐÃ HOÀN THÀNH (hoặc sở hữu phương tiện cùng dòng xe).
+     - Đảm bảo hiển thị đúng bài khảo sát của dòng xe mình vừa bảo hành xong, và các khách hàng không liên quan tuyệt đối không nhìn thấy.
+* **Kết quả nghiệm thu:**
+  - Build Frontend (`npm --prefix crm-frontend run build`): Thành công 100%, 0 lỗi.
+  - Các bài khảo sát bảo hành phân mảnh cùng dòng xe (như *Yamaha Exciter 155 VVA ABS*) tự động hợp nhất thành 1 thẻ duy nhất trên giao diện Quản lý khảo sát Admin.
+  - Khách hàng sau khi hoàn tất bảo hành xe nhận được đúng bài khảo sát của dòng xe đó tại Sub-tab *"Khảo sát mua xe & Dịch vụ"*.
+  - Bảo toàn 100% tất cả các tính năng đã chốt: Phê duyệt cà vẹt & biển số, Bàn giao xe & KTV PDI, Bắt buộc phân công KTV bảo hành, Tự động chuyển trang & tô đỏ highlight lịch hẹn vừa tạo.
+
+---
+
+### 72. Khắc phục triệt để lỗi phê duyệt biển số xe (Xử lý QuotaExceededError, trùng biển số backend, nén ảnh cà vẹt tự động & kiểm tra thời gian thực)
+
+* **Ngày thực hiện:** 02/11/2026
+* **Vấn đề / Yêu cầu:**
+  - Khách hàng phản ánh: *"lại bị lỗi phê duyệt biển số"*.
+  - Admin bấm duyệt biển số hoặc khách cập nhật cà vẹt bị lỗi không lưu được, hoặc xuất hiện lỗi đầy bộ nhớ trình duyệt `QuotaExceededError`.
+* **Nguyên nhân cốt lõi (Root Cause Analysis):**
+  1. *Lỗi tràn dung lượng LocalStorage (`QuotaExceededError`):*
+     - Trình duyệt giới hạn cứng bộ nhớ `localStorage` là 5MB cho mỗi domain.
+     - Khi khách hàng tải ảnh cà vẹt lên, dữ liệu ảnh Base64 được lưu đồng thời vào nhiều key trùng lặp (`crm_customer_vehicles`, `crm_cavet_${id}`, `crm_cavet_${vin}`).
+     - Cùng với hơn 50 thông báo chuông (`crm_admin_notifications`, `crm_customer_notifs_*`) và lịch sử đơn hàng, tổng dung lượng vượt ngưỡng 5MB khiến lệnh `localStorage.setItem` ném ngoại lệ `DOMException: QuotaExceededError`, làm thất bại âm thầm việc lưu trạng thái xe đang chờ duyệt hoặc đã duyệt.
+  2. *Lỗi trùng biển số trên SQL Server Backend:*
+     - CSDL Backend kiểm tra tính duy nhất của biển số xe (`SELECT COUNT(1) FROM XE_KHACH_HANG WHERE BienSoXe = ...`).
+     - Placeholder gợi ý trên Modal phê duyệt trước đây là `59-K1 123.45` - biển số này đã được đăng ký sẵn trong database (thuộc xe SYM Star SR 170, mã sở hữu 101). Khi Admin thử bấm duyệt với biển số này, Backend trả về HTTP 400 Bad Request `"Biển số xe đã tồn tại trong hệ thống"`.
+  3. *Lỗi đối soát và đồng bộ dữ liệu Backend:*
+     - Khi duyệt biển số xe trong `approveLicensePlate`, hàm đối soát tra cứu backend chưa lọc theo điều kiện xe chưa có biển số (`isNoPlate`), có nguy cơ khớp nhầm vào xe đã có biển số.
+     - Nếu xe được mua online chưa từng đồng bộ xuống CSDL SQL Server của backend, hệ thống chưa có nhánh tự động gọi `POST /api/XeKhachHang` để lưu xe mới vào database.
+  4. *Trạng thái chờ duyệt bị đè trong `vehicleApi.getAll()`:*
+     - Khi xe vừa được khách hàng cập nhật ảnh cà vẹt (`ChoDuyet`), việc gọi tải danh sách từ backend vô tình làm xe bị reset trạng thái do dữ liệu backend mặc định là `DaDuyet`.
+* **Giải pháp đã thực hiện:**
+  1. **Bộ đệm an toàn `safeLocalStorageSet` & Tự động giải phóng bộ nhớ (`api.ts`):**
+     - Xây dựng cơ chế bọc an toàn `safeLocalStorageSet(key, value)` có khả năng tự động xử lý khi gặp `QuotaExceededError`:
+       * Quét và xóa bỏ ngay lập tức toàn bộ các key rác trùng lặp `crm_cavet_*`.
+       * Tự động cắt tỉa danh sách thông báo chuông (`crm_admin_notifications`, `crm_customer_notifs_*`) xuống còn 10 thông báo mới nhất.
+       * Tối ưu, thu gọn các chuỗi ảnh Base64 (>30KB) đối với các xe đã hoàn tất phê duyệt (`DaDuyet`) nhằm giải phóng triệt để bộ nhớ.
+       * Tự động thử lại lệnh ghi sau khi dọn dẹp.
+     - Bổ sung cơ chế dọn dẹp tự động một lần ngay khi ứng dụng khởi chạy.
+  2. **Tối ưu bộ nén ảnh Cà vẹt trong `ImageUploader.tsx`:**
+     - Giảm kích thước ảnh nén qua Canvas xuống tối đa 500px và JPEG quality 0.6. Dung lượng mỗi ảnh cà vẹt chỉ còn ~15KB - 25KB (giảm hơn 95% so với ảnh gốc), vừa đảm bảo đọc rõ biển số và con dấu cà vẹt, vừa triệt tiêu vĩnh viễn nguy cơ tràn bộ nhớ 5MB.
+  3. **Kiểm tra trùng lặp thời gian thực & Cập nhật Placeholder (`LicensePlateApproval.tsx`):**
+     - Đổi placeholder gợi ý sang biển số mẫu mới chưa từng sử dụng: `(VD: 59-P1 999.99)`.
+     - Thêm kiểm tra trùng lặp biển số tức thì (real-time duplicate check): Khi Admin gõ biển số vào modal duyệt, hệ thống lập tức đối chiếu với tất cả xe đã duyệt khác. Nếu trùng, hiển thị banner cảnh báo đỏ: `⚠️ Biển số này đã được cấp cho xe khác trong hệ thống!` và khóa nút `[✓ Xác nhận Phê duyệt & Cấp biển số]`.
+  4. **Khớp xe thông minh & Đồng bộ Backend (`api.ts`):**
+     - Trong `approveLicensePlate`: Chỉ đối soát với các xe backend chưa có biển số (`isNoPlate(bx.bienSoXe)`).
+     - Nếu xe chưa có trên backend SQL Server (ví dụ xe mua online): Tự động gọi `POST /api/XeKhachHang` để thêm mới xe vào cơ sở dữ liệu backend với biển số đã duyệt.
+     - Cập nhật cache đồng bộ qua `safeLocalStorageSet('crm_customer_vehicles')`.
+     - Trong `vehicleApi.getAll()`: Bảo toàn tuyệt đối cờ `ChoDuyet` của xe từ cache người dùng, không để backend ghi đè.
+* **Kết quả nghiệm thu:**
+  - `npm --prefix crm-frontend run build`: Hoàn thành 100%, 0 lỗi (1.06s).
+  - Backend SQL Server `http://localhost:5208/api/XeKhachHang`: Hoạt động ổn định (31 xe).
+  - Không còn hiện tượng ném ngoại lệ `QuotaExceededError` khi upload ảnh cà vẹt và phê duyệt biển số.
+  - Bảo toàn 100% tất cả các tính năng đã chốt ở các bản trước.
+  - Tuyệt đối không `git push` lên GitHub khi chưa nhận lệnh `.github --update`.

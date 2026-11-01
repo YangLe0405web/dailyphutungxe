@@ -35,7 +35,7 @@ export default function ImageUploader({
         img.onload = () => {
           try {
             const canvas = document.createElement('canvas');
-            const maxDimension = 800;
+            const maxDimension = 500;
             let width = img.width;
             let height = img.height;
 
@@ -54,7 +54,7 @@ export default function ImageUploader({
             const ctx = canvas.getContext('2d');
             if (ctx) {
               ctx.drawImage(img, 0, 0, width, height);
-              const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
+              const compressedBase64 = canvas.toDataURL('image/jpeg', 0.6);
               onChange(compressedBase64);
               return;
             }

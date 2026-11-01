@@ -1069,9 +1069,28 @@ export default function LicensePlateApproval() {
                   type="text"
                   value={officialPlateInput}
                   onChange={e => setOfficialPlateInput(e.target.value.toUpperCase())}
-                  placeholder="Nhập biển số theo Cà vẹt xe khách gửi (VD: 59-K1 123.45)..."
+                  placeholder="Nhập biển số theo Cà vẹt xe khách gửi (VD: 59-P1 999.99)..."
                   className="w-full px-4 py-3 rounded-xl border-2 border-emerald-500 text-sm font-mono font-black text-center tracking-widest text-zinc-900 focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-white"
                 />
+                {(() => {
+                  const cleanInputPlate = officialPlateInput.trim().replace(/[\s-.]/g, '').toUpperCase();
+                  const isPlateDuplicate = Boolean(
+                    cleanInputPlate &&
+                    vehicles.some(v =>
+                      v.id !== approvingVehicle.id &&
+                      v.bienSo &&
+                      !isNoPlate(v.bienSo) &&
+                      v.bienSo.replace(/[\s-.]/g, '').toUpperCase() === cleanInputPlate
+                    )
+                  );
+                  if (!isPlateDuplicate) return null;
+                  return (
+                    <div className="mt-2 p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-bold flex items-center gap-1.5 animate-pulse">
+                      <span>⚠️</span>
+                      <span>Biển số này ({officialPlateInput.trim()}) đã được cấp cho một xe khác trong hệ thống! Vui lòng đối chiếu lại.</span>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Nút tiện ích dùng đúng biển số từ Cà vẹt khách gửi */}
@@ -1145,7 +1164,7 @@ export default function LicensePlateApproval() {
               <button
                 type="button"
                 onClick={handleConfirmApprove}
-                disabled={isSubmitting || !officialPlateInput.trim()}
+                disabled={isSubmitting || !officialPlateInput.trim() || vehicles.some(v => v.id !== approvingVehicle.id && v.bienSo && !isNoPlate(v.bienSo) && v.bienSo.replace(/[\s-.]/g, '').toUpperCase() === officialPlateInput.trim().replace(/[\s-.]/g, '').toUpperCase())}
                 className="px-5 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md cursor-pointer transition flex items-center gap-1.5 disabled:opacity-50"
               >
                 {isSubmitting ? 'Đang cập nhật...' : '✓ Xác nhận Phê duyệt & Cấp biển số'}

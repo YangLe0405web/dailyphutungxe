@@ -10,6 +10,7 @@ import {
   formatDateSafe,
   renewVehicleWarranty,
   getVehicleCatalogImage,
+  mockStaffAccounts,
 } from '../../data/mockData';
 
 export interface ShowroomExtPackage {
@@ -162,6 +163,46 @@ export const WarrantyPage: React.FC = () => {
 
   // ── DỮ LIỆU YÊU CẦU BẢO HÀNH (TAB 2) ──
   const [claimsList, setClaimsList] = useState<AdminWarrantyClaim[]>(() => warrantyApi.getAdminClaims());
+  // Trạng thái modal Bắt buộc phân công KTV khi xác nhận
+  const [confirmingClaimKtv, setConfirmingClaimKtv] = useState<AdminWarrantyClaim | null>(null);
+  const [selectedKtvId, setSelectedKtvId] = useState<string>('');
+  const [ktvAssignNote, setKtvAssignNote] = useState<string>('');
+  const [isSubmittingKtv, setIsSubmittingKtv] = useState<boolean>(false);
+
+  const availableTechnicians = useMemo(() => {
+    return mockStaffAccounts.filter(
+      s => s.vaiTro === 'NhanVienKyThuat' || s.chucVu?.toLowerCase().includes('kỹ thuật') || s.chucVu?.toLowerCase().includes('xưởng')
+    );
+  }, []);
+
+  const handleConfirmAppointmentWithKtv = async () => {
+    if (!confirmingClaimKtv || !selectedKtvId) return;
+    const chosenKtv = availableTechnicians.find(k => k.id === selectedKtvId);
+    if (!chosenKtv) {
+      alert('Vui lòng chọn 1 Kỹ thuật viên phụ trách!');
+      return;
+    }
+
+    setIsSubmittingKtv(true);
+    try {
+      await warrantyApi.confirmAppointment(confirmingClaimKtv.id, {
+        id: chosenKtv.id,
+        hoTen: chosenKtv.hoTen,
+        sdt: chosenKtv.soDienThoai,
+        ghiChu: ktvAssignNote.trim(),
+      });
+      loadData();
+      alert(`✓ Đã xác nhận và phân công KTV ${chosenKtv.hoTen} phụ trách hồ sơ #${confirmingClaimKtv.id} thành công! Lịch hẹn đã được cập nhật sang phía khách hàng.`);
+      setConfirmingClaimKtv(null);
+      setSelectedKtvId('');
+      setKtvAssignNote('');
+    } catch (err) {
+      alert('Có lỗi khi phân công Kỹ thuật viên.');
+    } finally {
+      setIsSubmittingKtv(false);
+    }
+  };
+
   const [claimSearchTerm, setClaimSearchTerm] = useState('');
   const [claimStatusFilter, setClaimStatusFilter] = useState<string>('TatCa');
   const [claimTimeFilter, setClaimTimeFilter] = useState<'ThangNay' | '30Ngay'>('ThangNay');
@@ -2840,7 +2881,11 @@ export const WarrantyPage: React.FC = () => {
                               <div className="flex items-center justify-center gap-1.5 flex-wrap">
                                 <button
                                   type="button"
-                                  onClick={() => handleConfirmAppointment(row)}
+                                  onClick={() => {
+                                    setConfirmingClaimKtv(row);
+                                    setSelectedKtvId('');
+                                    setKtvAssignNote('');
+                                  }}
                                   className="px-2.5 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs shadow-xs transition flex items-center justify-center gap-1 cursor-pointer"
                                   title="Xác nhận lịch hẹn và gửi về trang khách hàng"
                                 >
@@ -4468,6 +4513,146 @@ export const WarrantyPage: React.FC = () => {
                 className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-zinc-100 hover:bg-zinc-200 text-zinc-700 cursor-pointer"
               >
                 Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
+      {/* ── MODAL: XÁC NHẬN & BẮT BUỘC PHÂN CÔNG KỸ THUẬT VIÊN ── */}
+      {confirmingClaimKtv && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-zinc-200 max-h-[92vh] overflow-y-auto">
+            {/* Header */}
+            <div className="flex justify-between items-start pb-4 border-b border-zinc-200">
+              <div className="flex items-center gap-3">
+                <span className="w-10 h-10 rounded-2xl bg-red-100 text-red-700 font-bold flex items-center justify-center text-xl shrink-0">
+                  👨‍🔧
+                </span>
+                <div>
+                  <h3 className="font-extrabold text-base text-zinc-900 uppercase" style={{ fontFamily: 'var(--font-display)' }}>
+                    Xác nhận & Phân công Kỹ thuật viên
+                  </h3>
+                  <p className="text-xs text-zinc-500 mt-0.5">
+                    Chỉ định Kỹ thuật viên phụ trách xử lý sự cố trước khi chuyển trạng thái hồ sơ
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setConfirmingClaimKtv(null)}
+                className="text-zinc-400 hover:text-zinc-600 font-bold text-xl px-2 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Chi tiết yêu cầu bảo hành */}
+            <div className="mt-4 p-4 rounded-2xl bg-zinc-50 border border-zinc-200 space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-zinc-900 font-mono text-sm">
+                  #{confirmingClaimKtv.id}
+                </span>
+                <span className="px-2.5 py-0.5 rounded-full font-bold bg-amber-100 text-amber-800 text-[10px]">
+                  Chờ phân công KTV
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-zinc-700 pt-1">
+                <div>Khách hàng: <strong className="text-zinc-900">{confirmingClaimKtv.khachHang}</strong> ({confirmingClaimKtv.soDienThoai})</div>
+                <div>Phương tiện: <strong className="text-zinc-900">{confirmingClaimKtv.xeBienSo}</strong></div>
+                <div>Lịch hẹn: <strong className="text-red-700 font-mono">{confirmingClaimKtv.gioHen || '09:00'} ngày {confirmingClaimKtv.ngayHen}</strong></div>
+                <div>Chi nhánh: <strong className="text-zinc-800">{confirmingClaimKtv.chiNhanh}</strong></div>
+              </div>
+              <div className="text-zinc-600 pt-1 border-t border-zinc-200">
+                Lý do / Sự cố: <span className="italic text-zinc-800">"{confirmingClaimKtv.noiDung}"</span>
+              </div>
+            </div>
+
+            {/* Danh sách KTV lựa chọn (Bắt buộc) */}
+            <div className="mt-4 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-zinc-900 uppercase tracking-wide flex items-center gap-1.5">
+                  <span>CHỌN KỸ THUẬT VIÊN PHỤ TRÁCH</span>
+                  <span className="text-red-600">* (Bắt buộc)</span>
+                </label>
+                <span className="text-[11px] text-zinc-400 font-mono">
+                  {availableTechnicians.length} KTV sẵn sàng
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {availableTechnicians.map(ktv => {
+                  const isSelected = selectedKtvId === ktv.id;
+                  return (
+                    <div
+                      key={ktv.id}
+                      onClick={() => setSelectedKtvId(ktv.id)}
+                      className={`p-3 rounded-2xl border-2 transition cursor-pointer flex items-center justify-between ${
+                        isSelected
+                          ? 'border-red-600 bg-red-50/50 shadow-xs'
+                          : 'border-zinc-200 bg-white hover:border-zinc-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold text-xs ${
+                          isSelected ? 'bg-red-600 text-white' : 'bg-zinc-100 text-zinc-700'
+                        }`}>
+                          {ktv.hoTen.charAt(0)}
+                        </div>
+                        <div>
+                          <div className="font-bold text-xs text-zinc-900 flex items-center gap-1.5">
+                            {ktv.hoTen}
+                            {isSelected && <span className="text-red-600 text-xs">✓</span>}
+                          </div>
+                          <div className="text-[11px] text-zinc-500 font-mono">{ktv.chucVu}</div>
+                        </div>
+                      </div>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 shrink-0 font-mono">
+                        Sẵn sàng
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {!selectedKtvId && (
+                <p className="text-[11px] text-amber-700 italic flex items-center gap-1">
+                  <span>⚠️</span> Vui lòng chọn 1 Kỹ thuật viên để mở khóa nút xác nhận.
+                </p>
+              )}
+            </div>
+
+            {/* Ghi chú chỉ đạo cho KTV */}
+            <div className="mt-4 space-y-1">
+              <label className="text-xs font-semibold text-zinc-700">
+                Ghi chú / Yêu cầu kỹ thuật cho KTV (tùy chọn):
+              </label>
+              <textarea
+                rows={2}
+                placeholder="VD: Kiểm tra kỹ hệ thống chập chờn điện, chuẩn bị sẵn phụ tùng thay thế nếu cần..."
+                value={ktvAssignNote}
+                onChange={e => setKtvAssignNote(e.target.value)}
+                className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs focus:outline-none focus:border-red-600"
+              />
+            </div>
+
+            {/* Footer buttons */}
+            <div className="flex items-center justify-end gap-3 pt-5 mt-4 border-t border-zinc-200">
+              <button
+                type="button"
+                onClick={() => setConfirmingClaimKtv(null)}
+                className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-zinc-100 hover:bg-zinc-200 text-zinc-700 cursor-pointer transition"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                disabled={!selectedKtvId || isSubmittingKtv}
+                onClick={handleConfirmAppointmentWithKtv}
+                className="px-6 py-2.5 rounded-xl text-xs font-bold bg-red-700 hover:bg-red-800 text-white shadow-md transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex items-center gap-2"
+              >
+                {isSubmittingKtv ? 'Đang lưu...' : '✓ XÁC NHẬN & PHÂN CÔNG KTV'}
               </button>
             </div>
           </div>
