@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   type WarrantyExtensionTransaction,
   type AdminWarrantyClaim,
@@ -89,6 +89,19 @@ export const SHOWROOM_EXT_PACKAGES: ShowroomExtPackage[] = [
 ];
 import { warrantyApi, customerApi, vehicleApi } from '../../services/api';
 import { matchVietnameseSearch } from '../../utils/vietnameseSearch';
+
+// Danh mục phụ tùng tiêu chuẩn theo Ảnh 1 (YCBH05)
+const WARRANTY_PARTS_CATALOG = [
+  { id: 'PT-NHOT-01', ten: 'Nhớt máy cao cấp Castrol Power1 10W-40 0.8L', sku: 'CAS-P1-08L', donGia: 145000, kho: 42 },
+  { id: 'PT-NHOT-02', ten: 'Nhớt hộp số Motul Scooter Gear Plus 120ml', sku: 'MOT-GR-120', donGia: 55000, kho: 35 },
+  { id: 'PT-PHANH-01', ten: 'Má phanh đĩa trước Nissin chính hãng', sku: 'NIS-MPD-01', donGia: 180000, kho: 18 },
+  { id: 'PT-PHANH-02', ten: 'Má phanh cơ sau Honda chính hãng', sku: 'HON-MPS-02', donGia: 120000, kho: 24 },
+  { id: 'PT-CUROA-01', ten: 'Dây curoa Bando chính hãng SH/AirBlade', sku: 'BAN-CUR-01', donGia: 280000, kho: 15 },
+  { id: 'PT-BINOI-01', ten: 'Bộ bi nồi 6 viên Honda chính hãng', sku: 'HON-BIN-06', donGia: 150000, kho: 30 },
+  { id: 'PT-CONG-01', ten: 'Công vệ sinh cụm truyền động & lắp đặt', sku: 'LAB-VSN-01', donGia: 150000, kho: 999 },
+  { id: 'PT-BUGI-01', ten: 'Bugi NGK Laser Iridium cao cấp', sku: 'NGK-CPR8-IR', donGia: 220000, kho: 20 },
+  { id: 'PT-LOCGIO-01', ten: 'Lọc gió động cơ Honda chính hãng', sku: 'HON-LG-01', donGia: 95000, kho: 28 },
+];
 
 const PRESET_PARTS = [
   { ten: 'Búa côn sau (Ba càng)', donGia: 450000, tinhTrang: 'Đã có sẵn' },
@@ -213,6 +226,21 @@ export const WarrantyPage: React.FC = () => {
   // ── STEPPER 6 BƯỚC XỬ LÝ YÊU CẦU BẢO HÀNH (ẢNH 3 -> ẢNH 8) ──
   const [selectedClaim, setSelectedClaim] = useState<AdminWarrantyClaim | null>(null);
   const [activeStep, setActiveStep] = useState<number>(1);
+
+  // YCBH05: Tìm kiếm & chọn phụ tùng theo Ảnh 1
+  const [partSearchText, setPartSearchText] = useState('');
+  const [showPartDropdown, setShowPartDropdown] = useState(false);
+
+  // YCBH06 & YCBH07: State đặt lịch và Lịch popup to tại Bước 3 (Ảnh 2)
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [datePickerMonth, setDatePickerMonth] = useState<Date>(() => new Date());
+  const [estDate, setEstDate] = useState<string>(''); // YYYY-MM-DD
+  const [estTime, setEstTime] = useState<string>('15:30');
+  const [timeValidationError, setTimeValidationError] = useState<string | null>(null);
+
+  // YCBH10: Upload ảnh thực tế tại Bước 5
+  const [b5Images, setB5Images] = useState<string[]>([]);
+  const b5FileInputRef = useRef<HTMLInputElement>(null);
 
   // Modal In phiếu của Bước 6
   const [printExtInvoice, setPrintExtInvoice] = useState<WarrantyExtensionTransaction | null>(null);
@@ -486,9 +514,61 @@ export const WarrantyPage: React.FC = () => {
   };
 
   // Mở Stepper xử lý yêu cầu bảo hành
+  // YCBH06: Ràng buộc thời gian hoàn thành dự kiến
+  const validateEstDateTime = (dateStr: string, timeStr: string): { isValid: boolean; error: string | null; iso: string } => {
+    if (!dateStr) return { isValid: false, error: 'Vui lòng chọn ngày hoàn thành dự kiến!', iso: '' };
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const [hours, minutes] = (timeStr || '15:30').split(':').map(Number);
+    const target = new Date(year, month - 1, day, hours, minutes);
+    const now = new Date();
+
+    if (target.getTime() <= now.getTime()) {
+      return { isValid: false, error: 'Thời gian hoàn thành dự kiến phải nằm trong tương lai (không được chọn quá khứ)!', iso: '' };
+    }
+
+    const tenDaysFromNow = new Date();
+    tenDaysFromNow.setDate(tenDaysFromNow.getDate() + 10);
+    if (target.getTime() > tenDaysFromNow.getTime()) {
+      return { isValid: false, error: 'Thời gian hoàn thành dự kiến không được vượt quá 10 ngày kể từ hiện tại!', iso: '' };
+    }
+
+    const iso = `${dateStr}T${timeStr || '15:30'}`;
+    return { isValid: true, error: null, iso };
+  };
+
   const handleOpenClaimStepper = (claim: AdminWarrantyClaim) => {
     setSelectedClaim({ ...claim });
     setActiveStep(claim.currentStep || 1);
+    setB5Images(claim.b5_hinhAnhThiCong || []);
+    if (claim.b3_thoiGianHoanThanhDuKien) {
+      if (claim.b3_thoiGianHoanThanhDuKien.includes('T')) {
+        const [d, t] = claim.b3_thoiGianHoanThanhDuKien.split('T');
+        setEstDate(d);
+        setEstTime(t || '15:30');
+      } else if (claim.b3_thoiGianHoanThanhDuKien.includes(' ')) {
+        const [d, t] = claim.b3_thoiGianHoanThanhDuKien.split(' ');
+        setEstDate(d);
+        setEstTime(t || '15:30');
+      }
+    } else {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const yyyy = tomorrow.getFullYear();
+      const mm = String(tomorrow.getMonth() + 1).padStart(2, '0');
+      const dd = String(tomorrow.getDate()).padStart(2, '0');
+      setEstDate(`${yyyy}-${mm}-${dd}`);
+      setEstTime('15:30');
+    }
+    setPartSearchText('');
+    setShowPartDropdown(false);
+    setShowDatePicker(false);
+    setTimeValidationError(null);
+    if (claim.b6_xacNhanChayThuHaiLong === undefined) {
+      claim.b6_xacNhanChayThuHaiLong = true;
+    }
+    if (claim.b6_khachKyNhan === undefined) {
+      claim.b6_khachKyNhan = true;
+    }
   };
 
   // Cập nhật trạng thái từng bước và lưu lại
@@ -506,26 +586,103 @@ export const WarrantyPage: React.FC = () => {
     loadData();
   };
 
-  // Xử lý từ chối bảo hành
-  const handleConfirmReject = () => {
+  // Xử lý từ chối bảo hành (YCBH04)
+  const handleConfirmReject = async () => {
     if (!selectedClaim) return;
-    const updated: AdminWarrantyClaim = {
-      ...selectedClaim,
-      trangThai: 'TuChoi',
-      nhanVienPhuTrach: '(Từ chối - Hết hạn BH)',
-      b1_ghiChuNgoaiQuan: rejectReason,
-    };
-    warrantyApi.updateAdminClaim(updated);
+    if (!rejectReason.trim()) {
+      alert('Vui lòng nhập lý do từ chối yêu cầu bảo hành!');
+      return;
+    }
+    await warrantyApi.rejectClaimWithReason(selectedClaim.id, rejectReason.trim());
     setShowRejectModal(false);
+    setRejectReason('');
     setSelectedClaim(null);
     loadData();
     alert('Đã từ chối yêu cầu bảo hành và đóng hồ sơ.');
   };
 
-  // Hoàn thành hồ sơ bảo hành ở Bước 6
+  // YCBH10: Tải ảnh thực tế thi công nén canvas ~20KB
+  const handleB5PhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const processFile = (file: File): Promise<string> => {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const img = new Image();
+          img.onload = () => {
+            try {
+              const canvas = document.createElement('canvas');
+              const maxDim = 500;
+              let width = img.width;
+              let height = img.height;
+              if (width > height && width > maxDim) {
+                height = Math.round((height * maxDim) / width);
+                width = maxDim;
+              } else if (height > maxDim) {
+                width = Math.round((width * maxDim) / height);
+                height = maxDim;
+              }
+              canvas.width = width;
+              canvas.height = height;
+              const ctx = canvas.getContext('2d');
+              if (ctx) {
+                ctx.drawImage(img, 0, 0, width, height);
+                resolve(canvas.toDataURL('image/jpeg', 0.6));
+              } else {
+                resolve(event.target?.result as string);
+              }
+            } catch {
+              resolve(event.target?.result as string);
+            }
+          };
+          img.onerror = () => reject(new Error('Không thể đọc file ảnh'));
+          img.src = event.target?.result as string;
+        };
+        reader.onerror = () => reject(new Error('Đọc file thất bại'));
+        reader.readAsDataURL(file);
+      });
+    };
+
+    Promise.all(Array.from(files).map(processFile))
+      .then(newUrls => {
+        const merged = [...b5Images, ...newUrls];
+        setB5Images(merged);
+        if (selectedClaim) {
+          setSelectedClaim({ ...selectedClaim, b5_hinhAnhThiCong: merged });
+        }
+      })
+      .catch(err => {
+        alert('Tải ảnh thất bại: ' + (err?.message || 'Lỗi xử lý file'));
+      });
+  };
+
+  const handleRemoveB5Photo = (idx: number) => {
+    const next = b5Images.filter((_, i) => i !== idx);
+    setB5Images(next);
+    if (selectedClaim) {
+      setSelectedClaim({ ...selectedClaim, b5_hinhAnhThiCong: next });
+    }
+  };
+
+  // Hoàn thành hồ sơ bảo hành ở Bước 6 (YCBH15: bắt buộc xác nhận)
   const handleFinishClaim = async () => {
     if (!selectedClaim) return;
-    await warrantyApi.completeAdminWarrantyClaim(selectedClaim);
+    const isChayThu = selectedClaim.b6_xacNhanChayThuHaiLong ?? true;
+    const isKyNhan = selectedClaim.b6_khachKyNhan ?? true;
+    if (!isChayThu || !isKyNhan) {
+      alert('⚠️ Vui lòng hoàn tất xác nhận: Khách hàng chạy thử hài lòng và Khách hàng đã ký nhận biên bản bàn giao trước khi đóng hồ sơ (YCBH15)!');
+      return;
+    }
+    const finalClaim: AdminWarrantyClaim = {
+      ...selectedClaim,
+      b6_xacNhanChayThuHaiLong: isChayThu,
+      b6_khachKyNhan: isKyNhan,
+      b6_xacNhanBanGiaoPhuTungCu: selectedClaim.b6_xacNhanBanGiaoPhuTungCu ?? true,
+      b6_xacNhanHuongDanBaoHanh: selectedClaim.b6_xacNhanHuongDanBaoHanh ?? true,
+    };
+    await warrantyApi.completeAdminWarrantyClaim(finalClaim);
     loadData();
     alert('✓ Đã hoàn thành và đóng yêu cầu bảo hành thành công! Hồ sơ đã lưu trữ và khảo sát chất lượng dịch vụ đã tự động gửi đến khách hàng.');
     setSelectedClaim(null);
@@ -896,17 +1053,29 @@ export const WarrantyPage: React.FC = () => {
                   </button>
                 ) : (
                   <div className="flex items-center gap-3">
+                    {/* YCBH09: Nút Lưu nháp */}
                     <button
                       type="button"
-                      onClick={() => setShowRejectModal(true)}
-                      className="px-5 py-2.5 rounded-xl text-xs font-bold border border-red-300 text-red-700 hover:bg-red-50 transition cursor-pointer"
+                      onClick={async () => {
+                        const res = await warrantyApi.saveDraftClaim({ ...selectedClaim, currentStep: 1 });
+                        loadData();
+                        setSelectedClaim(null);
+                        alert(res.message);
+                      }}
+                      className="px-5 py-2.5 rounded-xl text-xs font-bold border border-zinc-300 hover:border-zinc-500 bg-white hover:bg-zinc-100 text-zinc-800 transition cursor-pointer flex items-center gap-1.5 shadow-xs"
+                      title="Lưu lại tiến độ Bước 1 và quay về danh sách"
                     >
-                      Từ chối tiếp nhận
+                      <span>💾 Lưu nháp</span>
                     </button>
+                    {/* YCBH15: Kiểm tra xác nhận xe trước khi tiếp nhận */}
                     {selectedClaim.trangThai === 'ChoXuLy' ? (
                       <button
                         type="button"
                         onClick={async () => {
+                          if (!selectedClaim.b1_xacNhanDungXeBienSo) {
+                            alert('⚠️ Vui lòng tích chọn xác nhận đúng xe và biển số thực tế trước khi tiếp nhận (YCBH15)!');
+                            return;
+                          }
                           await warrantyApi.confirmAppointment(selectedClaim.id);
                           handleSaveClaimStep(2, 'DaTiepNhan');
                         }}
@@ -917,7 +1086,13 @@ export const WarrantyPage: React.FC = () => {
                     ) : (
                       <button
                         type="button"
-                        onClick={() => handleSaveClaimStep(2, 'DaTiepNhan')}
+                        onClick={() => {
+                          if (!selectedClaim.b1_xacNhanDungXeBienSo) {
+                            alert('⚠️ Vui lòng tích chọn xác nhận đúng xe và biển số thực tế trước khi chuyển bước (YCBH15)!');
+                            return;
+                          }
+                          handleSaveClaimStep(2, 'DaTiepNhan');
+                        }}
                         className="px-6 py-2.5 rounded-xl text-xs font-bold bg-red-700 hover:bg-red-800 text-white transition shadow-md cursor-pointer"
                       >
                         XÁC NHẬN &amp; CHUYỂN BƯỚC 2 &gt;
@@ -929,345 +1104,439 @@ export const WarrantyPage: React.FC = () => {
             </div>
           )}
 
-          {/* =========================================================
-              BƯỚC 2: GHI NHẬN KẾT QUẢ KIỂM TRA KỸ THUẬT (ẢNH 4)
+                    {/* =========================================================
+              BƯỚC 2: GHI NHẬN KẾT QUẢ KIỂM TRA KỸ THUẬT (ẢNH 4 & YCBH05)
               ========================================================= */}
-          {activeStep === 2 && (
-            <div className="bg-white p-6 sm:p-8 rounded-3xl border border-zinc-200 shadow-sm space-y-6">
-              <h2 className="text-base sm:text-lg font-black text-zinc-900 font-mono border-b border-zinc-100 pb-3">
-                Bước 2: Ghi nhận kết quả kiểm tra kỹ thuật
-              </h2>
+          {activeStep === 2 && (() => {
+            const selectedParts = selectedClaim.b2_phuTungDuKien || [];
+            const filteredCatalog = WARRANTY_PARTS_CATALOG.filter(item => {
+              if (!partSearchText.trim()) return true;
+              const q = partSearchText.toLowerCase();
+              return item.ten.toLowerCase().includes(q) || item.sku.toLowerCase().includes(q);
+            });
 
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                {/* Cột trái: Tóm tắt */}
-                <div className="lg:col-span-5 p-5 rounded-2xl bg-zinc-50 border border-zinc-200 space-y-4">
-                  <div className="text-xs font-black uppercase tracking-wider text-zinc-500 font-mono">
-                    THÔNG TIN PHƯƠNG TIỆN & YÊU CẦU
-                  </div>
-                  <div className="space-y-2.5 text-xs">
-                    <div>
-                      <span className="text-zinc-500">Khách hàng: </span>
-                      <strong className="text-zinc-900">{selectedClaim.khachHang}</strong> |{' '}
-                      <span className="text-zinc-500 font-mono">{selectedClaim.soDienThoai}</span>
+            const totalPartCost = selectedParts.reduce((sum: number, pt: any) => {
+              const price = pt.donGia || 180000;
+              return sum + price * (pt.soLuong || 1);
+            }, 0);
+
+            const handleAddPartToClaim = (catalogItem: typeof WARRANTY_PARTS_CATALOG[0]) => {
+              const cur = selectedClaim.b2_phuTungDuKien || [];
+              const exists = cur.find((p: any) => p.ten === catalogItem.ten || p.id === catalogItem.id);
+              let updated;
+              if (exists) {
+                updated = cur.map((p: any) =>
+                  (p.ten === catalogItem.ten || p.id === catalogItem.id)
+                    ? { ...p, soLuong: (p.soLuong || 1) + 1 }
+                    : p
+                );
+              } else {
+                updated = [
+                  ...cur,
+                  {
+                    id: catalogItem.id,
+                    sku: catalogItem.sku,
+                    ten: catalogItem.ten,
+                    donGia: catalogItem.donGia,
+                    kho: catalogItem.kho,
+                    soLuong: 1,
+                    tinhTrang: 'Sẵn có trong kho',
+                  },
+                ];
+              }
+              setSelectedClaim({ ...selectedClaim, b2_phuTungDuKien: updated, b3_hangMucChiPhi: undefined });
+              setPartSearchText('');
+              setShowPartDropdown(false);
+            };
+
+            const handleUpdatePartQuantity = (idx: number, delta: number) => {
+              const cur = selectedClaim.b2_phuTungDuKien || [];
+              const currentQty = cur[idx]?.soLuong || 1;
+              const newQty = currentQty + delta;
+              let updated;
+              if (newQty <= 0) {
+                updated = cur.filter((_: any, i: number) => i !== idx);
+              } else {
+                updated = cur.map((p: any, i: number) => i === idx ? { ...p, soLuong: newQty } : p);
+              }
+              setSelectedClaim({ ...selectedClaim, b2_phuTungDuKien: updated, b3_hangMucChiPhi: undefined });
+            };
+
+            const handleRemovePart = (idx: number) => {
+              const cur = selectedClaim.b2_phuTungDuKien || [];
+              const updated = cur.filter((_: any, i: number) => i !== idx);
+              setSelectedClaim({ ...selectedClaim, b2_phuTungDuKien: updated, b3_hangMucChiPhi: undefined });
+            };
+
+            return (
+              <div className="bg-white p-6 sm:p-8 rounded-3xl border border-zinc-200 shadow-sm space-y-6">
+                <h2 className="text-base sm:text-lg font-black text-zinc-900 font-mono border-b border-zinc-100 pb-3 flex items-center justify-between">
+                  <span>Bước 2: Ghi nhận kết quả kiểm tra kỹ thuật</span>
+                  <span className="text-xs font-mono font-normal text-zinc-500">Mã yêu cầu: #{selectedClaim.id}</span>
+                </h2>
+
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                  {/* Cột trái: Tóm tắt */}
+                  <div className="lg:col-span-5 p-5 rounded-2xl bg-zinc-50 border border-zinc-200 space-y-4">
+                    <div className="text-xs font-black uppercase tracking-wider text-zinc-500 font-mono">
+                      THÔNG TIN PHƯƠNG TIỆN &amp; YÊU CẦU
                     </div>
-                    <div>
-                      <span className="text-zinc-500">Xe / Biển số: </span>
-                      <strong className="text-zinc-900">{selectedClaim.xeBienSo}</strong>
-                    </div>
-                    <div>
-                      <span className="text-zinc-500">Số KM hiện tại: </span>
-                      <strong className="text-zinc-900 font-mono">
-                        {(selectedClaim.b1_soKmHienTai || 12450).toLocaleString()} km
-                      </strong>
-                    </div>
-                    <div>
-                      <span className="text-zinc-500">Yêu cầu từ khách: </span>
-                      <p className="text-zinc-800 font-semibold mt-0.5">{selectedClaim.noiDung}</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Cột phải: Kết quả kiểm tra */}
-                <div className="lg:col-span-7 space-y-4">
-                  <div className="text-xs font-black uppercase tracking-wider text-zinc-900 font-mono">
-                    KẾT QUẢ KIỂM TRA CHI TIẾT
-                  </div>
-
-                  {/* Bộ phận sự cố */}
-                  <div>
-                    <label className="text-xs font-bold text-zinc-800 block mb-2">
-                      Chọn bộ phận/hệ thống gặp sự cố
-                    </label>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs font-semibold text-zinc-800">
-                      {[
-                        { key: 'TruyenDong', label: 'Truyền động (Nồi/Côn)' },
-                        { key: 'DongCo', label: 'Động cơ' },
-                        { key: 'Dien', label: 'Hệ thống điện' },
-                        { key: 'Phanh', label: 'Hệ thống phanh' },
-                        { key: 'GiamXoc', label: 'Giảm xóc/Khung sườn' },
-                        { key: 'Khac', label: 'Khác' },
-                      ].map(item => {
-                        const current = selectedClaim.b2_heThongSuCo || ['TruyenDong'];
-                        const isChecked = current.includes(item.key);
-                        return (
-                          <label
-                            key={item.key}
-                            className={`p-2.5 rounded-xl border flex items-center gap-2 cursor-pointer transition ${
-                              isChecked
-                                ? 'bg-red-50 border-red-300 text-red-900 font-bold'
-                                : 'bg-zinc-50 border-zinc-200 text-zinc-700'
-                            }`}
-                          >
-                            <input
-                              type="checkbox"
-                              disabled={isCompleted}
-                              checked={isChecked}
-                              onChange={e => {
-                                const next = e.target.checked
-                                  ? [...current, item.key]
-                                  : current.filter(k => k !== item.key);
-                                setSelectedClaim({ ...selectedClaim, b2_heThongSuCo: next });
-                              }}
-                              className="w-4 h-4 text-red-600 accent-red-600 rounded disabled:opacity-50"
-                            />
-                            <span>{item.label}</span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Chi tiết lỗi */}
-                  <div>
-                    <label className="text-xs font-bold text-zinc-800 block mb-1">
-                      Chi tiết lỗi kỹ thuật phát hiện:
-                    </label>
-                    <textarea
-                      rows={3}
-                      disabled={isCompleted}
-                      value={
-                        selectedClaim.b2_chiTietLoi ||
-                        'Búa côn bị mòn, chuông nồi bị cháy sẫm màu, nhiều bụi bẩn bám trong cụm nồi trước và sau làm giảm độ bám gây giật khi tăng ga.'
-                      }
-                      onChange={e =>
-                        setSelectedClaim({ ...selectedClaim, b2_chiTietLoi: e.target.value })
-                      }
-                      className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs text-black bg-white font-medium disabled:bg-zinc-100 disabled:text-zinc-600"
-                    />
-                  </div>
-
-                  {/* Đề xuất xử lý */}
-                  <div>
-                    <label className="text-xs font-bold text-zinc-800 block mb-1">
-                      Đề xuất hướng xử lý:
-                    </label>
-                    <input
-                      type="text"
-                      disabled={isCompleted}
-                      value={
-                        selectedClaim.b2_deXuatHuongXuLy ||
-                        'Thay mới bộ búa côn (ba càng) và chuông nồi sau, vệ sinh toàn bộ cụm truyền động trước và sau.'
-                      }
-                      onChange={e =>
-                        setSelectedClaim({ ...selectedClaim, b2_deXuatHuongXuLy: e.target.value })
-                      }
-                      className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs text-black bg-white disabled:bg-zinc-100 disabled:text-zinc-600"
-                    />
-                  </div>
-
-                  {/* Phụ tùng dự kiến do KTV chọn */}
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="text-xs font-bold text-zinc-800 flex items-center gap-1.5">
-                        <span>🔧</span> Phụ tùng dự kiến cần thay thế (Do KTV chỉ định):
-                      </label>
-                      <span className="text-[11px] font-mono text-zinc-500">
-                        ({(selectedClaim.b2_phuTungDuKien || []).length} linh kiện đã chọn)
-                      </span>
-                    </div>
-
-                    {/* Danh sách phụ tùng đã chọn */}
-                    {(!selectedClaim.b2_phuTungDuKien || selectedClaim.b2_phuTungDuKien.length === 0) ? (
-                      <div className="p-4 rounded-xl bg-amber-50/70 border border-amber-200 text-xs text-amber-900 space-y-1">
-                        <div className="font-bold flex items-center gap-1.5 text-amber-800">
-                          <span>ℹ️</span> Chưa chỉ định phụ tùng thay thế
-                        </div>
-                        <p className="text-amber-700/90 text-[11px]">
-                          KTV vui lòng chọn linh kiện cần thay thế từ danh mục hoặc danh sách chọn nhanh bên dưới. Nếu chỉ kiểm tra/vệ sinh định kỳ mà không cần thay linh kiện, bạn có thể để trống.
-                        </p>
+                    <div className="space-y-2.5 text-xs">
+                      <div>
+                        <span className="text-zinc-500">Khách hàng: </span>
+                        <strong className="text-zinc-900">{selectedClaim.khachHang}</strong> |{' '}
+                        <span className="text-zinc-500 font-mono">{selectedClaim.soDienThoai}</span>
                       </div>
-                    ) : (
-                      <div className="space-y-2">
-                        {selectedClaim.b2_phuTungDuKien.map((pt: any, i: number) => (
-                          <div
-                            key={i}
-                            className="flex items-center justify-between p-2.5 rounded-xl bg-zinc-50 border border-zinc-200 text-xs hover:border-zinc-300 transition"
-                          >
-                            <div className="flex items-center gap-2">
-                              <span className="font-mono text-red-600 font-bold">#{i + 1}</span>
-                              <span className="font-bold text-zinc-900">{pt.ten}</span>
-                              <span className="font-mono text-zinc-500">({formatVND(pt.donGia || 350000)})</span>
-                            </div>
-                            <div className="flex items-center gap-2 sm:gap-3">
-                              {/* Quantity buttons */}
-                              {!isCompleted ? (
-                                <div className="flex items-center border border-zinc-300 rounded-lg overflow-hidden bg-white">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const cur = selectedClaim.b2_phuTungDuKien || [];
-                                      const newQty = Math.max(1, (pt.soLuong || 1) - 1);
-                                      const updated = cur.map((p: any, idx: number) => idx === i ? { ...p, soLuong: newQty } : p);
-                                      setSelectedClaim({ ...selectedClaim, b2_phuTungDuKien: updated, b3_hangMucChiPhi: undefined });
-                                    }}
-                                    className="px-2 py-0.5 text-zinc-600 hover:bg-zinc-100 font-bold cursor-pointer"
-                                    title="Giảm số lượng"
-                                  >
-                                    -
-                                  </button>
-                                  <span className="px-2 py-0.5 text-xs font-mono font-bold text-zinc-900 min-w-[24px] text-center">
-                                    {pt.soLuong || 1}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const cur = selectedClaim.b2_phuTungDuKien || [];
-                                      const newQty = (pt.soLuong || 1) + 1;
-                                      const updated = cur.map((p: any, idx: number) => idx === i ? { ...p, soLuong: newQty } : p);
-                                      setSelectedClaim({ ...selectedClaim, b2_phuTungDuKien: updated, b3_hangMucChiPhi: undefined });
-                                    }}
-                                    className="px-2 py-0.5 text-zinc-600 hover:bg-zinc-100 font-bold cursor-pointer"
-                                    title="Tăng số lượng"
-                                  >
-                                    +
-                                  </button>
-                                </div>
-                              ) : (
-                                <span className="font-mono text-zinc-600 font-bold">SL: {pt.soLuong || 1}</span>
-                              )}
+                      <div>
+                        <span className="text-zinc-500">Xe / Biển số: </span>
+                        <strong className="text-zinc-900">{selectedClaim.xeBienSo}</strong>
+                      </div>
+                      <div>
+                        <span className="text-zinc-500">Số KM hiện tại: </span>
+                        <strong className="text-zinc-900 font-mono">
+                          {(selectedClaim.b1_soKmHienTai || 12450).toLocaleString()} km
+                        </strong>
+                      </div>
+                      <div>
+                        <span className="text-zinc-500">Yêu cầu từ khách: </span>
+                        <p className="text-zinc-800 font-semibold mt-0.5">{selectedClaim.noiDung}</p>
+                      </div>
+                    </div>
+                  </div>
 
-                              <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
-                                {pt.tinhTrang || 'Đã có sẵn'}
-                              </span>
+                  {/* Cột phải: Kết quả kiểm tra */}
+                  <div className="lg:col-span-7 space-y-4">
+                    <div className="text-xs font-black uppercase tracking-wider text-zinc-900 font-mono">
+                      KẾT QUẢ KIỂM TRA CHI TIẾT
+                    </div>
 
-                              {!isCompleted && (
+                    {/* Bộ phận sự cố */}
+                    <div>
+                      <label className="text-xs font-bold text-zinc-800 block mb-2">
+                        Chọn bộ phận/hệ thống gặp sự cố (Bắt buộc ít nhất 1):
+                      </label>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs font-semibold text-zinc-800">
+                        {[
+                          { key: 'TruyenDong', label: 'Truyền động (Nồi/Côn)' },
+                          { key: 'DongCo', label: 'Động cơ' },
+                          { key: 'Dien', label: 'Hệ thống điện' },
+                          { key: 'Phanh', label: 'Hệ thống phanh' },
+                          { key: 'GiamXoc', label: 'Giảm xóc/Khung sườn' },
+                          { key: 'Khac', label: 'Khác' },
+                        ].map(item => {
+                          const current = selectedClaim.b2_heThongSuCo || ['TruyenDong'];
+                          const isChecked = current.includes(item.key);
+                          return (
+                            <label
+                              key={item.key}
+                              className={`p-2.5 rounded-xl border flex items-center gap-2 cursor-pointer transition ${
+                                isChecked
+                                  ? 'bg-red-50 border-red-300 text-red-900 font-bold'
+                                  : 'bg-zinc-50 border-zinc-200 text-zinc-700'
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                disabled={isCompleted}
+                                checked={isChecked}
+                                onChange={e => {
+                                  const next = e.target.checked
+                                    ? [...current, item.key]
+                                    : current.filter(k => k !== item.key);
+                                  setSelectedClaim({ ...selectedClaim, b2_heThongSuCo: next });
+                                }}
+                                className="w-4 h-4 text-red-600 accent-red-600 rounded disabled:opacity-50"
+                              />
+                              <span>{item.label}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Chi tiết lỗi */}
+                    <div>
+                      <label className="text-xs font-bold text-zinc-800 block mb-1">
+                        Chi tiết lỗi kỹ thuật phát hiện:
+                      </label>
+                      <textarea
+                        rows={2}
+                        disabled={isCompleted}
+                        value={
+                          selectedClaim.b2_chiTietLoi ||
+                          'Búa côn bị mòn, chuông nồi bị cháy sẫm màu, nhiều bụi bẩn bám trong cụm nồi trước và sau làm giảm độ bám gây giật khi tăng ga.'
+                        }
+                        onChange={e =>
+                          setSelectedClaim({ ...selectedClaim, b2_chiTietLoi: e.target.value })
+                        }
+                        className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs text-black bg-white font-medium disabled:bg-zinc-100 disabled:text-zinc-600"
+                      />
+                    </div>
+
+                    {/* Đề xuất xử lý */}
+                    <div>
+                      <label className="text-xs font-bold text-zinc-800 block mb-1">
+                        Đề xuất hướng xử lý:
+                      </label>
+                      <input
+                        type="text"
+                        disabled={isCompleted}
+                        value={
+                          selectedClaim.b2_deXuatHuongXuLy ||
+                          'Thay mới bộ búa côn (ba càng) và chuông nồi sau, vệ sinh toàn bộ cụm truyền động trước và sau.'
+                        }
+                        onChange={e =>
+                          setSelectedClaim({ ...selectedClaim, b2_deXuatHuongXuLy: e.target.value })
+                        }
+                        className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs text-black bg-white disabled:bg-zinc-100 disabled:text-zinc-600"
+                      />
+                    </div>
+
+                    {/* YCBH05: Chọn phụ tùng thay thế chuẩn theo Ảnh 1 */}
+                    <div className="space-y-3 pt-2 border-t border-zinc-100">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-zinc-900 flex items-center gap-1.5 font-mono">
+                          <span>🔧</span> CHỌN PHỤ TÙNG THAY THẾ (ẢNH 1 &amp; YCBH05)
+                        </label>
+                        <span className="text-[11px] font-mono text-zinc-500">
+                          {selectedParts.length} phụ tùng đã chọn
+                        </span>
+                      </div>
+
+                      {/* Ô tìm kiếm kết hợp dropdown gợi ý */}
+                      {!isCompleted && (
+                        <div className="relative">
+                          <div className="flex items-center gap-2">
+                            <div className="relative flex-1">
+                              <span className="absolute left-3 top-2.5 text-zinc-400 text-xs">🔍</span>
+                              <input
+                                type="text"
+                                value={partSearchText}
+                                onFocus={() => setShowPartDropdown(true)}
+                                onChange={e => {
+                                  setPartSearchText(e.target.value);
+                                  setShowPartDropdown(true);
+                                }}
+                                placeholder="Nhập tên phụ tùng, mã linh kiện..."
+                                className="w-full pl-9 pr-3 py-2 rounded-xl border border-zinc-300 focus:border-red-500 focus:outline-hidden text-xs text-black bg-white"
+                              />
+                              {partSearchText && (
                                 <button
                                   type="button"
-                                  onClick={() => {
-                                    const cur = selectedClaim.b2_phuTungDuKien || [];
-                                    const updated = cur.filter((_: any, idx: number) => idx !== i);
-                                    setSelectedClaim({ ...selectedClaim, b2_phuTungDuKien: updated, b3_hangMucChiPhi: undefined });
-                                  }}
-                                  className="text-red-500 hover:text-red-700 font-bold px-2 py-1 rounded hover:bg-red-50 cursor-pointer ml-1"
-                                  title="Xóa phụ tùng này"
+                                  onClick={() => setPartSearchText('')}
+                                  className="absolute right-2.5 top-2.5 text-zinc-400 hover:text-zinc-600 text-xs cursor-pointer"
                                 >
                                   ✕
                                 </button>
                               )}
                             </div>
+                            <button
+                              type="button"
+                              onClick={() => setShowPartDropdown(prev => !prev)}
+                              className="px-4 py-2 rounded-xl bg-zinc-900 hover:bg-black text-white text-xs font-bold flex items-center gap-1 cursor-pointer transition shadow-xs shrink-0"
+                            >
+                              <span>+ Thêm</span>
+                            </button>
                           </div>
-                        ))}
-                      </div>
-                    )}
 
-                    {/* Bộ công cụ thêm phụ tùng */}
-                    {!isCompleted && (
-                      <div className="mt-3 p-3 rounded-2xl bg-zinc-50 border border-zinc-200 space-y-2.5">
-                        {/* Quick tag chips */}
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-[11px] font-bold text-zinc-600">Chọn nhanh:</span>
-                          {PRESET_PARTS.slice(0, 6).map((preset, pIdx) => {
-                            const cur = selectedClaim.b2_phuTungDuKien || [];
-                            const isAdded = cur.some((p: any) => p.ten === preset.ten);
+                          {/* Dropdown danh sách phụ tùng gợi ý */}
+                          {showPartDropdown && (
+                            <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-zinc-200 rounded-2xl shadow-xl z-20 max-h-60 overflow-y-auto divide-y divide-zinc-100">
+                              <div className="p-2 bg-zinc-50 text-[11px] font-bold text-zinc-500 font-mono flex items-center justify-between">
+                                <span>DANH MỤC PHỤ TÙNG KHO SẴN CÓ ({filteredCatalog.length})</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setShowPartDropdown(false)}
+                                  className="text-zinc-400 hover:text-zinc-700 cursor-pointer"
+                                >
+                                  Đóng ✕
+                                </button>
+                              </div>
+                              {filteredCatalog.length === 0 ? (
+                                <div className="p-4 text-xs text-zinc-400 text-center italic">
+                                  Không tìm thấy phụ tùng phù hợp với "{partSearchText}"
+                                </div>
+                              ) : (
+                                filteredCatalog.map(item => (
+                                  <div
+                                    key={item.id}
+                                    onClick={() => handleAddPartToClaim(item)}
+                                    className="p-3 hover:bg-red-50/50 cursor-pointer flex items-center justify-between text-xs transition"
+                                  >
+                                    <div>
+                                      <div className="font-bold text-zinc-900">{item.ten}</div>
+                                      <div className="text-[11px] text-zinc-500 font-mono">
+                                        Mã: {item.sku} | Tồn kho: <span className="text-emerald-700 font-bold">{item.kho}</span> cái
+                                      </div>
+                                    </div>
+                                    <div className="text-right">
+                                      <div className="font-mono font-bold text-red-700">{formatVND(item.donGia)}</div>
+                                      <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full font-bold">
+                                        + Chọn
+                                      </span>
+                                    </div>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Danh sách thẻ phụ tùng đã chọn (Dark cards theo Ảnh 1) */}
+                      {selectedParts.length === 0 ? (
+                        <div className="p-4 rounded-xl bg-zinc-50 border border-zinc-200 text-center text-xs text-zinc-400 italic">
+                          Chưa có phụ tùng nào được chọn. Nhập từ khóa hoặc bấm "+ Thêm" để chọn linh kiện.
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {selectedParts.map((pt: any, idx: number) => {
+                            const price = pt.donGia || (pt.ten.includes('Má phanh') ? 180000 : pt.ten.includes('Dây curoa') ? 280000 : 150000);
+                            const qty = pt.soLuong || 1;
+                            const lineTotal = price * qty;
+                            const sku = pt.sku || (pt.id ? `SKU-${pt.id}` : 'NIS-MPD-01');
+                            const stock = pt.kho ?? 18;
+
                             return (
-                              <button
-                                key={pIdx}
-                                type="button"
-                                onClick={() => {
-                                  const exists = cur.find((p: any) => p.ten === preset.ten);
-                                  let updated;
-                                  if (exists) {
-                                    updated = cur.map((p: any) => p.ten === preset.ten ? { ...p, soLuong: (p.soLuong || 1) + 1 } : p);
-                                  } else {
-                                    updated = [...cur, { ten: preset.ten, soLuong: 1, tinhTrang: preset.tinhTrang, donGia: preset.donGia }];
-                                  }
-                                  setSelectedClaim({ ...selectedClaim, b2_phuTungDuKien: updated, b3_hangMucChiPhi: undefined });
-                                }}
-                                className={`text-[11px] px-2.5 py-1 rounded-lg border font-medium transition cursor-pointer flex items-center gap-1 ${
-                                  isAdded
-                                    ? 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
-                                    : 'bg-white text-zinc-700 border-zinc-300 hover:bg-zinc-100'
-                                }`}
+                              <div
+                                key={idx}
+                                className="p-3.5 rounded-2xl bg-[#202024] text-white border border-zinc-700 flex items-center justify-between gap-3 shadow-xs"
                               >
-                                <span>+</span>
-                                <span>{preset.ten}</span>
-                              </button>
+                                <div className="space-y-1 min-w-0 flex-1">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-mono text-zinc-400 text-xs font-bold">#{idx + 1}</span>
+                                    <span className="font-bold text-sm text-white truncate">{pt.ten}</span>
+                                    <span className="font-mono text-zinc-300 text-xs">({formatVND(price)})</span>
+                                  </div>
+                                  <div className="text-[11px] text-zinc-400 font-mono">
+                                    Mã SKU: <span className="text-zinc-300 font-medium">{sku}</span> | Tồn kho:{' '}
+                                    <span className="text-emerald-400 font-bold">{stock} cái</span>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-3 shrink-0">
+                                  {/* Stepper số lượng [- 1 +] */}
+                                  {!isCompleted ? (
+                                    <div className="flex items-center border border-zinc-600 rounded-xl overflow-hidden bg-zinc-800">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleUpdatePartQuantity(idx, -1)}
+                                        className="w-7 h-7 flex items-center justify-center text-zinc-300 hover:text-white hover:bg-zinc-700 font-bold text-sm cursor-pointer"
+                                      >
+                                        -
+                                      </button>
+                                      <span className="w-8 text-center text-xs font-mono font-bold text-white">
+                                        {qty}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleUpdatePartQuantity(idx, 1)}
+                                        className="w-7 h-7 flex items-center justify-center text-zinc-300 hover:text-white hover:bg-zinc-700 font-bold text-sm cursor-pointer"
+                                      >
+                                        +
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <span className="font-mono text-zinc-300 font-bold text-xs">SL: {qty}</span>
+                                  )}
+
+                                  {/* Thành tiền */}
+                                  <div className="text-right min-w-[90px]">
+                                    <div className="text-[10px] text-zinc-400 font-mono">Thành tiền</div>
+                                    <div className="font-mono font-bold text-white text-xs">{formatVND(lineTotal)}</div>
+                                  </div>
+
+                                  {/* Nút xóa */}
+                                  {!isCompleted && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemovePart(idx)}
+                                      className="w-7 h-7 rounded-full bg-zinc-800 hover:bg-red-900/60 text-zinc-400 hover:text-red-400 flex items-center justify-center text-xs font-bold cursor-pointer transition"
+                                      title="Xóa phụ tùng này"
+                                    >
+                                      ✕
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
                             );
                           })}
                         </div>
+                      )}
 
-                        {/* Dropdown select */}
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <select
-                            id="quickPartSelect"
-                            className="p-2 rounded-xl border border-zinc-300 text-xs font-medium text-black bg-white flex-1 min-w-[220px]"
-                            defaultValue=""
-                          >
-                            <option value="" disabled>-- Chọn phụ tùng từ kho vật tư Motoshop --</option>
-                            {PRESET_PARTS.map((p, idx) => (
-                              <option key={idx} value={p.ten}>
-                                {p.ten} ({formatVND(p.donGia)})
-                              </option>
-                            ))}
-                          </select>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const selectEl = document.getElementById('quickPartSelect') as HTMLSelectElement;
-                              const val = selectEl?.value;
-                              if (!val) return;
-                              const found = PRESET_PARTS.find(p => p.ten === val);
-                              if (!found) return;
-                              const cur = selectedClaim.b2_phuTungDuKien || [];
-                              const exists = cur.find((p: any) => p.ten === found.ten);
-                              let updated;
-                              if (exists) {
-                                updated = cur.map((p: any) => p.ten === found.ten ? { ...p, soLuong: (p.soLuong || 1) + 1 } : p);
-                              } else {
-                                updated = [...cur, { ten: found.ten, soLuong: 1, tinhTrang: found.tinhTrang, donGia: found.donGia }];
-                              }
-                              setSelectedClaim({ ...selectedClaim, b2_phuTungDuKien: updated, b3_hangMucChiPhi: undefined });
-                            }}
-                            className="px-4 py-2 rounded-xl bg-zinc-900 hover:bg-black text-white font-bold text-xs cursor-pointer shadow-sm flex items-center gap-1"
-                          >
-                            <span>+</span>
-                            <span>Thêm phụ tùng</span>
-                          </button>
+                      {/* Thanh tổng cộng chi phí phụ tùng theo Ảnh 1 */}
+                      {selectedParts.length > 0 && (
+                        <div className="p-3.5 rounded-2xl bg-zinc-900 text-white border border-zinc-800 flex items-center justify-between text-xs font-mono flex-wrap gap-2">
+                          <div className="text-zinc-400">
+                            Tổng cộng tạm tính: <span className="text-white font-bold">{formatVND(totalPartCost)}</span>
+                          </div>
+                          <div className="text-zinc-400">
+                            Chiết khấu/Ưu đãi: <span className="text-emerald-400 font-bold">-0 đ</span>
+                          </div>
+                          <div className="font-bold text-sm text-orange-400">
+                            Tổng tiền ước tính: {formatVND(totalPartCost)}
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Footer buttons Bước 2 */}
-              <div className="pt-4 border-t border-zinc-100 flex items-center justify-between flex-wrap gap-3">
-                <button
-                  type="button"
-                  onClick={() => setActiveStep(1)}
-                  className="px-5 py-2.5 rounded-xl text-xs font-semibold bg-zinc-100 hover:bg-zinc-200 text-zinc-700 transition cursor-pointer"
-                >
-                  Quay lại Bước 1
-                </button>
-                {isCompleted ? (
+                {/* Footer buttons Bước 2 */}
+                <div className="pt-4 border-t border-zinc-100 flex items-center justify-between flex-wrap gap-3">
                   <button
                     type="button"
-                    onClick={() => setActiveStep(3)}
-                    className="px-6 py-2.5 rounded-xl text-xs font-bold bg-zinc-900 hover:bg-black text-white transition shadow-md cursor-pointer"
+                    onClick={() => setActiveStep(1)}
+                    className="px-5 py-2.5 rounded-xl text-xs font-semibold bg-zinc-100 hover:bg-zinc-200 text-zinc-700 transition cursor-pointer"
                   >
-                    Xem Bước 3 (Lập phương án) &gt;
+                    Quay lại Bước 1
                   </button>
-                ) : (
-                  <div className="flex items-center gap-3">
+                  {isCompleted ? (
                     <button
                       type="button"
-                      onClick={() => setShowRejectModal(true)}
-                      className="px-5 py-2.5 rounded-xl text-xs font-bold border border-red-300 text-red-700 hover:bg-red-50 transition cursor-pointer"
+                      onClick={() => setActiveStep(3)}
+                      className="px-6 py-2.5 rounded-xl text-xs font-bold bg-zinc-900 hover:bg-black text-white transition shadow-md cursor-pointer"
                     >
-                      Từ chối bảo hành
+                      Xem Bước 3 (Lập phương án) &gt;
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => handleSaveClaimStep(3)}
-                      className="px-6 py-2.5 rounded-xl text-xs font-bold bg-red-700 hover:bg-red-800 text-white transition shadow-md cursor-pointer"
-                    >
-                      TIẾP TỤC &amp; LẬP PHƯƠNG ÁN (BƯỚC 3) &gt;
-                    </button>
-                  </div>
-                )}
+                  ) : (
+                    <div className="flex items-center gap-3">
+                      {/* YCBH09: Nút Lưu nháp */}
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const res = await warrantyApi.saveDraftClaim({
+                            ...selectedClaim,
+                            currentStep: 2,
+                          });
+                          loadData();
+                          setSelectedClaim(null);
+                          alert(res.message);
+                        }}
+                        className="px-5 py-2.5 rounded-xl text-xs font-bold border border-zinc-300 hover:border-zinc-500 bg-white hover:bg-zinc-100 text-zinc-800 transition cursor-pointer flex items-center gap-1.5 shadow-xs"
+                        title="Lưu lại tiến độ Bước 2 và quay về danh sách"
+                      >
+                        <span>💾 Lưu nháp</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!selectedClaim.b2_heThongSuCo || selectedClaim.b2_heThongSuCo.length === 0) {
+                            alert('⚠️ Vui lòng chọn ít nhất một hệ thống gặp sự cố trước khi tiếp tục (YCBH15)!');
+                            return;
+                          }
+                          handleSaveClaimStep(3);
+                        }}
+                        className="px-6 py-2.5 rounded-xl text-xs font-bold bg-red-700 hover:bg-red-800 text-white transition shadow-md cursor-pointer"
+                      >
+                        TIẾP TỤC: XÁC ĐỊNH BẢO HÀNH (BƯỚC 3) &gt;
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* =========================================================
               BƯỚC 3: LẬP PHƯƠNG ÁN BẢO HÀNH & ƯỚC TÍNH CHI PHÍ (ẢNH 5)
@@ -1518,33 +1787,208 @@ export const WarrantyPage: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Thời gian hoàn thành & KTV */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div>
-                        <label className="text-xs font-bold text-zinc-800 block mb-1">
-                          Thời gian hoàn thành dự kiến:
-                        </label>
-                        <input
-                          type="datetime-local"
-                          disabled={isCompleted}
-                          defaultValue="2026-10-20T15:30"
-                          className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs font-mono font-bold text-black bg-white disabled:bg-zinc-100 disabled:text-zinc-600"
-                        />
+                    {/* YCBH06 & YCBH07: Thời gian hoàn thành & Đặt lịch (Ảnh 2) */}
+                    <div className="space-y-3 pt-2 border-t border-zinc-200">
+                      <div className="text-xs font-black uppercase tracking-wider text-zinc-900 font-mono">
+                        THỜI GIAN HOÀN THÀNH &amp; PHÂN CÔNG KỸ THUẬT VIÊN (ẢNH 2)
                       </div>
-                      <div>
-                        <label className="text-xs font-bold text-zinc-800 block mb-1">
-                          Nhân viên kỹ thuật phụ trách:
-                        </label>
-                        <select
-                          disabled={isCompleted}
-                          defaultValue="Nguyễn Văn Hùng"
-                          className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs font-bold text-black bg-white disabled:bg-zinc-100 disabled:text-zinc-600"
-                        >
-                          <option value="Nguyễn Văn Hùng">Nguyễn Văn Hùng</option>
-                          <option value="Lê Anh Tuấn">Lê Anh Tuấn</option>
-                          <option value="Trần Quốc Anh">Trần Quốc Anh</option>
-                        </select>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-start">
+                        {/* Cột chọn ngày có popup lịch to */}
+                        <div className="sm:col-span-5 relative">
+                          <label className="text-xs font-bold text-zinc-800 block mb-1">
+                            Ngày hoàn thành dự kiến:
+                          </label>
+                          <div className="relative">
+                            <input
+                              type="text"
+                              readOnly
+                              disabled={isCompleted}
+                              value={estDate ? estDate.split('-').reverse().join('/') : ''}
+                              onClick={() => !isCompleted && setShowDatePicker(prev => !prev)}
+                              placeholder="Chọn ngày hoàn thành..."
+                              className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs font-mono font-bold text-black bg-white cursor-pointer"
+                            />
+                            <span className="absolute right-3 top-2.5 text-sm pointer-events-none">📅</span>
+                          </div>
+
+                          {/* Lịch popup to theo Ảnh 2 */}
+                          {showDatePicker && (
+                            <div className="absolute left-0 top-full mt-2 z-30 bg-white border border-zinc-300 rounded-2xl shadow-2xl p-4 w-72 text-xs">
+                              {/* Header lịch */}
+                              <div className="flex items-center justify-between mb-3 pb-2 border-b border-zinc-200 font-bold font-mono">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const prevMonth = new Date(datePickerMonth);
+                                    prevMonth.setMonth(prevMonth.getMonth() - 1);
+                                    setDatePickerMonth(prevMonth);
+                                  }}
+                                  className="w-7 h-7 rounded-lg hover:bg-zinc-100 flex items-center justify-center text-zinc-600 cursor-pointer"
+                                >
+                                  &lt;
+                                </button>
+                                <span className="text-zinc-900">
+                                  Tháng {datePickerMonth.getMonth() + 1} / {datePickerMonth.getFullYear()}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const nextMonth = new Date(datePickerMonth);
+                                    nextMonth.setMonth(nextMonth.getMonth() + 1);
+                                    setDatePickerMonth(nextMonth);
+                                  }}
+                                  className="w-7 h-7 rounded-lg hover:bg-zinc-100 flex items-center justify-center text-zinc-600 cursor-pointer"
+                                >
+                                  &gt;
+                                </button>
+                              </div>
+
+                              {/* Hàng thứ trong tuần: H B T T N S C */}
+                              <div className="grid grid-cols-7 gap-1 text-center font-bold text-[11px] text-zinc-500 mb-2 font-mono">
+                                <span>H</span>
+                                <span>B</span>
+                                <span>T</span>
+                                <span>T</span>
+                                <span>N</span>
+                                <span>S</span>
+                                <span className="text-red-600">C</span>
+                              </div>
+
+                              {/* Lưới các ngày trong tháng */}
+                              <div className="grid grid-cols-7 gap-1 text-center text-xs">
+                                {(() => {
+                                  const year = datePickerMonth.getFullYear();
+                                  const month = datePickerMonth.getMonth();
+                                  const firstDayOfMonth = new Date(year, month, 1).getDay(); // 0 is Sun
+                                  // Chuyển thứ 2 = 0, CN = 6
+                                  const startCol = (firstDayOfMonth + 6) % 7;
+                                  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+                                  const today = new Date();
+                                  today.setHours(0, 0, 0, 0);
+                                  const max10Days = new Date(today);
+                                  max10Days.setDate(max10Days.getDate() + 10);
+
+                                  const cells = [];
+                                  for (let i = 0; i < startCol; i++) {
+                                    cells.push(<div key={`empty-${i}`} className="p-1.5" />);
+                                  }
+
+                                  for (let d = 1; d <= daysInMonth; d++) {
+                                    const cellDate = new Date(year, month, d);
+                                    cellDate.setHours(0, 0, 0, 0);
+                                    const isPast = cellDate < today;
+                                    const isBeyond10 = cellDate > max10Days;
+                                    const isDisabled = isPast || isBeyond10;
+
+                                    const yyyy = year;
+                                    const mm = String(month + 1).padStart(2, '0');
+                                    const dd = String(d).padStart(2, '0');
+                                    const dateKey = `${yyyy}-${mm}-${dd}`;
+                                    const isSelected = estDate === dateKey;
+
+                                    cells.push(
+                                      <button
+                                        key={d}
+                                        type="button"
+                                        disabled={isDisabled}
+                                        onClick={() => {
+                                          setEstDate(dateKey);
+                                          setShowDatePicker(false);
+                                          setTimeValidationError(null);
+                                        }}
+                                        className={`w-8 h-8 mx-auto rounded-lg font-mono text-xs flex items-center justify-center transition cursor-pointer ${
+                                          isSelected
+                                            ? 'bg-red-700 text-white font-bold shadow'
+                                            : isDisabled
+                                            ? 'text-zinc-300 cursor-not-allowed bg-transparent'
+                                            : 'hover:bg-red-50 text-zinc-800 font-medium'
+                                        }`}
+                                      >
+                                        {d}
+                                      </button>
+                                    );
+                                  }
+                                  return cells;
+                                })()}
+                              </div>
+
+                              {/* Footer lịch: Xóa và Hôm nay */}
+                              <div className="flex items-center justify-between pt-3 mt-3 border-t border-zinc-200">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEstDate('');
+                                    setShowDatePicker(false);
+                                  }}
+                                  className="text-xs text-zinc-500 hover:text-zinc-800 font-bold cursor-pointer"
+                                >
+                                  Xóa
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const now = new Date();
+                                    const yyyy = now.getFullYear();
+                                    const mm = String(now.getMonth() + 1).padStart(2, '0');
+                                    const dd = String(now.getDate()).padStart(2, '0');
+                                    setEstDate(`${yyyy}-${mm}-${dd}`);
+                                    setDatePickerMonth(now);
+                                    setShowDatePicker(false);
+                                    setTimeValidationError(null);
+                                  }}
+                                  className="text-xs text-red-700 hover:text-red-900 font-bold cursor-pointer"
+                                >
+                                  Hôm nay
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Cột chọn giờ */}
+                        <div className="sm:col-span-3">
+                          <label className="text-xs font-bold text-zinc-800 block mb-1">
+                            Giờ dự kiến:
+                          </label>
+                          <input
+                            type="time"
+                            disabled={isCompleted}
+                            value={estTime}
+                            onChange={e => {
+                              setEstTime(e.target.value);
+                              setTimeValidationError(null);
+                            }}
+                            className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs font-mono font-bold text-black bg-white"
+                          />
+                        </div>
+
+                        {/* Cột KTV phụ trách */}
+                        <div className="sm:col-span-4">
+                          <label className="text-xs font-bold text-zinc-800 block mb-1">
+                            Kỹ thuật viên phụ trách:
+                          </label>
+                          <select
+                            disabled={isCompleted}
+                            value={selectedClaim.b3_ktvPhuTrach || selectedClaim.nhanVienPhuTrach || 'Nguyễn Văn Hùng'}
+                            onChange={e => setSelectedClaim({ ...selectedClaim, b3_ktvPhuTrach: e.target.value, nhanVienPhuTrach: e.target.value })}
+                            className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs font-bold text-black bg-white disabled:bg-zinc-100 disabled:text-zinc-600"
+                          >
+                            <option value="Nguyễn Văn Hùng">Nguyễn Văn Hùng</option>
+                            <option value="Lê Anh Tuấn">Lê Anh Tuấn</option>
+                            <option value="Trần Quốc Anh">Trần Quốc Anh</option>
+                          </select>
+                        </div>
                       </div>
+
+                      {/* Hiển thị lỗi ràng buộc thời gian theo YCBH06 */}
+                      {timeValidationError && (
+                        <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-xs font-bold text-red-700 flex items-center gap-2">
+                          <span>⚠️</span>
+                          <span>{timeValidationError}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1568,21 +2012,46 @@ export const WarrantyPage: React.FC = () => {
                     </button>
                   ) : (
                     <div className="flex items-center gap-3">
+                      {/* YCBH09: Nút Lưu nháp */}
                       <button
                         type="button"
-                        onClick={() => setShowRejectModal(true)}
-                        className="px-5 py-2.5 rounded-xl text-xs font-bold border border-red-300 text-red-700 hover:bg-red-50 transition cursor-pointer"
+                        onClick={async () => {
+                          const isoTime = estDate ? `${estDate}T${estTime || '15:30'}` : undefined;
+                          const res = await warrantyApi.saveDraftClaim({
+                            ...selectedClaim,
+                            b3_hangMucChiPhi: currentItems,
+                            b3_tongChiPhi: totalCalc,
+                            b3_chiPhiBaoHanhChiTra: hangCalc,
+                            b3_khachThanhToan: khachCalc,
+                            b3_thoiGianHoanThanhDuKien: isoTime,
+                            currentStep: 3,
+                          });
+                          loadData();
+                          setSelectedClaim(null);
+                          alert(res.message);
+                        }}
+                        className="px-5 py-2.5 rounded-xl text-xs font-bold border border-zinc-300 hover:border-zinc-500 bg-white hover:bg-zinc-100 text-zinc-800 transition cursor-pointer flex items-center gap-1.5 shadow-xs"
+                        title="Lưu lại tiến độ Bước 3 và quay về danh sách"
                       >
-                        Từ chối bảo hành
+                        <span>💾 Lưu nháp</span>
                       </button>
+                      {/* YCBH06: Kiểm tra ràng buộc thời gian trước khi chuyển sang Bước 4 */}
                       <button
                         type="button"
                         onClick={() => {
+                          const validation = validateEstDateTime(estDate, estTime);
+                          if (!validation.isValid) {
+                            setTimeValidationError(validation.error);
+                            alert(`⚠️ Không thể chuyển bước (YCBH06):\n${validation.error}`);
+                            return;
+                          }
+                          setTimeValidationError(null);
                           handleSaveClaimStep(4, undefined, {
                             b3_hangMucChiPhi: currentItems,
                             b3_tongChiPhi: totalCalc,
                             b3_chiPhiBaoHanhChiTra: hangCalc,
                             b3_khachThanhToan: khachCalc,
+                            b3_thoiGianHoanThanhDuKien: validation.iso,
                           });
                         }}
                         className="px-6 py-2.5 rounded-xl text-xs font-bold bg-red-700 hover:bg-red-800 text-white transition shadow-md cursor-pointer"
@@ -1784,78 +2253,106 @@ export const WarrantyPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Footer buttons Bước 4 */}
-              <div className="pt-4 border-t border-zinc-100 flex items-center justify-between flex-wrap gap-3">
-                <button
-                  type="button"
-                  onClick={() => setActiveStep(3)}
-                  className="px-5 py-2.5 rounded-xl text-xs font-semibold bg-zinc-100 hover:bg-zinc-200 text-zinc-700 transition cursor-pointer"
-                >
-                  Quay lại Bước 3
-                </button>
-                {isCompleted ? (
+                {/* Footer buttons Bước 4 */}
+                <div className="pt-4 border-t border-zinc-100 flex items-center justify-between flex-wrap gap-3">
                   <button
                     type="button"
-                    onClick={() => setActiveStep(5)}
-                    className="px-6 py-2.5 rounded-xl text-xs font-bold bg-zinc-900 hover:bg-black text-white transition shadow-md cursor-pointer"
+                    onClick={() => setActiveStep(3)}
+                    className="px-5 py-2.5 rounded-xl text-xs font-semibold bg-zinc-100 hover:bg-zinc-200 text-zinc-700 transition cursor-pointer"
                   >
-                    Xem Bước 5 (Tiến hành sửa chữa) &gt;
+                    Quay lại Bước 3
                   </button>
-                ) : (
-                  <div className="flex items-center gap-3">
+                  {isCompleted ? (
                     <button
                       type="button"
-                      onClick={() => setShowRejectModal(true)}
-                      className="px-5 py-2.5 rounded-xl text-xs font-bold border border-red-300 text-red-700 hover:bg-red-50 transition cursor-pointer"
+                      onClick={() => setActiveStep(5)}
+                      className="px-6 py-2.5 rounded-xl text-xs font-bold bg-zinc-900 hover:bg-black text-white transition shadow-md cursor-pointer"
                     >
-                      Từ chối duyệt / Trả lại
+                      Xem Bước 5 (Tiến hành sửa chữa) &gt;
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => handleSaveClaimStep(5, 'DangSuaChua')}
-                      className="px-6 py-2.5 rounded-xl text-xs font-bold bg-red-700 hover:bg-red-800 text-white transition shadow-md cursor-pointer"
-                    >
-                      TIẾP TỤC &amp; BẮT ĐẦU SỬA CHỮA (BƯỚC 5) &gt;
-                    </button>
-                  </div>
-                )}
-              </div>
+                  ) : (
+                    <div className="flex items-center gap-3">
+                      {/* YCBH09: Nút Lưu nháp */}
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const res = await warrantyApi.saveDraftClaim({
+                            ...selectedClaim,
+                            currentStep: 4,
+                          });
+                          loadData();
+                          setSelectedClaim(null);
+                          alert(res.message);
+                        }}
+                        className="px-5 py-2.5 rounded-xl text-xs font-bold border border-zinc-300 hover:border-zinc-500 bg-white hover:bg-zinc-100 text-zinc-800 transition cursor-pointer flex items-center gap-1.5 shadow-xs"
+                        title="Lưu lại tiến độ Bước 4 và quay về danh sách"
+                      >
+                        <span>💾 Lưu nháp</span>
+                      </button>
+
+                      {/* YCBH08: Nếu khách hàng không đồng ý -> Hiện nút KẾT THÚC (HỦY YÊU CẦU) */}
+                      {selectedClaim.b4_khachHangDongY === false ? (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await warrantyApi.cancelClaimFromCustomer(
+                              selectedClaim.id,
+                              selectedClaim.b4_ghiChuDuyet || 'Khách hàng không đồng ý phương án/báo giá bảo hành.'
+                            );
+                            loadData();
+                            setSelectedClaim(null);
+                            alert('✓ Đã hoàn tất kết thúc và hủy yêu cầu bảo hành theo nguyện vọng của khách hàng!');
+                          }}
+                          className="px-6 py-2.5 rounded-xl text-xs font-bold bg-zinc-900 hover:bg-black text-white transition shadow-md cursor-pointer flex items-center gap-1.5"
+                        >
+                          <span>✕</span> KẾT THÚC (HỦY YÊU CẦU)
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleSaveClaimStep(5, 'DangSuaChua')}
+                          className="px-6 py-2.5 rounded-xl text-xs font-bold bg-red-700 hover:bg-red-800 text-white transition shadow-md cursor-pointer"
+                        >
+                          TIẾP TỤC &amp; BẮT ĐẦU SỬA CHỮA (BƯỚC 5) &gt;
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
             </div>
           )}
 
-          {/* =========================================================
+                    {/* =========================================================
               BƯỚC 5: THỰC HIỆN SỬA CHỮA & THAY THẾ PHỤ TÙNG (ẢNH 7)
               ========================================================= */}
           {activeStep === 5 && (() => {
             const baseParts = selectedClaim.b2_phuTungDuKien || [];
-            const repairList = baseParts.length > 0
-              ? [
-                  ...baseParts.map((pt: any) => ({
-                    hm: `Thay thế ${pt.ten}`,
-                    pt: `${pt.ten} chính hãng (x${pt.soLuong || 1})`,
-                    st: 'Đã thay thế',
-                    xn: selectedClaim.b5_ktvChinh || 'Nguyễn Văn Hùng',
-                  })),
-                  {
-                    hm: 'Vệ sinh & cân chỉnh kỹ thuật xe',
-                    pt: 'Dung dịch chuyên dụng',
-                    st: 'Đã hoàn thành',
-                    xn: selectedClaim.b5_ktvChinh || 'Nguyễn Văn Hùng',
-                  },
-                ]
+            // YCBH12: Mặc định trạng thái thực hiện của tất cả linh kiện là 'Chưa sửa' (ChuaThucHien)
+            const defaultRepairItems = baseParts.length > 0
+              ? baseParts.map((pt: any) => ({
+                  hangMuc: `Thay thế ${pt.ten}`,
+                  phuTung: `${pt.ten} chính hãng (x${pt.soLuong || 1})`,
+                  trangThai: 'ChuaThucHien' as const,
+                  nguoiXacNhan: selectedClaim.b5_ktvChinh || selectedClaim.nhanVienPhuTrach || 'Nguyễn Văn Hùng',
+                }))
               : [
                   {
-                    hm: 'Kiểm tra kỹ thuật & vệ sinh xe tổng quát',
-                    pt: 'Thiết bị chẩn đoán',
-                    st: 'Đã hoàn thành',
-                    xn: selectedClaim.b5_ktvChinh || 'Nguyễn Văn Hùng',
+                    hangMuc: 'Kiểm tra kỹ thuật & vệ sinh xe tổng quát',
+                    phuTung: 'Thiết bị chẩn đoán',
+                    trangThai: 'ChuaThucHien' as const,
+                    nguoiXacNhan: selectedClaim.b5_ktvChinh || selectedClaim.nhanVienPhuTrach || 'Nguyễn Văn Hùng',
                   },
                 ];
 
+            const repairList = (selectedClaim.b5_hangMucThiCong && selectedClaim.b5_hangMucThiCong.length > 0)
+              ? selectedClaim.b5_hangMucThiCong
+              : defaultRepairItems;
+
             return (
               <div className="bg-white p-6 sm:p-8 rounded-3xl border border-zinc-200 shadow-sm space-y-6">
-                <h2 className="text-base sm:text-lg font-black text-zinc-900 font-mono border-b border-zinc-100 pb-3">
-                  Bước 5: Thực hiện sửa chữa &amp; Thay thế phụ tùng
+                <h2 className="text-base sm:text-lg font-black text-zinc-900 font-mono border-b border-zinc-100 pb-3 flex items-center justify-between">
+                  <span>Bước 5: Thực hiện sửa chữa &amp; Thay thế phụ tùng</span>
+                  <span className="text-xs font-mono font-normal text-zinc-500">Mã yêu cầu: #{selectedClaim.id}</span>
                 </h2>
 
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -1868,14 +2365,15 @@ export const WarrantyPage: React.FC = () => {
                       <div>
                         <span className="text-zinc-500">Kỹ thuật viên chính: </span>
                         <strong className="text-zinc-900">
-                          {selectedClaim.b5_ktvChinh || 'Nguyễn Văn Hùng'}
+                          {selectedClaim.b5_ktvChinh || selectedClaim.nhanVienPhuTrach || 'Nguyễn Văn Hùng'}
                         </strong>
                       </div>
                       <div>
                         <label className="text-zinc-500 block mb-1">Hỗ trợ (nếu có):</label>
                         <select
                           disabled={isCompleted}
-                          defaultValue="Trần Văn B"
+                          value={selectedClaim.b5_hoTro || 'Trần Văn B'}
+                          onChange={e => setSelectedClaim({ ...selectedClaim, b5_hoTro: e.target.value })}
                           className="w-full p-2 rounded-xl border border-zinc-300 text-xs font-bold text-black bg-white disabled:bg-zinc-100 disabled:text-zinc-600"
                         >
                           <option value="Trần Văn B">Trần Văn B</option>
@@ -1893,11 +2391,11 @@ export const WarrantyPage: React.FC = () => {
                       </div>
                       <div>
                         <span className="text-zinc-500">Thời gian bắt đầu: </span>
-                        <strong className="text-zinc-900 font-mono">20/10/2026 13:15</strong>
+                        <strong className="text-zinc-900 font-mono">{selectedClaim.b5_thoiGianBatDau || '20/10/2026 13:15'}</strong>
                       </div>
                       <div>
                         <span className="text-zinc-500">Thời gian hoàn thành dự kiến: </span>
-                        <strong className="text-zinc-900 font-mono">20/10/2026 15:30</strong>
+                        <strong className="text-zinc-900 font-mono">{selectedClaim.b3_thoiGianHoanThanhDuKien || '20/10/2026 15:30'}</strong>
                       </div>
                       <div>
                         <label className="text-zinc-500 block mb-1 font-bold">
@@ -1907,7 +2405,7 @@ export const WarrantyPage: React.FC = () => {
                           rows={3}
                           disabled={isCompleted}
                           value={
-                            selectedClaim.b5_nhatKyCongViec ||
+                            selectedClaim.b5_nhatKyCongViec ??
                             'Đã tháo dỡ cụm truyền động cũ, tiến hành vệ sinh sạch sẽ bụi bẩn bên trong lốc máy. Đang chuẩn bị lắp ráp búa côn sau (ba càng) và chuông nồi mới.'
                           }
                           onChange={e =>
@@ -1924,12 +2422,17 @@ export const WarrantyPage: React.FC = () => {
 
                   {/* Cột phải: Danh sách hạng mục sửa chữa */}
                   <div className="lg:col-span-7 space-y-4">
-                    <div className="text-xs font-black uppercase tracking-wider text-zinc-900 font-mono">
-                      DANH SÁCH HẠNG MỤC SỬA CHỮA (Kiểm tra và xác nhận tiến độ của từng hạng mục)
+                    <div className="flex items-center justify-between">
+                      <div className="text-xs font-black uppercase tracking-wider text-zinc-900 font-mono">
+                        DANH SÁCH HẠNG MỤC SỬA CHỮA (YCBH11 &amp; YCBH12)
+                      </div>
+                      <span className="text-[11px] text-zinc-500">
+                        {repairList.filter(r => r.trangThai === 'DaThayThe').length}/{repairList.length} Đã thay thế
+                      </span>
                     </div>
 
-                    {/* Bảng tiến độ */}
-                    <div className="border border-zinc-200 rounded-2xl overflow-hidden">
+                    {/* Bảng tiến độ linh kiện */}
+                    <div className="border border-zinc-200 rounded-2xl overflow-hidden shadow-xs">
                       <table className="w-full text-left text-xs">
                         <thead className="bg-zinc-100 text-zinc-700 font-mono uppercase text-[11px]">
                           <tr>
@@ -1942,64 +2445,115 @@ export const WarrantyPage: React.FC = () => {
                         <tbody className="divide-y divide-zinc-200">
                           {repairList.map((r, idx) => (
                             <tr key={idx} className="hover:bg-zinc-50">
-                              <td className="p-2.5 font-bold text-zinc-900">{r.hm}</td>
-                              <td className="p-2.5 text-zinc-600">{r.pt}</td>
+                              <td className="p-2.5 font-bold text-zinc-900">{r.hangMuc}</td>
+                              <td className="p-2.5 text-zinc-600">{r.phuTung}</td>
                               <td className="p-2.5">
                                 <select
                                   disabled={isCompleted}
-                                  defaultValue={r.st}
-                                  className="p-1 rounded-lg border border-zinc-300 text-xs font-bold text-black bg-white disabled:bg-zinc-100 disabled:text-zinc-600"
+                                  value={r.trangThai}
+                                  onChange={e => {
+                                    const nextStatus = e.target.value as 'DaThayThe' | 'DangThucHien' | 'ChuaThucHien';
+                                    const nextList = repairList.map((item, i) =>
+                                      i === idx ? { ...item, trangThai: nextStatus } : item
+                                    );
+                                    setSelectedClaim({
+                                      ...selectedClaim,
+                                      b5_hangMucThiCong: nextList,
+                                    });
+                                  }}
+                                  className={`p-1.5 rounded-lg border text-xs font-bold transition ${
+                                    r.trangThai === 'DaThayThe'
+                                      ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                      : r.trangThai === 'DangThucHien'
+                                      ? 'bg-amber-50 text-amber-800 border-amber-300'
+                                      : 'bg-zinc-100 text-zinc-700 border-zinc-300'
+                                  }`}
                                 >
-                                  <option value="Đã thay thế">Đã thay thế</option>
-                                  <option value="Đang thực hiện">Đang thực hiện</option>
-                                  <option value="Chưa thực hiện">Chưa thực hiện</option>
+                                  <option value="ChuaThucHien">Chưa sửa</option>
+                                  <option value="DangThucHien">Đang sửa chữa</option>
+                                  <option value="DaThayThe">Đã thay thế</option>
                                 </select>
                               </td>
-                              <td className="p-2.5 font-mono text-zinc-700">{r.xn}</td>
+                              <td className="p-2.5 font-mono text-zinc-700">{r.nguoiXacNhan}</td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
                     </div>
 
-                    {/* Ảnh thi công */}
-                    <div>
-                      <label className="text-xs font-bold text-zinc-800 block mb-1">
-                        Hình ảnh thực tế khi thi công (Tải lên hoặc chụp phụ tùng cũ đã tháo và phụ tùng mới đã lắp):
-                      </label>
+                    {/* YCBH10: Hình ảnh thực tế khi thi công */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-zinc-800">
+                          Hình ảnh thực tế khi thi công (Tải lên ảnh phụ tùng cũ đã tháo và mới đã lắp):
+                        </label>
+                        <span className="text-[11px] font-mono text-zinc-500">
+                          ({b5Images.length} ảnh đã tải)
+                        </span>
+                      </div>
+
+                      <input
+                        type="file"
+                        ref={b5FileInputRef}
+                        accept="image/*"
+                        multiple
+                        onChange={handleB5PhotoUpload}
+                        className="hidden"
+                      />
+
                       <div className="flex items-center gap-3 flex-wrap">
-                        <img
-                          src="https://images.unsplash.com/photo-1599819811279-d5ad9cccf838?w=500&auto=format"
-                          alt="Thi công 1"
-                          className="w-24 h-16 object-cover rounded-xl border border-zinc-300"
-                        />
-                        <img
-                          src="https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=500&auto=format"
-                          alt="Thi công 2"
-                          className="w-24 h-16 object-cover rounded-xl border border-zinc-300"
-                        />
+                        {b5Images.map((imgUrl, idx) => (
+                          <div
+                            key={idx}
+                            className="relative group w-24 h-20 rounded-xl overflow-hidden border border-zinc-300 shadow-sm bg-zinc-100"
+                          >
+                            <img
+                              src={imgUrl}
+                              alt={`Ảnh thi công ${idx + 1}`}
+                              className="w-full h-full object-cover"
+                            />
+                            {!isCompleted && (
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveB5Photo(idx)}
+                                title="Xóa ảnh này"
+                                className="absolute top-1 right-1 w-5 h-5 rounded-full bg-red-600 hover:bg-red-700 text-white text-[10px] flex items-center justify-center font-bold shadow opacity-80 group-hover:opacity-100 transition cursor-pointer"
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </div>
+                        ))}
+
                         {!isCompleted && (
                           <button
                             type="button"
-                            onClick={() => alert('Mở hộp thoại tải ảnh/video thi công')}
-                            className="px-4 py-2 rounded-xl border border-dashed border-red-300 hover:border-red-600 bg-red-50/50 hover:bg-red-50 text-xs font-bold text-red-700 transition cursor-pointer flex items-center gap-1.5"
+                            onClick={() => b5FileInputRef.current?.click()}
+                            className="h-20 px-4 rounded-xl border-2 border-dashed border-red-300 hover:border-red-600 bg-red-50/50 hover:bg-red-50 text-xs font-bold text-red-700 transition cursor-pointer flex flex-col items-center justify-center gap-1 shadow-xs"
                           >
-                            <span>📷 Tải ảnh/video thi công</span>
+                            <span className="text-lg">📷</span>
+                            <span>+ Tải ảnh thực tế</span>
                           </button>
                         )}
                       </div>
+
+                      {b5Images.length === 0 && (
+                        <p className="text-[11px] text-zinc-500 italic">
+                          Chưa có ảnh thi công thực tế nào được tải lên.
+                        </p>
+                      )}
                     </div>
 
-                    {/* Đánh giá sau sửa chữa */}
+                    {/* YCBH15: Đánh giá sau sửa chữa của kỹ thuật viên */}
                     <div>
                       <label className="text-xs font-bold text-zinc-800 block mb-1">
-                        Đánh giá sau sửa chữa của kỹ thuật viên:
+                        Đánh giá sau sửa chữa của kỹ thuật viên (Bắt buộc xác nhận trước khi hoàn thành):
                       </label>
-                      <label className="flex items-start gap-2.5 p-3 rounded-xl border border-zinc-200 bg-zinc-50 text-xs text-zinc-800 font-medium cursor-pointer">
+                      <label className="flex items-start gap-2.5 p-3 rounded-xl border border-zinc-200 bg-zinc-50 text-xs text-zinc-800 font-medium cursor-pointer hover:bg-zinc-100/70 transition">
                         <input
                           type="checkbox"
                           disabled={isCompleted}
-                          checked={selectedClaim.b5_danhGiaSauSuaChua ?? true}
+                          checked={selectedClaim.b5_danhGiaSauSuaChua ?? false}
                           onChange={e =>
                             setSelectedClaim({
                               ...selectedClaim,
@@ -2009,7 +2563,7 @@ export const WarrantyPage: React.FC = () => {
                           className="w-4 h-4 text-red-600 accent-red-600 rounded mt-0.5 disabled:opacity-50"
                         />
                         <span>
-                          Xe đã được nổ máy, chạy thử tại chỗ và chạy thử trên đường: hoạt động êm ái, không còn hiện tượng giật cục khi tăng ga, không còn tiếng kêu lạ ở cụm nồi.
+                          Kỹ thuật viên xác nhận: Xe đã được nổ máy, chạy thử tại chỗ và chạy thử trên đường: hoạt động êm ái, các lỗi kỹ thuật đã được khắc phục hoàn toàn.
                         </span>
                       </label>
                     </div>
@@ -2035,19 +2589,48 @@ export const WarrantyPage: React.FC = () => {
                     </button>
                   ) : (
                     <div className="flex items-center gap-3">
+                      {/* YCBH09: Lưu nháp Bước 5 */}
                       <button
                         type="button"
-                        onClick={() => alert('Ghi nhận sự cố phát sinh vào nhật ký')}
-                        className="px-5 py-2.5 rounded-xl text-xs font-bold border border-red-300 text-red-700 hover:bg-red-50 transition cursor-pointer"
+                        onClick={async () => {
+                          const res = await warrantyApi.saveDraftClaim({
+                            ...selectedClaim,
+                            b5_hangMucThiCong: repairList,
+                            b5_hinhAnhThiCong: b5Images,
+                            currentStep: 5,
+                          });
+                          loadData();
+                          setSelectedClaim(null);
+                          alert(res.message);
+                        }}
+                        className="px-5 py-2.5 rounded-xl text-xs font-bold border border-zinc-300 hover:border-zinc-500 bg-white hover:bg-zinc-100 text-zinc-800 transition cursor-pointer flex items-center gap-1.5 shadow-xs"
+                        title="Lưu lại tiến độ Bước 5 và quay về danh sách"
                       >
-                        Ghi nhận sự cố phát sinh
+                        <span>💾 Lưu nháp</span>
                       </button>
+                      {/* YCBH11 & YCBH15: Chuyển sang Bước 6 với ràng buộc tất cả linh kiện Đã thay thế */}
                       <button
                         type="button"
-                        onClick={() => handleSaveClaimStep(6)}
-                        className="px-6 py-2.5 rounded-xl text-xs font-bold bg-red-700 hover:bg-red-800 text-white transition shadow-md cursor-pointer"
+                        onClick={() => {
+                          // YCBH11: Kiểm tra tất cả linh kiện phải có trạng thái Đã thay thế
+                          const notReplaced = repairList.filter(item => item.trangThai !== 'DaThayThe');
+                          if (notReplaced.length > 0) {
+                            alert(`⚠️ Không thể chuyển sang Bước 6 (YCBH11):\nCòn ${notReplaced.length} linh kiện/hạng mục chưa có trạng thái "Đã thay thế".\nVui lòng cập nhật tất cả linh kiện thành "Đã thay thế" để tiếp tục!`);
+                            return;
+                          }
+                          // YCBH15: Bắt buộc xác nhận đánh giá sau sửa chữa
+                          if (!selectedClaim.b5_danhGiaSauSuaChua) {
+                            alert('⚠️ Vui lòng tích chọn xác nhận đánh giá sau sửa chữa của kỹ thuật viên trước khi hoàn thành sửa chữa (YCBH15)!');
+                            return;
+                          }
+                          handleSaveClaimStep(6, undefined, {
+                            b5_hangMucThiCong: repairList,
+                            b5_hinhAnhThiCong: b5Images,
+                          });
+                        }}
+                        className="px-6 py-2.5 rounded-xl text-xs font-bold bg-red-700 hover:bg-red-800 text-white transition shadow-md cursor-pointer flex items-center gap-1.5"
                       >
-                        HOÀN THÀNH SỬA CHỮA (BƯỚC 6) &gt;
+                        <span>HOÀN THÀNH SỬA CHỮA (BƯỚC 6) &gt;</span>
                       </button>
                     </div>
                   )}
@@ -2067,8 +2650,9 @@ export const WarrantyPage: React.FC = () => {
 
             return (
               <div className="bg-white p-6 sm:p-8 rounded-3xl border border-zinc-200 shadow-sm space-y-6">
-                <h2 className="text-base sm:text-lg font-black text-zinc-900 font-mono border-b border-zinc-100 pb-3">
-                  Bước 6: Bàn giao xe &amp; Hoàn thành hồ sơ bảo hành
+                <h2 className="text-base sm:text-lg font-black text-zinc-900 font-mono border-b border-zinc-100 pb-3 flex items-center justify-between">
+                  <span>Bước 6: Bàn giao xe &amp; Hoàn thành hồ sơ bảo hành</span>
+                  <span className="text-xs font-mono font-normal text-zinc-500">Mã yêu cầu: #{selectedClaim.id}</span>
                 </h2>
 
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -2094,7 +2678,7 @@ export const WarrantyPage: React.FC = () => {
                       </div>
                       <div>
                         <span className="text-zinc-500">Ngày &amp; Giờ bàn giao thực tế: </span>
-                        <strong className="text-zinc-900 font-mono">20/10/2026 15:15</strong>
+                        <strong className="text-zinc-900 font-mono">{selectedClaim.b6_thoiGianBanGiaoThucTe || '20/10/2026 15:15'}</strong>
                       </div>
 
                       {/* Checkboxes xác nhận bàn giao */}
@@ -2148,7 +2732,7 @@ export const WarrantyPage: React.FC = () => {
                             className="w-4 h-4 text-red-600 accent-red-600 rounded mt-0.5 disabled:opacity-50"
                           />
                           <span>
-                            Đã hướng dẫn khách hàng về chế độ bảo hành đối với phụ tùng thay mới (6 tháng cho búa côn và chuông nồi).
+                            Đã hướng dẫn khách hàng về chế độ bảo hành đối với phụ tùng thay mới (6 tháng theo tiêu chuẩn chính hãng).
                           </span>
                         </label>
                       </div>
@@ -2204,7 +2788,7 @@ export const WarrantyPage: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Biên lai / Hóa đơn & Nút in */}
+                    {/* Biên lai / Hóa đơn & Nút in (YCBH13) */}
                     <div>
                       <label className="text-xs font-bold text-zinc-800 block mb-1.5">
                         Biên lai / Hóa đơn bảo hành (Tài liệu đính kèm):
@@ -2245,10 +2829,10 @@ export const WarrantyPage: React.FC = () => {
                         Đánh giá / Ý kiến của khách hàng (nếu có):
                       </label>
                       <textarea
-                        rows={2}
+                        rows={3}
                         disabled={isCompleted}
                         value={
-                          selectedClaim.b6_yKienKhachHang ||
+                          selectedClaim.b6_yKienKhachHang ??
                           'Khách hàng khen phục vụ nhanh, chu đáo. Xe đi êm, không còn bị giật.'
                         }
                         onChange={e =>
@@ -2261,44 +2845,7 @@ export const WarrantyPage: React.FC = () => {
                       />
                     </div>
 
-                    {/* Trạng thái cập nhật trên hệ thống */}
-                    <div>
-                      <label className="text-xs font-bold text-zinc-800 block mb-1">
-                        Trạng thái cập nhật trên hệ thống:
-                      </label>
-                      <div className="space-y-1.5 text-xs text-zinc-800">
-                        <label className="flex items-center gap-2 cursor-pointer font-medium">
-                          <input
-                            type="checkbox"
-                            disabled={isCompleted}
-                            checked={selectedClaim.b6_daCapNhatLichSu ?? true}
-                            onChange={e =>
-                              setSelectedClaim({
-                                ...selectedClaim,
-                                b6_daCapNhatLichSu: e.target.checked,
-                              })
-                            }
-                            className="w-4 h-4 text-emerald-600 accent-emerald-600 rounded disabled:opacity-50"
-                          />
-                          <span>Đã cập nhật lịch sử bảo hành của xe.</span>
-                        </label>
-                        <label className="flex items-center gap-2 cursor-pointer font-medium">
-                          <input
-                            type="checkbox"
-                            disabled={isCompleted}
-                            checked={selectedClaim.b6_daGuiTinNhan ?? true}
-                            onChange={e =>
-                              setSelectedClaim({
-                                ...selectedClaim,
-                                b6_daGuiTinNhan: e.target.checked,
-                              })
-                            }
-                            className="w-4 h-4 text-emerald-600 accent-emerald-600 rounded disabled:opacity-50"
-                          />
-                          <span>Đã gửi tin nhắn (SMS/Zalo) thông báo hoàn thành và khảo sát ý kiến khách hàng.</span>
-                        </label>
-                      </div>
-                    </div>
+                    {/* YCBH14: Đã xóa hoàn toàn mục 'Trạng thái cập nhật trên hệ thống' */}
                   </div>
                 </div>
 
@@ -2877,6 +3424,7 @@ export const WarrantyPage: React.FC = () => {
                                 2. Đã xác nhận -> [▶ Xử lý ngay]
                                 3. Đang xử lý (Đã tiếp nhận, Đang sửa chữa) -> [✏️ Cập nhật]
                                 4. Hoàn tất / Từ chối -> [👁️ Xem chi tiết] (khóa cứng) */}
+                                                        {/* YCBH04: Nút thao tác theo trạng thái chuẩn xác */}
                             {row.trangThai === 'ChoXuLy' ? (
                               <div className="flex items-center justify-center gap-1.5 flex-wrap">
                                 <button
@@ -2887,38 +3435,44 @@ export const WarrantyPage: React.FC = () => {
                                     setKtvAssignNote('');
                                   }}
                                   className="px-2.5 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs shadow-xs transition flex items-center justify-center gap-1 cursor-pointer"
-                                  title="Xác nhận lịch hẹn và gửi về trang khách hàng"
+                                  title="Xác nhận lịch hẹn và phân công KTV"
                                 >
                                   <span>✓</span>
                                   <span>Xác nhận</span>
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => handleOpenClaimStepper(row)}
-                                  className="px-2.5 py-1.5 rounded-xl bg-red-700 hover:bg-red-800 text-white font-bold text-xs shadow-xs transition flex items-center justify-center gap-1 cursor-pointer"
-                                  title="Bắt đầu quy trình xử lý 6 bước"
+                                  onClick={() => {
+                                    setSelectedClaim(row);
+                                    setShowRejectModal(true);
+                                    setRejectReason('');
+                                  }}
+                                  className="px-2.5 py-1.5 rounded-xl border border-red-300 hover:bg-red-50 text-red-700 font-bold text-xs transition flex items-center justify-center gap-1 cursor-pointer"
+                                  title="Từ chối yêu cầu (bắt buộc nhập lý do)"
                                 >
-                                  <span>▶</span>
-                                  <span>Xử lý ngay</span>
+                                  <span>✕</span>
+                                  <span>Từ chối</span>
                                 </button>
                               </div>
+                            ) : (row.isDraft || (row.currentStep && row.currentStep > 1) || row.trangThai === 'DaTiepNhan' || row.trangThai === 'DangSuaChua') && row.trangThai !== 'HoanThanh' && row.trangThai !== 'TuChoi' && row.trangThai !== 'DaHuy' ? (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenClaimStepper(row)}
+                                className="px-3.5 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-900 text-white font-bold text-xs shadow transition flex items-center justify-center gap-1 mx-auto cursor-pointer"
+                                title={`Tiếp tục xử lý hồ sơ (đang ở Bước ${row.currentStep || 1})`}
+                              >
+                                <span>✏️</span>
+                                <span>Cập nhật</span>
+                              </button>
                             ) : row.trangThai === 'DaXacNhan' ? (
                               <button
                                 type="button"
                                 onClick={() => handleOpenClaimStepper(row)}
                                 className="px-3.5 py-1.5 rounded-xl bg-red-700 hover:bg-red-800 text-white font-bold text-xs shadow transition flex items-center justify-center gap-1 mx-auto cursor-pointer"
+                                title="Bắt đầu thực hiện quy trình xử lý 6 bước"
                               >
                                 <span>▶</span>
                                 <span>Xử lý ngay</span>
-                              </button>
-                            ) : row.trangThai === 'DaTiepNhan' || row.trangThai === 'DangSuaChua' ? (
-                              <button
-                                type="button"
-                                onClick={() => handleOpenClaimStepper(row)}
-                                className="px-3.5 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-900 text-white font-bold text-xs shadow transition flex items-center justify-center gap-1 mx-auto cursor-pointer"
-                              >
-                                <span>✏️</span>
-                                <span>Cập nhật</span>
                               </button>
                             ) : (
                               <button
@@ -4220,88 +4774,313 @@ export const WarrantyPage: React.FC = () => {
         </div>
       )}
 
-      {/* =========================================================================
-          MODAL 3: IN BIÊN BẢN BÀN GIAO / IN HÓA ĐƠN (BƯỚC 6)
+                  {/* =========================================================================
+          MODAL 3: IN BIÊN BẢN BÀN GIAO / IN HÓA ĐƠN (BƯỚC 6 - YCBH13 & ẢNH 3 & PRINT A4)
           ========================================================================= */}
       {printDocument && (() => {
-        const pTotal = printDocument.claim.b3_tongChiPhi ?? 950000;
-        const pKhach = printDocument.claim.b3_khachThanhToan ?? 0;
-        const pHang = printDocument.claim.b3_chiPhiBaoHanhChiTra ?? (pTotal - pKhach);
+        const claim = printDocument.claim;
+        const rawParts = claim.b2_phuTungDuKien || [];
+        
+        // Tạo danh sách hạng mục thực tế chi tiết từ Step 2 và Step 3
+        const displayItems = (claim.b3_hangMucChiPhi && claim.b3_hangMucChiPhi.length > 0)
+          ? claim.b3_hangMucChiPhi.map((hm, i) => ({
+              stt: `#${i + 1}`,
+              ten: hm.ten,
+              sl: hm.soLuong,
+              donGia: hm.donGia,
+              thanhTien: hm.thanhTien,
+              doiTuongChiTra: hm.doiTuongChiTra === 'KhachHang' ? 'Khách hàng chi trả' : 'Hãng bảo hành trả (0đ)',
+              isCustomer: hm.doiTuongChiTra === 'KhachHang',
+            }))
+          : rawParts.length > 0
+          ? [
+              ...rawParts.map((pt, i) => {
+                const donGia = pt.donGia || (pt.ten.includes('Má phanh') ? 180000 : pt.ten.includes('Dây curoa') ? 280000 : 150000);
+                const sl = pt.soLuong || 1;
+                const thanhTien = donGia * sl;
+                const isCustomer = (claim.b3_khachThanhToan ?? 0) > 0 && i < 2;
+                return {
+                  stt: `#${i + 1}`,
+                  ten: pt.ten,
+                  sl,
+                  donGia,
+                  thanhTien,
+                  doiTuongChiTra: isCustomer ? 'Khách hàng chi trả' : 'Hãng bảo hành trả (0đ)',
+                  isCustomer,
+                };
+              }),
+              {
+                stt: `#${rawParts.length + 1}`,
+                ten: 'Công vệ sinh cụm truyền động & lắp đặt',
+                sl: 1,
+                donGia: 150000,
+                thanhTien: 150000,
+                doiTuongChiTra: 'Hãng bảo hành trả (0đ)',
+                isCustomer: false,
+              }
+            ]
+          : [
+              {
+                stt: '#1',
+                ten: 'Má phanh đĩa trước Nissin',
+                sl: 1,
+                donGia: 180000,
+                thanhTien: 180000,
+                doiTuongChiTra: 'Khách hàng chi trả',
+                isCustomer: true,
+              },
+              {
+                stt: '#2',
+                ten: 'Dây curoa Bando chính hãng',
+                sl: 1,
+                donGia: 280000,
+                thanhTien: 280000,
+                doiTuongChiTra: 'Khách hàng chi trả',
+                isCustomer: true,
+              },
+              {
+                stt: '#3',
+                ten: 'Công vệ sinh cụm truyền động & lắp đặt',
+                sl: 3,
+                donGia: 150000,
+                thanhTien: 450000,
+                doiTuongChiTra: 'Hãng bảo hành trả (0đ)',
+                isCustomer: false,
+              },
+              {
+                stt: '#4',
+                ten: 'Bộ bi nồi 6 viên',
+                sl: 1,
+                donGia: 150000,
+                thanhTien: 150000,
+                doiTuongChiTra: 'Hãng bảo hành trả (0đ)',
+                isCustomer: false,
+              }
+            ];
+
+        const computedTotal = displayItems.reduce((acc, item) => acc + item.thanhTien, 0);
+        const pTotal = (claim.b3_tongChiPhi && claim.b3_tongChiPhi > 0) ? claim.b3_tongChiPhi : computedTotal;
+        const pKhach = claim.b3_khachThanhToan ?? ((claim.b3_tongChiPhi && claim.b3_tongChiPhi > 0) ? 0 : 460000);
+        const pHang = claim.b3_chiPhiBaoHanhChiTra ?? Math.max(0, pTotal - pKhach);
         const pIsFree = pKhach === 0;
 
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-            <div className="bg-white rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl border border-zinc-200 space-y-4">
-              <div className="flex items-center justify-between border-b border-zinc-200 pb-3">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs overflow-y-auto">
+            {/* CSS Tối ưu riêng cho chế độ In bản cứng / Lưu PDF (A4 tiêu chuẩn) */}
+            <style>{`
+              @media print {
+                @page {
+                  size: A4 portrait;
+                  margin: 10mm 15mm 10mm 15mm;
+                }
+                body * {
+                  visibility: hidden !important;
+                }
+                #print-warranty-document, #print-warranty-document * {
+                  visibility: visible !important;
+                }
+                #print-warranty-document {
+                  position: fixed !important;
+                  left: 0 !important;
+                  top: 0 !important;
+                  width: 100% !important;
+                  max-width: 100% !important;
+                  height: auto !important;
+                  border: none !important;
+                  box-shadow: none !important;
+                  padding: 0 !important;
+                  margin: 0 !important;
+                  background: #ffffff !important;
+                  color: #000000 !important;
+                }
+                #print-warranty-document .print-paper-card {
+                  background: #f8fafc !important;
+                  color: #000000 !important;
+                  border: 1px solid #cbd5e1 !important;
+                }
+                #print-warranty-document .print-paper-card * {
+                  color: #000000 !important;
+                }
+                #print-warranty-document .print-table {
+                  border: 1px solid #cbd5e1 !important;
+                  background: #ffffff !important;
+                }
+                #print-warranty-document .print-table th {
+                  background: #f1f5f9 !important;
+                  color: #0f172a !important;
+                  border-bottom: 2px solid #94a3b8 !important;
+                  border-right: 1px solid #e2e8f0 !important;
+                }
+                #print-warranty-document .print-table td {
+                  color: #0f172a !important;
+                  border-bottom: 1px solid #e2e8f0 !important;
+                  border-right: 1px solid #e2e8f0 !important;
+                }
+                #print-warranty-document .print-summary {
+                  color: #000000 !important;
+                }
+                #print-warranty-document .print-summary strong {
+                  color: #000000 !important;
+                }
+                #print-warranty-document .print-highlight-green {
+                  color: #15803d !important;
+                }
+                #print-warranty-document .print-highlight-orange {
+                  color: #c2410c !important;
+                }
+                .no-print {
+                  display: none !important;
+                }
+              }
+            `}</style>
+
+            <div
+              id="print-warranty-document"
+              className="bg-[#18181b] text-white rounded-3xl max-w-2xl w-full p-6 sm:p-7 shadow-2xl border border-zinc-800 space-y-4 my-8"
+            >
+              {/* Header */}
+              <div className="flex items-start justify-between border-b border-zinc-800 pb-3">
                 <div>
-                  <div className="text-xs text-zinc-400 font-mono font-bold">SHOWROOM XE MÁY &amp; PHỤ TÙNG CHÍNH HÃNG</div>
-                  <h3 className="text-lg font-black text-zinc-900 font-mono uppercase mt-0.5">
+                  <div className="text-[11px] text-zinc-400 print:text-zinc-600 font-mono font-bold tracking-wider uppercase">
+                    SHOWROOM XE MÁY &amp; PHỤ TÙNG CHÍNH HÃNG MOTOSHOP
+                  </div>
+                  <h3 className="text-lg sm:text-xl font-black text-white print:text-black font-mono uppercase mt-0.5 tracking-tight">
                     {printDocument.type === 'BienBanBanGiao'
                       ? 'BIÊN BẢN NGHIỆM THU & BÀN GIAO XE BẢO HÀNH'
                       : pIsFree
                       ? 'HÓA ĐƠN DỊCH VỤ BẢO HÀNH (0Đ - HÃNG CHI TRẢ)'
                       : 'HÓA ĐƠN DỊCH VỤ & PHỤ THU BẢO HÀNH'}
                   </h3>
+                  <div className="text-[11px] text-zinc-400 print:text-zinc-500 font-mono">
+                    Ngày lập: {new Date().toLocaleDateString('vi-VN')} · Địa điểm: Xưởng Dịch Vụ &amp; Bảo Hành Motoshop
+                  </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => setPrintDocument(null)}
-                  className="w-8 h-8 rounded-full bg-zinc-100 hover:bg-zinc-200 text-zinc-600 flex items-center justify-center font-bold text-xs cursor-pointer"
+                  className="w-8 h-8 rounded-full bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white flex items-center justify-center font-bold text-sm cursor-pointer transition no-print"
                 >
                   ✕
                 </button>
               </div>
 
-              <div className="p-4 rounded-2xl bg-zinc-50 border border-zinc-200 space-y-3 text-xs">
-                <div className="grid grid-cols-2 gap-2">
-                  <div>Khách hàng: <strong>{printDocument.claim.khachHang}</strong></div>
-                  <div>SĐT: <strong className="font-mono">{printDocument.claim.soDienThoai}</strong></div>
-                  <div>Xe: <strong>{printDocument.claim.xeBienSo}</strong></div>
-                  <div>Mã hồ sơ: <strong className="font-mono text-red-700">{printDocument.claim.id}</strong></div>
+              {/* Thông tin khách hàng & xe theo Ảnh 3 */}
+              <div className="p-4 rounded-2xl bg-[#202024] print-paper-card border border-zinc-700/60 space-y-2.5 text-xs text-zinc-300">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div>Khách hàng: <strong className="text-white print:text-black font-bold">{claim.khachHang}</strong></div>
+                  <div>Mã hồ sơ: <strong className="font-mono text-white print:text-black font-bold">{claim.id}</strong></div>
+                  <div>SĐT: <strong className="font-mono text-white print:text-black">{claim.soDienThoai}</strong></div>
+                  <div>KTV phụ trách: <strong className="text-white print:text-black font-bold">{claim.b5_ktvChinh || claim.nhanVienPhuTrach || 'Nguyễn Văn Hùng'}</strong></div>
+                  <div className="sm:col-span-1">Xe: <strong className="text-white print:text-black font-bold">{claim.xeBienSo}</strong></div>
+                  <div>Số ODO: <strong className="font-mono text-white print:text-black">{claim.b1_soKmHienTai ? claim.b1_soKmHienTai.toLocaleString('vi-VN') + ' km' : '12.500 km'}</strong></div>
                 </div>
 
-                <div className="pt-2 border-t border-zinc-200">
-                  <div className="font-bold text-zinc-900 mb-1">Nội dung khắc phục kỹ thuật:</div>
-                  <p className="text-zinc-700">
-                    {printDocument.claim.b2_chiTietLoi || 'Thay mới cụm búa côn và chuông nồi sau, khắc phục rung giật khi tăng ga.'}
-                  </p>
-                </div>
-
-                <div className="pt-2 border-t border-zinc-200 space-y-1 font-mono">
-                  <div className="flex justify-between">
-                    <span>Tổng chi phí phát sinh:</span>
-                    <strong>{formatVND(pTotal)}</strong>
+                <div className="pt-2 border-t border-zinc-700/60 print:border-zinc-300 space-y-1">
+                  <div>
+                    <span className="text-zinc-400 print:text-zinc-600 font-semibold">Tình trạng ghi nhận (vấn đề xe): </span>
+                    <span className="text-zinc-200 print:text-black">{claim.noiDung || claim.b2_chiTietLoi || 'Xe đi bị rần ga đầu, có tiếng kêu ở bộ nồi.'}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span>Hãng xe bảo hành chi trả:</span>
-                    <strong className="text-emerald-700">{formatVND(pHang)} ({pIsFree ? '100%' : 'Bảo hành'})</strong>
-                  </div>
-                  <div className="flex justify-between font-bold border-t border-zinc-200 pt-1 items-center">
-                    <span>KHÁCH HÀNG THANH TOÁN:</span>
-                    {pIsFree ? (
-                      <span className="text-base text-emerald-700 font-black">0 đ (Miễn phí 100%)</span>
-                    ) : (
-                      <span className="text-base text-red-700 font-black">{formatVND(pKhach)}</span>
-                    )}
+                  <div>
+                    <span className="text-zinc-400 print:text-zinc-600 font-semibold">Nội dung khắc phục kỹ thuật: </span>
+                    <span className="text-zinc-200 print:text-black">{claim.b2_deXuatHuongXuLy || 'Vệ sinh truyền động, thay má phanh đĩa trước, dây curoa và bộ bi nồi mới.'}</span>
                   </div>
                 </div>
               </div>
 
-              <div className="pt-2 flex items-center justify-end gap-3">
+              {/* Bảng chi tiết hạng mục theo Ảnh 3 */}
+              <div className="border border-zinc-700/80 rounded-xl overflow-hidden bg-[#202024] print-table">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-zinc-800/90 text-zinc-300 font-mono text-[11px] uppercase border-b border-zinc-700">
+                    <tr>
+                      <th className="p-2.5 w-12 text-center">STT</th>
+                      <th className="p-2.5">TÊN HẠNG MỤC</th>
+                      <th className="p-2.5 text-center w-12">SL</th>
+                      <th className="p-2.5 text-right">ĐƠN GIÁ</th>
+                      <th className="p-2.5 text-right">THÀNH TIỀN</th>
+                      <th className="p-2.5 text-right">ĐỐI TƯỢNG CHI TRẢ</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-700/60 font-mono">
+                    {displayItems.map((item, idx) => (
+                      <tr key={idx} className="hover:bg-zinc-800/40">
+                        <td className="p-2.5 text-center text-zinc-400 print:text-zinc-600">{item.stt}</td>
+                        <td className="p-2.5 font-sans font-medium text-white print:text-black">{item.ten}</td>
+                        <td className="p-2.5 text-center text-white print:text-black">{item.sl}</td>
+                        <td className="p-2.5 text-right text-zinc-300 print:text-zinc-700">{formatVND(item.donGia)}</td>
+                        <td className="p-2.5 text-right font-bold text-white print:text-black">{formatVND(item.thanhTien)}</td>
+                        <td className="p-2.5 text-right">
+                          {item.isCustomer ? (
+                            <span className="text-white print:text-black font-sans font-medium">Khách hàng chi trả</span>
+                          ) : (
+                            <span className="text-emerald-400 print:text-emerald-700 font-sans font-semibold">Hãng bảo hành trả (0đ)</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Tổng kết chi phí theo Ảnh 3 */}
+              <div className="space-y-1 text-xs font-mono text-right pr-2 print-summary">
+                <div className="flex justify-end gap-6 text-zinc-300">
+                  <span>Tổng chi phí phát sinh:</span>
+                  <strong className="text-white print:text-black w-32 text-right">{formatVND(pTotal)}</strong>
+                </div>
+                <div className="flex justify-end gap-6 text-emerald-400 print-highlight-green">
+                  <span>Hãng xe bảo hành chi trả:</span>
+                  <strong className="w-32 text-right">- {formatVND(pHang)} (Bảo hành)</strong>
+                </div>
+                <div className="flex justify-end items-center gap-6 pt-1 text-sm font-black text-orange-400 print-highlight-orange">
+                  <span className="uppercase">KHÁCH HÀNG CẦN THANH TOÁN:</span>
+                  <span className="text-base sm:text-lg font-mono text-orange-400 print-highlight-orange w-32 text-right font-black">
+                    {pIsFree ? '0 đ' : formatVND(pKhach)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Chữ ký 3 bên (Hiển thị đầy đủ khi in bản cứng) */}
+              <div className="grid grid-cols-3 gap-4 text-center text-xs pt-4 border-t border-zinc-700/60 print:border-zinc-300">
+                <div>
+                  <div className="font-bold uppercase text-white print:text-black font-mono text-[11px]">KHÁCH HÀNG KÝ NHẬN</div>
+                  <div className="text-[10px] text-zinc-400 print:text-zinc-500 italic">(Ký và ghi rõ họ tên)</div>
+                  <div className="mt-12 font-bold text-white print:text-black">{claim.khachHang}</div>
+                </div>
+                <div>
+                  <div className="font-bold uppercase text-white print:text-black font-mono text-[11px]">KỸ THUẬT VIÊN</div>
+                  <div className="text-[10px] text-zinc-400 print:text-zinc-500 italic">(Ký và ghi rõ họ tên)</div>
+                  <div className="mt-12 font-bold text-white print:text-black">{claim.b5_ktvChinh || claim.nhanVienPhuTrach || 'Nguyễn Văn Hùng'}</div>
+                </div>
+                <div>
+                  <div className="font-bold uppercase text-white print:text-black font-mono text-[11px]">ĐẠI DIỆN SHOWROOM</div>
+                  <div className="text-[10px] text-zinc-400 print:text-zinc-500 italic">(Ký, họ tên &amp; đóng dấu)</div>
+                  <div className="mt-12 font-bold text-white print:text-black">Trần Văn Quản Lý</div>
+                </div>
+              </div>
+
+              {/* Nút thao tác theo Ảnh 3 (Ẩn hoàn toàn khi in bằng no-print) */}
+              <div className="pt-2 flex items-center justify-end gap-3 border-t border-zinc-800 no-print">
                 <button
                   type="button"
-                  onClick={() => {
-                    window.print();
-                    setPrintDocument(null);
-                  }}
-                  className="px-6 py-2.5 rounded-xl text-xs font-bold bg-red-700 hover:bg-red-800 text-white shadow flex items-center gap-1.5 cursor-pointer"
+                  onClick={() => window.print()}
+                  className="px-5 py-2.5 rounded-full text-xs font-bold bg-red-600 hover:bg-red-700 text-white shadow-md flex items-center gap-2 cursor-pointer transition"
                 >
                   <span>🖨️ In bản cứng ngay</span>
                 </button>
                 <button
                   type="button"
+                  onClick={() => {
+                    alert(`✓ Đã gửi hóa đơn bảo hành mã #${claim.id} qua Zalo & SMS cho khách hàng ${claim.khachHang} (${claim.soDienThoai})!`);
+                    setPrintDocument(null);
+                  }}
+                  className="px-4 py-2.5 rounded-full text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-200 flex items-center gap-2 cursor-pointer transition border border-zinc-700"
+                >
+                  <span>💬 Gửi hóa đơn Zalo/SMS</span>
+                </button>
+                <button
+                  type="button"
                   onClick={() => setPrintDocument(null)}
-                  className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-zinc-100 hover:bg-zinc-200 text-zinc-700 cursor-pointer"
+                  className="px-4 py-2 text-xs font-medium text-zinc-400 hover:text-white cursor-pointer transition"
                 >
                   Đóng
                 </button>
@@ -4310,9 +5089,8 @@ export const WarrantyPage: React.FC = () => {
           </div>
         );
       })()}
-
       {/* =========================================================================
-          MODAL 4: TỪ CHỐI TIẾP NHẬN / BẢO HÀNH
+          MODAL 4: TỪ CHỐI TIẾP NHẬN / BẢO HÀNH (YCBH04: BẮT BUỘC LÝ DO)
           ========================================================================= */}
       {showRejectModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
@@ -4321,26 +5099,36 @@ export const WarrantyPage: React.FC = () => {
               XÁC NHẬN TỪ CHỐI TIẾP NHẬN BẢO HÀNH
             </h3>
             <p className="text-xs text-zinc-600">
-              Vui lòng chọn hoặc nhập lý do từ chối yêu cầu bảo hành này:
+              Vui lòng nhập lý do từ chối yêu cầu bảo hành này <span className="text-red-600 font-bold">(*) bắt buộc:</span>
             </p>
             <textarea
               rows={3}
               value={rejectReason}
               onChange={e => setRejectReason(e.target.value)}
-              className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs text-black bg-white"
+              placeholder="Nhập lý do từ chối (bắt buộc)..."
+              className="w-full p-2.5 rounded-xl border border-zinc-300 text-xs text-black bg-white focus:border-red-500 focus:outline-hidden"
             />
+            {!rejectReason.trim() && (
+              <p className="text-[11px] text-red-600 font-medium">
+                * Bạn cần nhập lý do trước khi xác nhận từ chối.
+              </p>
+            )}
             <div className="flex items-center justify-end gap-3 pt-2">
               <button
                 type="button"
-                onClick={() => setShowRejectModal(false)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold bg-zinc-100 hover:bg-zinc-200 text-zinc-700"
+                onClick={() => {
+                  setShowRejectModal(false);
+                  setRejectReason('');
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-zinc-100 hover:bg-zinc-200 text-zinc-700 cursor-pointer"
               >
                 Hủy
               </button>
               <button
                 type="button"
+                disabled={!rejectReason.trim()}
                 onClick={handleConfirmReject}
-                className="px-5 py-2 rounded-xl text-xs font-bold bg-red-700 hover:bg-red-800 text-white shadow"
+                className="px-5 py-2 rounded-xl text-xs font-bold bg-red-700 hover:bg-red-800 disabled:opacity-40 disabled:cursor-not-allowed text-white shadow transition cursor-pointer"
               >
                 Xác nhận từ chối
               </button>

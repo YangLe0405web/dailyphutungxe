@@ -2570,6 +2570,8 @@ export interface AdminWarrantyClaim {
   nhanVienPhuTrach: string; // Nguyễn Văn Hùng
   trangThai: AdminWarrantyClaimStatus;
   currentStep: number; // 1 -> 6
+  isDraft?: boolean;
+  lyDoTuChoi?: string;
 
   // Bước 1
   b1_khachDaDenShowroom?: boolean;
@@ -2584,7 +2586,7 @@ export interface AdminWarrantyClaim {
   b2_heThongSuCo?: string[];
   b2_chiTietLoi?: string;
   b2_deXuatHuongXuLy?: string;
-  b2_phuTungDuKien?: Array<{ ten: string; soLuong: number; tinhTrang: string }>;
+  b2_phuTungDuKien?: Array<{ id?: string; ten: string; soLuong: number; tinhTrang?: string; sku?: string; donGia?: number; kho?: number }>;
   b2_hinhAnhKiemTra?: string[];
 
   // Bước 3

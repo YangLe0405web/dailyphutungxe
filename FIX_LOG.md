@@ -4324,3 +4324,66 @@ pm run build thành công 100% trong 1.41s, **0 lỗi TypeScript**.
   - Không còn hiện tượng ném ngoại lệ `QuotaExceededError` khi upload ảnh cà vẹt và phê duyệt biển số.
   - Bảo toàn 100% tất cả các tính năng đã chốt ở các bản trước.
   - Tuyệt đối không `git push` lên GitHub khi chưa nhận lệnh `.github --update`.
+
+---
+
+### Fix 73: Chỉnh sửa toàn diện chức năng "Xử lý ngay" module Yêu cầu bảo hành Admin (YCBH04 - YCBH15)
+* **Thời gian:** 02/11/2026
+* **Mã yêu cầu:** YCBH04 - YCBH15
+* **Tệp chỉnh sửa:**
+  - `crm-frontend/src/data/mockData.ts`
+  - `crm-frontend/src/services/api.ts`
+  - `crm-frontend/src/pages/admin/Warranty.tsx`
+* **Mục tiêu & Yêu cầu nghiệp vụ:**
+  Rà soát và chuẩn hóa toàn bộ luồng chức năng "Xử lý ngay" trong module Quản lý bảo hành Admin:
+  1. **YCBH04 — Điều chỉnh luồng thao tác theo trạng thái:**
+     - Trạng thái `ChoXuLy`: Chỉ hiển thị `[✓ Xác nhận]` (mở modal phân công KTV) và `[✕ Từ chối]`.
+     - Nhấn `Từ chối`: Bắt buộc nhập lý do từ chối, khóa nút xác nhận nếu để trống.
+     - Sau khi xác nhận (`DaXacNhan`): Chỉ hiển thị `[▶ Xử lý ngay]`.
+     - Khi đã lưu nháp hoặc đang xử lý (`isDraft` hoặc `currentStep > 1` hoặc `DaTiepNhan`/`DangSuaChua`): Hiển thị `[✏️ Cập nhật]`, khi bấm mở lại trực tiếp đúng bước đang xử lý.
+  2. **YCBH05 — Tối ưu chức năng chọn phụ tùng tại Bước 2 (Theo Ảnh 1):**
+     - Thiết kế lại khu vực chọn phụ tùng theo Ảnh 1: Ô tìm kiếm `[🔍 Nhập tên phụ tùng, mã linh kiện...]` kết hợp nút `[+ Thêm]` và dropdown gợi ý danh mục phụ tùng sẵn có trong kho.
+     - Thẻ phụ tùng đã chọn nền tối (Dark cards) hiển thị STT, tên, đơn giá, SKU, tồn kho, bộ tăng giảm số lượng `[- 1 +]`, thành tiền và nút xóa `✕`.
+     - Thanh tóm tắt chi phí ở đáy: Tổng cộng tạm tính, Chiết khấu/Ưu đãi (-0 đ), Tổng tiền ước tính.
+  3. **YCBH06 & YCBH07 — Ràng buộc thời gian & Giao diện lịch Bước 3 (Theo Ảnh 2):**
+     - Tách riêng ô chọn ngày và chọn giờ.
+     - Popup Lịch to kích thước đầy đủ với chuyển tháng, các ngày trong tuần `H B T T N S C`, khóa các ngày quá khứ và các ngày vượt quá 10 ngày kể từ hiện tại, nút `[Xóa]` và `[Hôm nay]`.
+     - Ràng buộc nghiêm ngặt: Thời gian hoàn thành dự kiến bắt buộc phải trong tương lai và không vượt quá 10 ngày (xử lý cả ngày và giờ). Chặn chuyển bước nếu không hợp lệ.
+  4. **YCBH08 — Nút kết thúc khi khách hàng hủy yêu cầu tại Bước 4:**
+     - Khi nhân viên chọn "Khách hàng không đồng ý (Hủy yêu cầu)", thay nút tiếp tục bằng `[✕ KẾT THÚC (HỦY YÊU CẦU)]`.
+     - Khi nhấn, kết thúc quy trình, cập nhật trạng thái hủy và đóng hồ sơ, không bao giờ chuyển sang Bước 5.
+  5. **YCBH09 — Bổ sung chức năng Lưu nháp và Tiếp tục xử lý:**
+     - Tại Bước 1 đến Bước 5: Thay thế các nút không phù hợp bằng nút `[💾 Lưu nháp]`.
+     - Khi nhấn `Lưu nháp`, lưu toàn bộ dữ liệu, danh sách phụ tùng, lịch hẹn, thông tin bước hiện tại xuống CSDL Backend/SQL Server qua `[WARRANTY_DRAFT]: JSON` gắn với ghi chú lịch hẹn và localStorage.
+     - Sau khi lưu, đóng stepper trở về danh sách. Hàng có nút `[✏️ Cập nhật]`. Bấm `Cập nhật` mở trực tiếp đúng bước đã lưu nháp.
+  6. **YCBH10 — Upload hình ảnh thực tế tại Bước 5:**
+     - Xóa bỏ hoàn toàn 2 ảnh Unsplash mặc định.
+     - Bổ sung nút `[+ Tải ảnh thực tế]` nén ảnh Canvas (~20KB) cho phép chọn nhiều ảnh thực tế thi công, hiển thị thumbnail kèm nút xóa `✕`. Khôi phục đúng ảnh khi mở lại nháp.
+  7. **YCBH11 & YCBH12 — Trạng thái linh kiện tại Bước 5:**
+     - YCBH12: Khi bắt đầu Bước 5, mặc định trạng thái tất cả linh kiện là "Chưa sửa" (`ChuaThucHien`).
+     - Nhân viên chủ động cập nhật trạng thái từng linh kiện ("Chưa sửa" -> "Đang sửa chữa" -> "Đã thay thế").
+     - YCBH11: Bắt buộc TẤT CẢ linh kiện phải đạt trạng thái "Đã thay thế" mới cho phép nhấn `[HOÀN THÀNH SỬA CHỮA (BƯỚC 6) >]`. Nếu chưa đủ, hiển thị thông báo chặn và nêu rõ số lượng linh kiện chưa hoàn tất.
+  8. **YCBH13 — Biên bản nghiệm thu và Hóa đơn chuẩn theo Ảnh 3:**
+     - Thiết kế lại Modal In Biên bản & In Hóa đơn theo Ảnh 3: Container nền tối sang trọng, thông tin showroom, khách hàng, số điện thoại, biển số xe, số ODO, KTV phụ trách, tình trạng ghi nhận, phương án xử lý kỹ thuật.
+     - Bảng chi tiết: STT, Tên hạng mục/Phụ tùng, SL, Đơn giá, Thành tiền, Đối tượng chi trả (`Khách hàng chi trả` hoặc `Hãng bảo hành trả (0đ)`).
+     - Tổng hợp chi phí phát sinh, Hãng xe bảo hành chi trả, và dòng cam nổi bật `KHÁCH HÀNG CẦN THANH TOÁN: ...`.
+     - Nút `[🖨️ In bản cứng ngay]`, `[💬 Gửi hóa đơn Zalo/SMS]`, `[Đóng]`.
+  9. **YCBH14 — Xóa bỏ mục 'Trạng thái cập nhật trên hệ thống':**
+     - Đã loại bỏ hoàn toàn khối hiển thị thủ công này tại Bước 5 và Bước 6.
+  10. **YCBH15 — Ràng buộc xác nhận trước khi chuyển bước:**
+      - Bước 1: Xác nhận đúng xe/biển số.
+      - Bước 2: Chọn ít nhất 1 hệ thống sự cố.
+      - Bước 3: Ràng buộc thời gian hoàn thành dự kiến tương lai & <= 10 ngày.
+      - Bước 5: Bắt buộc KTV xác nhận đánh giá sau sửa chữa (xe chạy êm ái).
+      - Bước 6: Bắt buộc xác nhận khách chạy thử hài lòng và khách đã ký nhận biên bản bàn giao.
+* **Kết quả nghiệm thu:**
+  - `verify_all_ycbh.js`: TẤT CẢ 12 YÊU CẦU ĐẠT CHUẨN 100% (PASS ✓).
+  - `npm --prefix crm-frontend run build`: Biên dịch production thành công trong 640ms, 0 lỗi TypeScript, 0 lỗi Vite bundle.
+  - Bảo toàn 100% tất cả các tính năng đã chốt: phân công KTV bán xe PDI, phân công KTV bảo hành, phê duyệt biển số xe không lỗi quota, gom nhóm khảo sát theo dòng xe, và hiệu ứng highlight lịch hẹn.
+  11. **Bổ sung chuẩn in ấn A4 (@media print) cho Biên bản & Hóa đơn Bước 6:**
+      - Khắc phục lỗi khi bấm "In bản cứng ngay", trình duyệt chụp toàn bộ trang web (gồm sidebar menu, header quản trị và nền tối 2 trang).
+      - Thiết lập @media print chuyên dụng: Ẩn toàn bộ giao diện website và các nút thao tác (`no-print`), chỉ in duy nhất khung chứng từ (`#print-warranty-document`).
+      - Tự động chuyển đổi màu nền sang giấy trắng tiêu chuẩn, chữ đen tương phản cao, bảng có viền rõ nét, vừa vặn trên 1 trang giấy A4.
+      - Bổ sung khu vực chữ ký 3 bên: Khách hàng ký nhận, Kỹ thuật viên thực hiện, Đại diện Showroom.
+
+  - Tuân thủ quy tắc: Không đẩy mã nguồn lên GitHub khi chưa nhận lệnh `.github --update`.

@@ -8628,9 +8628,64 @@ export const warrantyApi = {
         }
       });
       if (hasNew) {
-        localStorage.setItem('crm_admin_warranty_claims', JSON.stringify(list));
+        safeLocalStorageSet('crm_admin_warranty_claims', JSON.stringify(list));
       }
     } catch {}
+
+    // Khôi phục dữ liệu nháp [WARRANTY_DRAFT] nếu có từ backend hoặc ghi chú
+    list = list.map(c => {
+      const draftText = c.noiDung && c.noiDung.includes('[WARRANTY_DRAFT]:') ? c.noiDung : null;
+      if (draftText) {
+        try {
+          const rawDraft = draftText.split('[WARRANTY_DRAFT]:')[1];
+          const draft = JSON.parse(rawDraft);
+          if (draft) {
+            c.isDraft = true;
+            if (draft.currentStep) c.currentStep = draft.currentStep;
+            if (draft.b1) Object.assign(c, {
+              b1_khachDaDenShowroom: draft.b1.khachDaDenShowroom,
+              b1_xacNhanDungXeBienSo: draft.b1.xacNhanDungXeBienSo,
+              b1_bienSoThucTe: draft.b1.bienSoThucTe,
+              b1_soKmHienTai: draft.b1.soKmHienTai,
+              b1_ghiChuNgoaiQuan: draft.b1.ghiChuNgoaiQuan,
+              b1_dayDuGiayTo: draft.b1.dayDuGiayTo,
+            });
+            if (draft.b2) Object.assign(c, {
+              b2_heThongSuCo: draft.b2.heThongSuCo,
+              b2_chiTietLoi: draft.b2.chiTietLoi,
+              b2_deXuatHuongXuLy: draft.b2.deXuatHuongXuLy,
+              b2_phuTungDuKien: draft.b2.phuTungDuKien,
+            });
+            if (draft.b3) Object.assign(c, {
+              b3_cheDoBaoHanh: draft.b3.cheDoBaoHanh,
+              b3_hangMucChiPhi: draft.b3.hangMucChiPhi,
+              b3_tongChiPhi: draft.b3.tongChiPhi,
+              b3_chiPhiBaoHanhChiTra: draft.b3.chiPhiBaoHanhChiTra,
+              b3_khachThanhToan: draft.b3.khachThanhToan,
+              b3_thoiGianHoanThanhDuKien: draft.b3.thoiGianHoanThanhDuKien,
+              b3_ktvPhuTrach: draft.b3.ktvPhuTrach,
+            });
+            if (draft.b4) Object.assign(c, {
+              b4_hangXeXacNhan: draft.b4.hangXeXacNhan,
+              b4_khachHangDongY: draft.b4.khachHangDongY,
+              b4_ghiChuDuyet: draft.b4.ghiChuDuyet,
+              b4_nguoiDuyet: draft.b4.nguoiDuyet,
+            });
+            if (draft.b5) Object.assign(c, {
+              b5_ktvChinh: draft.b5.ktvChinh,
+              b5_hoTro: draft.b5.hoTro,
+              b5_thoiGianBatDau: draft.b5.thoiGianBatDau,
+              b5_thoiGianHoanThanhDuKien: draft.b5.thoiGianHoanThanhDuKien,
+              b5_nhatKyCongViec: draft.b5.nhatKyCongViec,
+              b5_hangMucThiCong: draft.b5.hangMucThiCong,
+              b5_hinhAnhThiCong: draft.b5.hinhAnhThiCong,
+              b5_danhGiaSauSuaChua: draft.b5.danhGiaSauSuaChua,
+            });
+          }
+        } catch {}
+      }
+      return c;
+    });
 
     return list;
   },
@@ -8650,10 +8705,217 @@ export const warrantyApi = {
     } else {
       updated = [updatedClaim, ...all];
     }
-    try {
-      localStorage.setItem('crm_admin_warranty_claims', JSON.stringify(updated));
-    } catch {}
+    safeLocalStorageSet('crm_admin_warranty_claims', JSON.stringify(updated));
     window.dispatchEvent(new CustomEvent('crm-admin-notification', { detail: { type: 'warranty_claim_updated' } }));
+  },
+
+  /**
+   * YCBH09: Lưu nháp hồ sơ bảo hành và đồng bộ bền vững xuống Backend
+   */
+  async saveDraftClaim(claim: AdminWarrantyClaim): Promise<{ success: boolean; message: string }> {
+    const draftPayload = {
+      claimId: claim.id,
+      currentStep: claim.currentStep || 1,
+      isDraft: true,
+      savedAt: new Date().toISOString(),
+      b1: {
+        khachDaDenShowroom: claim.b1_khachDaDenShowroom,
+        xacNhanDungXeBienSo: claim.b1_xacNhanDungXeBienSo,
+        bienSoThucTe: claim.b1_bienSoThucTe,
+        soKmHienTai: claim.b1_soKmHienTai,
+        ghiChuNgoaiQuan: claim.b1_ghiChuNgoaiQuan,
+        dayDuGiayTo: claim.b1_dayDuGiayTo,
+      },
+      b2: {
+        heThongSuCo: claim.b2_heThongSuCo,
+        chiTietLoi: claim.b2_chiTietLoi,
+        deXuatHuongXuLy: claim.b2_deXuatHuongXuLy,
+        phuTungDuKien: claim.b2_phuTungDuKien,
+      },
+      b3: {
+        cheDoBaoHanh: claim.b3_cheDoBaoHanh,
+        hangMucChiPhi: claim.b3_hangMucChiPhi,
+        tongChiPhi: claim.b3_tongChiPhi,
+        chiPhiBaoHanhChiTra: claim.b3_chiPhiBaoHanhChiTra,
+        khachThanhToan: claim.b3_khachThanhToan,
+        thoiGianHoanThanhDuKien: claim.b3_thoiGianHoanThanhDuKien,
+        ktvPhuTrach: claim.b3_ktvPhuTrach,
+      },
+      b4: {
+        hangXeXacNhan: claim.b4_hangXeXacNhan,
+        khachHangDongY: claim.b4_khachHangDongY,
+        ghiChuDuyet: claim.b4_ghiChuDuyet,
+        nguoiDuyet: claim.b4_nguoiDuyet,
+      },
+      b5: {
+        ktvChinh: claim.b5_ktvChinh,
+        hoTro: claim.b5_hoTro,
+        thoiGianBatDau: claim.b5_thoiGianBatDau,
+        thoiGianHoanThanhDuKien: claim.b5_thoiGianHoanThanhDuKien,
+        nhatKyCongViec: claim.b5_nhatKyCongViec,
+        hangMucThiCong: claim.b5_hangMucThiCong,
+        hinhAnhThiCong: claim.b5_hinhAnhThiCong,
+        danhGiaSauSuaChua: claim.b5_danhGiaSauSuaChua,
+      }
+    };
+
+    const draftJsonString = `[WARRANTY_DRAFT]:${JSON.stringify(draftPayload)}`;
+    const updatedClaim: AdminWarrantyClaim = {
+      ...claim,
+      isDraft: true,
+      trangThai: claim.currentStep >= 5 ? 'DangSuaChua' : 'DaTiepNhan',
+    };
+
+    // 1. Cập nhật local storage qua safeLocalStorageSet
+    this.updateAdminClaim(updatedClaim);
+
+    // 2. Đồng bộ xuống Backend SQL Server qua API
+    try {
+      const maLichDigits = (claim.maLichHen || claim.id || '').replace(/\D/g, '');
+      const maLichNum = parseInt(maLichDigits, 10);
+      if (!isNaN(maLichNum) && maLichNum > 0) {
+        await fetch(`http://localhost:5208/api/LichHen/${maLichNum}/trang-thai`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            trangThai: claim.currentStep >= 5 ? 'Đang sửa chữa' : 'Đang xử lý',
+            ghiChu: draftJsonString
+          })
+        });
+      }
+    } catch (err) {
+      console.warn('[warrantyApi.saveDraftClaim] Backend PATCH notice:', err);
+    }
+
+    // 3. Đồng bộ crm_appointments_cache
+    try {
+      const cachedRaw = localStorage.getItem('crm_appointments_cache');
+      if (cachedRaw) {
+        let cachedAppts: any[] = JSON.parse(cachedRaw);
+        cachedAppts = cachedAppts.map(a => {
+          if (a.id === claim.maLichHen || a.id === claim.id) {
+            return {
+              ...a,
+              trangThai: claim.currentStep >= 5 ? 'DangSuaChua' : 'DangXuLy',
+              ghiChu: draftJsonString,
+            };
+          }
+          return a;
+        });
+        safeLocalStorageSet('crm_appointments_cache', JSON.stringify(cachedAppts));
+      }
+    } catch {}
+
+    return { success: true, message: `✓ Đã lưu nháp hồ sơ #${claim.id} thành công tại Bước ${claim.currentStep}!` };
+  },
+
+  /**
+   * YCBH04: Từ chối yêu cầu bảo hành bắt buộc nhập lý do
+   */
+  async rejectClaimWithReason(claimId: string, reason: string): Promise<boolean> {
+    const all = this.getAdminClaims();
+    const claim = all.find(c => c.id === claimId || c.maLichHen === claimId);
+    if (!claim) return false;
+
+    claim.trangThai = 'TuChoi';
+    claim.lyDoTuChoi = reason;
+    claim.nhanVienPhuTrach = '(Từ chối tiếp nhận)';
+    claim.b1_ghiChuNgoaiQuan = reason;
+    this.updateAdminClaim(claim);
+
+    // Đồng bộ Backend SQL Server
+    try {
+      const maLichDigits = (claim.maLichHen || claim.id || '').replace(/\D/g, '');
+      const maLichNum = parseInt(maLichDigits, 10);
+      if (!isNaN(maLichNum) && maLichNum > 0) {
+        await fetch(`http://localhost:5208/api/LichHen/${maLichNum}/trang-thai`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            trangThai: 'Từ chối',
+            ghiChu: `[LÝ DO TỪ CHỐI]: ${reason}`
+          })
+        });
+      }
+    } catch (err) {
+      console.warn('[warrantyApi.rejectClaimWithReason] Backend PATCH notice:', err);
+    }
+
+    // Đồng bộ appointment cache
+    try {
+      const cachedRaw = localStorage.getItem('crm_appointments_cache');
+      if (cachedRaw) {
+        let cachedAppts: any[] = JSON.parse(cachedRaw);
+        cachedAppts = cachedAppts.map(a => {
+          if (a.id === claim.maLichHen || a.id === claim.id) {
+            return {
+              ...a,
+              trangThai: 'TuChoi',
+              ghiChu: `[LÝ DO TỪ CHỐI]: ${reason}`
+            };
+          }
+          return a;
+        });
+        safeLocalStorageSet('crm_appointments_cache', JSON.stringify(cachedAppts));
+      }
+    } catch {}
+
+    return true;
+  },
+
+  /**
+   * YCBH08: Khách hàng không đồng ý phương án (Hủy yêu cầu tại Bước 4)
+   */
+  async cancelClaimFromCustomer(claimId: string, reason?: string): Promise<boolean> {
+    const all = this.getAdminClaims();
+    const claim = all.find(c => c.id === claimId || c.maLichHen === claimId);
+    if (!claim) return false;
+
+    claim.trangThai = 'TuChoi';
+    claim.currentStep = 4;
+    claim.b4_khachHangDongY = false;
+    claim.lyDoTuChoi = reason || 'Khách hàng không đồng ý phương án (Hủy yêu cầu)';
+    claim.nhanVienPhuTrach = '(Đã hủy theo yêu cầu khách)';
+    this.updateAdminClaim(claim);
+
+    // Đồng bộ Backend SQL Server
+    try {
+      const maLichDigits = (claim.maLichHen || claim.id || '').replace(/\D/g, '');
+      const maLichNum = parseInt(maLichDigits, 10);
+      if (!isNaN(maLichNum) && maLichNum > 0) {
+        await fetch(`http://localhost:5208/api/LichHen/${maLichNum}/trang-thai`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            trangThai: 'Đã hủy',
+            ghiChu: `[KHÁCH HÀNG HỦY]: ${reason || 'Không đồng ý phương án xử lý'}`
+          })
+        });
+      }
+    } catch (err) {
+      console.warn('[warrantyApi.cancelClaimFromCustomer] Backend PATCH notice:', err);
+    }
+
+    // Đồng bộ appointment cache
+    try {
+      const cachedRaw = localStorage.getItem('crm_appointments_cache');
+      if (cachedRaw) {
+        let cachedAppts: any[] = JSON.parse(cachedRaw);
+        cachedAppts = cachedAppts.map(a => {
+          if (a.id === claim.maLichHen || a.id === claim.id) {
+            return {
+              ...a,
+              trangThai: 'DaHuy',
+              ghiChu: `[KHÁCH HÀNG HỦY]: ${reason || 'Không đồng ý phương án xử lý'}`
+            };
+          }
+          return a;
+        });
+        safeLocalStorageSet('crm_appointments_cache', JSON.stringify(cachedAppts));
+      }
+    } catch {}
+
+    return true;
   },
 
   /**
