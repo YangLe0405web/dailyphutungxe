@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import type { Vehicle, Customer, WarrantyRecord } from '../../data/mockData';
 import {
   WARRANTY_BRANCHES,
@@ -771,6 +771,27 @@ Phiếu này có giá trị xác nhận điện tử trên toàn hệ thống sh
 /* =========================================================================
    2. VIEW 3: FORM YÊU CẦU KIỂM TRA BẢO HÀNH (CHUẨN 100% THEO ẢNH 3 - media_1791439256835)
    ========================================================================= */
+export const CLAIM_TIME_SLOTS = [
+  { value: '08:30', label: '08:30 - 09:30 (Sáng sớm)' },
+  { value: '09:30', label: '09:30 - 10:30' },
+  { value: '10:30', label: '10:30 - 11:30' },
+  { value: '13:30', label: '13:30 - 14:30 (Đầu giờ chiều)' },
+  { value: '14:30', label: '14:30 - 15:30' },
+  { value: '15:30', label: '15:30 - 16:30' },
+];
+
+export const isTimeSlotPassed = (dateStr: string, timeStr: string): boolean => {
+  if (!dateStr) return false;
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  if (dateStr < todayStr) return true;
+  if (dateStr > todayStr) return false;
+
+  const [slotH, slotM] = (timeStr || '08:30').split(':').map(Number);
+  const slotDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), slotH, slotM, 0, 0);
+  return now.getTime() >= slotDate.getTime();
+};
+
 interface WarrantyClaimFormViewProps {
   vehicle: Vehicle;
   customer: Customer | null;
@@ -830,7 +851,20 @@ export function WarrantyClaimFormView({
     (i) => i.includes('Khác') || i.includes('khác') || i.includes('Không rõ nguyên nhân')
   );
 
+  useEffect(() => {
+    if (isTimeSlotPassed(claimDate, claimTime)) {
+      const firstValid = CLAIM_TIME_SLOTS.find(slot => !isTimeSlotPassed(claimDate, slot.value));
+      if (firstValid) {
+        setClaimTime(firstValid.value);
+      }
+    }
+  }, [claimDate]);
+
   const handleSubmitInternal = () => {
+    if (isTimeSlotPassed(claimDate, claimTime)) {
+      alert('Thời gian đặt lịch hẹn tiếp nhận phải ở tương lai! Vui lòng chọn khung giờ hoặc ngày tiếp nhận hợp lệ.');
+      return;
+    }
     if (customIssueText.trim() && !claimDesc.includes(customIssueText.trim())) {
       const merged = claimDesc
         ? `${claimDesc}\n[Vấn đề khác]: ${customIssueText.trim()}`
@@ -1117,13 +1151,20 @@ export function WarrantyClaimFormView({
                   onChange={(e) => setClaimTime(e.target.value)}
                   className="w-full p-3 rounded-xl border border-zinc-200 text-xs font-bold text-zinc-900 focus:outline-none focus:border-red-600 bg-white"
                 >
-                  <option value="08:30">08:30 - 09:30 (Sáng sớm)</option>
-                  <option value="09:30">09:30 - 10:30</option>
-                  <option value="10:30">10:30 - 11:30</option>
-                  <option value="13:30">13:30 - 14:30 (Đầu giờ chiều)</option>
-                  <option value="14:30">14:30 - 15:30</option>
-                  <option value="15:30">15:30 - 16:30</option>
+                  {CLAIM_TIME_SLOTS.map((slot) => {
+                    const isPassed = isTimeSlotPassed(claimDate, slot.value);
+                    return (
+                      <option key={slot.value} value={slot.value} disabled={isPassed} className={isPassed ? 'text-zinc-400 bg-zinc-100' : ''}>
+                        {isPassed ? `[Đã qua] ${slot.label}` : slot.label}
+                      </option>
+                    );
+                  })}
                 </select>
+                {CLAIM_TIME_SLOTS.every((s) => isTimeSlotPassed(claimDate, s.value)) && (
+                  <p className="text-[11px] text-red-600 font-bold mt-1">
+                    ⚠️ Tất cả khung giờ hôm nay đã qua. Vui lòng chọn ngày tiếp theo.
+                  </p>
+                )}
               </div>
 
               <div>

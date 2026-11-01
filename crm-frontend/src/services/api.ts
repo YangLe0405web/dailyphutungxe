@@ -65,6 +65,101 @@ import {
 import { addAdminNotification, addCustomerNotification } from './notifications';
 export { addAdminNotification, addCustomerNotification };
 
+/**
+ * Safe localStorage setter that detects QuotaExceededError,
+ * cleans up disposable caches (redundant crm_cavet_* keys, stale notifications, oversized base64),
+ * and retries automatically to guarantee critical data persistence.
+ */
+export function safeLocalStorageSet(key: string, value: string): boolean {
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch (err: any) {
+    console.warn(`[safeLocalStorageSet] Quota exceeded on key "${key}", executing emergency storage cleanup...`, err);
+    try {
+      // 1. Remove all redundant crm_cavet_* duplicate keys (cavet is already stored inside vehicle)
+      const allKeys = Object.keys(localStorage);
+      for (const k of allKeys) {
+        if (k.startsWith('crm_cavet_')) {
+          localStorage.removeItem(k);
+        }
+      }
+
+      // 2. Trim admin and customer notifications to latest 10 items
+      for (const k of allKeys) {
+        if (k === 'crm_admin_notifications' || k.startsWith('crm_customer_notifs_') || k === 'crm_customer_notifications') {
+          try {
+            const raw = localStorage.getItem(k);
+            if (raw) {
+              const list = JSON.parse(raw);
+              if (Array.isArray(list) && list.length > 10) {
+                localStorage.setItem(k, JSON.stringify(list.slice(0, 10)));
+              }
+            }
+          } catch {}
+        }
+      }
+
+      // 3. Compact customer vehicles: shrink overly large base64 strings (>30KB) on already approved vehicles
+      const vehRaw = localStorage.getItem('crm_customer_vehicles');
+      if (vehRaw) {
+        try {
+          const vehList: Vehicle[] = JSON.parse(vehRaw);
+          if (Array.isArray(vehList)) {
+            let changed = false;
+            vehList.forEach(v => {
+              if (v.anhCaVet && v.anhCaVet.length > 30000 && v.trangThaiDuyetBienSo === 'DaDuyet') {
+                v.anhCaVet = v.anhCaVet.slice(0, 15000);
+                changed = true;
+              }
+            });
+            if (changed) {
+              localStorage.setItem('crm_customer_vehicles', JSON.stringify(vehList));
+            }
+          }
+        } catch {}
+      }
+
+      // 4. Compact orders if overly large
+      const ordRaw = localStorage.getItem('crm_orders');
+      if (ordRaw) {
+        try {
+          const ordList = JSON.parse(ordRaw);
+          if (Array.isArray(ordList)) {
+            let changed = false;
+            ordList.forEach((o: any) => {
+              if (o.thongTinXe?.anhCaVet && o.thongTinXe.anhCaVet.length > 30000) {
+                delete o.thongTinXe.anhCaVet;
+                changed = true;
+              }
+            });
+            if (changed) {
+              localStorage.setItem('crm_orders', JSON.stringify(ordList));
+            }
+          }
+        } catch {}
+      }
+
+      // Retry setItem
+      localStorage.setItem(key, value);
+      console.log(`[safeLocalStorageSet] Emergency cleanup succeeded for key "${key}"`);
+      return true;
+    } catch (retryErr) {
+      console.error(`[safeLocalStorageSet] Storage still exhausted after cleanup for key "${key}":`, retryErr);
+      return false;
+    }
+  }
+}
+// Tự động dọn dẹp các key cà vẹt rác thừa lặp lại từ các phiên trước để giải phóng dung lượng bộ nhớ ngay khi tải trang
+try {
+  if (typeof localStorage !== 'undefined') {
+    Object.keys(localStorage)
+      .filter(k => k.startsWith('crm_cavet_'))
+      .forEach(k => localStorage.removeItem(k));
+  }
+} catch {}
+
+
 export const API_BASE_URL = 'http://localhost:5208/api';
 
 /**
@@ -1051,7 +1146,7 @@ export const vehicleApi = {
       }
     }
     try {
-      localStorage.setItem('crm_customer_vehicles', JSON.stringify(cleanedResult));
+      safeLocalStorageSet('crm_customer_vehicles', JSON.stringify(cleanedResult));
     } catch {}
     return cleanedResult;
   },
@@ -1351,25 +1446,7 @@ export const vehicleApi = {
         list.unshift(newVehicle);
         updatedVehicle = newVehicle;
       }
-      try {
-        if (vehicleId) localStorage.setItem(`crm_cavet_${vehicleId}`, anhCaVet);
-        if (vehicleData?.soKhung) localStorage.setItem(`crm_cavet_${vehicleData.soKhung}`, anhCaVet);
-        if (updatedVehicle?.soKhung) localStorage.setItem(`crm_cavet_${updatedVehicle.soKhung}`, anhCaVet);
-      } catch {}
-      try {
-        localStorage.setItem('crm_customer_vehicles', JSON.stringify(list));
-      } catch (quotaErr) {
-        console.warn('[vehicleApi.requestLicensePlateUpdate] Storage quota cleanup:', quotaErr);
-        // Dọn dẹp các ảnh base64 cũ quá cỡ (>100KB) trên các xe khác để đảm bảo luôn đủ chỗ lưu ảnh cà vẹt của xe hiện tại
-        list.forEach(v => {
-          if (v.id !== vehicleId && v.anhCaVet && v.anhCaVet.length > 100000) {
-            v.anhCaVet = v.anhCaVet.slice(0, 50000);
-          }
-        });
-        try {
-          localStorage.setItem('crm_customer_vehicles', JSON.stringify(list));
-        } catch {}
-      }
+      safeLocalStorageSet('crm_customer_vehicles', JSON.stringify(list));
     } catch (err) {
       console.warn('[vehicleApi.requestLicensePlateUpdate] Cache write error:', err);
     }
@@ -1498,6 +1575,7 @@ export const vehicleApi = {
     finalPlate = candidatePlate.trim().toUpperCase();
 
     // Đồng bộ và kiểm tra tính duy nhất trên Backend C# SQL Server
+    // Đồng bộ và kiểm tra tính duy nhất trên Backend C# SQL Server
     if (finalPlate && !isNoPlate(finalPlate)) {
       let targetMaXeSoHuu = 0;
       try {
@@ -1510,12 +1588,13 @@ export const vehicleApi = {
               ? bList.find((bx: any) => bx.soKhung && bx.soKhung.trim().toUpperCase() === targetVin)
               : null;
 
-            // 2. Tra cứu theo mã khách hàng và tên xe
+            // 2. Tra cứu theo mã khách hàng và tên xe nhưng CHỈ KHỚP XE CHƯA CÓ BIỂN SỐ
             if (!bMatch && custNum > 0 && vehicleName) {
               bMatch = bList.find((bx: any) =>
                 bx.maKH === custNum &&
                 bx.tenXe &&
-                bx.tenXe.toLowerCase().trim() === vehicleName.toLowerCase().trim()
+                bx.tenXe.toLowerCase().trim() === vehicleName.toLowerCase().trim() &&
+                isNoPlate(bx.bienSoXe)
               );
             }
 
@@ -1542,6 +1621,28 @@ export const vehicleApi = {
         if (!res.ok) {
           const errData = await res.json().catch(() => ({}));
           throw new Error(errData.message || `Lỗi máy chủ (${res.status}): Không thể phê duyệt biển số xe!`);
+        }
+      } else {
+        // Nếu xe chưa có trên SQL Server (ví dụ xe mua online chưa được tạo trong CSDL):
+        // Tự động tạo bản ghi mới vào XE_KHACH_HANG với biển số đã duyệt
+        try {
+          await fetchWithTimeout(`${API_BASE_URL}/XeKhachHang`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              maKH: custNum || 1,
+              tenXe: vehicleName || 'Xe máy chính hãng',
+              hangXe: vehicleData?.hangXe || 'Honda',
+              mauSac: vehicleData?.mauSac || 'Tiêu chuẩn',
+              bienSoXe: finalPlate,
+              soKhung: targetVin || '',
+              soMay: vehicleData?.soMay || '',
+              ngayMua: vehicleData?.ngayMua ? `${vehicleData.ngayMua}T00:00:00Z` : new Date().toISOString(),
+              hanBaoHanh: vehicleData?.hanBaoHanh ? `${vehicleData.hanBaoHanh}T00:00:00Z` : new Date().toISOString(),
+            }),
+          });
+        } catch (bePostErr) {
+          console.warn('[approveLicensePlate] Lỗi khởi tạo xe mới trên Backend:', bePostErr);
         }
       }
     }
@@ -1585,7 +1686,7 @@ export const vehicleApi = {
         delete (fallbackObj as any).lyDoTuChoiBienSo;
         list.unshift(fallbackObj);
       }
-      localStorage.setItem('crm_customer_vehicles', JSON.stringify(list));
+      safeLocalStorageSet('crm_customer_vehicles', JSON.stringify(list));
     } catch {}
 
     // Cập nhật vào mockVehicles
@@ -7031,20 +7132,72 @@ export const surveyApi = {
   },
 
   createWarrantyServiceSurvey(claim: any, customerId?: string): Survey {
-    const custId = claim.customerId || customerId || 'KH001';
-    const bikeName = claim.xeBienSo || 'Xe máy';
-    const surveyId = `KS-BH-${claim.id}`;
+    let custId = claim.customerId || customerId;
+    if (!custId && claim.soDienThoai) {
+      const match = mockCustomers.find(c => c.soDienThoai && c.soDienThoai.replace(/\D/g, '') === claim.soDienThoai.replace(/\D/g, ''));
+      if (match) custId = match.id;
+    }
+    if (!custId) {
+      try {
+        const saved = localStorage.getItem('crm_current_customer');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed?.id) custId = parsed.id;
+        }
+      } catch {}
+    }
+    if (!custId) custId = 'KH001';
 
-    const existing = surveyApi.getAll().find(s => s.id === surveyId);
-    if (existing) return existing;
+    const rawBikeName = claim.tenXe || claim.xeBienSo?.split('-')[0]?.trim() || claim.xeBienSo || 'Xe máy';
+    const bikeName = cleanBikeName(rawBikeName);
+    const modelSlug = toSurveyModelSlug(bikeName);
+    const surveyId = `KS-BH-${modelSlug}`;
 
+    const allSurveys = surveyApi.getAll();
+    let existing = allSurveys.find(s => s.id === surveyId);
+    if (!existing) {
+      existing = allSurveys.find(s => s.id.startsWith('KS-BH-') && s.title.toLowerCase().includes(bikeName.toLowerCase()));
+    }
+
+    if (existing) {
+      const curList = existing.targetCustomerIds || (existing.targetCustomerId && existing.targetCustomerId !== 'ALL' ? [existing.targetCustomerId] : []);
+      if (!curList.includes(custId)) {
+        const nextIds = [...curList, custId];
+        const nextTargetCount = Math.max(existing.targetCount || 0, nextIds.length);
+        existing = surveyApi.update(existing.id, {
+          targetCustomerIds: nextIds,
+          targetCount: nextTargetCount,
+          status: 'DangDienRa',
+        }) || existing;
+      }
+      addCustomerNotification({
+        customerId: custId,
+        category: 'survey',
+        icon: '📋',
+        title: '📋 Khảo sát chất lượng Dịch vụ Bảo hành',
+        message: `Hồ sơ bảo hành xe ${bikeName} đã hoàn tất. Kính mời bạn dành 1 phút đánh giá chất lượng tại mục Khảo sát mua xe & Dịch vụ.`,
+        page: 'dashboard',
+        tab: 'surveys',
+        targetId: existing.id,
+      });
+      return existing;
+    }
+
+    const now = Date.now();
+    const ktvName = claim.nhanVienPhuTrach || claim.b3_ktvPhuTrach || 'Nguyễn Văn Thành';
     const newSurvey = surveyApi.create({
       id: surveyId,
-      title: `Khảo sát chất lượng dịch vụ bảo hành: ${bikeName} (#${claim.id})`,
-      description: `Yêu cầu bảo hành #${claim.id} của quý khách đã hoàn tất. Chúng tôi trân trọng mời quý khách dành 1 phút đánh giá chất lượng sửa chữa và thái độ phục vụ của kỹ thuật viên.`,
+      title: `Khảo sát chất lượng dịch vụ bảo hành: ${bikeName}`,
+      description: `Dịch vụ bảo hành xe ${bikeName} của quý khách đã hoàn tất. Chúng tôi trân trọng mời quý khách dành 1 phút đánh giá chất lượng sửa chữa và thái độ phục vụ của kỹ thuật viên.`,
       targetCustomerId: custId,
       targetCustomerTier: 'ALL',
       targetCustomerIds: [custId],
+      targetCount: 1,
+      responseCount: 0,
+      publishDate: new Date(now - 60000).toISOString().slice(0, 16),
+      startDate: new Date(now - 60000).toISOString().slice(0, 16),
+      endDate: new Date(now + 30 * 86400000).toISOString().slice(0, 16),
+      status: 'DangDienRa',
       questions: [
         {
           id: 'q1',
@@ -7053,7 +7206,7 @@ export const surveyApi = {
         },
         {
           id: 'q2',
-          text: 'Thái độ phục vụ và tay nghề kỹ thuật của kỹ thuật viên phụ trách?',
+          text: `Thái độ phục vụ và tay nghề kỹ thuật của kỹ thuật viên phụ trách (${ktvName})?`,
           opts: ['Nhiệt tình, tay nghề cao, giải thích rõ ràng', 'Lịch sự, chu đáo', 'Bình thường', 'Cần cải thiện thái độ phục vụ'],
         },
         {
@@ -7072,9 +7225,9 @@ export const surveyApi = {
     addCustomerNotification({
       customerId: custId,
       category: 'survey',
-      icon: '📝',
-      title: 'Khảo sát chất lượng dịch vụ bảo hành',
-      message: `Mời quý khách đánh giá dịch vụ bảo hành xe ${bikeName} (${claim.id}) để giúp chúng tôi hoàn thiện chất lượng phục vụ.`,
+      icon: '📋',
+      title: '📋 Khảo sát chất lượng Dịch vụ Bảo hành',
+      message: `Hồ sơ bảo hành xe ${bikeName} đã hoàn tất. Kính mời quý khách dành 1 phút đánh giá chất lượng tại mục Khảo sát mua xe & Dịch vụ.`,
       page: 'dashboard',
       tab: 'surveys',
       targetId: newSurvey.id,
@@ -7888,14 +8041,19 @@ export const warrantyApi = {
   /**
    * Nhân viên xác nhận lịch hẹn (Ảnh 4: Chuyển sang DaXacNhan & gửi lịch về cho khách)
    */
-  async confirmAppointment(claimOrApptId: string): Promise<boolean> {
+  async confirmAppointment(
+    claimOrApptId: string,
+    technician?: { id: string; hoTen: string; sdt?: string; ghiChu?: string }
+  ): Promise<boolean> {
     // 1. Cập nhật trong AdminWarrantyClaims
     const allClaims = this.getAdminClaims();
     const claim = allClaims.find(c => c.id === claimOrApptId || c.maLichHen === claimOrApptId);
+    const assignedKtvName = technician?.hoTen || (claim?.nhanVienPhuTrach && claim.nhanVienPhuTrach !== 'Chờ phân công' ? claim.nhanVienPhuTrach : 'Nguyễn Văn Thành');
     if (claim) {
       claim.trangThai = 'DaXacNhan';
-      if (claim.nhanVienPhuTrach === 'Chờ phân công') {
-        claim.nhanVienPhuTrach = 'Nguyễn Văn Hùng';
+      claim.nhanVienPhuTrach = assignedKtvName;
+      if (technician?.ghiChu) {
+        (claim as any).ghiChuKTV = technician.ghiChu;
       }
       try {
         localStorage.setItem('crm_admin_warranty_claims', JSON.stringify(allClaims));
@@ -7921,7 +8079,7 @@ export const warrantyApi = {
       cachedAppts = cachedAppts.map(a => {
         if (a.id === targetId || a.id === claimOrApptId || (claim && a.id === claim.maLichHen)) {
           found = true;
-          return { ...a, trangThai: 'DaXacNhan', nhanVienPhuTrach: claim?.nhanVienPhuTrach || 'Nguyễn Văn Hùng' };
+          return { ...a, trangThai: 'DaXacNhan', nhanVienPhuTrach: assignedKtvName };
         }
         return a;
       });
@@ -7938,7 +8096,7 @@ export const warrantyApi = {
           ghiChu: appt?.moTaChiTiet || claim?.noiDung || 'Bảo hành sửa chữa xe',
           tenXe: appt?.tenXe || claim?.xeBienSo?.split('-')[0]?.trim() || 'Xe máy',
           bienSo: appt?.bienSo || claim?.b1_bienSoThucTe || claim?.xeBienSo?.split('-')[1]?.trim() || '29F1-234.56',
-          nhanVienPhuTrach: claim?.nhanVienPhuTrach || 'Nguyễn Văn Hùng',
+          nhanVienPhuTrach: assignedKtvName,
         });
       }
       localStorage.setItem('crm_appointments_cache', JSON.stringify(cachedAppts));
@@ -7954,7 +8112,7 @@ export const warrantyApi = {
       category: 'appointment',
       icon: '✅',
       title: 'Lịch hẹn bảo hành đã được xác nhận',
-      message: `Yêu cầu bảo hành #${claimOrApptId} cho xe ${bike} đã được xác nhận. Vui lòng mang xe đến ${branch} lúc ${timeStr}.`,
+      message: `Yêu cầu bảo hành #${claimOrApptId} cho xe ${bike} đã được xác nhận. Kỹ thuật viên phụ trách: ${assignedKtvName}. Vui lòng mang xe đến ${branch} lúc ${timeStr}.`,
       page: 'dashboard',
       tab: 'appts',
       targetId: claimOrApptId,
@@ -8610,7 +8768,7 @@ export const warrantyApi = {
 
     // 4. Tự động tạo bài khảo sát dịch vụ bảo hành xe (KS-BH-...)
     try {
-      surveyApi.createWarrantyServiceSurvey(updatedClaim, claim.customerId);
+      surveyApi.createWarrantyServiceSurvey(updatedClaim, resolvedCustomerId);
     } catch (err) {
       console.warn('Lỗi tạo khảo sát bảo hành:', err);
     }

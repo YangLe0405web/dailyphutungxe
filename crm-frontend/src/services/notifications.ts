@@ -153,7 +153,12 @@ export function saveAdminNotifications(list: AdminNotification[]): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
   } catch (e) {
-    console.error('Failed to save notifications', e);
+    try {
+      // Emergency quota recovery: trim to 10 latest items
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(list.slice(0, 10)));
+    } catch (e2) {
+      console.warn('[notifications] Failed to save notifications after emergency trim:', e2);
+    }
   }
 }
 

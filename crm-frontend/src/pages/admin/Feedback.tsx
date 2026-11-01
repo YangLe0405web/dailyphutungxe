@@ -243,6 +243,14 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
   const [editingSurvey, setEditingSurvey] = useState<Survey | null>(null);
   const [surveyStatusTab, setSurveyStatusTab] = useState<'ALL' | 'DangDienRa' | 'SapDienRa' | 'DaKetThuc' | 'Nhap'>('ALL');
 
+  // Bộ lọc khảo sát Admin nâng cao
+  const [surveySearchTerm, setSurveySearchTerm] = useState('');
+  const [surveyTypeFilter, setSurveyTypeFilter] = useState<'ALL' | 'BaoHanh' | 'BaoDuong' | 'MuaXe' | 'LaiThu' | 'Khac'>('ALL');
+  const [surveyTargetFilter, setSurveyTargetFilter] = useState<'ALL' | 'ALL_CUST' | 'TIER' | 'CUSTOM'>('ALL');
+  const [surveySortBy, setSurveySortBy] = useState<'newest' | 'oldest' | 'most_responses' | 'highest_rate'>('newest');
+  const [modalCustTierFilter, setModalCustTierFilter] = useState<'ALL' | 'VIP' | 'ThanThiet' | 'PhoThong' | 'New'>('ALL');
+  const [modalSurveyCategory, setModalSurveyCategory] = useState<'BaoHanh' | 'BaoDuong' | 'MuaXe' | 'Chung'>('Chung');
+
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newSurveyTitle, setNewSurveyTitle] = useState('');
   const [newSurveyDesc, setNewSurveyDesc] = useState('');
@@ -1339,11 +1347,79 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
         const nhapCount = surveys.filter(s => computeSurveyStatus(s) === 'Nhap').length;
 
         const displayedSurveys = surveys.filter(s => {
-          if (surveyStatusTab === 'ALL') return true;
-          return computeSurveyStatus(s) === surveyStatusTab;
+          // 1. Lọc theo trạng thái
+          if (surveyStatusTab !== 'ALL' && computeSurveyStatus(s) !== surveyStatusTab) return false;
+
+          // 2. Lọc theo từ khóa tìm kiếm
+          if (surveySearchTerm.trim()) {
+            const term = surveySearchTerm.trim();
+            const qTexts = (s.questions || []).map(q => q.text).join(" ");
+            const match = matchVietnameseSearch(s.title, term) ||
+              matchVietnameseSearch(s.id, term) ||
+              (s.description ? matchVietnameseSearch(s.description, term) : false) ||
+              matchVietnameseSearch(qTexts, term);
+            if (!match) return false;
+          }
+
+          // 3. Lọc theo loại khảo sát
+          if (surveyTypeFilter !== 'ALL') {
+            const lowerTitle = (s.title + " " + (s.description || "")).toLowerCase();
+            if (surveyTypeFilter === 'BaoHanh') {
+              const isBh = s.id.includes('BH') || lowerTitle.includes('bảo hành');
+              if (!isBh) return false;
+            } else if (surveyTypeFilter === 'BaoDuong') {
+              const isBd = s.id.includes('BD') || lowerTitle.includes('bảo dưỡng') || lowerTitle.includes('sửa chữa');
+              if (!isBd) return false;
+            } else if (surveyTypeFilter === 'MuaXe') {
+              const isMx = s.id.includes('XE') || lowerTitle.includes('mua xe') || lowerTitle.includes('bàn giao');
+              if (!isMx) return false;
+            } else if (surveyTypeFilter === 'LaiThu') {
+              const isLt = s.id.includes('LT') || lowerTitle.includes('lái thử');
+              if (!isLt) return false;
+            } else if (surveyTypeFilter === 'Khac') {
+              const isSpecial = s.id.includes('BH') || s.id.includes('BD') || s.id.includes('XE') || s.id.includes('LT');
+              if (isSpecial) return false;
+            }
+          }
+
+          // 4. Lọc theo đối tượng nhận
+          if (surveyTargetFilter !== 'ALL') {
+            if (surveyTargetFilter === 'ALL_CUST') {
+              const isAll = s.targetCustomerId === 'ALL' && (!s.targetCustomerTier || s.targetCustomerTier === 'ALL') && (!s.targetCustomerIds || s.targetCustomerIds.length === 0);
+              if (!isAll) return false;
+            } else if (surveyTargetFilter === 'TIER') {
+              const isTier = s.targetCustomerTier && s.targetCustomerTier !== 'ALL';
+              if (!isTier) return false;
+            } else if (surveyTargetFilter === 'CUSTOM') {
+              const isCust = (s.targetCustomerIds && s.targetCustomerIds.length > 0) || (s.targetCustomerId && s.targetCustomerId !== 'ALL');
+              if (!isCust) return false;
+            }
+          }
+
+          return true;
+        }).sort((a, b) => {
+          if (surveySortBy === 'oldest') {
+            return (a.createdDate || '').localeCompare(b.createdDate || '');
+          } else if (surveySortBy === 'most_responses') {
+            const rA = surveyResponses.filter(r => r.surveyId === a.id).length;
+            const rB = surveyResponses.filter(r => r.surveyId === b.id).length;
+            return rB - rA;
+          } else if (surveySortBy === 'highest_rate') {
+            const tA = Math.max(a.targetCount || a.targetCustomerIds?.length || 1, 1);
+            const tB = Math.max(b.targetCount || b.targetCustomerIds?.length || 1, 1);
+            const rA = surveyResponses.filter(r => r.surveyId === a.id).length / tA;
+            const rB = surveyResponses.filter(r => r.surveyId === b.id).length / tB;
+            return rB - rA;
+          }
+          // Mặc định: newest
+          return (b.createdDate || '').localeCompare(a.createdDate || '');
         });
 
         const filteredCustomersForSurvey = customers.filter(c => {
+          if (modalCustTierFilter !== 'ALL') {
+            const t = getCustomerTier(c.tongChiTieu || 0).tier;
+            if (t !== modalCustTierFilter) return false;
+          }
           if (!custSearchTerm.trim()) return true;
           return (
             matchVietnameseSearch(c.hoTen, custSearchTerm) ||
@@ -1921,28 +1997,122 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
               </div>
             </div>
 
-            {/* KS08: Filter Pills Trạng thái khảo sát tự động */}
-            <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs scrollbar-none">
-              {[
-                { id: 'ALL', label: `Tất cả (${surveys.length})` },
-                { id: 'DangDienRa', label: `🟢 Đang diễn ra (${dangDienRaCount})` },
-                { id: 'SapDienRa', label: `🟡 Sắp diễn ra (${sapDienRaCount})` },
-                { id: 'DaKetThuc', label: `⚪ Đã kết thúc (${daKetThucCount})` },
-                { id: 'Nhap', label: `🔵 Bản nháp (${nhapCount})` },
-              ].map(tab => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setSurveyStatusTab(tab.id as any)}
-                  className={`px-4 py-2 rounded-xl font-bold transition whitespace-nowrap cursor-pointer text-xs ${
-                    surveyStatusTab === tab.id
-                      ? 'bg-zinc-950 text-white shadow-sm'
-                      : 'bg-white text-zinc-600 hover:bg-zinc-100 border border-zinc-200'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
+            {/* THANH TÌM KIẾM & BỘ LỌC TOÀN DIỆN CHO ADMIN */}
+            <div className="bg-white p-4 rounded-2xl border border-zinc-200 shadow-xs space-y-3">
+              <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+                {/* Ô tìm kiếm từ khóa */}
+                <div className="relative flex-1">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400 text-sm">🔍</span>
+                  <input
+                    type="text"
+                    placeholder="Tìm theo tên bài khảo sát, mã KS, nội dung câu hỏi..."
+                    value={surveySearchTerm}
+                    onChange={e => setSurveySearchTerm(e.target.value)}
+                    className="w-full pl-9 pr-8 py-2 rounded-xl border border-zinc-200 text-xs bg-zinc-50/50 focus:bg-white focus:outline-none focus:border-red-600 transition font-medium"
+                  />
+                  {surveySearchTerm && (
+                    <button
+                      type="button"
+                      onClick={() => setSurveySearchTerm('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 text-xs cursor-pointer"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                {/* Các Dropdown lọc */}
+                <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                  {/* Lọc loại */}
+                  <div className="flex items-center gap-1.5 bg-zinc-50 px-2.5 py-1.5 rounded-xl border border-zinc-200 text-xs">
+                    <span className="text-zinc-500 font-semibold text-[11px] whitespace-nowrap">Loại:</span>
+                    <select
+                      value={surveyTypeFilter}
+                      onChange={e => setSurveyTypeFilter(e.target.value as any)}
+                      className="bg-transparent font-bold text-zinc-800 text-xs focus:outline-none cursor-pointer"
+                    >
+                      <option value="ALL">🌐 Tất cả loại</option>
+                      <option value="BaoHanh">🛡️ Dịch vụ bảo hành</option>
+                      <option value="BaoDuong">🔧 Bảo dưỡng định kỳ</option>
+                      <option value="MuaXe">🏍️ Mua xe & Bàn giao</option>
+                      <option value="LaiThu">🚦 Lái thử trải nghiệm</option>
+                      <option value="Khac">📋 Khảo sát chung</option>
+                    </select>
+                  </div>
+
+                  {/* Lọc đối tượng */}
+                  <div className="flex items-center gap-1.5 bg-zinc-50 px-2.5 py-1.5 rounded-xl border border-zinc-200 text-xs">
+                    <span className="text-zinc-500 font-semibold text-[11px] whitespace-nowrap">Đối tượng:</span>
+                    <select
+                      value={surveyTargetFilter}
+                      onChange={e => setSurveyTargetFilter(e.target.value as any)}
+                      className="bg-transparent font-bold text-zinc-800 text-xs focus:outline-none cursor-pointer"
+                    >
+                      <option value="ALL">👥 Tất cả đối tượng</option>
+                      <option value="ALL_CUST">🌐 Toàn bộ khách hàng</option>
+                      <option value="TIER">👑 Theo hạng thành viên</option>
+                      <option value="CUSTOM">🎯 Khách hàng chỉ định</option>
+                    </select>
+                  </div>
+
+                  {/* Sắp xếp */}
+                  <div className="flex items-center gap-1.5 bg-zinc-50 px-2.5 py-1.5 rounded-xl border border-zinc-200 text-xs">
+                    <span className="text-zinc-500 font-semibold text-[11px] whitespace-nowrap">Sắp xếp:</span>
+                    <select
+                      value={surveySortBy}
+                      onChange={e => setSurveySortBy(e.target.value as any)}
+                      className="bg-transparent font-bold text-zinc-800 text-xs focus:outline-none cursor-pointer"
+                    >
+                      <option value="newest">Mới nhất</option>
+                      <option value="oldest">Cũ nhất</option>
+                      <option value="most_responses">Nhiều phản hồi nhất</option>
+                      <option value="highest_rate">Tỷ lệ hoàn thành cao</option>
+                    </select>
+                  </div>
+
+                  {/* Nút Reset */}
+                  {(surveySearchTerm || surveyTypeFilter !== 'ALL' || surveyTargetFilter !== 'ALL' || surveyStatusTab !== 'ALL' || surveySortBy !== 'newest') && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSurveySearchTerm('');
+                        setSurveyTypeFilter('ALL');
+                        setSurveyTargetFilter('ALL');
+                        setSurveyStatusTab('ALL');
+                        setSurveySortBy('newest');
+                      }}
+                      className="px-3 py-1.5 rounded-xl bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-bold text-xs transition cursor-pointer whitespace-nowrap"
+                      title="Đặt lại toàn bộ bộ lọc"
+                    >
+                      ↺ Đặt lại
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Status Tabs */}
+              <div className="flex items-center gap-2 overflow-x-auto pt-2 border-t border-zinc-100 text-xs scrollbar-none">
+                {[
+                  { id: 'ALL', label: `Tất cả (${surveys.length})` },
+                  { id: 'DangDienRa', label: `🟢 Đang diễn ra (${dangDienRaCount})` },
+                  { id: 'SapDienRa', label: `🟡 Sắp diễn ra (${sapDienRaCount})` },
+                  { id: 'DaKetThuc', label: `⚪ Đã kết thúc (${daKetThucCount})` },
+                  { id: 'Nhap', label: `🔵 Bản nháp (${nhapCount})` },
+                ].map(tab => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setSurveyStatusTab(tab.id as any)}
+                    className={`px-3.5 py-1.5 rounded-xl font-bold transition whitespace-nowrap cursor-pointer text-xs ${
+                      surveyStatusTab === tab.id
+                        ? 'bg-zinc-950 text-white shadow-xs'
+                        : 'bg-zinc-50 text-zinc-600 hover:bg-zinc-100 border border-zinc-200'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Danh sách 12 Card Khảo sát 2 Cột (Chuẩn Ảnh 1) */}
@@ -2226,6 +2396,20 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
 
                       {targetMode === 'CUSTOM' && (
                         <div className="space-y-2 pt-2">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-[11px] font-semibold text-zinc-600 whitespace-nowrap">Lọc nhanh theo Hạng:</span>
+                            <select
+                              value={modalCustTierFilter}
+                              onChange={e => setModalCustTierFilter(e.target.value as any)}
+                              className="p-1.5 rounded-lg border border-zinc-300 text-xs bg-white font-medium"
+                            >
+                              <option value="ALL">🌐 Tất cả các hạng</option>
+                              <option value="VIP">👑 Khách VIP</option>
+                              <option value="ThanThiet">⭐ Thân thiết</option>
+                              <option value="PhoThong">🌱 Phổ thông</option>
+                              <option value="New">🆕 Khách mới</option>
+                            </select>
+                          </div>
                           <div className="flex items-center gap-2">
                             <input
                               type="text"
