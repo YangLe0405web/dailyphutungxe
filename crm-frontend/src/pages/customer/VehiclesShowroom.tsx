@@ -61,7 +61,7 @@ export const showroomVehicles: ShowroomVehicle[] = [
     congSuat: '16.6 HP / 8.500 rpm',
     tieuHaoNhienLieu: '2.24 L/100km',
     phanh: 'Đĩa trước & sau, ABS 2 kênh',
-    hinhAnh: 'https://images.unsplash.com/photo-1568772585407-9361f9bf3a87?w=800&auto=format&fit=crop&q=80',
+    hinhAnh: '/images/Xe/honda_sh_160i_abs_2024.jpg',
   },
   {
     id: 'XM-HD02',
@@ -76,7 +76,7 @@ export const showroomVehicles: ShowroomVehicle[] = [
     congSuat: '15.0 HP / 8.000 rpm',
     tieuHaoNhienLieu: '2.30 L/100km',
     phanh: 'Đĩa trước có ABS, đùm sau',
-    hinhAnh: 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=800&auto=format&fit=crop&q=80',
+    hinhAnh: '/images/Xe/honda_air_blade_160_abs.jpg',
   },
   {
     id: 'XM-HD03',
@@ -91,7 +91,7 @@ export const showroomVehicles: ShowroomVehicle[] = [
     congSuat: '8.8 HP / 7.500 rpm',
     tieuHaoNhienLieu: '1.85 L/100km',
     phanh: 'Đĩa trước CBS, tang trống sau',
-    hinhAnh: 'https://images.unsplash.com/photo-1525160354320-d8e92641c563?w=800&auto=format&fit=crop&q=80',
+    hinhAnh: '/images/Xe/honda_vision_110_the_thao.jpg',
   },
   {
     id: 'XM-HD04',
@@ -106,7 +106,7 @@ export const showroomVehicles: ShowroomVehicle[] = [
     congSuat: '15.4 HP / 9.000 rpm',
     tieuHaoNhienLieu: '1.98 L/100km',
     phanh: 'Đĩa trước có ABS, đĩa sau',
-    hinhAnh: 'https://images.unsplash.com/photo-1609630875171-b1321377ee65?w=800&auto=format&fit=crop&q=80',
+    hinhAnh: '/images/Xe/honda_winner_x_150_abs.jpg',
   },
   {
     id: 'XM-HD05',
@@ -121,7 +121,7 @@ export const showroomVehicles: ShowroomVehicle[] = [
     congSuat: '8.2 HP / 7.500 rpm',
     tieuHaoNhienLieu: '1.72 L/100km',
     phanh: 'Tang trống trước & sau',
-    hinhAnh: 'https://images.unsplash.com/photo-1558980664-769d59546b3d?w=800&auto=format&fit=crop&q=80',
+    hinhAnh: '/images/Xe/honda_wave_alpha_110_2025.jpg',
   },
   {
     id: 'XM007',
@@ -153,7 +153,7 @@ export const showroomVehicles: ShowroomVehicle[] = [
     congSuat: '17.7 HP / 9.500 rpm',
     tieuHaoNhienLieu: '2.09 L/100km',
     phanh: 'Đĩa trước ABS 2 piston, đĩa sau',
-    hinhAnh: 'https://images.unsplash.com/photo-1568772585407-9361f9bf3a87?w=800&auto=format&fit=crop&q=80',
+    hinhAnh: '/images/Xe/yamaha_exciter_155_vva.jpg',
   },
   {
     id: 'XM-YM02',
@@ -168,7 +168,7 @@ export const showroomVehicles: ShowroomVehicle[] = [
     congSuat: '8.3 HP / 6.500 rpm',
     tieuHaoNhienLieu: '1.66 L/100km',
     phanh: 'Đĩa trước thủy lực, tang trống sau',
-    hinhAnh: 'https://images.unsplash.com/photo-1511994298241-608e28f14fde?w=800&auto=format&fit=crop&q=80',
+    hinhAnh: '/images/Xe/yamaha_grande_hybrid.jpg',
   },
   {
     id: 'XM-YM03',
@@ -183,7 +183,7 @@ export const showroomVehicles: ShowroomVehicle[] = [
     congSuat: '15.4 HP / 8.000 rpm',
     tieuHaoNhienLieu: '2.17 L/100km',
     phanh: 'Đĩa trước có ABS, đùm sau',
-    hinhAnh: 'https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=800&auto=format&fit=crop&q=80',
+    hinhAnh: '/images/Xe/yamaha_nvx_155_vva.jpg',
   },
   {
     id: 'XM-YM04',
@@ -198,7 +198,7 @@ export const showroomVehicles: ShowroomVehicle[] = [
     congSuat: '8.8 HP / 7.000 rpm',
     tieuHaoNhienLieu: '1.96 L/100km',
     phanh: 'Đĩa trước thủy lực, đùm sau',
-    hinhAnh: 'https://images.unsplash.com/photo-1449426468159-d96dbf08f19f?w=800&auto=format&fit=crop&q=80',
+    hinhAnh: '/images/Xe/yamaha_pg_1.jpg',
   },
 
   // ── SUZUKI ──
@@ -215,7 +215,7 @@ export const showroomVehicles: ShowroomVehicle[] = [
     congSuat: '18.5 HP / 10.000 rpm',
     tieuHaoNhienLieu: '2.40 L/100km',
     phanh: 'Đĩa trước & sau hình cánh hoa',
-    hinhAnh: 'https://images.unsplash.com/photo-1591637333184-19aa84b3e01f?w=800&auto=format&fit=crop&q=80',
+    hinhAnh: '/images/Xe/suzuki_raider_r150.jpg',
   },
   {
     id: 'XM-SZ02',
@@ -230,7 +230,7 @@ export const showroomVehicles: ShowroomVehicle[] = [
     congSuat: '18.5 HP / 10.000 rpm',
     tieuHaoNhienLieu: '2.42 L/100km',
     phanh: 'Đĩa trước & đĩa sau',
-    hinhAnh: 'https://images.unsplash.com/photo-1558981420-87aa9dad1c89?w=800&auto=format&fit=crop&q=80',
+    hinhAnh: '/images/Xe/suzuki_satria_f150.jpg',
   },
   {
     id: 'XM-SZ03',
@@ -245,7 +245,7 @@ export const showroomVehicles: ShowroomVehicle[] = [
     congSuat: '8.7 HP / 6.750 rpm',
     tieuHaoNhienLieu: '1.96 L/100km',
     phanh: 'Đĩa trước kết hợp phanh CBS',
-    hinhAnh: 'https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=800&auto=format&fit=crop&q=80',
+    hinhAnh: '/images/Xe/suzuki_burgman_street_125.jpg',
   },
 
   // ── PIAGGIO & VESPA ──
@@ -262,7 +262,7 @@ export const showroomVehicles: ShowroomVehicle[] = [
     congSuat: '12.7 HP / 7.750 rpm',
     tieuHaoNhienLieu: '2.60 L/100km',
     phanh: 'Đĩa trước có phanh ABS, đùm sau',
-    hinhAnh: 'https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?w=800&auto=format&fit=crop&q=80',
+    hinhAnh: '/images/Xe/vespa_sprint_s_125.jpg',
   },
   {
     id: 'XM-PI02',
@@ -277,11 +277,11 @@ export const showroomVehicles: ShowroomVehicle[] = [
     congSuat: '10.2 HP / 7.500 rpm',
     tieuHaoNhienLieu: '2.38 L/100km',
     phanh: 'Đĩa trước ABS 240mm, đùm sau',
-    hinhAnh: 'https://images.unsplash.com/photo-1525160354320-d8e92641c563?w=800&auto=format&fit=crop&q=80',
+    hinhAnh: '/images/Xe/piaggio_liberty_125_s.jpg',
   },
 ];
 
-import type { Customer } from '../../data/mockData';
+import { getVehicleCatalogImage, type Customer } from '../../data/mockData';
 import { matchVietnameseSearch } from '../../utils/vietnameseSearch';
 
 interface Props {
@@ -1414,7 +1414,7 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
               giaNiemYet: d.giaNiemYet || foundFallback?.giaNiemYet || 0,
               mauSac: d.mauSac || foundFallback?.mauSac || 'Tiêu chuẩn',
               moTa: d.moTa || foundFallback?.moTa || '',
-              hinhAnh: d.hinhAnh || foundFallback?.hinhAnh || 'https://images.unsplash.com/photo-1568772585407-9361f9bf3a87?w=800&auto=format&fit=crop&q=80',
+              hinhAnh: getVehicleCatalogImage(d.tenXe, d.hinhAnh || foundFallback?.hinhAnh || '/images/Xe/honda_sh_160i_abs_2024.jpg'),
               coTheLaiThu: d.coTheLaiThu !== undefined ? d.coTheLaiThu : (foundFallback ? foundFallback.coTheLaiThu : true),
               dongCo: d.loaiDongCo || d.dongCo || foundFallback?.dongCo || '150cc eSP+',
               congSuat: d.congSuat || foundFallback?.congSuat || '15.0 HP / 8.000 rpm',
@@ -1425,15 +1425,15 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
               ncc: d.ncc,
               namSanXuat: d.namSanXuat || 2025,
               vat: d.vat ?? 10,
-              loaiDongCo: d.loaiDongCo || d.dongCo || foundFallback?.dongCo,
-              dungTichXiLanh: d.dungTichXiLanh,
-              tieuThuNhienLieu: d.tieuThuNhienLieu || d.tieuHaoNhienLieu || foundFallback?.tieuHaoNhienLieu,
-              khoiLuong: d.khoiLuong,
-              kichThuoc: d.kichThuoc,
-              doCaoYen: d.doCaoYen,
-              dungTichBinhXang: d.dungTichBinhXang,
-              heThongPhanh: d.heThongPhanh || d.phanh || foundFallback?.phanh,
-              kichCoLop: d.kichCoLop,
+              loaiDongCo: d.loaiDongCo || d.dongCo || foundFallback?.dongCo || '150cc eSP+',
+              dungTichXiLanh: d.dungTichXiLanh || foundFallback?.dungTichXiLanh || '150 cc',
+              tieuThuNhienLieu: d.tieuThuNhienLieu || d.tieuHaoNhienLieu || foundFallback?.tieuHaoNhienLieu || '2.2 L/100km',
+              khoiLuong: d.khoiLuong || foundFallback?.khoiLuong || '130 kg',
+              kichThuoc: d.kichThuoc || foundFallback?.kichThuoc || '1.950 x 690 x 1.100 mm',
+              doCaoYen: d.doCaoYen || foundFallback?.doCaoYen || '785 mm',
+              dungTichBinhXang: d.dungTichBinhXang || foundFallback?.dungTichBinhXang || '5.5 L',
+              heThongPhanh: d.heThongPhanh || d.phanh || foundFallback?.phanh || 'Phanh đĩa ABS trước',
+              kichCoLop: d.kichCoLop || foundFallback?.kichCoLop || 'Trước: 90/90-14, Sau: 100/90-14',
               trangThaiHienThi: d.trangThaiHienThi,
               trangThaiKinhDoanh: d.trangThaiKinhDoanh,
             };
@@ -1456,27 +1456,40 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
       try {
         const vName = customName || sessionStorage.getItem('crm_view_vehicle_name');
         const vId = customId || sessionStorage.getItem('crm_view_vehicle_id');
+        const vImg = sessionStorage.getItem('crm_view_vehicle_image');
         if (vName || vId) {
           const cleanTarget = (vName || '').trim().toLowerCase();
           const syncCatalog = catalogVehicleApi.getAllSync();
           const list: ShowroomVehicle[] = [
             ...vehicles,
             ...showroomVehicles,
-            ...syncCatalog.map((d: any) => ({
-              id: d.id,
-              tenXe: d.tenXe,
-              hang: d.hang || 'Honda',
-              phanKhuc: d.phanKhuc || 'Xe côn tay',
-              giaNiemYet: d.giaNiemYet || 0,
-              mauSac: d.mauSac || 'Tiêu chuẩn',
-              moTa: d.moTa || '',
-              hinhAnh: d.hinhAnh || '/images/Xe/honda_cbr150r.jpg',
-              coTheLaiThu: d.coTheLaiThu ?? true,
-              dongCo: d.dongCo || d.loaiDongCo || '150cc',
-              congSuat: d.congSuat || '16.9 HP',
-              tieuHaoNhienLieu: d.tieuHaoNhienLieu || d.tieuThuNhienLieu || '2.25 L/100km',
-              phanh: d.phanh || d.heThongPhanh || 'Đĩa trước & sau'
-            }))
+            ...syncCatalog.map((d: any) => {
+              const fb = showroomVehicles.find(sv => sv.tenXe.toLowerCase().includes(d.tenXe.toLowerCase()) || d.tenXe.toLowerCase().includes(sv.tenXe.toLowerCase()));
+              return {
+                ...d,
+                id: d.id,
+                tenXe: d.tenXe,
+                hang: d.hang || fb?.hang || 'Honda',
+                phanKhuc: d.phanKhuc || fb?.phanKhuc || 'Xe máy',
+                giaNiemYet: d.giaNiemYet || fb?.giaNiemYet || 0,
+                mauSac: d.mauSac || fb?.mauSac || 'Tiêu chuẩn',
+                moTa: d.moTa || fb?.moTa || '',
+                hinhAnh: d.hinhAnh || fb?.hinhAnh || '/images/Xe/honda_cbr150r.jpg',
+                coTheLaiThu: d.coTheLaiThu ?? fb?.coTheLaiThu ?? true,
+                dongCo: d.dongCo || d.loaiDongCo || fb?.dongCo || '150cc',
+                congSuat: d.congSuat || fb?.congSuat || '16.9 HP',
+                tieuHaoNhienLieu: d.tieuHaoNhienLieu || d.tieuThuNhienLieu || fb?.tieuHaoNhienLieu || '2.25 L/100km',
+                phanh: d.phanh || d.heThongPhanh || fb?.phanh || 'Đĩa trước & sau',
+                dungTichXiLanh: d.dungTichXiLanh || fb?.dungTichXiLanh || '150 cc',
+                khoiLuong: d.khoiLuong || fb?.khoiLuong || '130 kg',
+                kichThuoc: d.kichThuoc || fb?.kichThuoc || '1.950 x 690 x 1.100 mm',
+                doCaoYen: d.doCaoYen || fb?.doCaoYen || '785 mm',
+                dungTichBinhXang: d.dungTichBinhXang || fb?.dungTichBinhXang || '5.5 L',
+                kichCoLop: d.kichCoLop || fb?.kichCoLop || 'Trước: 90/90-14, Sau: 100/90-14',
+                namSanXuat: d.namSanXuat || fb?.namSanXuat || 2025,
+                xuatXu: d.xuatXu || fb?.xuatXu || 'Việt Nam',
+              };
+            })
           ];
 
           // 1. ƯU TIÊN SỐ 1: Khớp chuẩn xác theo tên xe (Name Match tuyệt đối không bị nhảy nhầm xe)
@@ -1497,7 +1510,9 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
           if (found) {
             sessionStorage.removeItem('crm_view_vehicle_name');
             sessionStorage.removeItem('crm_view_vehicle_id');
-            setDetailVehicle(found);
+            sessionStorage.removeItem('crm_view_vehicle_image');
+            if (vImg) found.hinhAnh = vImg;
+            setDetailVehicle({ ...found, hinhAnh: vImg || getVehicleCatalogImage(found.tenXe, found.hinhAnh) });
             setActiveModalTab('specs');
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }
@@ -1851,7 +1866,7 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
               <div className="lg:col-span-6 space-y-4">
                 <div className="relative rounded-2xl overflow-hidden border border-zinc-200 bg-zinc-950 aspect-[16/10] flex items-center justify-center group shadow-inner">
                   <img
-                    src={detailVehicle.hinhAnh}
+                    src={getVehicleCatalogImage(detailVehicle.tenXe, detailVehicle.hinhAnh)}
                     alt={detailVehicle.tenXe}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                   />
@@ -2109,60 +2124,46 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
                         <span className="text-zinc-500">Khối động cơ:</span>
                         <strong className="text-zinc-900 font-mono text-right ml-2">{detailVehicle.loaiDongCo || detailVehicle.dongCo}</strong>
                       </div>
-                      {detailVehicle.dungTichXiLanh && (
-                        <div className="flex justify-between p-3 rounded-xl bg-zinc-50 border border-zinc-200/80">
-                          <span className="text-zinc-500">Dung tích xi-lanh:</span>
-                          <strong className="text-zinc-900 font-mono">{detailVehicle.dungTichXiLanh}</strong>
-                        </div>
-                      )}
+                      <div className="flex justify-between p-3 rounded-xl bg-zinc-50 border border-zinc-200/80">
+                        <span className="text-zinc-500">Dung tích xi-lanh:</span>
+                        <strong className="text-zinc-900 font-mono">{detailVehicle.dungTichXiLanh || '150 cc'}</strong>
+                      </div>
                       <div className="flex justify-between p-3 rounded-xl bg-zinc-50 border border-zinc-200/80">
                         <span className="text-zinc-500">Công suất cực đại:</span>
-                        <strong className="text-zinc-900 font-mono">{detailVehicle.congSuat}</strong>
+                        <strong className="text-zinc-900 font-mono">{detailVehicle.congSuat || '15.0 HP'}</strong>
                       </div>
                       <div className="flex justify-between p-3 rounded-xl bg-zinc-50 border border-zinc-200/80">
                         <span className="text-zinc-500">Mức tiêu thụ xăng:</span>
                         <strong className="text-emerald-700 font-mono">{detailVehicle.tieuThuNhienLieu || detailVehicle.tieuHaoNhienLieu || '2.2 L/100km'}</strong>
                       </div>
-                      {detailVehicle.khoiLuong && (
-                        <div className="flex justify-between p-3 rounded-xl bg-zinc-50 border border-zinc-200/80">
-                          <span className="text-zinc-500">Khối lượng bản thân:</span>
-                          <strong className="text-zinc-900 font-mono">{detailVehicle.khoiLuong}</strong>
-                        </div>
-                      )}
-                      {detailVehicle.kichThuoc && (
-                        <div className="flex justify-between p-3 rounded-xl bg-zinc-50 border border-zinc-200/80">
-                          <span className="text-zinc-500">Kích thước (DxRxC):</span>
-                          <strong className="text-zinc-900 font-mono text-right ml-2">{detailVehicle.kichThuoc}</strong>
-                        </div>
-                      )}
-                      {detailVehicle.doCaoYen && (
-                        <div className="flex justify-between p-3 rounded-xl bg-zinc-50 border border-zinc-200/80">
-                          <span className="text-zinc-500">Độ cao yên:</span>
-                          <strong className="text-zinc-900 font-mono">{detailVehicle.doCaoYen}</strong>
-                        </div>
-                      )}
-                      {detailVehicle.dungTichBinhXang && (
-                        <div className="flex justify-between p-3 rounded-xl bg-zinc-50 border border-zinc-200/80">
-                          <span className="text-zinc-500">Dung tích bình xăng:</span>
-                          <strong className="text-zinc-900 font-mono">{detailVehicle.dungTichBinhXang}</strong>
-                        </div>
-                      )}
+                      <div className="flex justify-between p-3 rounded-xl bg-zinc-50 border border-zinc-200/80">
+                        <span className="text-zinc-500">Khối lượng bản thân:</span>
+                        <strong className="text-zinc-900 font-mono">{detailVehicle.khoiLuong || '130 kg'}</strong>
+                      </div>
+                      <div className="flex justify-between p-3 rounded-xl bg-zinc-50 border border-zinc-200/80">
+                        <span className="text-zinc-500">Kích thước (DxRxC):</span>
+                        <strong className="text-zinc-900 font-mono text-right ml-2">{detailVehicle.kichThuoc || '1.950 x 690 x 1.100 mm'}</strong>
+                      </div>
+                      <div className="flex justify-between p-3 rounded-xl bg-zinc-50 border border-zinc-200/80">
+                        <span className="text-zinc-500">Độ cao yên:</span>
+                        <strong className="text-zinc-900 font-mono">{detailVehicle.doCaoYen || '785 mm'}</strong>
+                      </div>
+                      <div className="flex justify-between p-3 rounded-xl bg-zinc-50 border border-zinc-200/80">
+                        <span className="text-zinc-500">Dung tích bình xăng:</span>
+                        <strong className="text-zinc-900 font-mono">{detailVehicle.dungTichBinhXang || '5.5 L'}</strong>
+                      </div>
                       <div className="flex justify-between p-3 rounded-xl bg-zinc-50 border border-zinc-200/80">
                         <span className="text-zinc-500">Hệ thống phanh:</span>
                         <strong className="text-zinc-900 font-mono text-right ml-2">{detailVehicle.heThongPhanh || detailVehicle.phanh || 'Phanh đĩa ABS'}</strong>
                       </div>
-                      {detailVehicle.kichCoLop && (
-                        <div className="flex justify-between p-3 rounded-xl bg-zinc-50 border border-zinc-200/80">
-                          <span className="text-zinc-500">Kích cỡ lốp:</span>
-                          <strong className="text-zinc-900 font-mono">{detailVehicle.kichCoLop}</strong>
-                        </div>
-                      )}
-                      {detailVehicle.namSanXuat && (
-                        <div className="flex justify-between p-3 rounded-xl bg-zinc-50 border border-zinc-200/80">
-                          <span className="text-zinc-500">Năm sản xuất:</span>
-                          <strong className="text-zinc-900 font-mono">{detailVehicle.namSanXuat}</strong>
-                        </div>
-                      )}
+                      <div className="flex justify-between p-3 rounded-xl bg-zinc-50 border border-zinc-200/80">
+                        <span className="text-zinc-500">Kích cỡ lốp:</span>
+                        <strong className="text-zinc-900 font-mono text-right ml-2">{detailVehicle.kichCoLop || 'Trước: 90/90-14, Sau: 100/90-14'}</strong>
+                      </div>
+                      <div className="flex justify-between p-3 rounded-xl bg-zinc-50 border border-zinc-200/80">
+                        <span className="text-zinc-500">Năm sản xuất:</span>
+                        <strong className="text-zinc-900 font-mono">{detailVehicle.namSanXuat || 2025}</strong>
+                      </div>
                       <div className="flex justify-between p-3 rounded-xl bg-zinc-50 border border-zinc-200/80">
                         <span className="text-zinc-500">Xuất xứ lắp ráp:</span>
                         <strong className="text-zinc-900 font-mono">{detailVehicle.xuatXu || (detailVehicle.hang === 'Piaggio & Vespa' ? 'Nhập khẩu (Ý)' : 'Việt Nam')}</strong>
@@ -2526,7 +2527,7 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
                               onClick={() => {
                                 setReviewMediaFiles(prev => [
                                   ...prev,
-                                  detailVehicle.hinhAnh || 'https://images.unsplash.com/photo-1568772585407-9361f9bf3a87?w=800&auto=format&fit=crop&q=80'
+                                  detailVehicle.hinhAnh || '/images/Xe/honda_sh_160i_abs_2024.jpg'
                                 ]);
                               }}
                               className="px-2.5 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-semibold rounded-xl border border-zinc-200 cursor-pointer transition flex items-center gap-1"

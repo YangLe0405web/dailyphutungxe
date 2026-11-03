@@ -4387,3 +4387,227 @@ pm run build thành công 100% trong 1.41s, **0 lỗi TypeScript**.
       - Bổ sung khu vực chữ ký 3 bên: Khách hàng ký nhận, Kỹ thuật viên thực hiện, Đại diện Showroom.
 
   - Tuân thủ quy tắc: Không đẩy mã nguồn lên GitHub khi chưa nhận lệnh `.github --update`.
+
+---
+
+### [Bản Fix 81] Sửa triệt để 6 yêu cầu: Bộ lọc KTV/Ngày bảo hành, Bắt buộc KTV đơn xe, Hóa đơn giao tận nơi & Cọc 2tr, Hiển thị KTV chi tiết lịch hẹn, Nút Xem sản phẩm Chờ đánh giá & 100% Thông số xe Showroom
+* **Ngày thực hiện:** 03/11/2026
+* **Môi trường & Nhánh:** `develop` (commit `6770be6` rollback sạch an toàn).
+* **Nội dung sửa chữa chi tiết 6 yêu cầu:**
+  1. **Lỗi 1 - Bộ lọc "Nhân viên phụ trách" hiển thị đầy đủ nhân sự (`Warranty.tsx`):**
+     - Đã chuyển nguồn nạp `staffList` kết hợp giữa `staffApi.getAll()`, `mockStaffAccounts` và `claimsList`.
+     - Bộ lọc dropdown hiển thị đầy đủ tất cả nhân viên kỹ thuật / tư vấn viên của hệ thống, không còn bị giới hạn chỉ hiện nhân viên đã từng phát sinh xử lý yêu cầu trong lịch sử.
+  2. **Lỗi 2 - Bổ sung bộ lọc "Chọn ngày" cố định trên lịch (`Warranty.tsx`):**
+     - Bổ sung tùy chọn `NgayCoDinh` (Chọn ngày) kèm trường chọn ngày `<input type="date">` cho cả 2 tab: Quản lý gia hạn bảo hành và Yêu cầu bảo hành.
+     - So khớp chính xác ngày gửi / ngày thanh toán theo cả chuẩn ISO `YYYY-MM-DD` và `DD/MM/YYYY`.
+  3. **Lỗi 3 - Bắt buộc chọn KTV trước khi duyệt đơn hàng xe (`Sales.tsx`):**
+     - Chặn thao tác duyệt đơn xe (`ChoKhachXacNhanNgayNhan`, `ChoGiaoXe`, `DangGiao`) nếu đơn chưa có KTV phụ trách (`tenKTV`, `thongTinXe.ktvPhuTrach`).
+     - Tự động hiển thị hộp thoại cảnh báo và tự động bật popup "Phân công KTV" để quản trị viên chọn nhân sự phụ trách trước khi duyệt.
+  4. **Lỗi 4 - Hóa đơn & Biên bản bàn giao trong Lịch sử lịch hẹn (`CustomerDashboard.tsx`):**
+     - Địa chỉ giao hàng: Nhận diện chính xác hình thức nhận xe. Nếu giao tận nơi (`HomeDelivery` hoặc có địa chỉ giao), hiển thị đúng địa chỉ nhận hàng của khách hàng thay vì địa chỉ Showroom.
+     - Giá xe và đặt cọc: Với đơn mua xe cọc online (2.000.000₫), hiển thị đầy đủ tổng giá trị lăn bánh của xe, dòng khấu trừ tiền đặt cọc trước online (-2.000.000₫), và số tiền còn lại cần thu khi bàn giao xe.
+  5. **Lỗi 5 - Hiển thị đúng KTV khi xem chi tiết lịch hẹn (`Appointments.tsx` & `CustomerDashboard.tsx`):**
+     - Tích hợp bộ giải quyết (resolver) KTV đa tầng: ưu tiên KTV đã gán trong lịch hẹn, tra cứu KTV từ đơn đặt xe liên kết (`crm_orders`, `tenKTV`, `thongTinXe.ktvPhuTrach`), và fallback KTV tiêu chuẩn.
+     - Tuyệt đối không còn tình trạng hiển thị trống hoặc treo "Đang điều phối kỹ thuật viên" khi đơn xe đã có KTV.
+  6. **Lỗi 6 - Nút "Xem sản phẩm" ở Chờ đánh giá & 100% Thông số xe trong Showroom (`CustomerDashboard.tsx` & `VehiclesShowroom.tsx`):**
+     - Bổ sung nút `[🔍 Xem sản phẩm]` trực quan bên cạnh nút `[VIẾT ĐÁNH GIÁ (5★)]` tại tab "Chờ đánh giá xe & phụ tùng".
+     - Sửa triệt để hiện tượng xe hiển thị không đồng nhất ("chiếc có chiếc không"): cập nhật nạp 100% thông số kỹ thuật (Dung tích xi-lanh, Công suất cực đại, Mức tiêu thụ xăng, Khối lượng bản thân, Kích thước DxRxC, Độ cao yên, Dung tích bình xăng, Hệ thống phanh, Kích cỡ lốp, Năm sản xuất, Xuất xứ) kèm giá trị tiêu chuẩn trong popup xem xe của Showroom.
+* **Kết quả kiểm thử & Nghiệm thu:**
+  - 6/6 test suites tự động đạt chuẩn PASS 100%:
+    * `verify_warranty_staff_filter.test.cjs`: PASS
+    * `verify_warranty_date_filter.test.cjs`: PASS
+    * `verify_mandatory_ktv_on_approval.test.cjs`: PASS
+    * `verify_customer_history_invoice.test.cjs`: PASS
+    * `verify_ktv_detail_display.test.cjs`: PASS
+    * `verify_view_waiting_product_full_specs.test.cjs`: PASS
+  - `npm --prefix crm-frontend run build`: 0 lỗi TypeScript, build thành công trong ~900ms.
+  - `dotnet build CrmBackend/CrmBackend.csproj`: 0 lỗi C#, build thành công.
+  - Cam kết không ảnh hưởng đến bất kỳ tính năng cũ nào của hệ thống.
+  - Tuân thủ quy tắc: Không đẩy lên GitHub khi chưa có lệnh từ người dùng.
+
+
+---
+
+### [Bản Fix 82] Chuẩn hóa hình ảnh xe chính hãng khi "Xem sản phẩm" & Phân công KTV Bán hàng liên hoàn chuẩn Bảo hành
+* **Ngày thực hiện:** 03/11/2026
+* **Môi trường & Nhánh:** `develop` (commit `6770be6`).
+* **Nội dung sửa chữa chi tiết 2 vấn đề theo phản hồi người dùng:**
+  1. **Sửa hình ảnh xe khi "Xem sản phẩm" từ Chờ đánh giá & trong Showroom (`VehiclesShowroom.tsx`, `CustomerDashboard.tsx`):**
+     - Thay thế 100% đường dẫn ảnh Unsplash ngẫu nhiên trong danh mục xe mẫu Showroom (`showroomVehicles`) bằng các tệp hình ảnh xe máy chính hãng sắc nét trong kho ảnh nội bộ `public/images/Xe/` (Honda SH 160i ABS, Air Blade 160, Vision, Winner X, Wave Alpha, Yamaha Exciter 155 VVA, Grande Hybrid, NVX 155, PG-1, Suzuki Raider R150, Satria F150, Burgman, Vespa Sprint, Piaggio Liberty...).
+     - Khi bấm `[🔍 Xem sản phẩm]` từ tab *Chờ đánh giá* trên Dashboard khách hàng: Hàm `handleViewReviewProduct` lưu trữ và chuyển tiếp chính xác đường dẫn ảnh của chiếc xe thực tế sang Showroom qua `sessionStorage` (`crm_view_vehicle_image`) và `CustomEvent`.
+     - Thẻ `<img>` trong modal chi tiết xe của Showroom được bọc qua bộ chuẩn hóa `getVehicleCatalogImage(detailVehicle.tenXe, detailVehicle.hinhAnh)`, giải quyết triệt để lỗi xe không hiện đúng hình ảnh thực tế.
+  2. **Chuẩn hóa cơ chế phân công KTV và duyệt đơn xe liên hoàn như Bảo hành (`Sales.tsx`, `api.ts`):**
+     - Khắc phục lỗi mất thông tin KTV khi `loadData()` chạy ngầm: Bổ sung bảng lưu trữ độc lập vĩnh viễn `crm_order_ktv_map` trong `localStorage`. Hàm `orderApi.getAll()` và `orderApi.getAllSync()` tự động nạp lại `maKTV`, `tenKTV`, `thongTinXe.ktvPhuTrach` và ngăn chặn hoàn toàn việc ghi đè làm rỗng KTV đã gán.
+     - Thiết kế lại `AssignTechnicianModal` trong `Sales.tsx` theo chuẩn giao diện của `Warranty.tsx`:
+       * Danh sách KTV dạng lưới card 2 cột sang trọng, hiển thị avatar/chữ cái đầu, tên, chức vụ, số điện thoại, nhãn trạng thái "Sẵn sàng" và dấu tích xanh `✓` kèm viền đỏ nổi bật khi được chọn.
+       * Ô nhập ghi chú chỉ đạo công việc kiểm tra PDI trước khi giao xe.
+       * Danh sách 3 tiêu chuẩn kiểm tra PDI rõ ràng (Điện/bình ắc quy, gương chiếu hậu & phụ kiện, biên bản giao nhận).
+     - **Tích hợp nút duyệt liên hoàn 1 chạm (Continuous 1-Click Approval):**
+       * Khi quản trị viên bấm duyệt đơn xe chưa có KTV: Modal mở lên với nút **`[✓ XÁC NHẬN PHÂN CÔNG & DUYỆT ĐƠN XE]`**. Chỉ cần chọn KTV và bấm nút này, hệ thống sẽ vừa lưu KTV vừa chuyển tiếp phê duyệt đơn xe thành công ngay lập tức mà không bắt người dùng phải thao tác 2 lần!
+       * Nếu mở từ nút đổi/phân công KTV trên bảng: Nút hiển thị **`[✓ CẬP NHẬT PHÂN CÔNG KTV]`**.
+* **Kết quả kiểm thử & Nghiệm thu:**
+  - 8/8 test suites tự động đạt chuẩn PASS 100%:
+    * `verify_vehicle_image_display.test.cjs`: PASS
+    * `verify_sales_ktv_assignment_flow.test.cjs`: PASS
+    * `verify_warranty_staff_filter.test.cjs`: PASS
+    * `verify_warranty_date_filter.test.cjs`: PASS
+    * `verify_mandatory_ktv_on_approval.test.cjs`: PASS
+    * `verify_customer_history_invoice.test.cjs`: PASS
+    * `verify_ktv_detail_display.test.cjs`: PASS
+    * `verify_view_waiting_product_full_specs.test.cjs`: PASS
+  - `npm --prefix crm-frontend run build`: 0 lỗi TypeScript, client build thành công.
+  - `dotnet build CrmBackend/CrmBackend.csproj`: 0 lỗi C#, backend build thành công và chạy ổn định tại port 5208.
+  - Bảo toàn 100% các tính năng cũ, không gây bất kỳ tác dụng phụ nào.
+  - Tuân thủ quy tắc an toàn: Tuyệt đối không tự ý push lên GitHub khi chưa nhận lệnh từ người dùng.
+
+
+---
+
+### [Bản Fix 83] Khắc phục triệt để double xe ở Phương tiện của tôi, sửa lỗi duyệt biển số & Bắt buộc bấm thu đủ tiền đơn cọc xe 2 triệu
+* **Ngày thực hiện:** 03/11/2026
+* **Môi trường & Nhánh:** `develop` (commit `6770be6`).
+* **Nội dung sửa chữa chi tiết 3 vấn đề theo phản hồi người dùng:**
+  1. **Khắc phục triệt để lỗi double xe ở Phương tiện của tôi (`CustomerDashboard.tsx`):**
+     - Xử lý tận gốc hiện tượng 1 dòng xe hiển thị 2 thẻ card (1 card "Đang chờ duyệt biển số" và 1 card "Chưa có biển số").
+     - Bổ sung bộ lọc hợp nhất theo dòng xe cốt lõi (`getCleanModelKey`): Tự động gộp các bản ghi cùng dòng xe của một khách hàng thành 1 thẻ duy nhất.
+     - Ưu tiên giữ lại dữ liệu biển số đề xuất (`bienSoChoDuyet`), ảnh Cà vẹt xe (`anhCaVet`), và trạng thái duyệt (`trangThaiDuyetBienSo`) mới nhất.
+  2. **Sửa lỗi và tối ưu hóa quy trình phê duyệt biển số xe (`LicensePlateApproval.tsx`, `api.ts`):**
+     - Sửa lỗi nút duyệt bị vô hiệu hóa: Hàm `openApproveModal` tự động điền sẵn biển số đề xuất `vehicle.bienSoChoDuyet` vào ô nhập, giúp nút `[✓ Xác nhận Phê duyệt & Cấp biển số]` luôn ở trạng thái sẵn sàng để Admin bấm duyệt ngay.
+     - Sửa điều kiện kiểm tra biển số trùng: Thêm điều kiện `v.customerId !== approvingVehicle.customerId` để không bao giờ bị khóa nút oan bởi các bản ghi trùng lặp nội bộ của cùng một khách hàng.
+     - Bổ sung nút **`[✓ Duyệt nhanh]`** trực tiếp trên hàng của bảng duyệt biển số nếu xe đã có biển số đề xuất từ Cà vẹt.
+     - Nâng cấp hàm `vehicleApi.approveLicensePlate` trong `api.ts`: Tra cứu linh hoạt theo mã khách hàng và tên dòng xe trên Backend `XE_KHACH_HANG`, gọi trực tiếp `PUT /api/XeKhachHang/duyet-bien-so/{id}` và đồng bộ trạng thái `DaDuyet` trên toàn bộ hệ thống.
+  3. **Ràng buộc bắt buộc bấm nút thu đủ tiền đơn cọc xe 2 triệu mới cho phép hoàn tất (`Sales.tsx`, `api.ts`):**
+     - Chặn tuyệt đối việc chuyển trạng thái đơn hàng sang `HoanThanh` khi đơn xe mới đặt cọc và còn số tiền chưa thu (`soTienConLai > 0` hoặc `trangThaiThanhToan === 'DaCoc'`). Hệ thống hiển thị hộp thoại cảnh báo nghiêm ngặt và yêu cầu bấm nút thu đủ tiền.
+     - Bổ sung nút bấm **`[💵 Thu tiền còn lại (Thiếu ...)]`** màu cam nổi bật trên hàng đơn xe của bảng Bán hàng và trong Modal Chi tiết đơn hàng.
+     - Khi bấm nút thu tiền: Hiển thị xác nhận số tiền cần thu -> Cập nhật trạng thái thanh toán sang `DaThanhToan` và `soTienConLai = 0`. Chỉ khi đã xác nhận thu đủ tiền, nút `[✓ Hoàn tất]` mới được kích hoạt.
+* **Kết quả kiểm thử & Nghiệm thu:**
+  - 11/11 test suites tự động đạt chuẩn PASS 100%:
+    * `verify_customer_vehicle_dedup.test.cjs`: PASS
+    * `verify_license_plate_approval_flow.test.cjs`: PASS
+    * `verify_mandatory_deposit_full_payment.test.cjs`: PASS
+    * `verify_vehicle_image_display.test.cjs`: PASS
+    * `verify_sales_ktv_assignment_flow.test.cjs`: PASS
+    * `verify_warranty_staff_filter.test.cjs`: PASS
+    * `verify_warranty_date_filter.test.cjs`: PASS
+    * `verify_mandatory_ktv_on_approval.test.cjs`: PASS
+    * `verify_customer_history_invoice.test.cjs`: PASS
+    * `verify_ktv_detail_display.test.cjs`: PASS
+    * `verify_view_waiting_product_full_specs.test.cjs`: PASS
+  - `npm --prefix crm-frontend run build`: 0 lỗi TypeScript, client build thành công.
+  - `dotnet build CrmBackend/CrmBackend.csproj`: 0 lỗi C#, backend build thành công và chạy ổn định tại port 5208.
+  - Cam kết không ảnh hưởng đến bất kỳ tính năng cũ nào của hệ thống.
+  - Tuân thủ quy tắc an toàn: Tuyệt đối không tự ý push lên GitHub khi chưa nhận lệnh từ người dùng.
+
+
+---
+
+### [Bản Fix 84] Chuẩn hóa duy nhất 1 nút hành động theo quy trình & Ẩn hoàn toàn nút thu tiền khi đã thanh toán đủ
+* **Ngày thực hiện:** 03/11/2026
+* **Môi trường & Nhánh:** `develop` (commit `6770be6`).
+* **Nội dung sửa chữa chi tiết theo yêu cầu người dùng:**
+  1. **Khắc phục triệt để hiện tượng tranh chấp "3 nút hiện không hoạt động":**
+     - Tại trạng thái `ChoGiaoXe`, trước đây giao diện hiển thị cùng lúc 3 nút: `[🏎️ Bàn giao]`, `[💵 Thu tiền]`, và `[✅ Hoàn tất]`. Khi người dùng bấm "Bàn giao" thì chỉ mở popup in hóa đơn, bấm "Hoàn tất" thì bị alert chặn lại vì chưa thu đủ tiền cọc, dẫn đến hiểu lầm các nút bị đơ/hỏng.
+     - Đã loại bỏ hoàn toàn nút `[🏎️ Bàn giao]` gây hiểu nhầm (chức năng in hóa đơn vẫn có biểu tượng `🧾` riêng biệt).
+     - Loại bỏ nút `[🔧 Đổi KTV]` trùng lặp ở Cột 6 vì Cột 5 đã có nút quản lý KTV chuyên dụng.
+  2. **Chuẩn hóa quy tắc "Mỗi lần chỉ hiển thị DUY NHẤT 1 NÚT" theo đúng trạng thái đơn hàng (`renderSingleActionButton`):**
+     - `ChoDuyet`: Duy nhất nút **`[✓ Duyệt đơn xe]`** (Tự động mở modal phân công KTV nếu chưa có KTV).
+     - `ChoKhachXacNhanNgayNhan`: Duy nhất nút **`[🏎️ Chờ giao xe]`** (hoặc `[🚚 Điều phối]` nếu giao tận nơi).
+     - `ChoGiaoXe`:
+       * Khi chưa thanh toán đủ: Duy nhất nút **`[💵 Thu tiền (Còn thiếu ...)]`** (Không có nút Hoàn tất).
+       * Khi đã thanh toán đủ: Duy nhất nút **`[✅ Hoàn tất]`**.
+     - `DangGiao`:
+       * Khi chưa thanh toán đủ: Duy nhất nút **`[💵 Thu tiền (Còn thiếu ...)]`**.
+       * Khi đã thanh toán đủ: Duy nhất nút **`[📦 Đã giao]`**.
+     - `DaGiao`:
+       * Khi chưa thanh toán đủ: Duy nhất nút **`[💵 Thu tiền (Còn thiếu ...)]`**.
+       * Khi đã thanh toán đủ: Duy nhất nút **`[✅ Hoàn tất]`**.
+     - `HoanThanh`: Hiển thị nhãn cố định **`[🔒 Đã hoàn tất]`**.
+  3. **Quy tắc "Bên mua thanh toán đủ thì TUYỆT ĐỐI KHÔNG CÓ NÚT THU TIỀN":**
+     - Nếu `trangThaiThanhToan === 'DaThanhToan'` hoặc `soTienConLai <= 0`: Hệ thống triệt tiêu hoàn toàn nút "Thu tiền" trên toàn bộ bảng Bán hàng (Tab Xe, Tab Tất cả) và trong Modal Chi tiết đơn hàng (`OrderDetailModal`).
+     - Khi bấm nút `[💵 Thu tiền]`: Hệ thống lập tức cập nhật Optimistic UI `DaThanhToan` và `soTienConLai = 0`. Nút "Thu tiền" biến mất ngay lập tức và thay thế bằng nút `[✅ Hoàn tất]`, bấm vào hoàn tất trơn tru 100%.
+* **Kết quả kiểm thử & Nghiệm thu:**
+  - 12/12 test suites tự động đạt chuẩn PASS 100%:
+    * `verify_single_action_button_flow.test.cjs`: PASS (Duy nhất 1 nút, ẩn nút thu tiền khi đủ tiền).
+    * `verify_customer_vehicle_dedup.test.cjs`: PASS.
+    * `verify_license_plate_approval_flow.test.cjs`: PASS.
+    * `verify_mandatory_deposit_full_payment.test.cjs`: PASS.
+    * `verify_sales_ktv_assignment_flow.test.cjs`: PASS.
+    * `verify_mandatory_ktv_on_approval.test.cjs`: PASS.
+    * `verify_vehicle_image_display.test.cjs`: PASS.
+    * `verify_warranty_staff_filter.test.cjs`: PASS.
+    * `verify_warranty_date_filter.test.cjs`: PASS.
+    * `verify_customer_history_invoice.test.cjs`: PASS.
+    * `verify_ktv_detail_display.test.cjs`: PASS.
+    * `verify_view_waiting_product_full_specs.test.cjs`: PASS.
+  - `npm --prefix crm-frontend run build`: 0 lỗi TypeScript, client build thành công trong 645ms.
+  - `dotnet build /t:CoreCompile CrmBackend/CrmBackend.csproj`: 0 lỗi C#, backend biên dịch thành công.
+  - Cam kết không ảnh hưởng đến bất kỳ tính năng cũ nào của hệ thống.
+  - Tuân thủ quy tắc an toàn: Tuyệt đối không tự ý push lên GitHub khi chưa nhận lệnh từ người dùng.
+
+
+---
+
+### [Bản Fix 85] Sửa triệt để lỗi tính năng duyệt biển số xe (Không đụng chạm bất kỳ tính năng nào khác)
+* **Ngày thực hiện:** 03/11/2026
+* **Môi trường & Nhánh:** `develop`.
+* **Yêu cầu nghiêm ngặt từ người dùng:** `"lỗi tính năng duyệt biển số , kiểm tra chỉ sửa chỗ đó ko đụng đến chỗ khác tuyệt đối"`
+* **Nguyên nhân gốc rễ (Root Causes) đã được bóc tách và cô lập:**
+  1. **Nút "Xác nhận Phê duyệt & Cấp biển số" trong Modal bị Disable sai (`LicensePlateApproval.tsx`):**
+     - Biểu thức vô hiệu hóa nút duyệt trước đây: `vehicles.some(v => v.id !== approvingVehicle.id && v.bienSo === ...)` chỉ so sánh `v.id !== approvingVehicle.id`.
+     - Khi khách hàng có 2 bản ghi xe máy (ví dụ do đơn hàng draft tạo `XE-DH-...` song song với mã backend `112`), hoặc khi admin muốn tái phê duyệt lại biển số của chính xe đó, biểu thức coi bản ghi kia là trùng lặp và vô hiệu hóa vĩnh viễn nút Xác nhận (`disabled={true}`).
+  2. **Trùng lặp hiển thị phương tiện (Double xe) trong danh sách duyệt:**
+     - Bộ lọc `plateRecords` chỉ lọc thô chưa khử trùng lặp theo số khung VIN hoặc mã ID số, khiến một số xe xuất hiện 2 dòng trên bảng quản trị.
+  3. **Tự động điền biển số đề xuất khi mở Modal duyệt:**
+     - `openApproveModal` trước đây nếu `vehicle.bienSoChoDuyet` chưa gán trực tiếp trên object bộ nhớ thì bị gán rỗng `''`, bắt buộc người dùng phải gõ tay hoặc bấm nút phụ.
+  4. **Backend `XeKhachHangController.cs` chặn trùng biển số giữa các bản ghi của cùng khách hàng:**
+     - Truy vấn `checkSql` trước đây: `WHERE UPPER(BienSoXe) = @BienSoXe AND MaXeSoHuu != @MaXeSoHuu` chặn luôn các bản ghi xe khác của cùng một khách hàng (`MaKH`).
+* **Các sửa đổi cô lập, chính xác tuyệt đối (Surgical Fixes):**
+  1. **Tại `crm-frontend/src/pages/admin/LicensePlateApproval.tsx`:**
+     - Thêm helper chuẩn hóa `isSameCustomer(c1, c2)` hỗ trợ cả định dạng `KH43` và `43`.
+     - Cập nhật `plateRecords`: Khử trùng lặp theo số khung VIN hoặc ID số (`seen.has(key)`), loại bỏ triệt để hiện tượng double xe trên bảng duyệt biển số.
+     - Cập nhật `openApproveModal`: Tự động điền biển số đề xuất từ `vehicle.bienSoChoDuyet` hoặc `localStorage('crm_customer_vehicles')`.
+     - Sửa triệt để điều kiện kiểm tra trùng biển trong modal và trên nút submit:
+       ```tsx
+       const isPlateDuplicate = Boolean(
+         cleanInputPlate &&
+         vehicles.some(v => {
+           if (v.id === approvingVehicle.id) return false;
+           if (approvingVehicle.soKhung && v.soKhung && v.soKhung.trim().toUpperCase() === approvingVehicle.soKhung.trim().toUpperCase()) return false;
+           if (isSameCustomer(v.customerId, approvingVehicle.customerId)) return false;
+           if (!v.bienSo || isNoPlate(v.bienSo)) return false;
+           return v.bienSo.replace(/[\s-.]/g, '').toUpperCase() === cleanInputPlate;
+         })
+       );
+       ```
+       Nút Xác nhận chỉ bị vô hiệu hóa khi biển số bị trùng với xe của **khách hàng khác** trong hệ thống.
+     - Cập nhật `handleConfirmApprove`: Cập nhật đồng bộ tức thì cho tất cả các bản ghi có cùng số khung VIN và cùng khách hàng.
+  2. **Tại `CrmBackend/Controllers/XeKhachHangController.cs` (`DuyetBienSo`):**
+     - Cập nhật câu lệnh kiểm tra trùng lặp:
+       ```csharp
+       var checkSql = @"SELECT COUNT(1) FROM XE_KHACH_HANG 
+                        WHERE UPPER(LTRIM(RTRIM(BienSoXe))) = @BienSoXe 
+                        AND BienSoXe != N'Chưa có biển số' 
+                        AND MaXeSoHuu != @MaXeSoHuu
+                        AND (MaKH IS NULL OR MaKH != (SELECT TOP 1 ISNULL(MaKH, -1) FROM XE_KHACH_HANG WHERE MaXeSoHuu = @MaXeSoHuu))";
+       ```
+     - Cập nhật đồng bộ các bản ghi xe có cùng số khung VIN trong CSDL khi duyệt biển số.
+* **Kết quả kiểm thử & Nghiệm thu chất lượng:**
+  - 13/13 test suites tự động PASS 100%:
+    * `verify_license_plate_approval_fix.test.cjs`: **PASS** (Kiểm tra độc lập & mô phỏng logic duyệt biển số).
+    * `verify_license_plate_approval_flow.test.cjs`: **PASS**.
+    * `verify_single_action_button_flow.test.cjs`: **PASS**.
+    * `verify_customer_vehicle_dedup.test.cjs`: **PASS**.
+    * `verify_mandatory_deposit_full_payment.test.cjs`: **PASS**.
+    * `verify_sales_ktv_assignment_flow.test.cjs`: **PASS**.
+    * `verify_mandatory_ktv_on_approval.test.cjs`: **PASS**.
+    * `verify_vehicle_image_display.test.cjs`: **PASS**.
+    * `verify_warranty_staff_filter.test.cjs`: **PASS**.
+    * `verify_warranty_date_filter.test.cjs`: **PASS**.
+    * `verify_customer_history_invoice.test.cjs`: **PASS**.
+    * `verify_ktv_detail_display.test.cjs`: **PASS**.
+    * `verify_view_waiting_product_full_specs.test.cjs`: **PASS**.
+  - `npm --prefix crm-frontend run build`: 0 lỗi TypeScript (`tsc && vite build` PASS trong 640ms).
+  - `dotnet build CrmBackend/CrmBackend.csproj`: 0 lỗi C# (Build succeeded 0 Errors).
+  - API Backend Live Test: `PUT http://localhost:5208/api/XeKhachHang/duyet-bien-so/112` trả về `200 OK {"message":"Phê duyệt biển số thành công!"}`.
+  - Tuân thủ tuyệt đối: Chỉ sửa duy nhất tính năng duyệt biển số xe, không đụng chạm bất kỳ khu vực nào khác.
+  - Không tự ý push lên GitHub khi chưa nhận lệnh từ người dùng.

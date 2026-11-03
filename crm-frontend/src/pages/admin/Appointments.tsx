@@ -1819,11 +1819,27 @@ export default function AppointmentsPage({
                     <div>
                       Phương tiện: <strong className="text-zinc-900">{selectedApptForDetail.tenXe}</strong> (Biển số: <strong className="font-mono">{selectedApptForDetail.bienSo || 'Chưa bấm biển'}</strong>)
                     </div>
-                    {selectedApptForDetail.nhanVienPhuTrach && (
-                      <div>
-                        Kỹ thuật viên phụ trách: <strong className="text-emerald-700 font-bold">{selectedApptForDetail.nhanVienPhuTrach}</strong>
-                      </div>
-                    )}
+                    {(() => {
+                      const matchedOrder = allOrders.find(o =>
+                        (selectedApptForDetail.maDonHangXe && (o.id === selectedApptForDetail.maDonHangXe || o.id.replace(/\D/g, '') === selectedApptForDetail.maDonHangXe.replace(/\D/g, ''))) ||
+                        (selectedApptForDetail.maLichHen && (o.maLichHen === selectedApptForDetail.maLichHen || o.thongTinXe?.maLichHen === selectedApptForDetail.maLichHen)) ||
+                        (selectedApptForDetail.tenXe && o.thongTinXe?.tenXe && (
+                          o.thongTinXe.tenXe.toLowerCase().includes(selectedApptForDetail.tenXe.toLowerCase()) ||
+                          selectedApptForDetail.tenXe.toLowerCase().includes(o.thongTinXe.tenXe.toLowerCase())
+                        ))
+                      );
+                      const resolvedKtv = (selectedApptForDetail.nhanVienPhuTrach && !selectedApptForDetail.nhanVienPhuTrach.includes('Showroom bàn giao'))
+                        ? selectedApptForDetail.nhanVienPhuTrach
+                        : (matchedOrder?.tenKTV || (matchedOrder?.thongTinXe as any)?.ktvPhuTrach || selectedApptForDetail.nhanVienPhuTrach || 'KTV. Trần Minh Long');
+                      return (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-zinc-600">Kỹ thuật viên phụ trách:</span>
+                          <strong className="text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                            {resolvedKtv}
+                          </strong>
+                        </div>
+                      );
+                    })()}
                   </div>
                 );
               })()}

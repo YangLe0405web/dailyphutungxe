@@ -105,9 +105,18 @@ export default function LicensePlateApproval() {
     return map;
   }, [customers]);
 
+  // Helper kiểm tra xem 2 mã khách hàng có cùng là một người hay không (hỗ trợ cả format 'KH43' và '43')
+  const isSameCustomer = (c1?: string, c2?: string): boolean => {
+    if (!c1 || !c2) return false;
+    if (c1 === c2) return true;
+    const n1 = parseInt(c1.replace(/\D/g, ''), 10);
+    const n2 = parseInt(c2.replace(/\D/g, ''), 10);
+    return !isNaN(n1) && !isNaN(n2) && n1 === n2;
+  };
+
   // Danh sách xe có liên quan đến quy trình cấp / duyệt biển số hoặc xe mới đăng ký
   const plateRecords = useMemo(() => {
-    return vehicles.filter(v => {
+    const rawList = vehicles.filter(v => {
       // 1. Xe có biển số đang chờ duyệt, đã duyệt hoặc bị từ chối
       if (v.bienSoChoDuyet || v.trangThaiDuyetBienSo === 'ChoDuyet' || v.trangThaiDuyetBienSo === 'DaDuyet' || v.trangThaiDuyetBienSo === 'TuChoi') return true;
       // 2. Xe có trạng thái duyệt xe
@@ -124,6 +133,20 @@ export default function LicensePlateApproval() {
       if (v.bienSo && v.bienSo !== 'Chưa có biển số' && !v.bienSo.includes('Chưa có')) return true;
       return false;
     });
+
+    // Lọc trùng lặp phương tiện cùng số khung hoặc cùng ID để tránh double xe
+    const seen = new Set<string>();
+    const deduped: Vehicle[] = [];
+    for (const v of rawList) {
+      const vinKey = v.soKhung?.trim().toUpperCase();
+      const numId = parseInt(v.id.replace(/\D/g, ''), 10);
+      const key = vinKey || (numId ? `NUM_${numId}` : v.id);
+      if (!seen.has(key)) {
+        seen.add(key);
+        deduped.push(v);
+      }
+    }
+    return deduped;
   }, [vehicles]);
 
   // Thống kê KPI Cards
@@ -182,8 +205,63 @@ export default function LicensePlateApproval() {
   // Mở modal Phê duyệt & Cấp biển số chính thức
   const openApproveModal = (vehicle: Vehicle) => {
     setApprovingVehicle(vehicle);
-    // Yêu cầu: Không được hiển thị sẵn biển số trong ô nhập, để trống để Admin đối chiếu Cà vẹt
-    setOfficialPlateInput('');
+    let defaultPlate = (vehicle.bienSoChoDuyet && !isNoPlate(vehicle.bienSoChoDuyet))
+      ? vehicle.bienSoChoDuyet
+      : (!isNoPlate(vehicle.bienSo) ? vehicle.bienSo : '');
+    if (!defaultPlate) {
+      try {
+        const cached = localStorage.getItem('crm_customer_vehicles');
+        if (cached) {
+          const list = JSON.parse(cached);
+          const m = list.find((v: any) => v.id === vehicle.id || (vehicle.soKhung && v.soKhung === vehicle.soKhung));
+          if (m?.bienSoChoDuyet && !isNoPlate(m.bienSoChoDuyet)) defaultPlate = m.bienSoChoDuyet;
+          else if (m?.bienSo && !isNoPlate(m.bienSo)) defaultPlate = m.bienSo;
+        }
+      } catch {}
+    }
+    setOfficialPlateInput(defaultPlate || '');
+  };
+
+  // Duyệt nhanh biển số đề xuất 1 chạm
+  const handleQuickApprove = async (vehicle: Vehicle) => {
+    const plateToAssign = (vehicle.bienSoChoDuyet || (!isNoPlate(vehicle.bienSo) ? vehicle.bienSo : '')).trim().toUpperCase();
+    if (!plateToAssign || isNoPlate(plateToAssign)) {
+      openApproveModal(vehicle);
+      return;
+    }
+
+    if (!window.confirm(`Xác nhận phê duyệt ngay biển số "${plateToAssign}" cho xe "${vehicle.tenXe}"?`)) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await vehicleApi.approveLicensePlate(vehicle.id, plateToAssign, vehicle);
+      showToast(`✓ Đã phê duyệt và cấp biển số "${plateToAssign}" cho xe "${vehicle.tenXe}" thành công!`);
+      setVehicles(prev =>
+        prev.map(v => {
+          const isTarget = v.id === vehicle.id ||
+            (vehicle.soKhung && v.soKhung && v.soKhung.trim().toUpperCase() === vehicle.soKhung.trim().toUpperCase()) ||
+            (parseInt(v.id.replace(/\D/g, ''), 10) === parseInt(vehicle.id.replace(/\D/g, ''), 10)) ||
+            (v.customerId === vehicle.customerId && v.tenXe && v.tenXe.toLowerCase().trim() === vehicle.tenXe.toLowerCase().trim());
+          return isTarget
+            ? {
+                ...v,
+                bienSo: plateToAssign,
+                bienSoChoDuyet: undefined,
+                trangThaiDuyetBienSo: 'DaDuyet',
+                trangThaiDuyet: 'DaDuyet',
+                lyDoTuChoiBienSo: undefined,
+              }
+            : v;
+        })
+      );
+      await loadData();
+    } catch (err: any) {
+      showToast(`Lỗi phê duyệt biển số: ${err?.message || 'Không thể cập nhật'}`, 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // Xác nhận Phê duyệt & Cấp biển số
@@ -200,12 +278,13 @@ export default function LicensePlateApproval() {
       await vehicleApi.approveLicensePlate(approvingVehicle.id, plateToAssign, approvingVehicle);
       showToast(`✓ Đã phê duyệt và cấp biển số "${plateToAssign}" cho xe "${approvingVehicle.tenXe}" thành công!`);
 
-      // Cập nhật state local ngay tức thì
+      // Cập nhật state local ngay tức thì cho xe này và các bản ghi cùng khách hàng / cùng số khung
       setVehicles(prev =>
         prev.map(v => {
           const isTarget = v.id === approvingVehicle.id ||
             (approvingVehicle.soKhung && v.soKhung && v.soKhung.trim().toUpperCase() === approvingVehicle.soKhung.trim().toUpperCase()) ||
-            (parseInt(v.id.replace(/\D/g, ''), 10) === parseInt(approvingVehicle.id.replace(/\D/g, ''), 10));
+            (parseInt(v.id.replace(/\D/g, ''), 10) === parseInt(approvingVehicle.id.replace(/\D/g, ''), 10)) ||
+            (isSameCustomer(v.customerId, approvingVehicle.customerId) && v.tenXe && v.tenXe.toLowerCase().trim() === approvingVehicle.tenXe.toLowerCase().trim());
           return isTarget
             ? {
                 ...v,
@@ -662,14 +741,27 @@ export default function LicensePlateApproval() {
                         <div className="flex items-center justify-center gap-1.5 flex-wrap">
                           {isChoDuyet && (
                             <>
+                              {hasProposed && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleQuickApprove(v)}
+                                  disabled={isSubmitting}
+                                  className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs transition cursor-pointer flex items-center gap-1"
+                                  title={`Duyệt nhanh biển số đề xuất: ${v.bienSoChoDuyet}`}
+                                >
+                                  <span>✓</span> <span>Duyệt nhanh</span>
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => openApproveModal(v)}
                                 disabled={isSubmitting}
-                                className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs transition cursor-pointer flex items-center gap-1"
-                                title={hasProposed ? "Phê duyệt biển số đề xuất" : "Cấp biển số chính thức"}
+                                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold text-white shadow-2xs transition cursor-pointer flex items-center gap-1 ${
+                                  hasProposed ? 'bg-zinc-700 hover:bg-zinc-800' : 'bg-emerald-600 hover:bg-emerald-700'
+                                }`}
+                                title={hasProposed ? "Chỉnh sửa & Cấp biển số chính thức" : "Cấp biển số chính thức"}
                               >
-                                <span>✓</span> <span>{hasProposed ? 'Duyệt' : 'Cấp biển'}</span>
+                                <span>✏️</span> <span>{hasProposed ? 'Chỉnh sửa' : 'Cấp biển'}</span>
                               </button>
                               <button
                                 type="button"
@@ -1076,12 +1168,13 @@ export default function LicensePlateApproval() {
                   const cleanInputPlate = officialPlateInput.trim().replace(/[\s-.]/g, '').toUpperCase();
                   const isPlateDuplicate = Boolean(
                     cleanInputPlate &&
-                    vehicles.some(v =>
-                      v.id !== approvingVehicle.id &&
-                      v.bienSo &&
-                      !isNoPlate(v.bienSo) &&
-                      v.bienSo.replace(/[\s-.]/g, '').toUpperCase() === cleanInputPlate
-                    )
+                    vehicles.some(v => {
+                      if (v.id === approvingVehicle.id) return false;
+                      if (approvingVehicle.soKhung && v.soKhung && v.soKhung.trim().toUpperCase() === approvingVehicle.soKhung.trim().toUpperCase()) return false;
+                      if (isSameCustomer(v.customerId, approvingVehicle.customerId)) return false;
+                      if (!v.bienSo || isNoPlate(v.bienSo)) return false;
+                      return v.bienSo.replace(/[\s-.]/g, '').toUpperCase() === cleanInputPlate;
+                    })
                   );
                   if (!isPlateDuplicate) return null;
                   return (
@@ -1161,14 +1254,29 @@ export default function LicensePlateApproval() {
               >
                 Hủy bỏ
               </button>
-              <button
-                type="button"
-                onClick={handleConfirmApprove}
-                disabled={isSubmitting || !officialPlateInput.trim() || vehicles.some(v => v.id !== approvingVehicle.id && v.bienSo && !isNoPlate(v.bienSo) && v.bienSo.replace(/[\s-.]/g, '').toUpperCase() === officialPlateInput.trim().replace(/[\s-.]/g, '').toUpperCase())}
-                className="px-5 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md cursor-pointer transition flex items-center gap-1.5 disabled:opacity-50"
-              >
-                {isSubmitting ? 'Đang cập nhật...' : '✓ Xác nhận Phê duyệt & Cấp biển số'}
-              </button>
+              {(() => {
+                const cleanInputPlate = officialPlateInput.trim().replace(/[\s-.]/g, '').toUpperCase();
+                const isPlateDuplicate = Boolean(
+                  cleanInputPlate &&
+                  vehicles.some(v => {
+                    if (v.id === approvingVehicle.id) return false;
+                    if (approvingVehicle.soKhung && v.soKhung && v.soKhung.trim().toUpperCase() === approvingVehicle.soKhung.trim().toUpperCase()) return false;
+                    if (isSameCustomer(v.customerId, approvingVehicle.customerId)) return false;
+                    if (!v.bienSo || isNoPlate(v.bienSo)) return false;
+                    return v.bienSo.replace(/[\s-.]/g, '').toUpperCase() === cleanInputPlate;
+                  })
+                );
+                return (
+                  <button
+                    type="button"
+                    onClick={handleConfirmApprove}
+                    disabled={isSubmitting || !officialPlateInput.trim() || isPlateDuplicate}
+                    className="px-5 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md cursor-pointer transition flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    {isSubmitting ? 'Đang cập nhật...' : '✓ Xác nhận Phê duyệt & Cấp biển số'}
+                  </button>
+                );
+              })()}
             </div>
           </div>
         </div>

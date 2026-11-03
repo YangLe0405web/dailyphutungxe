@@ -1588,13 +1588,13 @@ export const vehicleApi = {
               ? bList.find((bx: any) => bx.soKhung && bx.soKhung.trim().toUpperCase() === targetVin)
               : null;
 
-            // 2. Tra cứu theo mã khách hàng và tên xe nhưng CHỈ KHỚP XE CHƯA CÓ BIỂN SỐ
+            // 2. Tra cứu theo mã khách hàng và tên xe linh hoạt
             if (!bMatch && custNum > 0 && vehicleName) {
               bMatch = bList.find((bx: any) =>
                 bx.maKH === custNum &&
                 bx.tenXe &&
-                bx.tenXe.toLowerCase().trim() === vehicleName.toLowerCase().trim() &&
-                isNoPlate(bx.bienSoXe)
+                (bx.tenXe.toLowerCase().trim().includes(vehicleName.toLowerCase().trim()) ||
+                 vehicleName.toLowerCase().trim().includes(bx.tenXe.toLowerCase().trim()))
               );
             }
 
@@ -2303,6 +2303,13 @@ export const orderApi = {
       if (cachedStr) cachedOrders = JSON.parse(cachedStr);
     } catch {}
 
+    // Bảng tra cứu KTV độc lập vĩnh viễn
+    let ktvMap: Record<string, { id: string; hoTen: string; ghiChu?: string }> = {};
+    try {
+      const ktvMapStr = localStorage.getItem('crm_order_ktv_map');
+      if (ktvMapStr) ktvMap = JSON.parse(ktvMapStr);
+    } catch {}
+
     const combinedMap = new Map<string, Order>();
     mockOrders.forEach(o => combinedMap.set(o.id, { ...o }));
     cachedOrders.forEach(o => combinedMap.set(o.id, { ...combinedMap.get(o.id), ...o }));
@@ -2340,7 +2347,30 @@ export const orderApi = {
       } else if (existingInCache?.trangThaiThanhToan && existingInCache.trangThaiThanhToan !== 'DaThanhToan') {
         finalPayment = existingInCache.trangThaiThanhToan;
       }
-      combinedMap.set(o.id, { ...existingInCache, ...o, trangThai: finalTT, trangThaiThanhToan: finalPayment });
+      const ktvInfo = ktvMap[o.id] || (!isNaN(rawNum) ? (ktvMap[String(rawNum)] || ktvMap[`DH-XE-${rawNum}`] || ktvMap[`DH${rawNum}`]) : null);
+      const assignedMaKtv = ktvInfo?.id || existingInCache?.maKTV || existingInCache?.thongTinXe?.maKTV || o.maKTV || o.thongTinXe?.maKTV;
+      const assignedTenKtv = ktvInfo?.hoTen || existingInCache?.tenKTV || existingInCache?.thongTinXe?.ktvPhuTrach || o.tenKTV || o.thongTinXe?.ktvPhuTrach;
+      const assignedGhiChuKtv = ktvInfo?.ghiChu || existingInCache?.thongTinXe?.ghiChuKTV || o.thongTinXe?.ghiChuKTV;
+
+      const mergedThongTinXe: VehicleOrderDetails | undefined = isVehicleOrder ? ({
+        ...(existingInCache?.thongTinXe || {}),
+        ...(o.thongTinXe || {}),
+        ...(assignedTenKtv ? {
+          ktvPhuTrach: assignedTenKtv,
+          maKTV: assignedMaKtv,
+          ghiChuKTV: assignedGhiChuKtv
+        } : {})
+      } as any) : undefined;
+
+      combinedMap.set(o.id, {
+        ...existingInCache,
+        ...o,
+        trangThai: finalTT,
+        trangThaiThanhToan: finalPayment,
+        ...(assignedMaKtv ? { maKTV: assignedMaKtv } : {}),
+        ...(assignedTenKtv ? { tenKTV: assignedTenKtv } : {}),
+        thongTinXe: mergedThongTinXe
+      });
     });
 
     let merged = Array.from(combinedMap.values());
@@ -2434,6 +2464,14 @@ export const orderApi = {
         if (Array.isArray(parsed) && parsed.length > 0) cachedList = parsed;
       }
     } catch {}
+
+    // Bảng tra cứu KTV độc lập vĩnh viễn
+    let ktvMap: Record<string, { id: string; hoTen: string; ghiChu?: string }> = {};
+    try {
+      const ktvMapStr = localStorage.getItem('crm_order_ktv_map');
+      if (ktvMapStr) ktvMap = JSON.parse(ktvMapStr);
+    } catch {}
+
     const combinedMap = new Map<string, Order>();
     mockOrders.forEach(o => combinedMap.set(o.id, { ...o }));
     cachedList.forEach(o => combinedMap.set(o.id, { ...combinedMap.get(o.id), ...o }));
@@ -2444,10 +2482,28 @@ export const orderApi = {
         (o.id && String(o.id).includes('XE') && (!o.items || o.items.length === 0)) ||
         (!o.items?.length && o.tongTien >= 10000000)
       );
+      const rawNum = parseInt(o.id.replace(/\D/g, ''), 10);
+      const ktvInfo = ktvMap[o.id] || (!isNaN(rawNum) ? (ktvMap[String(rawNum)] || ktvMap[`DH-XE-${rawNum}`] || ktvMap[`DH${rawNum}`]) : null);
+      const assignedMaKtv = ktvInfo?.id || o.maKTV || o.thongTinXe?.maKTV;
+      const assignedTenKtv = ktvInfo?.hoTen || o.tenKTV || o.thongTinXe?.ktvPhuTrach;
+      const assignedGhiChuKtv = ktvInfo?.ghiChu || o.thongTinXe?.ghiChuKTV;
+
       if (!isVehicle) {
         return { ...o, loaiDon: 'PhuTung' as const, thongTinXe: undefined };
       }
-      return o;
+      return {
+        ...o,
+        ...(assignedMaKtv ? { maKTV: assignedMaKtv } : {}),
+        ...(assignedTenKtv ? { tenKTV: assignedTenKtv } : {}),
+        thongTinXe: o.thongTinXe ? {
+          ...o.thongTinXe,
+          ...(assignedTenKtv ? {
+            ktvPhuTrach: assignedTenKtv,
+            maKTV: assignedMaKtv,
+            ghiChuKTV: assignedGhiChuKtv
+          } : {})
+        } : undefined
+      };
     });
   },
 
@@ -3008,6 +3064,9 @@ export const orderApi = {
       }
       if (matchIdx !== -1) {
         list[matchIdx].trangThaiThanhToan = paymentStatus;
+        if (paymentStatus === 'DaThanhToan' && list[matchIdx].thongTinXe) {
+          list[matchIdx].thongTinXe!.soTienConLai = 0;
+        }
         targetOrder = list[matchIdx];
       } else {
         const found = mockOrders.find(o => o.id === orderIdStr);
@@ -3024,9 +3083,28 @@ export const orderApi = {
     mockOrders.forEach(o => {
       if (o.id === orderIdStr || (parseInt(o.id.replace(/\D/g, ''), 10) === numId && o.id.includes('XE') === isXe)) {
         o.trangThaiThanhToan = paymentStatus;
+        if (paymentStatus === 'DaThanhToan' && o.thongTinXe) {
+          o.thongTinXe.soTienConLai = 0;
+        }
         targetOrder = o;
       }
     });
+
+    // Cập nhật localStorage crm_orders
+    try {
+      const crmOrders = localStorage.getItem('crm_orders');
+      if (crmOrders) {
+        let list: Order[] = JSON.parse(crmOrders);
+        let matchIdx = list.findIndex(o => o.id === orderIdStr || (!isNaN(numId) && parseInt(o.id.replace(/\D/g, ''), 10) === numId));
+        if (matchIdx !== -1) {
+          list[matchIdx].trangThaiThanhToan = paymentStatus;
+          if (paymentStatus === 'DaThanhToan' && list[matchIdx].thongTinXe) {
+            list[matchIdx].thongTinXe!.soTienConLai = 0;
+          }
+          localStorage.setItem('crm_orders', JSON.stringify(list));
+        }
+      }
+    } catch {}
 
     // 2.1. Gửi PUT đồng bộ trạng thái thanh toán lên backend
     if (!isNaN(numId) && numId > 0 && !isXe) {
@@ -3759,6 +3837,27 @@ async delete(orderIdOrNum: string | number): Promise<boolean> {
   async assignTechnician(orderIdOrNum: string | number, ktv: { id: string; hoTen: string; ghiChu?: string }) {
     const orderIdStr = String(orderIdOrNum);
     const numId = parseInt(orderIdStr.replace(/\D/g, ''), 10);
+
+    // 0. Lưu vào bảng crm_order_ktv_map độc lập vĩnh viễn (Persistent KTV Storage)
+    try {
+      const ktvMapStr = localStorage.getItem('crm_order_ktv_map');
+      const ktvMap = ktvMapStr ? JSON.parse(ktvMapStr) : {};
+      const ktvPayload = {
+        id: ktv.id,
+        hoTen: ktv.hoTen,
+        ghiChu: ktv.ghiChu || '',
+        assignedAt: new Date().toISOString(),
+      };
+      ktvMap[orderIdStr] = ktvPayload;
+      if (!isNaN(numId) && numId > 0) {
+        ktvMap[String(numId)] = ktvPayload;
+        ktvMap[`DH-XE-${numId < 10 ? `00${numId}` : (numId < 100 ? `0${numId}` : numId)}`] = ktvPayload;
+        ktvMap[`DH-XE-${numId}`] = ktvPayload;
+        ktvMap[`DH${numId < 10 ? `00${numId}` : (numId < 100 ? `0${numId}` : numId)}`] = ktvPayload;
+        ktvMap[`DH${numId}`] = ktvPayload;
+      }
+      localStorage.setItem('crm_order_ktv_map', JSON.stringify(ktvMap));
+    } catch {}
 
     // 1. Cập nhật localStorage crm_orders_cache
     try {
