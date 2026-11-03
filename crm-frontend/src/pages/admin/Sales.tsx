@@ -128,6 +128,8 @@ export default function SalesPage({
 
   // Modal Phân công Kỹ thuật viên (KTV)
   const [assigningKtvOrder, setAssigningKtvOrder] = useState<Order | null>(null);
+  const [assignMode, setAssignMode] = useState<'assign' | 'approve'>('assign');
+  const [targetNextStatus, setTargetNextStatus] = useState<OrderStatus>('ChoKhachXacNhanNgayNhan');
   const [selectedStaffId, setSelectedStaffId] = useState<string>('');
   const [ktvNotes, setKtvNotes] = useState<string>('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -141,8 +143,10 @@ export default function SalesPage({
     return mockStaffAccounts.filter((s: StaffAccount) => s.vaiTro === 'NhanVienKyThuat' || s.chucVu.includes('Kỹ thuật viên') || s.chucVu.includes('Thủ kho'));
   }, []);
 
-  const handleOpenAssignKtv = (order: Order) => {
+  const handleOpenAssignKtv = (order: Order, mode: 'assign' | 'approve' = 'assign', nextStatus?: OrderStatus) => {
     setAssigningKtvOrder(order);
+    setAssignMode(mode);
+    if (nextStatus) setTargetNextStatus(nextStatus);
     const existingStaff = techniciansList.find((t: StaffAccount) => t.hoTen === order.thongTinXe?.ktvPhuTrach || t.id === order.thongTinXe?.maKTV || t.id === order.maKTV || t.hoTen === order.tenKTV);
     setSelectedStaffId(existingStaff ? existingStaff.id : (techniciansList[0]?.id || 'ST006'));
     setKtvNotes(order.thongTinXe?.ghiChuKTV || 'Kiểm tra bình ắc quy, siết ốc, nổ máy thử, kiểm tra mức dầu nhớt và rửa xe sạch bóng trước khi bàn giao.');
@@ -190,8 +194,17 @@ export default function SalesPage({
       } : null);
     }
 
-    showToast(`✓ Đã phân công Kỹ thuật viên "${staff.hoTen}" cho đơn xe #${assigningKtvOrder.id} thành công!`);
+    const currentOrderId = assigningKtvOrder.id;
+    const currentMode = assignMode;
+    const nextSt = targetNextStatus;
     setAssigningKtvOrder(null);
+
+    if (currentMode === 'approve') {
+      showToast(`✓ Đã phân công KTV "${staff.hoTen}" & Duyệt đơn xe #${currentOrderId} thành công!`);
+      await handleUpdateStatus(currentOrderId, nextSt);
+    } else {
+      showToast(`✓ Đã phân công Kỹ thuật viên "${staff.hoTen}" cho đơn xe #${currentOrderId} thành công!`);
+    }
   };
 
   // Load orders & catalogs
@@ -326,14 +339,21 @@ export default function SalesPage({
     const remaining = target?.thongTinXe?.soTienConLai || 0;
     const isNotFullyPaid = isVehicle && remaining > 0 && target?.trangThaiThanhToan !== 'DaThanhToan';
 
-    // Ràng buộc thu đủ 100% tiền trước khi hoàn tất đơn xe đặt cọc (Mục 1.2 đặc tả)
-    if (newStatus === 'HoanThanh' && isNotFullyPaid) {
-      const confirmPaid = window.confirm(
-        `⚠️ ĐƠN HÀNG XE ĐẶT CỌC CHƯA THU ĐỦ TIỀN!\n\nĐơn xe #${target?.id} hiện mới thanh toán tiền cọc, CÒN THIẾU ${formatVND(remaining)}.\n\nTheo quy tắc nghiệp vụ, bắt buộc phải thu đủ 100% tiền trước khi phát hành hóa đơn và hoàn tất đơn hàng.\n\nBạn có xác nhận KHÁCH HÀNG ĐÃ NỘP ĐỦ 100% TIỀN TẠI QUẦY không?`
-      );
-      if (!confirmPaid) {
+    // Ràng buộc 1: Bắt buộc chọn KTV trước khi duyệt đơn hàng xe (mở modal phân công chuẩn Bảo hành & duyệt liên hoàn 1 chạm)
+    if (isVehicle && target && target.trangThai === 'ChoDuyet' && newStatus !== 'DaHuy') {
+      const hasKtv = Boolean(target.tenKTV || target.thongTinXe?.ktvPhuTrach || target.maKTV || target.thongTinXe?.maKTV);
+      if (!hasKtv) {
+        handleOpenAssignKtv(target, 'approve', newStatus);
         return;
       }
+    }
+
+    // Ràng buộc thu đủ 100% tiền trước khi hoàn tất đơn xe đặt cọc (buộc phải bấm nút thu đủ tiền)
+    if (newStatus === 'HoanThanh' && isNotFullyPaid) {
+      alert(
+        `⚠️ BẮT BUỘC THU ĐỦ TIỀN TRƯỚC KHI HOÀN TẤT ĐƠN XE!\n\nĐơn xe #${target?.id} mới thanh toán tiền đặt cọc (${formatVND(((target?.thongTinXe as any)?.soTienDatCoc || 2000000) || 2000000)}), CÒN THIẾU ${formatVND(remaining)}.\n\nTheo quy định nghiệp vụ, bạn BUỘC PHẢI BẤM NÚT [💵 Thu tiền còn lại] để xác nhận đã thu đủ 100% tiền trước khi hoàn tất đơn hàng!`
+      );
+      return;
     }
 
     const finalStatus: OrderStatus = (newStatus === 'DaGiao' && !isHomeDelivery) ? 'HoanThanh' : newStatus;
@@ -366,15 +386,33 @@ export default function SalesPage({
     window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'order_status_updated', orderId: id, status: finalStatus } }));
   };
 
-  // Xác nhận / Cập nhật trạng thái thanh toán (COD / Chuyển khoản)
+    // Xác nhận / Cập nhật trạng thái thanh toán (COD / Chuyển khoản)
   const handleUpdatePaymentStatus = async (id: string, newPaymentStatus: PaymentStatus = 'DaThanhToan') => {
+    const targetNum = parseInt(id.replace(/\D/g, ''), 10);
     // Cập nhật Optimistic UI ngay lập tức
-    setOrders(prev => prev.map(o => (o.id === id ? { ...o, trangThaiThanhToan: newPaymentStatus } : o)));
-    if (selectedOrderForDetail && selectedOrderForDetail.id === id) {
-      setSelectedOrderForDetail(prev => (prev ? { ...prev, trangThaiThanhToan: newPaymentStatus } : null));
+    setOrders(prev => prev.map(o => {
+      const oNum = parseInt(o.id.replace(/\D/g, ''), 10);
+      const isMatch = o.id === id || (!isNaN(targetNum) && !isNaN(oNum) && targetNum === oNum && o.id.includes('XE') === id.includes('XE'));
+      return isMatch ? {
+        ...o,
+        trangThaiThanhToan: newPaymentStatus,
+        ...(newPaymentStatus === 'DaThanhToan' && o.thongTinXe ? {
+          thongTinXe: { ...o.thongTinXe, soTienConLai: 0 }
+        } : {})
+      } : o;
+    }));
+    if (selectedOrderForDetail && (selectedOrderForDetail.id === id || (!isNaN(targetNum) && parseInt(selectedOrderForDetail.id.replace(/\D/g, ''), 10) === targetNum))) {
+      setSelectedOrderForDetail(prev => (prev ? {
+        ...prev,
+        trangThaiThanhToan: newPaymentStatus,
+        ...(newPaymentStatus === 'DaThanhToan' && prev.thongTinXe ? {
+          thongTinXe: { ...prev.thongTinXe, soTienConLai: 0 }
+        } : {})
+      } : null));
     }
 
     await orderApi.updatePaymentStatus(id, newPaymentStatus);
+    showToast(`✓ Đã xác nhận thu đủ 100% tiền cho đơn hàng #${id} thành công!`);
     window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'order_payment_updated', orderId: id, paymentStatus: newPaymentStatus } }));
   };
 
@@ -494,6 +532,242 @@ export default function SalesPage({
     toDate,
     orderSearch,
   ]);
+
+
+  // Quy chuẩn nghiệp vụ Bản Fix 84:
+  // - Mỗi trạng thái chỉ hiển thị DUY NHẤT 1 NÚT HÀNH ĐỘNG chính.
+  // - Khi khách hàng đã thanh toán đủ (DaThanhToan hoặc soTienConLai <= 0), TUYỆT ĐỐI KHÔNG HIỂN THỊ nút "Thu tiền".
+  // - Khi chưa thanh toán đủ: Nút duy nhất là [💵 Thu tiền (Còn thiếu ...)]. Bấm thu tiền xong sẽ lập tức chuyển thành [✅ Hoàn tất].
+  const renderSingleActionButton = (order: Order) => {
+    const isVehicle = order.loaiDon !== 'PhuTung' && (
+      order.loaiDon === 'Xe' ||
+      (!!order.thongTinXe && (!order.items || order.items.length === 0)) ||
+      (order.id && order.id.includes('XE') && (!order.items || order.items.length === 0))
+    );
+    const isHomeDelivery = Boolean(isVehicle && (order.thongTinXe?.hinhThucGiao === 'HomeDelivery' || order.ghiChu?.includes('GIAO TẬN NƠI')));
+    const remaining = order.thongTinXe?.soTienConLai ?? (order.trangThaiThanhToan === 'DaCoc' ? Math.max(0, (order.tongTien || 0) - (((order.thongTinXe as any)?.soTienDatCoc || 2000000) || 2000000)) : 0);
+    const isFullyPaid = order.trangThaiThanhToan === 'DaThanhToan' || remaining <= 0;
+
+    if (isVehicle) {
+      if (order.trangThai === 'ChoDuyet') {
+        return (
+          <button
+            type="button"
+            onClick={() => handleUpdateStatus(order.id, 'ChoKhachXacNhanNgayNhan')}
+            title="Duyệt đơn đặt xe (Chờ khách hàng xác nhận ngày đặt/nhận xe)"
+            className="px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-xs whitespace-nowrap"
+          >
+            <span>✓</span> Duyệt đơn xe
+          </button>
+        );
+      }
+
+      if (order.trangThai === 'ChoKhachXacNhanNgayNhan') {
+        return (
+          <button
+            type="button"
+            onClick={() => handleUpdateStatus(order.id, isHomeDelivery ? 'DangGiao' : 'ChoGiaoXe')}
+            title={isHomeDelivery ? "Admin xác nhận thay KH và chuyển sang Đang giao xe" : "Admin hỗ trợ xác nhận thay khách hàng để chuyển sang Chờ giao xe"}
+            className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-xs whitespace-nowrap"
+          >
+            <span>✓</span> {isHomeDelivery ? 'Điều phối' : 'Chờ giao xe'}
+          </button>
+        );
+      }
+
+      if (order.trangThai === 'ChoGiaoXe') {
+        if (!isFullyPaid) {
+          return (
+            <button
+              type="button"
+              onClick={() => {
+                const rem = remaining || (order.tongTien - 2000000);
+                if (window.confirm(`Xác nhận đã thu đủ số tiền còn lại ${formatVND(rem)} cho đơn xe #${order.id}?`)) {
+                  handleUpdatePaymentStatus(order.id, 'DaThanhToan');
+                }
+              }}
+              title={`Thu đủ ${formatVND(remaining)} còn lại trước khi hoàn tất`}
+              className="px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-xs animate-pulse whitespace-nowrap"
+            >
+              <span>💵</span> Thu tiền ({formatVND(remaining)})
+            </button>
+          );
+        }
+
+        // Đã thanh toán đủ: Tuyệt đối không có nút thu tiền, chỉ hiển thị nút Hoàn tất
+        return (
+          <button
+            type="button"
+            onClick={() => handleUpdateStatus(order.id, 'HoanThanh')}
+            title="Xác nhận giao xe thành công, kích hoạt xe vào tài khoản khách & gửi khảo sát xe mới"
+            className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-xs whitespace-nowrap"
+          >
+            <span>✅</span> Hoàn tất
+          </button>
+        );
+      }
+
+      if (order.trangThai === 'DangGiao') {
+        if (!isFullyPaid) {
+          return (
+            <button
+              type="button"
+              onClick={() => {
+                const rem = remaining || (order.tongTien - 2000000);
+                if (window.confirm(`Xác nhận đã thu đủ số tiền còn lại ${formatVND(rem)} cho đơn xe #${order.id}?`)) {
+                  handleUpdatePaymentStatus(order.id, 'DaThanhToan');
+                }
+              }}
+              title={`Thu đủ ${formatVND(remaining)} còn lại trước khi hoàn tất`}
+              className="px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-xs animate-pulse whitespace-nowrap"
+            >
+              <span>💵</span> Thu tiền ({formatVND(remaining)})
+            </button>
+          );
+        }
+        return (
+          <button
+            type="button"
+            onClick={() => handleUpdateStatus(order.id, 'DaGiao')}
+            title="Xác nhận xe đã giao tới địa chỉ khách hàng"
+            className="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-xs whitespace-nowrap"
+          >
+            <span>📦</span> Đã giao
+          </button>
+        );
+      }
+
+      if (order.trangThai === 'DaGiao') {
+        if (!isFullyPaid) {
+          return (
+            <button
+              type="button"
+              onClick={() => {
+                const rem = remaining || (order.tongTien - 2000000);
+                if (window.confirm(`Xác nhận đã thu đủ số tiền còn lại ${formatVND(rem)} cho đơn xe #${order.id}?`)) {
+                  handleUpdatePaymentStatus(order.id, 'DaThanhToan');
+                }
+              }}
+              title={`Thu đủ ${formatVND(remaining)} còn lại trước khi hoàn tất`}
+              className="px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-xs animate-pulse whitespace-nowrap"
+            >
+              <span>💵</span> Thu tiền ({formatVND(remaining)})
+            </button>
+          );
+        }
+        return (
+          <button
+            type="button"
+            onClick={() => handleUpdateStatus(order.id, 'HoanThanh')}
+            title="Khách đã nhận xe, hoàn tất đơn hàng và gửi khảo sát xe mới"
+            className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-xs whitespace-nowrap"
+          >
+            <span>✅</span> Hoàn tất
+          </button>
+        );
+      }
+
+      if (order.trangThai === 'HoanThanh') {
+        return (
+          <span className="px-2 py-1 rounded-md bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+            🔒 Đã hoàn tất
+          </span>
+        );
+      }
+
+      return null;
+    }
+
+    // Đơn phụ tùng
+    if (order.trangThai === 'ChoDuyet') {
+      return (
+        <button
+          type="button"
+          onClick={() => handleUpdateStatus(order.id, 'DaXacNhan')}
+          title="Xác nhận đơn hàng"
+          className="px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-[11px] font-bold transition flex items-center gap-1 cursor-pointer border border-blue-200 whitespace-nowrap"
+        >
+          <span>✓</span> Xác nhận
+        </button>
+      );
+    }
+    if (order.trangThai === 'DaXacNhan') {
+      return (
+        <button
+          type="button"
+          onClick={() => handleUpdateStatus(order.id, 'DangGiao')}
+          title="Bắt đầu giao hàng (Tự động khóa hủy phía khách)"
+          className="px-2.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[11px] font-bold transition flex items-center gap-1 cursor-pointer border border-indigo-200 whitespace-nowrap"
+        >
+          <span>🚚</span> Giao hàng
+        </button>
+      );
+    }
+    if (order.trangThai === 'DangGiao') {
+      if (order.trangThaiThanhToan !== 'DaThanhToan') {
+        return (
+          <button
+            type="button"
+            onClick={() => {
+              if (window.confirm(`Xác nhận đã thu đủ tiền cho đơn hàng #${order.id}?`)) {
+                handleUpdatePaymentStatus(order.id, 'DaThanhToan');
+              }
+            }}
+            title="Thu đủ tiền cho đơn hàng"
+            className="px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-xs animate-pulse whitespace-nowrap"
+          >
+            <span>💵</span> Thu tiền
+          </button>
+        );
+      }
+      return (
+        <button
+          type="button"
+          onClick={() => handleUpdateStatus(order.id, 'HoanThanh')}
+          title="Xác nhận đã giao hàng thành công (Khóa cứng hoàn tất)"
+          className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-xs whitespace-nowrap"
+        >
+          <span>✅</span> Đã giao
+        </button>
+      );
+    }
+    if (order.trangThai === 'DaGiao') {
+      if (order.trangThaiThanhToan !== 'DaThanhToan') {
+        return (
+          <button
+            type="button"
+            onClick={() => {
+              if (window.confirm(`Xác nhận đã thu đủ tiền cho đơn hàng #${order.id}?`)) {
+                handleUpdatePaymentStatus(order.id, 'DaThanhToan');
+              }
+            }}
+            title="Thu đủ tiền cho đơn hàng"
+            className="px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-xs animate-pulse whitespace-nowrap"
+          >
+            <span>💵</span> Thu tiền
+          </button>
+        );
+      }
+      return (
+        <button
+          type="button"
+          onClick={() => handleUpdateStatus(order.id, 'HoanThanh')}
+          title="Hoàn tất đơn hàng"
+          className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-xs whitespace-nowrap"
+        >
+          <span>✅</span> Hoàn tất
+        </button>
+      );
+    }
+    if (order.trangThai === 'HoanThanh') {
+      return (
+        <span className="px-2 py-1 rounded-md bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+          🔒 Đã hoàn tất
+        </span>
+      );
+    }
+    return null;
+  };
 
   return (
     <div className="p-6 lg:p-8 space-y-6">
@@ -1061,128 +1335,9 @@ export default function SalesPage({
                             boxShadow: '-4px 0 10px rgba(0,0,0,0.06)',
                           }}
                         >
-                          <div className="flex items-center gap-1.5 justify-center flex-wrap min-w-[180px]">
-                            {/* Nút hành động trạng thái nhanh */}
-                            {(() => {
-                              const isHomeDelivery = order.thongTinXe?.hinhThucGiao === 'HomeDelivery' || order.ghiChu?.includes('GIAO TẬN NƠI');
-                              if (order.trangThai === 'ChoDuyet') {
-                                return (
-                                  <div className="flex items-center gap-1 flex-wrap justify-center">
-                                    <button
-                                      type="button"
-                                      onClick={() => handleUpdateStatus(order.id, 'ChoKhachXacNhanNgayNhan')}
-                                      title="Duyệt đơn đặt xe (Chờ khách hàng xác nhận ngày đặt/nhận xe)"
-                                      className="px-2 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-xs"
-                                    >
-                                      <span>✓</span> Duyệt đơn xe
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleUpdateStatus(order.id, isHomeDelivery ? 'DangGiao' : 'ChoGiaoXe')}
-                                      title={isHomeDelivery ? "Duyệt và chuyển thẳng sang Đang giao xe" : "Duyệt và chuyển thẳng sang Chờ giao xe"}
-                                      className="px-2 py-1 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-xs"
-                                    >
-                                      <span>{isHomeDelivery ? '🚚' : '🏎️'}</span> {isHomeDelivery ? 'Đang giao' : 'Chờ giao'}
-                                    </button>
-                                  </div>
-                                );
-                              }
-                              if (order.trangThai === 'ChoKhachXacNhanNgayNhan') {
-                                return (
-                                  <div className="flex items-center gap-1 flex-wrap justify-center">
-                                    <span className="px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-bold flex items-center gap-1">
-                                      <span>⏳</span> Chờ KH
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleUpdateStatus(order.id, isHomeDelivery ? 'DangGiao' : 'ChoGiaoXe')}
-                                      title={isHomeDelivery ? "Admin xác nhận thay KH và chuyển sang Đang giao xe" : "Admin hỗ trợ xác nhận thay khách hàng để chuyển sang Chờ giao xe"}
-                                      className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-xs"
-                                    >
-                                      <span>✓</span> {isHomeDelivery ? 'Điều phối' : 'Chờ giao'}
-                                    </button>
-                                  </div>
-                                );
-                              }
-                              if (order.trangThai === 'ChoGiaoXe') {
-                                return (
-                                  <div className="flex items-center gap-1 flex-wrap justify-center">
-                                    {isHomeDelivery ? (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleUpdateStatus(order.id, 'DangGiao')}
-                                        title="Bắt đầu vận chuyển giao xe tận nhà cho khách hàng"
-                                        className="px-2 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-xs"
-                                      >
-                                        <span>🚚</span> Đang giao
-                                      </button>
-                                    ) : (
-                                      <button
-                                        type="button"
-                                        onClick={() => setOrderToPrint(order)}
-                                        title="Mở hóa đơn & thu tiền bàn giao xe tại Showroom"
-                                        className="px-2 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-xs"
-                                      >
-                                        <span>🏎️</span> Bàn giao
-                                      </button>
-                                    )}
-                                    <button
-                                      type="button"
-                                      onClick={() => handleUpdateStatus(order.id, 'HoanThanh')}
-                                      title="Xác nhận giao xe thành công, kích hoạt xe vào tài khoản khách & gửi khảo sát xe mới"
-                                      className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-xs"
-                                    >
-                                      <span>✅</span> Hoàn tất
-                                    </button>
-                                  </div>
-                                );
-                              }
-                              if (order.trangThai === 'DangGiao') {
-                                return (
-                                  <div className="flex items-center gap-1 flex-wrap justify-center">
-                                    <button
-                                      type="button"
-                                      onClick={() => handleUpdateStatus(order.id, 'DaGiao')}
-                                      title="Xác nhận xe đã giao tới địa chỉ khách hàng"
-                                      className="px-2 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-xs"
-                                    >
-                                      <span>📦</span> Đã giao
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleUpdateStatus(order.id, 'HoanThanh')}
-                                      title="Hoàn tất đơn hàng giao xe tận nhà"
-                                      className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-xs"
-                                    >
-                                      <span>✅</span> Hoàn tất
-                                    </button>
-                                  </div>
-                                );
-                              }
-                              if (order.trangThai === 'DaGiao') {
-                                return (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleUpdateStatus(order.id, 'HoanThanh')}
-                                    title="Khách đã nhận xe, hoàn tất đơn hàng và gửi khảo sát xe mới"
-                                    className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-xs"
-                                  >
-                                    <span>✅</span> Hoàn tất
-                                  </button>
-                                );
-                              }
-                              return null;
-                            })()}
-
-                            {/* Nút phân công KTV nhanh */}
-                            <button
-                              type="button"
-                              onClick={() => handleOpenAssignKtv(order)}
-                              title="Phân công Kỹ thuật viên (KTV) chuẩn bị & PDI xe"
-                              className="px-2 py-1 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-700 text-[11px] font-bold transition flex items-center gap-1 cursor-pointer border border-purple-200"
-                            >
-                              <span>🔧</span> {order.thongTinXe?.ktvPhuTrach || order.tenKTV ? 'Đổi KTV' : 'KTV'}
-                            </button>
+                          <div className="flex items-center gap-1.5 justify-center flex-wrap min-w-[150px]">
+                            {/* Nút hành động trạng thái duy nhất */}
+                            {renderSingleActionButton(order)}
 
                             {/* Nút Xem chi tiết */}
                             <button
@@ -1439,170 +1594,9 @@ export default function SalesPage({
                           boxShadow: '-4px 0 10px rgba(0,0,0,0.06)',
                         }}
                       >
-                        <div className="flex items-center gap-1.5 justify-center flex-wrap min-w-[170px]">
-                          {/* Nút thao tác chuyển trạng thái nhanh theo quy trình */}
-                          {(() => {
-                            const isVehicle = order.loaiDon !== 'PhuTung' && (order.loaiDon === 'Xe' || (!!order.thongTinXe && (!order.items || order.items.length === 0)) || (order.id && order.id.includes('XE') && (!order.items || order.items.length === 0)));
-                            const isHomeDelivery = isVehicle && (order.thongTinXe?.hinhThucGiao === 'HomeDelivery' || order.ghiChu?.includes('GIAO TẬN NƠI'));
-                            if (isVehicle) {
-                              return (
-                                <>
-                                  {order.trangThai === 'ChoDuyet' && (
-                                    <div className="flex items-center gap-1 flex-wrap justify-center">
-                                      <button
-                                        type="button"
-                                        onClick={() => handleUpdateStatus(order.id, 'ChoKhachXacNhanNgayNhan')}
-                                        title="Duyệt đơn đặt xe (Chờ khách hàng xác nhận ngày đặt/nhận xe)"
-                                        className="px-2 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-xs"
-                                      >
-                                        <span>✓</span> Duyệt đơn xe
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleUpdateStatus(order.id, isHomeDelivery ? 'DangGiao' : 'ChoGiaoXe')}
-                                        title={isHomeDelivery ? "Duyệt và chuyển thẳng sang Đang giao xe" : "Duyệt và chuyển thẳng sang Chờ giao xe"}
-                                        className="px-2 py-1 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-xs"
-                                      >
-                                        <span>{isHomeDelivery ? '🚚' : '🏎️'}</span> {isHomeDelivery ? 'Đang giao xe' : 'Chờ giao xe'}
-                                      </button>
-                                    </div>
-                                  )}
-                                  {order.trangThai === 'ChoKhachXacNhanNgayNhan' && (
-                                    <div className="flex items-center gap-1 flex-wrap justify-center">
-                                      <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-bold flex items-center gap-1">
-                                        <span>⏳</span> Chờ KH xác nhận ngày nhận
-                                      </span>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleUpdateStatus(order.id, isHomeDelivery ? 'DangGiao' : 'ChoGiaoXe')}
-                                        title={isHomeDelivery ? "Admin xác nhận thay KH và chuyển sang Đang giao xe" : "Admin hỗ trợ xác nhận thay khách hàng để chuyển sang Chờ giao xe"}
-                                        className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-xs"
-                                      >
-                                        <span>✓</span> {isHomeDelivery ? 'Điều phối giao xe' : 'Chuyển Chờ giao xe'}
-                                      </button>
-                                    </div>
-                                  )}
-                                  {order.trangThai === 'ChoGiaoXe' && (
-                                    <>
-                                      {isHomeDelivery ? (
-                                        <button
-                                          type="button"
-                                          onClick={() => handleUpdateStatus(order.id, 'DangGiao')}
-                                          title="Bắt đầu vận chuyển giao xe tận nhà cho khách hàng"
-                                          className="px-2 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-xs"
-                                        >
-                                          <span>🚚</span> Đang giao xe
-                                        </button>
-                                      ) : (
-                                        <button
-                                          type="button"
-                                          onClick={() => setOrderToPrint(order)}
-                                          title="Mở hóa đơn & thu tiền bàn giao xe tại Showroom"
-                                          className="px-2 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-xs"
-                                        >
-                                          <span>🏎️</span> Bàn giao xe
-                                        </button>
-                                      )}
-                                      <button
-                                        type="button"
-                                        onClick={() => handleUpdateStatus(order.id, 'HoanThanh')}
-                                        title="Xác nhận giao xe thành công, kích hoạt xe vào tài khoản khách & gửi khảo sát xe mới"
-                                        className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-xs"
-                                      >
-                                        <span>✅</span> Giao xe thành công
-                                      </button>
-                                    </>
-                                  )}
-                                  {order.trangThai === 'DangGiao' && (
-                                    <div className="flex items-center gap-1 flex-wrap justify-center">
-                                      <button
-                                        type="button"
-                                        onClick={() => handleUpdateStatus(order.id, 'DaGiao')}
-                                        title="Xác nhận xe đã giao tới địa chỉ khách hàng"
-                                        className="px-2 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-xs"
-                                      >
-                                        <span>📦</span> Đã giao tới nhà
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleUpdateStatus(order.id, 'HoanThanh')}
-                                        title="Hoàn tất đơn hàng giao xe tận nhà"
-                                        className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-xs"
-                                      >
-                                        <span>✅</span> Hoàn thành
-                                      </button>
-                                    </div>
-                                  )}
-                                  {order.trangThai === 'DaGiao' && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleUpdateStatus(order.id, 'HoanThanh')}
-                                      title="Khách đã nhận xe, hoàn tất đơn hàng và gửi khảo sát xe mới"
-                                      className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-xs"
-                                    >
-                                      <span>✅</span> Hoàn tất đơn hàng
-                                    </button>
-                                  )}
-
-                                  {/* Bổ sung nút KTV cho đơn xe trong tab Tất Cả */}
-                                  <button
-                                    type="button"
-                                    onClick={() => handleOpenAssignKtv(order)}
-                                    title="Phân công Kỹ thuật viên (KTV) chuẩn bị & PDI xe"
-                                    className="px-2 py-1 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-700 text-[11px] font-bold transition flex items-center gap-1 cursor-pointer border border-purple-200"
-                                  >
-                                    <span>🔧</span> {order.thongTinXe?.ktvPhuTrach || order.tenKTV ? 'Đổi KTV' : 'KTV'}
-                                  </button>
-                                </>
-                              );
-                            }
-
-                            // Đơn phụ tùng thông thường
-                            return (
-                              <>
-                                {order.trangThai === 'ChoDuyet' && (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleUpdateStatus(order.id, 'DaXacNhan')}
-                                    title="Xác nhận đơn hàng"
-                                    className="px-2 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-[11px] font-bold transition flex items-center gap-1 cursor-pointer border border-blue-200"
-                                  >
-                                    <span>✓</span> Xác nhận
-                                  </button>
-                                )}
-                                {order.trangThai === 'DaXacNhan' && (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleUpdateStatus(order.id, 'DangGiao')}
-                                    title="Bắt đầu giao hàng (Tự động khóa hủy phía khách)"
-                                    className="px-2 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[11px] font-bold transition flex items-center gap-1 cursor-pointer border border-indigo-200"
-                                  >
-                                    <span>🚚</span> Giao hàng
-                                  </button>
-                                )}
-                                {order.trangThai === 'DangGiao' && (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleUpdateStatus(order.id, 'HoanThanh')}
-                                    title="Xác nhận đã giao hàng thành công (Khóa cứng hoàn tất)"
-                                    className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-xs"
-                                  >
-                                    <span>✅</span> Đã giao (Khóa cứng)
-                                  </button>
-                                )}
-                                {order.trangThai === 'DaGiao' && (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleUpdateStatus(order.id, 'HoanThanh')}
-                                    title="Hoàn tất đơn hàng"
-                                    className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-xs"
-                                  >
-                                    <span>✅</span> Hoàn tất
-                                  </button>
-                                )}
-                              </>
-                            );
-                          })()}
+                        <div className="flex items-center gap-1.5 justify-center flex-wrap min-w-[150px]">
+                          {/* Nút hành động trạng thái duy nhất */}
+                          {renderSingleActionButton(order)}
 
                           {/* Nút Xem chi tiết (ĐH07) */}
                           <button
@@ -1669,6 +1663,7 @@ export default function SalesPage({
           onSelectStaffId={setSelectedStaffId}
           notes={ktvNotes}
           onChangeNotes={setKtvNotes}
+          assignMode={assignMode}
           onClose={() => setAssigningKtvOrder(null)}
           onConfirm={handleConfirmAssignKtv}
         />
@@ -4256,6 +4251,8 @@ function OrderDetailModal({
 
   // TRƯỜNG HỢP ĐƠN XE: GIỮ NGUYÊN GIAO DIỆN BÁN XE ĐẦY ĐỦ THỦ TỤC
   const isHomeDelivery = Boolean(order.thongTinXe?.hinhThucGiao === 'HomeDelivery' || order.ghiChu?.includes('GIAO TẬN NƠI') || order.ghiChu?.includes('GIAO XE TẬN NƠI'));
+  const remaining = order.thongTinXe?.soTienConLai ?? (order.trangThaiThanhToan === 'DaCoc' ? Math.max(0, (order.tongTien || 0) - (((order.thongTinXe as any)?.soTienDatCoc || 2000000) || 2000000)) : 0);
+  const isFullyPaid = order.trangThaiThanhToan === 'DaThanhToan' || remaining <= 0;
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
@@ -4388,13 +4385,6 @@ function OrderDetailModal({
                 >
                   <span>✓</span> Duyệt đơn xe (Chờ KH xác nhận)
                 </button>
-                <button
-                  type="button"
-                  onClick={() => onUpdateStatus?.('ChoGiaoXe')}
-                  className="px-4 py-2 rounded-xl text-xs font-bold bg-sky-600 hover:bg-sky-700 text-white flex items-center gap-1.5 shadow-md cursor-pointer"
-                >
-                  <span>🏎️</span> Duyệt & Chuyển Chờ giao xe
-                </button>
               </>
             )}
 
@@ -4408,29 +4398,84 @@ function OrderDetailModal({
                   onClick={() => onUpdateStatus?.(isHomeDelivery ? 'DangGiao' : 'ChoGiaoXe')}
                   className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md cursor-pointer flex items-center gap-1.5"
                 >
-                  <span>✓</span> {isHomeDelivery ? 'Bắt đầu giao xe' : 'Chuyển Chờ giao xe (Xác nhận thay KH)'}
+                  <span>✓</span> {isHomeDelivery ? 'Bắt đầu giao xe' : 'Chuyển Chờ giao xe'}
                 </button>
               </div>
             )}
 
+            {order.trangThai === 'ChoGiaoXe' && (
+              !isFullyPaid ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const rem = remaining || (order.tongTien - 2000000);
+                    if (window.confirm(`Xác nhận đã thu đủ số tiền còn lại ${formatVND(rem)} cho đơn xe #${order.id}?`)) {
+                      onUpdatePaymentStatus?.('DaThanhToan');
+                    }
+                  }}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white flex items-center gap-1.5 shadow-md cursor-pointer animate-pulse"
+                >
+                  <span>💵</span> Thu đủ tiền còn lại ({formatVND(remaining)})
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => onUpdateStatus?.('HoanThanh')}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5 shadow-md cursor-pointer"
+                >
+                  <span>✅</span> Hoàn tất đơn hàng (Chốt & gửi khảo sát)
+                </button>
+              )
+            )}
+
             {order.trangThai === 'DangGiao' && (
-              <button
-                type="button"
-                onClick={() => onUpdateStatus?.('DaGiao')}
-                className="px-4 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1.5 shadow-md cursor-pointer"
-              >
-                <span>📦</span> Đã giao tới nhà
-              </button>
+              !isFullyPaid ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const rem = remaining || (order.tongTien - 2000000);
+                    if (window.confirm(`Xác nhận đã thu đủ số tiền còn lại ${formatVND(rem)} cho đơn xe #${order.id}?`)) {
+                      onUpdatePaymentStatus?.('DaThanhToan');
+                    }
+                  }}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white flex items-center gap-1.5 shadow-md cursor-pointer animate-pulse"
+                >
+                  <span>💵</span> Thu đủ tiền còn lại ({formatVND(remaining)})
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => onUpdateStatus?.('DaGiao')}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1.5 shadow-md cursor-pointer"
+                >
+                  <span>📦</span> Đã giao tới nhà
+                </button>
+              )
             )}
 
             {order.trangThai === 'DaGiao' && (
-              <button
-                type="button"
-                onClick={() => onUpdateStatus?.('HoanThanh')}
-                className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5 shadow-md cursor-pointer"
-              >
-                <span>✅</span> Hoàn tất đơn hàng (Gửi khảo sát)
-              </button>
+              !isFullyPaid ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const rem = remaining || (order.tongTien - 2000000);
+                    if (window.confirm(`Xác nhận đã thu đủ số tiền còn lại ${formatVND(rem)} cho đơn xe #${order.id}?`)) {
+                      onUpdatePaymentStatus?.('DaThanhToan');
+                    }
+                  }}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white flex items-center gap-1.5 shadow-md cursor-pointer animate-pulse"
+                >
+                  <span>💵</span> Thu đủ tiền còn lại ({formatVND(remaining)})
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => onUpdateStatus?.('HoanThanh')}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5 shadow-md cursor-pointer"
+                >
+                  <span>✅</span> Hoàn tất đơn hàng (Gửi khảo sát)
+                </button>
+              )
             )}
 
             <button
@@ -4440,16 +4485,6 @@ function OrderDetailModal({
             >
               <span>🧾</span> In hóa đơn (Giao xe)
             </button>
-
-            {order.trangThai === 'ChoGiaoXe' && (
-              <button
-                type="button"
-                onClick={() => onUpdateStatus?.('HoanThanh')}
-                className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5 shadow-md cursor-pointer"
-              >
-                <span>✅</span> Bàn giao xe thành công (Chốt & gửi khảo sát)
-              </button>
-            )}
 
             <button
               type="button"
@@ -4726,6 +4761,7 @@ function AssignTechnicianModal({
   onSelectStaffId,
   notes,
   onChangeNotes,
+  assignMode = 'assign',
   onClose,
   onConfirm,
 }: {
@@ -4735,6 +4771,7 @@ function AssignTechnicianModal({
   onSelectStaffId: (id: string) => void;
   notes: string;
   onChangeNotes: (notes: string) => void;
+  assignMode?: 'assign' | 'approve';
   onClose: () => void;
   onConfirm: () => void;
 }) {
@@ -4868,9 +4905,13 @@ function AssignTechnicianModal({
           <button
             type="button"
             onClick={onConfirm}
-            className="px-5 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-md cursor-pointer transition flex items-center gap-1.5"
+            className={`px-5 py-2.5 rounded-xl text-xs font-bold text-white shadow-md cursor-pointer transition flex items-center gap-1.5 ${
+              assignMode === 'approve'
+                ? 'bg-emerald-600 hover:bg-emerald-700 animate-pulse'
+                : 'bg-blue-600 hover:bg-blue-700'
+            }`}
           >
-            <span>✓</span> Xác nhận phân công
+            <span>✓</span> {assignMode === 'approve' ? 'XÁC NHẬN PHÂN CÔNG & DUYỆT ĐƠN XE' : 'CẬP NHẬT PHÂN CÔNG KTV'}
           </button>
         </div>
       </div>

@@ -205,18 +205,27 @@ namespace CrmBackend.Controllers
             var cleanPlate = dto.BienSoXe.Trim().ToUpper();
 
             // Kiểm tra trùng biển số xe khác trong DB (chỉ kiểm tra khi là biển số hợp lệ, bỏ qua 'Chưa có biển số')
+            // Bỏ qua các bản ghi của cùng khách hàng để không gây xung đột khi khách sở hữu nhiều xe hoặc bản ghi trùng
             if (cleanPlate != "CHƯA CÓ BIỂN SỐ" && !cleanPlate.Contains("CHƯA CÓ") && !cleanPlate.Contains("CHUA CO"))
             {
-                var checkSql = "SELECT COUNT(1) FROM XE_KHACH_HANG WHERE UPPER(LTRIM(RTRIM(BienSoXe))) = @BienSoXe AND BienSoXe != N'Chưa có biển số' AND MaXeSoHuu != @MaXeSoHuu";
+                var checkSql = @"SELECT COUNT(1) FROM XE_KHACH_HANG 
+                                 WHERE UPPER(LTRIM(RTRIM(BienSoXe))) = @BienSoXe 
+                                 AND BienSoXe != N'Chưa có biển số' 
+                                 AND MaXeSoHuu != @MaXeSoHuu
+                                 AND (MaKH IS NULL OR MaKH != (SELECT TOP 1 ISNULL(MaKH, -1) FROM XE_KHACH_HANG WHERE MaXeSoHuu = @MaXeSoHuu))";
                 var exists = await _db.ExecuteScalarAsync<int>(checkSql, new { BienSoXe = cleanPlate, MaXeSoHuu = maXeSoHuu });
                 if (exists > 0)
-                    return BadRequest(new { message = "Biển số xe này đã tồn tại trong hệ thống!" });
+                    return BadRequest(new { message = "Biển số xe này đã tồn tại trong hệ thống của khách hàng khác!" });
             }
 
             var sql = @"
+                DECLARE @TargetVin NVARCHAR(100);
+                SELECT TOP 1 @TargetVin = SoKhung FROM XE_KHACH_HANG WHERE MaXeSoHuu = @MaXeSoHuu;
+
                 UPDATE XE_KHACH_HANG 
                 SET BienSoXe = @BienSoXe
-                WHERE MaXeSoHuu = @MaXeSoHuu";
+                WHERE MaXeSoHuu = @MaXeSoHuu
+                   OR (@TargetVin IS NOT NULL AND LTRIM(RTRIM(@TargetVin)) != '' AND UPPER(LTRIM(RTRIM(SoKhung))) = UPPER(LTRIM(RTRIM(@TargetVin))));";
 
             var rows = await _db.ExecuteAsync(sql, new { MaXeSoHuu = maXeSoHuu, BienSoXe = cleanPlate });
             if (rows == 0) return NotFound(new { message = "Không tìm thấy xe để duyệt biển số" });

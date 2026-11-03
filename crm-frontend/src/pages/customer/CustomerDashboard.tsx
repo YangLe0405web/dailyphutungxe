@@ -1258,6 +1258,8 @@ export default function CustomerDashboard({
       try {
         sessionStorage.setItem('crm_view_vehicle_name', vehicleName);
         if (vehicleId) sessionStorage.setItem('crm_view_vehicle_id', vehicleId);
+        const resolvedImg = (f as any).productImage || (f as any).image || matchedVehicle?.hinhAnh || getVehicleCatalogImage(vehicleName);
+        if (resolvedImg) sessionStorage.setItem('crm_view_vehicle_image', resolvedImg);
       } catch {}
 
       if (onNavigateToShowroom) {
@@ -1813,22 +1815,60 @@ export default function CustomerDashboard({
           }
         });
 
-        // Chống hiển thị trùng lặp phương tiện của khách hàng (deduplication)
-        const seenV = new Set<string>();
-        const dedupedVList = vList.filter(v => {
-          const plate = (v.bienSo || v.bienSoChoDuyet || '').trim().toUpperCase();
-          const name = (v.tenXe || '').trim().toUpperCase();
-          const color = (v.mauSac || '').trim().toUpperCase();
-          const vin = (v.soKhung || '').trim().toUpperCase();
-          const key = vin
-            ? `VIN_${vin}`
-            : (plate && plate !== 'CHƯA CÓ BIỂN SỐ' && !plate.includes('CHUA CO'))
-            ? `PLATE_${plate}`
-            : `NAME_${name}_${color}`;
-          if (seenV.has(key)) return false;
-          seenV.add(key);
-          return true;
+        // Chống hiển thị trùng lặp phương tiện của khách hàng (deduplication & merge)
+        const isNoPlate = (p?: string) => !p || p === 'Chưa có biển số' || p.includes('Chưa có') || p.startsWith('TAM-');
+        // Chuẩn hóa tên dòng xe cốt lõi (loại bỏ màu sắc / năm / khoảng trắng thừa)
+        const getCleanModelKey = (v: Vehicle): string => {
+          const rawName = (v.tenXe || '')
+            .toLowerCase()
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            .replace(/\b(abs|cbs|smartkey|the thao|dac biet|tieu chuan|cao cap|naked bike|scrambler|hybrid|202\d)\b/gi, '')
+            .replace(/[^a-z0-9]/g, '');
+          return rawName;
+        };
+
+        const mergedVehicleMap = new Map<string, Vehicle>();
+        vList.forEach(v => {
+          const plate = (v.bienSo || '').trim().toUpperCase();
+          const proposedPlate = (v.bienSoChoDuyet || '').trim().toUpperCase();
+          const cleanModelKey = getCleanModelKey(v);
+          const hasRealPlate = plate && plate !== 'CHƯA CÓ BIỂN SỐ' && !plate.includes('CHUA CO') && !plate.startsWith('TAM-');
+          
+          // Khóa phân nhóm: Nếu xe đã có biển số thực tế riêng biệt thì dùng biển số, ngược lại nhóm theo dòng xe cốt lõi của khách
+          const groupKey = hasRealPlate ? `PLATE_${plate}` : `MODEL_${cleanModelKey}`;
+
+          if (!mergedVehicleMap.has(groupKey)) {
+            mergedVehicleMap.set(groupKey, { ...v });
+          } else {
+            const existing = mergedVehicleMap.get(groupKey)!;
+            const choosePlate = (hasRealPlate ? plate : (existing.bienSo && !isNoPlate(existing.bienSo) ? existing.bienSo : v.bienSo));
+            const chooseProposed = proposedPlate || existing.bienSoChoDuyet;
+            const chooseCaVet = v.anhCaVet || existing.anhCaVet;
+            
+            // Ưu tiên trạng thái duyệt: DaDuyet > ChoDuyet > ChoCapNhat
+            let chooseStatus = existing.trangThaiDuyetBienSo;
+            if (v.trangThaiDuyetBienSo === 'DaDuyet' || existing.trangThaiDuyetBienSo === 'DaDuyet') {
+              chooseStatus = 'DaDuyet';
+            } else if (v.trangThaiDuyetBienSo === 'ChoDuyet' || existing.trangThaiDuyetBienSo === 'ChoDuyet' || chooseProposed) {
+              chooseStatus = 'ChoDuyet';
+            }
+
+            mergedVehicleMap.set(groupKey, {
+              ...existing,
+              ...v,
+              bienSo: choosePlate,
+              bienSoChoDuyet: chooseStatus === 'DaDuyet' ? undefined : chooseProposed,
+              anhCaVet: chooseCaVet,
+              trangThaiDuyetBienSo: chooseStatus,
+              trangThaiDuyet: 'DaDuyet',
+              id: existing.bienSoChoDuyet || (existing.bienSo && !isNoPlate(existing.bienSo)) ? existing.id : v.id,
+              soKhung: existing.soKhung || v.soKhung,
+              soMay: existing.soMay || v.soMay,
+            });
+          }
         });
+
+        const dedupedVList = Array.from(mergedVehicleMap.values());
 
         // Tự động cấp bảo hiểm cho xe mua từ Showroom nếu chưa có hợp đồng trong danh sách
         try {
@@ -5138,7 +5178,25 @@ export default function CustomerDashboard({
                                   <div className="text-xs text-zinc-400">{item.subTitle}</div>
                                 </div>
                               </div>
-                              <button
+                              <div className="flex items-center gap-2 flex-wrap shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => handleViewReviewProduct({
+                                    productName: item.title,
+                                    productType: item.type,
+                                    productId: item.productId,
+                                    orderId: item.orderId,
+                                    productImage: item.image,
+                                    image: item.image,
+                                    xeDangDung: item.title,
+                                  } as any)}
+                                  className="px-3.5 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white border border-zinc-700 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+                                  title="Xem chi tiết thông tin và thông số kỹ thuật sản phẩm"
+                                >
+                                  <span>🔍</span>
+                                  <span>Xem sản phẩm</span>
+                                </button>
+  <button
                                 type="button"
                                 onClick={() => {
                                   let pId = item.productId || item.orderId;
@@ -5172,6 +5230,7 @@ export default function CustomerDashboard({
                               >
                                 VIẾT ĐÁNH GIÁ (5★)
                               </button>
+                              </div>
                             </div>
                           );
                         })
@@ -7238,12 +7297,51 @@ export default function CustomerDashboard({
                   <strong className="text-red-400 font-mono text-sm">📅 {selectedApptDetail.ngayHen} lúc {selectedApptDetail.gioHen}</strong>
                 </div>
                 <div className="sm:col-span-2">
-                  <span className="text-zinc-500 block text-[11px]">Địa điểm tiếp nhận:</span>
-                  <span className="text-zinc-300">Showroom & Trung tâm Dịch vụ Motoshop (08:00 - 17:00, Thứ 2 - Thứ 7)</span>
+                  <span className="text-zinc-500 block text-[11px]">Địa điểm tiếp nhận / Bàn giao xe:</span>
+                  {(() => {
+                    const matchedOrder = myOrders.find(o =>
+                      (selectedApptDetail.maDonHangXe && (o.id === selectedApptDetail.maDonHangXe || o.id.replace(/\D/g, '') === selectedApptDetail.maDonHangXe.replace(/\D/g, ''))) ||
+                      (selectedApptDetail.tenXe && o.thongTinXe?.tenXe && (
+                        o.thongTinXe.tenXe.toLowerCase().includes(selectedApptDetail.tenXe.toLowerCase()) ||
+                        selectedApptDetail.tenXe.toLowerCase().includes(o.thongTinXe.tenXe.toLowerCase())
+                      ))
+                    );
+                    const isHomeDel = Boolean(
+                      matchedOrder?.thongTinXe?.hinhThucGiao === 'HomeDelivery' ||
+                      (matchedOrder?.ghiChu && matchedOrder.ghiChu.includes('GIAO TẬN NƠI')) ||
+                      (selectedApptDetail?.ghiChu && selectedApptDetail.ghiChu.includes('GIAO TẬN NƠI'))
+                    );
+                    const delAddr = isHomeDel
+                      ? (matchedOrder?.diaChiGiao || (matchedOrder?.thongTinXe as any)?.diaChiGiao || currentCustomer?.diaChi || 'Giao tận nơi theo địa chỉ khách hàng')
+                      : 'Showroom & Trung tâm Dịch vụ Motoshop (123 Nguyễn Văn Cừ, Quận 5, TP.HCM)';
+                    return (
+                      <span className="text-zinc-200 font-medium">
+                        {isHomeDel ? '🚚 Giao tận nơi: ' : '🏢 Tại showroom: '}
+                        <strong className="text-white">{delAddr}</strong>
+                      </span>
+                    );
+                  })()}
                 </div>
                 <div className="sm:col-span-2">
-                  <span className="text-zinc-500 block text-[11px]">Kỹ thuật viên tiếp nhận:</span>
-                  <span className="text-zinc-200 font-mono font-semibold">{selectedApptDetail.nhanVienPhuTrach || 'Đang điều phối kỹ thuật viên'}</span>
+                  <span className="text-zinc-500 block text-[11px]">Kỹ thuật viên phụ trách:</span>
+                  {(() => {
+                    const matchedOrder = myOrders.find(o =>
+                      (selectedApptDetail.maDonHangXe && (o.id === selectedApptDetail.maDonHangXe || o.id.replace(/\D/g, '') === selectedApptDetail.maDonHangXe.replace(/\D/g, ''))) ||
+                      (selectedApptDetail.tenXe && o.thongTinXe?.tenXe && (
+                        o.thongTinXe.tenXe.toLowerCase().includes(selectedApptDetail.tenXe.toLowerCase()) ||
+                        selectedApptDetail.tenXe.toLowerCase().includes(o.thongTinXe.tenXe.toLowerCase())
+                      ))
+                    );
+                    const resolvedKtv = selectedApptDetail.nhanVienPhuTrach ||
+                      matchedOrder?.tenKTV ||
+                      (matchedOrder?.thongTinXe as any)?.ktvPhuTrach ||
+                      'Trần Kỹ Thuật (KTV Phụ trách)';
+                    return (
+                      <span className="text-emerald-400 font-mono font-bold bg-emerald-950/60 border border-emerald-800/60 px-2 py-0.5 rounded inline-block mt-0.5">
+                        🔧 {resolvedKtv}
+                      </span>
+                    );
+                  })()}
                 </div>
               </div>
             </div>
@@ -7445,40 +7543,90 @@ export default function CustomerDashboard({
           docCode = `#BB-BGX-${appt.id}`;
           docBadge = '✓ ĐÃ BÀN GIAO XE MỚI';
           customerSignLabel = 'KHÁCH HÀNG NHẬN XE';
-          staffSignLabel = 'ĐẠI DIỆN SHOWROOM BÀN GIAO';
-          staffRole = 'Nhân viên Bàn giao & CSKH Showroom';
+          staffSignLabel = 'ĐẠI DIỆN SHOWROOM & KTV BÀN GIAO';
+
+          const assignedKtv = matchedOrder?.tenKTV || (matchedOrder?.thongTinXe as any)?.ktvPhuTrach || appt.nhanVienPhuTrach || 'Trần Kỹ Thuật';
+          staffRole = `KTV ${assignedKtv} (Bộ phận Kỹ thuật & Bàn giao)`;
 
           displayVehicleName = appt.tenXe || matchedOrder?.thongTinXe?.tenXe || 'Xe máy mới';
           displayBienSo = appt.bienSo || ((matchedOrder as any)?.hinhThucNhanBien === 'Showroom' ? 'Bấm biển tại Showroom' : 'Chưa bấm biển');
           displayVIN = appt.soKhungVIN || matchedOrder?.thongTinXe?.soKhungVIN || (matchedOrder?.thongTinXe as any)?.soKhung || 'RLCHJ4409PY024891';
           displaySoMay = appt.soMay || matchedOrder?.thongTinXe?.soMay || 'JF05E-1284950';
 
-          const vehiclePrice = matchedOrder?.tongTien || 45000000;
-          const isPaidFull = matchedOrder?.trangThaiThanhToan === 'DaThanhToan' || matchedOrder?.trangThai === 'HoanThanh' || (matchedOrder as any)?.hinhThucThanhToan === 'FullOnline' || matchedOrder?.phuongThucThanhToan === 'ChuyenKhoan';
-          const depositAmount = 2000000;
-          const remaining = isPaidFull ? 0 : Math.max(0, vehiclePrice - depositAmount);
+          const fullRollingPrice = matchedOrder?.thongTinXe?.tongGiaTri ||
+            (matchedOrder?.thongTinXe?.giaNiemYet ? (
+              (matchedOrder.thongTinXe.giaNiemYet || 0) +
+              (matchedOrder.thongTinXe.phiTruocBa || 0) +
+              (matchedOrder.thongTinXe.phiDangKyBienSo || 0) +
+              (matchedOrder.thongTinXe.phiBaoHiem || 0)
+            ) : 0) ||
+            (matchedOrder?.tongTien && matchedOrder.tongTien > 10000000 ? matchedOrder.tongTien : 0) ||
+            45000000;
+
+          const isDepositOrder = (matchedOrder as any)?.trangThaiThanhToan === 'DaCoc' ||
+            Boolean(matchedOrder?.thongTinXe?.soTienDatCoc) ||
+            (matchedOrder?.tongTien === 2000000) ||
+            (matchedOrder?.ghiChu && matchedOrder.ghiChu.includes('Đã cọc 2.000.000'));
+
+          const depositAmount = isDepositOrder
+            ? (matchedOrder?.thongTinXe?.soTienDatCoc || 2000000)
+            : 0;
+
+          const isPaidFull = !isDepositOrder ||
+            matchedOrder?.trangThaiThanhToan === 'DaThanhToan' ||
+            matchedOrder?.trangThai === 'HoanThanh' ||
+            matchedOrder?.thongTinXe?.soTienConLai === 0 ||
+            (matchedOrder as any)?.daThanhToan100 === true;
+
+          const remaining = isPaidFull
+            ? 0
+            : (matchedOrder?.thongTinXe?.soTienConLai !== undefined
+                ? matchedOrder.thongTinXe.soTienConLai
+                : Math.max(0, fullRollingPrice - depositAmount));
 
           totalPaymentText = isPaidFull
-            ? `${formatVND(vehiclePrice)} (ĐÃ THANH TOÁN 100% ONLINE)`
-            : `${formatVND(vehiclePrice)} (ĐÃ CỌC: ${formatVND(depositAmount)} - THU NỐT TẠI QUẦY: ${formatVND(remaining)})`;
+            ? `${formatVND(fullRollingPrice)} (ĐÃ THANH TOÁN 100% ONLINE)`
+            : `${formatVND(fullRollingPrice)} (ĐÃ CỌC: ${formatVND(depositAmount)} - CẦN THU NỐT: ${formatVND(remaining)})`;
 
           invoiceNote = isPaidFull
-            ? 'Khách hàng đã hoàn tất thanh toán 100% giá trị xe trước khi nhận xe. Số tiền thu tại quầy: 0 đ.'
-            : `Khách hàng đã đặt cọc trước ${formatVND(depositAmount)}. Số tiền thu nốt tại quầy khi nhận xe: ${formatVND(remaining)}.`;
+            ? `Khách hàng đã hoàn tất thanh toán 100% giá lăn bánh của xe (${formatVND(fullRollingPrice)}). Số tiền thu khi nhận xe: 0 đ.`
+            : `Khách hàng đã đặt cọc trước ${formatVND(depositAmount)} online. Số tiền còn lại thu nốt khi bàn giao xe: ${formatVND(remaining)}.`;
 
           docItems = [
             {
               stt: '01',
               name: `Bàn giao xe máy mới: ${displayVehicleName}`,
-              desc: `Màu sắc: ${matchedOrder?.thongTinXe?.mauSac || appt.mauXe || 'Tiêu chuẩn'} | Số máy: ${displaySoMay} | Số khung (VIN): ${displayVIN}.`,
+              desc: `Màu sắc: ${matchedOrder?.thongTinXe?.mauSac || appt.mauXe || 'Tiêu chuẩn'} | Số máy: ${displaySoMay} | Số khung (VIN): ${displayVIN}. Giá trọn gói lăn bánh.`,
               unit: 'Chiếc',
               qty: 1,
-              priceText: formatVND(vehiclePrice),
-              totalText: formatVND(vehiclePrice),
+              priceText: formatVND(fullRollingPrice),
+              totalText: formatVND(fullRollingPrice),
               isFree: false
             },
+            ...(isDepositOrder ? [
+              {
+                stt: '02',
+                name: 'Khoản tiền đã đặt cọc trước online',
+                desc: 'Đã thanh toán cọc thành công qua chuyển khoản online khi đặt xe.',
+                unit: 'Đợt',
+                qty: 1,
+                priceText: `- ${formatVND(depositAmount)}`,
+                totalText: `- ${formatVND(depositAmount)}`,
+                isFree: false
+              },
+              {
+                stt: '03',
+                name: 'Số tiền còn lại cần thanh toán khi bàn giao xe',
+                desc: isPaidFull ? 'Đã hoàn tất thanh toán đủ 100%.' : 'Thanh toán trực tiếp tại quầy hoặc thu hộ khi giao xe.',
+                unit: 'Đợt',
+                qty: 1,
+                priceText: formatVND(remaining),
+                totalText: formatVND(remaining),
+                isFree: false
+              }
+            ] : []),
             {
-              stt: '02',
+              stt: isDepositOrder ? '04' : '02',
               name: 'Gói quà tặng bàn giao xe mới Motoshop VIP',
               desc: '01 Nón bảo hiểm Motoshop cao cấp, 01 Áo mưa chính hãng, 01 Bộ dụng cụ tiêu chuẩn và móc khóa da lưu niệm.',
               unit: 'Bộ',
@@ -7488,7 +7636,7 @@ export default function CustomerDashboard({
               isFree: true
             },
             {
-              stt: '03',
+              stt: isDepositOrder ? '05' : '03',
               name: 'Hồ sơ pháp lý xe & Sổ bảo hành điện tử chính hãng',
               desc: 'Sổ bảo hành chính hãng 3 năm hoặc 30.000 km, Phiếu xuất xưởng, Hóa đơn GTGT và Giấy hẹn nhận biển số.',
               unit: 'Bộ',
@@ -7831,6 +7979,28 @@ export default function CustomerDashboard({
                     <span className="text-zinc-400 print:text-zinc-600">Mã khách hàng: </span>
                     <span className="text-zinc-300 print:text-zinc-700 font-mono">{appt.customerId || currentCustomer?.id}</span>
                   </div>
+                  {(() => {
+                    const isHomeDel = Boolean(
+                      matchedOrder?.thongTinXe?.hinhThucGiao === 'HomeDelivery' ||
+                      (matchedOrder?.ghiChu && matchedOrder.ghiChu.includes('GIAO TẬN NƠI')) ||
+                      (appt?.ghiChu && appt.ghiChu.includes('GIAO TẬN NƠI'))
+                    );
+                    const delAddr = isHomeDel
+                      ? (matchedOrder?.diaChiGiao || (matchedOrder?.thongTinXe as any)?.diaChiGiao || currentCustomer?.diaChi || 'Địa chỉ khách hàng yêu cầu giao tận nơi')
+                      : 'Showroom Motoshop - 123 Nguyễn Văn Cừ, Quận 5, TP. Hồ Chí Minh';
+                    return (
+                      <>
+                        <div>
+                          <span className="text-zinc-400 print:text-zinc-600">Hình thức nhận xe: </span>
+                          <strong className="text-white print:text-black">{isHomeDel ? '🚚 Giao xe tận nơi' : '🏢 Nhận tại Showroom'}</strong>
+                        </div>
+                        <div>
+                          <span className="text-zinc-400 print:text-zinc-600">Địa chỉ giao/nhận xe: </span>
+                          <strong className="text-white print:text-black">{delAddr}</strong>
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
 
                 <div className="space-y-1.5">

@@ -87,7 +87,7 @@ export const SHOWROOM_EXT_PACKAGES: ShowroomExtPackage[] = [
     reason: 'Không áp dụng cho dòng xe tay ga SH',
   },
 ];
-import { warrantyApi, customerApi, vehicleApi } from '../../services/api';
+import { warrantyApi, customerApi, vehicleApi, staffApi } from '../../services/api';
 import { matchVietnameseSearch } from '../../utils/vietnameseSearch';
 
 // Danh mục phụ tùng tiêu chuẩn theo Ảnh 1 (YCBH05)
@@ -125,7 +125,8 @@ export const WarrantyPage: React.FC = () => {
   const [extensionList, setExtensionList] = useState<WarrantyExtensionTransaction[]>(() => warrantyApi.getExtensionTransactions());
   const [extSearchTerm, setExtSearchTerm] = useState('');
   const [extSourceFilter, setExtSourceFilter] = useState<'TatCa' | 'TrucTuyen' | 'TaiShowroom'>('TatCa');
-  const [extTimeFilter, setExtTimeFilter] = useState<'ThangNay' | '30Ngay'>('ThangNay');
+  const [extTimeFilter, setExtTimeFilter] = useState<'ThangNay' | '30Ngay' | 'NgayCoDinh'>('ThangNay');
+  const [extCustomDate, setExtCustomDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
   const [extCurrentPage, setExtCurrentPage] = useState(1);
   const extPageSize = 8;
 
@@ -218,7 +219,17 @@ export const WarrantyPage: React.FC = () => {
 
   const [claimSearchTerm, setClaimSearchTerm] = useState('');
   const [claimStatusFilter, setClaimStatusFilter] = useState<string>('TatCa');
-  const [claimTimeFilter, setClaimTimeFilter] = useState<'ThangNay' | '30Ngay'>('ThangNay');
+  const [claimTimeFilter, setClaimTimeFilter] = useState<'ThangNay' | '30Ngay' | 'NgayCoDinh'>('ThangNay');
+  const [claimCustomDate, setClaimCustomDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [allStaffList, setAllStaffList] = useState<string[]>(() => mockStaffAccounts.map(s => s.hoTen));
+
+  useEffect(() => {
+    staffApi.getAll().then(data => {
+      if (Array.isArray(data) && data.length > 0) {
+        setAllStaffList(data.map(s => s.hoTen));
+      }
+    }).catch(() => {});
+  }, []);
   const [claimStaffFilter, setClaimStaffFilter] = useState<string>('TatCa');
   const [claimCurrentPage, setClaimCurrentPage] = useState(1);
   const claimPageSize = 8;
@@ -356,6 +367,15 @@ export const WarrantyPage: React.FC = () => {
   const filteredExtensions = useMemo(() => {
     return extensionList.filter(item => {
       if (extSourceFilter !== 'TatCa' && item.nguon !== extSourceFilter) return false;
+      if (extTimeFilter === 'NgayCoDinh' && extCustomDate) {
+        const rawDate = (item as any).thoiGianThanhToan || (item as any).ngay || '';
+        if (rawDate && !rawDate.includes(extCustomDate)) {
+          // So khớp cả định dạng YYYY-MM-DD và DD/MM/YYYY
+          const parts = extCustomDate.split('-');
+          const vnDate = `${parts[2]}/${parts[1]}/${parts[0]}`;
+          if (!rawDate.includes(vnDate)) return false;
+        }
+      }
       if (extSearchTerm.trim()) {
         const match =
           matchVietnameseSearch(item.id, extSearchTerm) ||
@@ -367,7 +387,7 @@ export const WarrantyPage: React.FC = () => {
       }
       return true;
     });
-  }, [extensionList, extSourceFilter, extSearchTerm]);
+  }, [extensionList, extSourceFilter, extTimeFilter, extCustomDate, extSearchTerm]);
 
   const extTotalPages = Math.max(1, Math.ceil(filteredExtensions.length / extPageSize));
   const paginatedExtensions = filteredExtensions.slice(
@@ -465,6 +485,10 @@ export const WarrantyPage: React.FC = () => {
     return claimsList.filter(item => {
       if (claimStatusFilter !== 'TatCa' && item.trangThai !== claimStatusFilter) return false;
       if (claimStaffFilter !== 'TatCa' && item.nhanVienPhuTrach !== claimStaffFilter) return false;
+      if (claimTimeFilter === 'NgayCoDinh' && claimCustomDate) {
+        const rawDate = item.ngayGui ? item.ngayGui.split('T')[0] : '';
+        if (rawDate !== claimCustomDate) return false;
+      }
       if (claimSearchTerm.trim()) {
         const match =
           matchVietnameseSearch(item.id, claimSearchTerm) ||
@@ -476,7 +500,7 @@ export const WarrantyPage: React.FC = () => {
       }
       return true;
     });
-  }, [claimsList, claimStatusFilter, claimStaffFilter, claimSearchTerm]);
+  }, [claimsList, claimStatusFilter, claimStaffFilter, claimTimeFilter, claimCustomDate, claimSearchTerm]);
 
   const claimTotalPages = Math.max(1, Math.ceil(filteredClaims.length / claimPageSize));
   const paginatedClaims = filteredClaims.slice(
@@ -495,16 +519,21 @@ export const WarrantyPage: React.FC = () => {
     };
   }, [claimsList]);
 
-  // Danh sách nhân viên phụ trách để filter
+  // Danh sách nhân viên phụ trách để filter: hiển thị đầy đủ tất cả nhân viên từ nguồn dữ liệu
   const staffList = useMemo(() => {
     const set = new Set<string>();
+    // 1. Thêm toàn bộ nhân viên từ nguồn dữ liệu nhân sự hệ thống
+    allStaffList.forEach(name => {
+      if (name && !name.includes('Từ chối')) set.add(name);
+    });
+    // 2. Thêm nhân viên có trong danh sách yêu cầu thực tế
     claimsList.forEach(c => {
       if (c.nhanVienPhuTrach && !c.nhanVienPhuTrach.includes('Từ chối')) {
         set.add(c.nhanVienPhuTrach);
       }
     });
     return Array.from(set);
-  }, [claimsList]);
+  }, [allStaffList, claimsList]);
 
   // Xác nhận lịch hẹn yêu cầu bảo hành từ bảng & gửi lịch về cho khách hàng
   const handleConfirmAppointment = async (claim: AdminWarrantyClaim) => {
@@ -3025,17 +3054,21 @@ export const WarrantyPage: React.FC = () => {
                   </div>
 
                   {/* Thời gian */}
-                  <div className="flex items-center gap-1.5 text-xs">
+                  <div className="flex items-center gap-1.5 text-xs flex-wrap">
                     <span className="text-zinc-500 font-medium">Thời gian:</span>
                     <div className="flex items-center gap-1">
                       {[
                         { key: 'ThangNay', label: 'Tháng này' },
                         { key: '30Ngay', label: '30 ngày qua' },
+                        { key: 'NgayCoDinh', label: 'Chọn ngày' },
                       ].map(t => (
                         <button
                           key={t.key}
                           type="button"
-                          onClick={() => setExtTimeFilter(t.key as any)}
+                          onClick={() => {
+                            setExtTimeFilter(t.key as any);
+                            setExtCurrentPage(1);
+                          }}
                           className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
                             extTimeFilter === t.key
                               ? 'bg-zinc-100 text-zinc-900 border border-zinc-300'
@@ -3046,6 +3079,17 @@ export const WarrantyPage: React.FC = () => {
                         </button>
                       ))}
                     </div>
+                    {extTimeFilter === 'NgayCoDinh' && (
+                      <input
+                        type="date"
+                        value={extCustomDate}
+                        onChange={e => {
+                          setExtCustomDate(e.target.value);
+                          setExtCurrentPage(1);
+                        }}
+                        className="p-1 px-2 rounded-lg border border-zinc-300 text-xs font-bold text-zinc-800 bg-white"
+                      />
+                    )}
                   </div>
                 </div>
 
@@ -3301,17 +3345,21 @@ export const WarrantyPage: React.FC = () => {
                   </div>
 
                   {/* Thời gian */}
-                  <div className="flex items-center gap-1.5 text-xs">
+                  <div className="flex items-center gap-1.5 text-xs flex-wrap">
                     <span className="text-zinc-500 font-medium">Thời gian:</span>
                     <div className="flex items-center gap-1">
                       {[
                         { key: 'ThangNay', label: 'Tháng này' },
                         { key: '30Ngay', label: '30 ngày qua' },
+                        { key: 'NgayCoDinh', label: 'Chọn ngày' },
                       ].map(t => (
                         <button
                           key={t.key}
                           type="button"
-                          onClick={() => setClaimTimeFilter(t.key as any)}
+                          onClick={() => {
+                            setClaimTimeFilter(t.key as any);
+                            setClaimCurrentPage(1);
+                          }}
                           className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
                             claimTimeFilter === t.key
                               ? 'bg-zinc-100 text-zinc-900 border border-zinc-300'
@@ -3322,6 +3370,17 @@ export const WarrantyPage: React.FC = () => {
                         </button>
                       ))}
                     </div>
+                    {claimTimeFilter === 'NgayCoDinh' && (
+                      <input
+                        type="date"
+                        value={claimCustomDate}
+                        onChange={e => {
+                          setClaimCustomDate(e.target.value);
+                          setClaimCurrentPage(1);
+                        }}
+                        className="p-1 px-2 rounded-lg border border-zinc-300 text-xs font-bold text-zinc-800 bg-white"
+                      />
+                    )}
                   </div>
 
                   {/* Nhân viên phụ trách */}
