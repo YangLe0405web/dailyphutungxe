@@ -13,6 +13,7 @@ import {
 import { insuranceApi, customerApi, vehicleApi } from '../../services/api';
 import { matchVietnameseSearch } from '../../utils/vietnameseSearch';
 import RenewInsuranceModal from '../../components/customer/RenewInsuranceModal';
+import InsuranceCertificateModal from '../../components/shared/InsuranceCertificateModal';
 
 export default function InsurancePage() {
   const [contracts, setContracts] = useState<InsuranceContract[]>([]);
@@ -1084,162 +1085,11 @@ export default function InsurancePage() {
       {/* ── MODAL XEM CHI TIẾT & TẢI GCN ĐIỆN TỬ PDF (BHX04) ── */}
       {/* ────────────────────────────────────────────────────────── */}
       {viewingContract && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/80 backdrop-blur-xs print:p-0 print:bg-white print:fixed print:inset-0">
-          <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[92vh] overflow-y-auto shadow-2xl border border-zinc-200 p-6 sm:p-8 space-y-6 print:border-none print:shadow-none print:max-w-none print:p-6">
-            {/* Top Toolbar (Hide during print) */}
-            <div className="flex items-center justify-between border-b border-zinc-100 pb-3 print:hidden">
-              <div className="flex items-center gap-2">
-                <span className="text-red-700 font-mono font-bold text-xs">HỢP ĐỒNG #{viewingContract.id}</span>
-                <span className="text-zinc-400 font-mono">|</span>
-                <span className="text-zinc-600 font-mono text-xs font-semibold">{viewingContract.soGCN}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handlePrintCertificate}
-                  className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-zinc-900 text-white hover:bg-zinc-800 transition shadow flex items-center gap-1.5 cursor-pointer"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <polyline points="6 9 6 2 18 2 18 9" />
-                    <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
-                    <rect x="6" y="14" width="12" height="8" />
-                  </svg>
-                  <span>IN / TẢI GIẤY CHỨNG NHẬN (PDF)</span>
-                </button>
-                <button
-                  onClick={() => setViewingContract(null)}
-                  className="w-8 h-8 rounded-full bg-zinc-100 text-zinc-500 hover:text-zinc-900 flex items-center justify-center font-bold text-sm cursor-pointer"
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-
-            {/* MẪU GIẤY CHỨNG NHẬN BẢO HIỂM ĐIỆN TỬ CHUẨN */}
-            <div className="border-2 border-red-700/80 rounded-2xl p-6 sm:p-8 relative bg-linear-to-b from-red-50/20 via-white to-red-50/10">
-              {/* Header Quốc hiệu */}
-              <div className="text-center space-y-1 pb-4 border-b border-zinc-200">
-                <div className="text-[11px] font-bold tracking-wider text-zinc-800 uppercase font-sans">
-                  CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM
-                </div>
-                <div className="text-[10px] font-semibold text-zinc-600">Độc lập - Tự do - Hạnh phúc</div>
-                <div className="pt-2">
-                  <div
-                    className="text-lg sm:text-xl font-extrabold text-red-700 uppercase"
-                    style={{ fontFamily: 'var(--font-display)', letterSpacing: '0.04em' }}
-                  >
-                    GIẤY CHỨNG NHẬN BẢO HIỂM XE MÁY ĐIỆN TỬ
-                  </div>
-                  <div className="text-xs text-zinc-500 font-mono mt-0.5">
-                    Số GCN: <strong className="text-zinc-900 font-bold">{viewingContract.soGCN}</strong>
-                  </div>
-                </div>
-              </div>
-
-              {/* Thông tin 4 phần chính */}
-              <div className="py-5 space-y-4 text-xs">
-                {/* 1. ĐƠN VỊ BẢO HIỂM */}
-                <div className="p-3 rounded-xl bg-white border border-zinc-200 shadow-2xs flex items-center justify-between">
-                  <div>
-                    <span className="text-[10px] font-mono text-zinc-400 uppercase font-bold">Đơn vị phát hành:</span>
-                    <div className="font-extrabold text-zinc-900 text-xs sm:text-sm">{viewingContract.nhaBaoHiem}</div>
-                  </div>
-                  <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                    HỢP CHUẨN NĐ 67/2023/NĐ-CP
-                  </span>
-                </div>
-
-                {/* 2. CHỦ XE */}
-                <div className="p-3.5 rounded-xl bg-zinc-50 border border-zinc-200 space-y-1.5 text-black">
-                  <div className="text-[11px] font-bold text-black uppercase font-mono tracking-wider">
-                    I. THÔNG TIN CHỦ PHƯƠNG TIỆN
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-black">
-                    <div>
-                      Họ và tên: <strong className="text-black font-extrabold">{viewingContract.hoTenKH}</strong>
-                    </div>
-                    <div>
-                      Số điện thoại: <strong className="text-black font-mono font-extrabold">{viewingContract.soDienThoai}</strong>
-                    </div>
-                    <div className="sm:col-span-2">
-                      Địa chỉ: <span className="text-black font-medium">{viewingContract.diaChi}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 3. PHƯƠNG TIỆN */}
-                <div className="p-3.5 rounded-xl bg-zinc-50 border border-zinc-200 space-y-1.5 text-black">
-                  <div className="text-[11px] font-bold text-black uppercase font-mono tracking-wider">
-                    II. THÔNG TIN XE ĐƯỢC BẢO HIỂM
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-black">
-                    <div>
-                      Dòng xe: <strong className="text-black font-extrabold">{viewingContract.tenXe}</strong>
-                    </div>
-                    <div>
-                      Biển số đăng ký:{' '}
-                      <strong className="text-red-700 font-mono font-extrabold">{viewingContract.bienSo}</strong>
-                    </div>
-                    <div>
-                      Số khung: <span className="font-mono text-black font-bold">{viewingContract.soKhung}</span>
-                    </div>
-                    <div>
-                      Số máy: <span className="font-mono text-black font-bold">{viewingContract.soMay || 'Theo giấy tờ xe'}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 4. GÓI BẢO HIỂM & THỜI HẠN */}
-                <div className="p-3.5 rounded-xl bg-zinc-50 border border-zinc-200 space-y-2 text-black">
-                  <div className="text-[11px] font-bold text-black uppercase font-mono tracking-wider">
-                    III. NỘI DUNG VÀ THỜI HẠN BẢO HIỂM
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-black">
-                    <div>
-                      Gói bảo hiểm: <strong className="text-black font-extrabold">{viewingContract.tenGoi}</strong>
-                    </div>
-                    <div>
-                      Thời hạn bảo hiểm: <strong className="text-black font-extrabold">{viewingContract.thoiHanNam} năm</strong>
-                    </div>
-                    <div>
-                      Từ ngày: <strong className="text-black font-mono font-bold">{viewingContract.ngayBatDau}</strong>
-                    </div>
-                    <div>
-                      Đến ngày: <strong className="text-black font-mono font-bold">{viewingContract.ngayKetThuc}</strong>
-                    </div>
-                    <div className="sm:col-span-2 flex items-center justify-between pt-1 border-t border-zinc-200">
-                      <span className="font-bold text-black">Tổng phí bảo hiểm đã thanh toán:</span>
-                      <strong className="text-sm font-extrabold text-red-700 font-mono">
-                        {formatVND(viewingContract.phiBaoHiem)}
-                      </strong>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* QR Code & Dấu điện tử xác thực */}
-              <div className="pt-4 border-t border-zinc-200 flex items-center justify-between flex-wrap gap-4 text-center sm:text-left">
-                <div className="flex items-center gap-3">
-                  <div className="w-16 h-16 rounded-xl bg-zinc-900 text-white flex flex-col items-center justify-center p-1 font-mono text-[9px] text-center shadow">
-                    <span className="text-lg">📱</span>
-                    <span>QR CHỨNG NHẬN</span>
-                  </div>
-                  <div className="text-left text-[10px] text-zinc-500">
-                    <div>Quét mã để tra cứu trên Cổng Dịch vụ công</div>
-                    <div className="font-mono font-bold text-zinc-700">Tra cứu: crm.dailyxemay.vn/gcn</div>
-                  </div>
-                </div>
-
-                <div className="text-center sm:text-right">
-                  <div className="text-[10px] text-zinc-500 font-mono">Ngày cấp: {viewingContract.ngayCap}</div>
-                  <div className="text-[11px] font-bold text-red-700 mt-1 uppercase font-serif tracking-wider">
-                    [ĐÃ KÝ ĐIỆN TỬ VÀ ĐÓNG DẤU MỘC SỐ]
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <InsuranceCertificateModal
+          contract={viewingContract}
+          onClose={() => setViewingContract(null)}
+          isAdmin={true}
+        />
       )}
       {/* ────────────────────────────────────────────────────────── */}
       {/* ── MODAL GIA HẠN HỢP ĐỒNG BẢO HIỂM TẠI QUẦY (MOCKUP 2) ── */}
