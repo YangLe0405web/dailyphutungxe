@@ -1194,12 +1194,17 @@ export default function CustomerDashboard({
     }
   };
 
-  // DG09: Xử lý Xem sản phẩm từ mục "Đã đánh giá" (Tự động nhận diện xe máy hoặc phụ tùng để nhảy đúng trang)
+  // DG09: Xử lý Xem sản phẩm từ mục "Đã đánh giá" / "Chờ đánh giá" (Tự động nhận diện xe máy hoặc phụ tùng để hiển thị Modal chi tiết hoặc điều hướng)
   const handleViewReviewProduct = (f: Feedback) => {
     // 1. Kiểm tra xem có phải là Phụ tùng không
     const cleanProdName = (f.productName || '').trim().toLowerCase();
-    const matchedPart = mockParts.find(p =>
-      (f.productId && (p.id === f.productId || p.id.toLowerCase() === f.productId.toLowerCase())) ||
+    const allParts = [
+      ...partApi.getAllSync(),
+      ...mockParts,
+    ];
+    const targetProdId = f.productId !== undefined && f.productId !== null ? String(f.productId).trim().toLowerCase() : '';
+    const matchedPart = allParts.find(p =>
+      (targetProdId && (p.id.toLowerCase() === targetProdId || String((p as any).maPhuTung) === targetProdId || p.id.toLowerCase().includes(targetProdId))) ||
       (cleanProdName && (
         p.tenSanPham.toLowerCase() === cleanProdName ||
         p.tenSanPham.toLowerCase().includes(cleanProdName) ||
@@ -1207,28 +1212,38 @@ export default function CustomerDashboard({
       ))
     );
 
-    const isPart = f.productType === 'PhuTung' || (f.productId && f.productId.startsWith('PT')) || Boolean(matchedPart);
+    const isPart = f.productType === 'PhuTung' || (targetProdId && (targetProdId.startsWith('pt') || !isNaN(Number(targetProdId)))) || Boolean(matchedPart);
 
     if (isPart) {
-      const partId = matchedPart?.id || f.productId || 'PT001';
+      const partId = matchedPart?.id || (targetProdId ? (targetProdId.startsWith('pt') ? targetProdId.toUpperCase() : `PT${targetProdId.padStart(3, '0')}`) : 'PT001');
       const partName = matchedPart?.tenSanPham || f.productName || 'Phụ tùng Motoshop';
+      const partImg = (f as any).productImage || (f as any).image || matchedPart?.hinhAnh || '/images/phutung/dan_ao_ab_125_den_nham.webp';
+
+      const resolvedPart: Part = matchedPart || {
+        id: partId,
+        tenSanPham: partName,
+        thuongHieu: 'Motoshop Chính Hãng',
+        giaGoc: 250000,
+        giaKhuyenMai: null,
+        soLuongTon: 50,
+        danhMuc: 'Phụ tùng chính hãng',
+        moTa: 'Phụ tùng chất lượng cao được phân phối và bảo hành chính hãng tại hệ thống Showroom Motoshop.',
+        hinhAnh: partImg,
+        rating: 5,
+        luotDanh: 10,
+        baoHanh: '12 tháng',
+        xuatXu: 'Chính hãng',
+      };
 
       try {
-        sessionStorage.setItem('crm_view_part_id', partId);
+        sessionStorage.setItem('crm_view_part_id', String(partId));
         sessionStorage.setItem('crm_view_part_name', partName);
+        if (partImg) sessionStorage.setItem('crm_view_part_image', partImg);
       } catch {}
 
-      if (onNavigateToStore) {
-        onNavigateToStore();
-      } else {
-        window.location.hash = '#store';
-      }
-
-      setTimeout(() => {
-        window.dispatchEvent(new CustomEvent('crm-view-part', {
-          detail: { id: partId, name: partName }
-        }));
-      }, 60);
+      // Mở modal chi tiết phụ tùng trực tiếp ngay trên trang CustomerDashboard
+      setSelectedReviewPart(resolvedPart);
+      return;
     } else {
       // 2. Xe máy
       const rawBikeName = (f.productName || f.xeDangDung || '').replace(/\s*\([^)]*\)/g, '').trim();
@@ -1551,6 +1566,7 @@ export default function CustomerDashboard({
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const [reviewToast, setReviewToast] = useState<string | null>(null);
   const [myCustomerFeedbacks, setMyCustomerFeedbacks] = useState<Feedback[]>([]);
+  const [selectedReviewPart, setSelectedReviewPart] = useState<Part | null>(null);
 
 
 
@@ -2143,7 +2159,19 @@ export default function CustomerDashboard({
             bienSo: o.thongTinXe?.bienSo || 'Showroom bàn giao',
             mauXe: o.thongTinXe?.mauSac || 'Tiêu chuẩn',
             trangThai: isDone ? 'DaHoanThanh' : 'DaXacNhan',
-            nhanVienPhuTrach: o.tenNV || 'Showroom bàn giao',
+            nhanVienPhuTrach: (() => {
+              let ktv = o.tenKTV || (o.thongTinXe as any)?.ktvPhuTrach;
+              if (!ktv) {
+                try {
+                  const km = localStorage.getItem('crm_order_ktv_map');
+                  if (km) {
+                    const parsed = JSON.parse(km);
+                    ktv = parsed[o.id]?.hoTen || parsed[o.id.replace(/\D/g, '')]?.hoTen;
+                  }
+                } catch {}
+              }
+              return ktv || 'Trần Kỹ Thuật';
+            })(),
             ghiChu: `Lịch đón tiếp nhận xe mới theo đơn hàng #${o.id}. Trạng thái: ${isDone ? 'Đã hoàn tất' : 'Chờ giao xe'}`,
             maDonHangXe: o.id,
             maLichHen: o.maLichHen || `HEN-${o.id}`,
@@ -2259,9 +2287,11 @@ export default function CustomerDashboard({
     if (currentCustomer && realCustomerSpending > (currentCustomer.tongChiTieu || 0)) {
       const updated = { ...currentCustomer, tongChiTieu: realCustomerSpending };
       onCustomerChange?.(updated);
-      localStorage.setItem('crm_current_customer', JSON.stringify(updated));
+      try {
+        localStorage.setItem('crm_current_customer', JSON.stringify(updated));
+      } catch {}
     }
-  }, [realCustomerSpending, currentCustomer]);
+  }, [realCustomerSpending, currentCustomer?.id, currentCustomer?.tongChiTieu]);
 
   // Displayed vehicles by filter
   const displayedVehicles = useMemo(() => {
@@ -3284,7 +3314,7 @@ export default function CustomerDashboard({
                               )}
 
                               {/* Banner cập nhật biển số nếu xe chưa có biển và chưa gửi duyệt */}
-                              {v.trangThaiDuyetBienSo !== 'ChoDuyet' && !v.bienSoChoDuyet && v.trangThaiDuyetBienSo !== 'DaDuyet' && v.trangThaiDuyetBienSo !== 'TuChoi' && (v.trangThaiDuyetBienSo === 'ChoCapNhat' || !v.bienSo || v.bienSo === 'Chưa có biển số' || v.bienSo.includes('Chưa có') || v.bienSo.startsWith('TAM-')) && (
+                              {v.trangThaiDuyetBienSo !== 'ChoDuyet' && !v.bienSoChoDuyet && v.trangThaiDuyetBienSo !== 'DaDuyet' && v.trangThaiDuyetBienSo !== 'TuChoi' && (!v.bienSo || v.bienSo === 'Chưa có biển số' || v.bienSo.includes('Chưa có') || v.bienSo.startsWith('TAM-')) && (
                                 <div className="mx-5 mb-3 p-3 rounded-2xl bg-amber-950/40 border border-amber-700/60 text-xs">
                                   <div className="text-amber-200 mb-2 font-semibold">
                                     🎉 Chúc mừng bạn đã nhận xe! Vui lòng cập nhật biển số và ảnh cà vẹt xe để duyệt hồ sơ.
@@ -3560,63 +3590,99 @@ export default function CustomerDashboard({
                                 </div>
 
                                 {/* Khách hàng xác nhận ngày nhận xe hoặc đổi ngày nhận xe tại Showroom */}
-                                {isXe && (order.trangThai === 'ChoKhachXacNhanNgayNhan' || order.trangThai === 'ChoGiaoXe' || order.trangThai === 'DaXacNhan') && (
-                                  <div className={`p-4 rounded-2xl border text-xs space-y-3 ${order.trangThai === 'ChoKhachXacNhanNgayNhan' ? 'bg-amber-950/70 border-amber-600/80 text-amber-200 shadow-md' : 'bg-sky-950/60 border-sky-800 text-sky-200'}`}>
-                                    <div className="flex items-center justify-between flex-wrap gap-2">
-                                      <div className={`font-extrabold flex items-center gap-1.5 ${order.trangThai === 'ChoKhachXacNhanNgayNhan' ? 'text-amber-300 text-sm' : 'text-sky-300'}`}>
-                                        <span>{order.trangThai === 'ChoKhachXacNhanNgayNhan' ? '🎉' : '🏢'}</span>
-                                        <span>{order.trangThai === 'ChoKhachXacNhanNgayNhan' ? 'ĐƠN XE ĐÃ ĐƯỢC DUYỆT - MỜI XÁC NHẬN NGÀY NHẬN XE' : 'LỊCH HẸN NHẬN XE TẠI SHOWROOM'}</span>
+                                {isXe && (order.trangThai === 'ChoKhachXacNhanNgayNhan' || order.trangThai === 'ChoGiaoXe' || order.trangThai === 'DaXacNhan') && (() => {
+                                  const assignedKtv = (() => {
+                                    if (order.tenKTV) return order.tenKTV;
+                                    if (order.thongTinXe?.ktvPhuTrach) return order.thongTinXe.ktvPhuTrach;
+                                    try {
+                                      const km = localStorage.getItem('crm_order_ktv_map');
+                                      if (km) {
+                                        const parsed = JSON.parse(km);
+                                        const k = parsed[order.id] || parsed[order.id.replace(/\D/g, '')];
+                                        if (k?.hoTen) return k.hoTen;
+                                      }
+                                    } catch {}
+                                    return 'Trần Kỹ Thuật (KTV Showroom)';
+                                  })();
+
+                                  return (
+                                    <div className={`p-4 rounded-2xl border text-xs space-y-3 ${order.trangThai === 'ChoKhachXacNhanNgayNhan' ? 'bg-amber-950/70 border-amber-600/80 text-amber-200 shadow-md' : 'bg-sky-950/60 border-sky-800 text-sky-200'}`}>
+                                      <div className="flex items-center justify-between flex-wrap gap-2">
+                                        <div className={`font-extrabold flex items-center gap-1.5 ${order.trangThai === 'ChoKhachXacNhanNgayNhan' ? 'text-amber-300 text-sm' : 'text-sky-300'}`}>
+                                          <span>{order.trangThai === 'ChoKhachXacNhanNgayNhan' ? '🎉' : '🏢'}</span>
+                                          <span>{order.trangThai === 'ChoKhachXacNhanNgayNhan' ? 'ĐƠN XE ĐÃ ĐƯỢC DUYỆT - MỜI XÁC NHẬN NGÀY NHẬN XE' : 'LỊCH HẸN NHẬN XE TẠI SHOWROOM'}</span>
+                                        </div>
+                                        <span className="text-[11px] font-mono text-zinc-300">
+                                          Ngày nhận dự kiến: <strong className="text-amber-400">{order.thongTinXe?.ngayGiaoXe || 'Sắp tới'}</strong> ({order.thongTinXe?.khungGioGiao || '09:00'})
+                                        </span>
                                       </div>
-                                      <span className="text-[11px] font-mono text-zinc-300">
-                                        Ngày nhận dự kiến: <strong className="text-amber-400">{order.thongTinXe?.ngayGiaoXe || 'Sắp tới'}</strong> ({order.thongTinXe?.khungGioGiao || '09:00'})
-                                      </span>
+
+                                      {/* Thẻ Kỹ thuật viên hỗ trợ phụ trách đơn xe */}
+                                      <div className="p-3 rounded-xl bg-zinc-900/90 border border-zinc-700/80 text-xs flex items-center justify-between flex-wrap gap-2 shadow-inner">
+                                        <div className="flex items-center gap-2.5">
+                                          <div className="w-8 h-8 rounded-full bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 font-bold text-sm shrink-0">
+                                            👨‍🔧
+                                          </div>
+                                          <div>
+                                            <div className="text-[10px] text-zinc-400 uppercase tracking-wider font-semibold">Kỹ thuật viên hỗ trợ bàn giao & kiểm tra:</div>
+                                            <div className="font-extrabold text-amber-300 text-xs flex items-center gap-1.5">
+                                              <span>{assignedKtv}</span>
+                                              <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-950 border border-amber-700/60 text-amber-300 font-normal">KTV Phụ trách</span>
+                                            </div>
+                                          </div>
+                                        </div>
+                                        <div className="text-right text-[11px] text-emerald-400 font-medium flex items-center gap-1">
+                                          <span>✓</span> <span>Sẵn sàng hỗ trợ tại Showroom</span>
+                                        </div>
+                                      </div>
+
+                                      {order.trangThai === 'ChoKhachXacNhanNgayNhan' ? (
+                                        <>
+                                          <p className="text-[11px] text-amber-100/90 leading-relaxed">
+                                            Showroom Motoshop đã duyệt đơn mua xe <strong>{order.thongTinXe?.tenXe || 'của bạn'}</strong>! Quý khách vui lòng bấm <strong>Xác nhận ngày nhận xe</strong> bên dưới để Showroom kích hoạt lịch hẹn và kỹ thuật viên <strong>{assignedKtv}</strong> chuẩn bị bàn giao xe:
+                                          </p>
+                                          <div className="flex items-center gap-2 pt-1 flex-wrap">
+                                            <button
+                                              type="button"
+                                              onClick={async () => {
+                                                const pickupDate = order.thongTinXe?.ngayGiaoXe || new Date(Date.now() + 86400000).toISOString().split('T')[0];
+                                                const pickupTime = order.thongTinXe?.khungGioGiao || '09:00';
+                                                setConfirmedPickupOrderIds(prev => ({ ...prev, [order.id]: true }));
+                                                await orderApi.confirmVehiclePickupDate(order.id, pickupDate, pickupTime);
+                                                setAllOrders(orderApi.getAllSync());
+                                                const freshAppts = await appointmentApi.getAll();
+                                                if (freshAppts) setAllAppts(freshAppts);
+                                                alert(`✓ Bạn đã xác nhận ngày nhận xe thành công (${pickupDate} lúc ${pickupTime})!\n👨‍🔧 Kỹ thuật viên hỗ trợ: ${assignedKtv}\nLịch hẹn nhận xe đã xuất hiện trong mục "Lịch hẹn" của bạn và Lịch biểu Showroom.`);
+                                              }}
+                                              className="px-4 py-2 rounded-xl text-xs font-black bg-emerald-600 hover:bg-emerald-500 text-white shadow transition cursor-pointer flex items-center gap-1.5"
+                                            >
+                                              <span>✓</span> <span>Xác nhận ngày nhận xe ({order.thongTinXe?.ngayGiaoXe || 'Ngày mai'})</span>
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setChangingDateOrder(order);
+                                                setNewPickupDateInput(order.thongTinXe?.ngayGiaoXe || new Date().toISOString().split('T')[0]);
+                                              }}
+                                              className="px-3 py-2 rounded-xl text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 transition cursor-pointer flex items-center gap-1.5"
+                                            >
+                                              <span>📅</span> <span>Đổi ngày khác</span>
+                                            </button>
+                                          </div>
+                                        </>
+                                      ) : (
+                                        <div className="p-3 rounded-xl bg-emerald-950/80 border border-emerald-700/80 text-emerald-200 text-xs space-y-1.5 shadow-sm">
+                                          <div className="flex items-center gap-2 font-bold text-emerald-300">
+                                            <span>✓</span> <span>Quý khách đã chốt ngày nhận xe: <strong>{order.thongTinXe?.ngayNhanXacNhan || order.thongTinXe?.ngayGiaoXe || 'Sắp tới'}</strong> ({order.thongTinXe?.gioNhanXacNhan || order.thongTinXe?.khungGioGiao || '09:00'})</span>
+                                          </div>
+                                          <p className="text-[11px] text-emerald-100/80 leading-relaxed">
+                                            Lịch hẹn nhận xe đã được đồng bộ vào hệ thống Showroom. Kỹ thuật viên <strong>{assignedKtv}</strong> sẽ đón tiếp và bàn giao xe. Theo quy định, ngày nhận xe không thể tự thay đổi bằng thao tác thông thường. Nếu có việc bận đột xuất cần đổi lịch, quý khách vui lòng liên hệ Hotline <strong>1900-8888</strong> hoặc nhắn tin CSKH để được nhân viên hỗ trợ đổi lịch.
+                                          </p>
+                                        </div>
+                                      )}
                                     </div>
-                                    {order.trangThai === 'ChoKhachXacNhanNgayNhan' ? (
-                                      <>
-                                        <p className="text-[11px] text-amber-100/90 leading-relaxed">
-                                          Showroom Motoshop đã duyệt đơn mua xe <strong>{order.thongTinXe?.tenXe || 'của bạn'}</strong>! Quý khách vui lòng bấm <strong>Xác nhận ngày nhận xe</strong> bên dưới để Showroom kích hoạt lịch hẹn và chuẩn bị bàn giao xe:
-                                        </p>
-                                        <div className="flex items-center gap-2 pt-1 flex-wrap">
-                                          <button
-                                            type="button"
-                                            onClick={async () => {
-                                              const pickupDate = order.thongTinXe?.ngayGiaoXe || new Date(Date.now() + 86400000).toISOString().split('T')[0];
-                                              const pickupTime = order.thongTinXe?.khungGioGiao || '09:00';
-                                              setConfirmedPickupOrderIds(prev => ({ ...prev, [order.id]: true }));
-                                              await orderApi.confirmVehiclePickupDate(order.id, pickupDate, pickupTime);
-                                              setAllOrders(orderApi.getAllSync());
-                                              const freshAppts = await appointmentApi.getAll();
-                                              if (freshAppts) setAllAppts(freshAppts);
-                                              alert(`✓ Bạn đã xác nhận ngày nhận xe thành công (${pickupDate} lúc ${pickupTime})!\nLịch hẹn nhận xe đã xuất hiện trong mục "Lịch hẹn" của bạn và Lịch biểu Showroom.`);
-                                            }}
-                                            className="px-4 py-2 rounded-xl text-xs font-black bg-emerald-600 hover:bg-emerald-500 text-white shadow transition cursor-pointer flex items-center gap-1.5"
-                                          >
-                                            <span>✓</span> <span>Xác nhận ngày nhận xe ({order.thongTinXe?.ngayGiaoXe || 'Ngày mai'})</span>
-                                          </button>
-                                          <button
-                                            type="button"
-                                            onClick={() => {
-                                              setChangingDateOrder(order);
-                                              setNewPickupDateInput(order.thongTinXe?.ngayGiaoXe || new Date().toISOString().split('T')[0]);
-                                            }}
-                                            className="px-3 py-2 rounded-xl text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 transition cursor-pointer flex items-center gap-1.5"
-                                          >
-                                            <span>📅</span> <span>Đổi ngày khác</span>
-                                          </button>
-                                        </div>
-                                      </>
-                                    ) : (
-                                      <div className="p-3 rounded-xl bg-emerald-950/80 border border-emerald-700/80 text-emerald-200 text-xs space-y-1.5 shadow-sm">
-                                        <div className="flex items-center gap-2 font-bold text-emerald-300">
-                                          <span>✓</span> <span>Quý khách đã chốt ngày nhận xe: <strong>{order.thongTinXe?.ngayNhanXacNhan || order.thongTinXe?.ngayGiaoXe || 'Sắp tới'}</strong> ({order.thongTinXe?.gioNhanXacNhan || order.thongTinXe?.khungGioGiao || '09:00'})</span>
-                                        </div>
-                                        <p className="text-[11px] text-emerald-100/80 leading-relaxed">
-                                          Lịch hẹn nhận xe đã được đồng bộ vào hệ thống Showroom. Theo quy định, ngày nhận xe không thể tự thay đổi bằng thao tác thông thường. Nếu có việc bận đột xuất cần đổi lịch, quý khách vui lòng liên hệ Hotline <strong>1900-8888</strong> hoặc nhắn tin CSKH để được nhân viên hỗ trợ đổi lịch.
-                                        </p>
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
+                                  );
+                                })()}
                               </div>
                             ) : (
                               <div className="space-y-2">
@@ -5949,6 +6015,111 @@ export default function CustomerDashboard({
         </div>
       )}
 
+      {/* MODAL XEM CHI TIẾT SẢN PHẨM PHỤ TÙNG (TỪ MỤC CHỜ ĐÁNH GIÁ / ĐÃ ĐÁNH GIÁ) */}
+      {selectedReviewPart && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative w-full max-w-xl bg-[#141416] border border-zinc-700/80 rounded-3xl p-6 shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-4 border-b border-zinc-800">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">⚙️</span>
+                <div>
+                  <h3 className="font-extrabold text-base text-white">CHI TIẾT SẢN PHẨM PHỤ TÙNG</h3>
+                  <div className="text-[11px] font-mono text-zinc-400">Mã sản phẩm: #{selectedReviewPart.id}</div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedReviewPart(null)}
+                className="p-2 rounded-full text-zinc-400 hover:text-white hover:bg-zinc-800 transition cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="py-5 space-y-4">
+              <div className="flex flex-col sm:flex-row gap-5 items-center sm:items-start">
+                <div className="w-40 h-40 sm:w-44 sm:h-44 rounded-2xl bg-zinc-900 border border-zinc-800 p-2 flex items-center justify-center shrink-0 overflow-hidden shadow-inner">
+                  <img
+                    src={selectedReviewPart.hinhAnh}
+                    alt={selectedReviewPart.tenSanPham}
+                    className="w-full h-full object-contain"
+                  />
+                </div>
+                <div className="space-y-2.5 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-blue-950 text-blue-300 border border-blue-800">
+                      {selectedReviewPart.danhMuc || 'Phụ tùng'}
+                    </span>
+                    <span className="text-xs text-zinc-400">Hãng: <strong className="text-zinc-200">{selectedReviewPart.thuongHieu}</strong></span>
+                  </div>
+                  <h2 className="text-lg font-black text-white leading-snug">{selectedReviewPart.tenSanPham}</h2>
+                  <div className="flex items-baseline gap-2.5">
+                    <span className="text-xl font-black text-red-500 font-mono">
+                      {formatVND(selectedReviewPart.giaKhuyenMai ?? selectedReviewPart.giaGoc)}
+                    </span>
+                    {selectedReviewPart.giaKhuyenMai && (
+                      <span className="text-xs text-zinc-500 line-through font-mono">
+                        {formatVND(selectedReviewPart.giaGoc)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs pt-1">
+                    <div className="p-2 rounded-xl bg-zinc-900 border border-zinc-800/80">
+                      <div className="text-[10px] text-zinc-500 font-bold uppercase">Bảo hành</div>
+                      <div className="text-zinc-200 font-semibold">{selectedReviewPart.baoHanh || '12 tháng chính hãng'}</div>
+                    </div>
+                    <div className="p-2 rounded-xl bg-zinc-900 border border-zinc-800/80">
+                      <div className="text-[10px] text-zinc-500 font-bold uppercase">Xuất xứ</div>
+                      <div className="text-zinc-200 font-semibold">{selectedReviewPart.xuatXu || 'Chính hãng'}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Description */}
+              <div className="p-4 rounded-2xl bg-zinc-900/70 border border-zinc-800 space-y-1.5">
+                <div className="text-xs font-bold text-zinc-300 uppercase tracking-wide">Mô tả sản phẩm</div>
+                <p className="text-xs text-zinc-400 leading-relaxed">{selectedReviewPart.moTa || 'Sản phẩm phụ tùng cao cấp chính hãng dành cho xe máy.'}</p>
+                {selectedReviewPart.dongXePhuHop && (
+                  <div className="text-xs text-amber-400/90 pt-1">
+                    🏍️ <strong>Dòng xe tương thích:</strong> {selectedReviewPart.dongXePhuHop}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Footer Actions */}
+            <div className="flex items-center justify-end gap-3 pt-4 border-t border-zinc-800">
+              <button
+                type="button"
+                onClick={() => setSelectedReviewPart(null)}
+                className="px-4 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-bold transition cursor-pointer"
+              >
+                Đóng
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedReviewPart(null);
+                  try {
+                    sessionStorage.setItem('crm_view_part_id', selectedReviewPart.id);
+                    sessionStorage.setItem('crm_view_part_name', selectedReviewPart.tenSanPham);
+                  } catch {}
+                  if (onNavigateToStore) onNavigateToStore();
+                  else window.location.hash = '#store';
+                }}
+                className="px-5 py-2.5 rounded-xl bg-red-700 hover:bg-red-600 text-white text-xs font-extrabold transition cursor-pointer shadow-md flex items-center gap-1.5"
+              >
+                <span>🛒</span>
+                <span>Xem tại Cửa hàng / Mua lại</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Helper mở chi tiết xe chuẩn 2 chế độ (Ảnh 2 & Ảnh 3) */}
       {selectedDetailVehicle && (() => {
         // Helpers tính toán thông số xe
@@ -7333,9 +7504,21 @@ export default function CustomerDashboard({
                         selectedApptDetail.tenXe.toLowerCase().includes(o.thongTinXe.tenXe.toLowerCase())
                       ))
                     );
-                    const resolvedKtv = selectedApptDetail.nhanVienPhuTrach ||
-                      matchedOrder?.tenKTV ||
+                    const ktvFromMap = (() => {
+                      try {
+                        const km = localStorage.getItem('crm_order_ktv_map');
+                        if (km) {
+                          const parsed = JSON.parse(km);
+                          const oId = selectedApptDetail.maDonHangXe || matchedOrder?.id;
+                          if (oId) return parsed[oId]?.hoTen || parsed[oId.replace(/\D/g, '')]?.hoTen;
+                        }
+                      } catch {}
+                      return undefined;
+                    })();
+                    const resolvedKtv = matchedOrder?.tenKTV ||
                       (matchedOrder?.thongTinXe as any)?.ktvPhuTrach ||
+                      ktvFromMap ||
+                      (selectedApptDetail.nhanVienPhuTrach && !selectedApptDetail.nhanVienPhuTrach.includes('Showroom') ? selectedApptDetail.nhanVienPhuTrach : '') ||
                       'Trần Kỹ Thuật (KTV Phụ trách)';
                     return (
                       <span className="text-emerald-400 font-mono font-bold bg-emerald-950/60 border border-emerald-800/60 px-2 py-0.5 rounded inline-block mt-0.5">

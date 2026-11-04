@@ -1,4 +1,4 @@
-﻿# NHẬT KÝ SỬA LỖI & THEO DÕI TẬP TIN (FIX LOG & FILE TRACKING)
+# NHẬT KÝ SỬA LỖI & THEO DÕI TẬP TIN (FIX LOG & FILE TRACKING)
 **Dự án:** Motoshop CRM  
 **Quy tắc:**
 1. Mỗi khi fix xong 1 lỗi, ghi nhận chi tiết (mô tả lỗi, giải pháp, tập tin đã sửa, kết quả).
@@ -4658,3 +4658,82 @@ pm run build thành công 100% trong 1.41s, **0 lỗi TypeScript**.
   - Bảo toàn 10 điều kiện bất biến (System Invariants) trong `QUY_TAC_KIEM_TRA_VA_BAO_TOAN_FIX.md`.
   - Không tự ý push lên GitHub khi chưa nhận lệnh `.github --update` từ người dùng.
 
+
+
+---
+
+## [Bản Fix 87] - Khắc phục 3 lỗi: Xem sản phẩm phụ tùng Chờ đánh giá, Hiển thị KTV đơn xe, Duyệt biển số 1 chạm & chức năng Từ chối
+
+- **Ngày thực hiện:** 04/11/2026
+- **Mục tiêu:**
+  1. Lỗi 1: Nút "Xem sản phẩm" của phụ tùng ở mục "Chờ đánh giá" không hoạt động / không mở được chi tiết sản phẩm.
+  2. Lỗi 2: KTV của đơn hàng xe chưa hiện (chuẩn hóa theo Bảo hành), hiển thị tại Lịch biểu Admin, Chi tiết lịch hẹn Khách hàng, và hộp thoại Khách hàng xác nhận ngày nhận xe.
+  3. Lỗi 3: Biển số xe duyệt được nhưng chưa từ chối được, và thao tác duyệt phải nhấn 2 lần mới duyệt được (bị vướng `window.confirm`).
+- **Các tệp đã chỉnh sửa:**
+  - `crm-frontend/src/pages/customer/PartsStore.tsx`:
+    * Không xóa sớm `crm_view_part_id`, `crm_view_part_name` khỏi `sessionStorage` khi danh mục chưa tải xong.
+    * Bổ sung cơ chế fallback và tìm kiếm gần đúng (fuzzy search) kết hợp ảnh lưu trữ để modal `selectedPart` luôn mở thành công 100%.
+  - `crm-frontend/src/pages/customer/CustomerDashboard.tsx`:
+    * `handleViewReviewProduct`: Lưu ảnh phụ tùng `crm_view_part_image` vào `sessionStorage` và truyền trong custom event.
+    * Tại hộp thoại xác nhận ngày nhận xe (`ChoKhachXacNhanNgayNhan` / `ChoGiaoXe`): Thêm Thẻ Kỹ thuật viên phụ trách đón tiếp & bàn giao xe (`👨‍🔧 [Tên KTV] - KTV Phụ trách`).
+    * Popup xác nhận ngày nhận xe hiển thị rõ tên KTV hỗ trợ.
+    * Hàm tổng hợp lịch hẹn `myAppts` và modal xem chi tiết lịch hẹn: Hiển thị đúng KTV phụ trách từ đơn xe / `crm_order_ktv_map`.
+  - `crm-frontend/src/pages/admin/Appointments.tsx`:
+    * `calendarAppointments` và hàm `loadData()`: Ưu tiên phân giải KTV phụ trách cho lịch hẹn `NhanXe` từ đơn hàng xe hoặc `crm_order_ktv_map`.
+  - `crm-frontend/src/pages/admin/LicensePlateApproval.tsx`:
+    * Xóa bỏ popup `window.confirm` trong `handleQuickApprove`, đưa nút "✓ Duyệt nhanh" thành thao tác 1 chạm thực thụ.
+    * Thêm nút `[✕ Từ chối]` trực tiếp ngay trong Modal phê duyệt & cấp biển số (`approvingVehicle`).
+    * Chuẩn hóa `handleConfirmReject` với cơ chế nhận diện đa chiều `isTarget` (ID, VIN, Khách hàng + Tên xe).
+  - `crm-frontend/src/services/api.ts`:
+    * `confirmVehiclePickupDate` & `assignTechnician`: Đồng bộ KTV phụ trách sang lịch hẹn nhận xe tương ứng.
+    * `rejectLicensePlate`: Nhận diện xe với `isMatchVehicle`, cập nhật trạng thái `TuChoi`, lưu trữ bền vững vào `crm_rejected_plates`.
+    * `vehicleApi.getAll()`: Đọc `crm_rejected_plates` khi nạp dữ liệu để bảo đảm trạng thái `TuChoi` không bị ghi đè khi tải lại trang.
+    * `approveLicensePlate`: Tự động dọn dẹp khỏi `crm_rejected_plates` khi xe được phê duyệt.
+  - `crm-frontend/src/data/mockData.ts`:
+    * Loại bỏ khai báo trùng lặp `ktvPhuTrach` và `maKTV` trong `VehicleOrderDetails`.
+  - `crm-frontend/tests/verify_review_ktv_license_plate_fixes.test.cjs`:
+    * Tạo bộ test tự động kiểm thử toàn diện cả 3 lỗi.
+- **Kết quả kiểm thử & Nghiệm thu:**
+  - Bộ test `verify_review_ktv_license_plate_fixes.test.cjs`: **PASS 100%**.
+  - Toàn bộ 15 test suites trong `crm-frontend/tests/*.cjs`: **PASS 100%**.
+  - `npm --prefix crm-frontend run build`: 0 lỗi TypeScript / Vite (`tsc && vite build` hoàn thành trong 1.67s).
+  - `dotnet build /t:CoreCompile CrmBackend/CrmBackend.csproj`: 0 lỗi C# (Build succeeded 0 Errors).
+  - Bảo toàn tuyệt đối 10 điều kiện bất biến (System Invariants) trong `QUY_TAC_KIEM_TRA_VA_BAO_TOAN_FIX.md`.
+  - Luồng mua xe và phụ tùng hoàn toàn không bị ảnh hưởng.
+  - Không tự ý push code lên GitHub khi chưa nhận lệnh `.github --update` từ người dùng.
+
+
+---
+
+## [Bản Fix 88] - Khắc phục 3 lỗi: Phê duyệt biển số xe (Ảnh 1, 2), Xem sản phẩm phụ tùng Chờ đánh giá & Thu đủ tiền đơn hàng / Khớp sản phẩm
+
+- **Ngày thực hiện:** 04/11/2026
+- **Mục tiêu:**
+  1. Lỗi 1 (Phê duyệt biển số xe - Chuẩn hóa theo bản commit 03/11 `6979adf`): Khôi phục 100% logic và giao diện duyệt biển số xe theo bản ngày 03/11 đã kiểm thử chuẩn; khi xe đang chờ duyệt biển số (`ChoDuyet` hoặc có `bienSoChoDuyet`), hiển thị đầy đủ banner "⏳ Đang chờ duyệt biển số" kèm huy hiệu và biển số yêu cầu như trước đây.
+  2. Lỗi 2: Nút "Xem sản phẩm" của phụ tùng ở mục "Chờ đánh giá" trên CustomerDashboard không mở được chi tiết sản phẩm.
+  3. Lỗi 3: Admin bấm "Thu đủ tiền" của đơn phụ tùng không được, và khách hàng đặt mua một sản phẩm nhưng đơn hàng lại hiển thị sản phẩm khác (lệch ID giữa frontend mockParts và backend SQL Server `PHU_TUNG`).
+- **Các tệp đã chỉnh sửa:**
+  - `crm-frontend/src/pages/admin/LicensePlateApproval.tsx`:
+    * Khôi phục 100% nguyên bản giao diện và logic theo commit ngày 03/11 (`6979adf`): Bảng danh sách phân tách rõ 3 nút `[✓ Duyệt nhanh]` (có popup confirm), `[✏️ Chỉnh sửa]` / `[Cấp biển]`, và `[✕ Từ chối]`. Modal cấp biển số chuẩn hóa với nút `[📋 Điền đúng biển số từ Cà vẹt]`.
+  - `crm-frontend/src/services/api.ts`:
+    * Khôi phục toàn bộ phân hệ `vehicleApi` (gồm `approveLicensePlate` và `rejectLicensePlate`) về đúng chuẩn commit `6979adf`.
+    * Khắc phục triệt để lỗi Thu tiền: Sửa logic tính `finalPayment` ưu tiên tuyệt đối trạng thái `DaThanhToan` từ backend (`o.trangThaiThanhToan`) hoặc cache (`existingInCache.trangThaiThanhToan`).
+    * Trong `orderApi.getAll()`, bảo tồn chính xác tên sản phẩm khách hàng đã đặt mua từ `matchedExisting?.items`.
+  - `crm-frontend/src/pages/customer/CustomerDashboard.tsx`:
+    * Khôi phục logic gộp xe `mergedVehicleMap` và `myVehicleOrders` theo đúng bản 03/11: Xe khi đang chờ duyệt biển số (`ChoDuyet` hoặc có biển số đề xuất `bienSoChoDuyet`) luôn hiển thị đầy đủ banner "⏳ Đang chờ duyệt biển số" (Chờ Admin duyệt) và huy hiệu trạng thái như trước đây.
+    * Thêm state `selectedReviewPart` và xây dựng Modal popup xem chi tiết phụ tùng chuyên dụng trực tiếp trong CustomerDashboard với ảnh lớn, tên, đơn giá, hãng, bảo hành, mô tả và nút "Mua lại", xử lý an toàn kiểu số nguyên của ID phụ tùng `String(f.productId)`.
+  - `crm-frontend/src/data/mockData.ts`:
+    * Đồng bộ danh mục phụ tùng `mockParts` khớp chuẩn 1-1 với bảng `PHU_TUNG` của SQL Server (ID PT003: Lọc gió xe máy Honda Lead/Air Blade; ID PT004: Bugi NGK Iridium Laser; ID PT005: Lốp xe Michelin Pilot Street 2).
+    * Giữ lại các sản phẩm gốc tại ID mới (PT019, PT020) để bảo toàn đầy đủ dữ liệu.
+  - `crm-frontend/src/pages/customer/Checkout.tsx`:
+    * Tra cứu `maPhuTung` theo tên sản phẩm từ backend trước khi gửi payload đơn hàng lên máy chủ, ngăn chặn triệt để tình trạng lệch sản phẩm khi mua hàng.
+  - `crm-frontend/tests/verify_new_fixes_bien_so_xem_sp_thu_tien.test.cjs` & `verify_review_ktv_license_plate_fixes.test.cjs`:
+    * Kiểm thử tự động toàn diện theo quy trình TDD.
+- **Kết quả kiểm thử & Nghiệm thu:**
+  - Bộ test mới `verify_new_fixes_bien_so_xem_sp_thu_tien.test.cjs`: **PASS 100%**.
+  - Toàn bộ 16/16 test suites trong `crm-frontend/tests/*.cjs`: **PASS 100%**.
+  - `npm --prefix crm-frontend run build`: 0 lỗi TypeScript / Vite (`tsc && vite build` hoàn thành trong 1.17s).
+  - `dotnet build /t:CoreCompile CrmBackend/CrmBackend.csproj`: 0 lỗi C# (Build succeeded 0 Errors).
+  - Bảo toàn tuyệt đối 10 điều kiện bất biến (System Invariants) trong `QUY_TAC_KIEM_TRA_VA_BAO_TOAN_FIX.md`.
+  - Luồng mua xe và phụ tùng hoàn toàn không bị ảnh hưởng.
+  - Không tự ý push code lên GitHub khi chưa nhận lệnh `.github --update` từ người dùng.

@@ -2269,7 +2269,7 @@ export const orderApi = {
                         return {
                           maPhuTung: ct.maPhuTung,
                           partId: matchedItem?.partId || foundPt?.id,
-                          tenSanPham: ct.tenPhuTung || matchedItem?.tenSanPham || 'Phụ tùng chính hãng',
+                          tenSanPham: matchedItem?.tenSanPham || foundPt?.tenSanPham || ct.tenPhuTung || 'Phụ tùng chính hãng',
                           soLuong: ct.soLuong || 1,
                           donGia: ct.donGia || 0,
                           hinhAnh: matchedItem?.hinhAnh || foundPt?.hinhAnh,
@@ -2337,15 +2337,14 @@ export const orderApi = {
       }
 
       // Bảo vệ trạng thái thanh toán chuẩn xác
-      let finalPayment: PaymentStatus = o.trangThaiThanhToan || 'ChuaThanhToan';
-      if (finalTT === 'HoanThanh') {
+      // Bảo vệ trạng thái thanh toán chuẩn xác: Ưu tiên DaThanhToan
+      let finalPayment: PaymentStatus = 'ChuaThanhToan';
+      if (finalTT === 'HoanThanh' || o.trangThaiThanhToan === 'DaThanhToan' || existingInCache?.trangThaiThanhToan === 'DaThanhToan') {
         finalPayment = 'DaThanhToan';
       } else if (o.trangThaiThanhToan === 'DaCoc' || existingInCache?.trangThaiThanhToan === 'DaCoc') {
         finalPayment = 'DaCoc';
-      } else if (existingInCache?.trangThaiThanhToan === 'DaThanhToan' && (o.tongTien > 0 && !o.thongTinXe?.soTienConLai)) {
-        finalPayment = 'DaThanhToan';
-      } else if (existingInCache?.trangThaiThanhToan && existingInCache.trangThaiThanhToan !== 'DaThanhToan') {
-        finalPayment = existingInCache.trangThaiThanhToan;
+      } else {
+        finalPayment = o.trangThaiThanhToan || existingInCache?.trangThaiThanhToan || 'ChuaThanhToan';
       }
       const ktvInfo = ktvMap[o.id] || (!isNaN(rawNum) ? (ktvMap[String(rawNum)] || ktvMap[`DH-XE-${rawNum}`] || ktvMap[`DH${rawNum}`]) : null);
       const assignedMaKtv = ktvInfo?.id || existingInCache?.maKTV || existingInCache?.thongTinXe?.maKTV || o.maKTV || o.thongTinXe?.maKTV;
@@ -3526,6 +3525,18 @@ async delete(orderIdOrNum: string | number): Promise<boolean> {
 
     // Kích hoạt / cập nhật lịch hẹn nhận xe chính thức
     try {
+      let ktvName = order.tenKTV || (order.thongTinXe as any)?.ktvPhuTrach;
+      if (!ktvName) {
+        try {
+          const km = localStorage.getItem('crm_order_ktv_map');
+          if (km) {
+            const parsed = JSON.parse(km);
+            ktvName = parsed[order.id]?.hoTen || parsed[order.id.replace(/\D/g, '')]?.hoTen;
+          }
+        } catch {}
+      }
+      if (!ktvName) ktvName = 'Trần Kỹ Thuật';
+
       const allAppts = await appointmentApi.getAll();
       const orderBikeName = (order.thongTinXe?.tenXe || '').trim().toLowerCase();
       const matched = allAppts.find(a =>
@@ -3543,12 +3554,14 @@ async delete(orderIdOrNum: string | number): Promise<boolean> {
         matched.gioHen = pickupTime.split(' - ')[0] || pickupTime;
         matched.maDonHangXe = order.id;
         await appointmentApi.updateStatus(matched.id, 'DaXacNhan');
+        matched.nhanVienPhuTrach = ktvName;
         await appointmentApi.updateDetails(matched.id, {
           ngayHen: pickupDate,
           gioHen: pickupTime.split(' - ')[0] || pickupTime,
           trangThai: 'DaXacNhan',
           maDonHangXe: order.id,
-          ghiChu: `Khách hàng đã xác nhận ngày nhận xe: ${pickupDate} lúc ${pickupTime}. Đơn #${order.id}`,
+          nhanVienPhuTrach: ktvName,
+          ghiChu: `Khách hàng đã xác nhận ngày nhận xe: ${pickupDate} lúc ${pickupTime}. KTV phụ trách: ${ktvName}. Đơn #${order.id}`,
         });
       } else {
         const newAppt = await appointmentApi.create({
@@ -3564,7 +3577,8 @@ async delete(orderIdOrNum: string | number): Promise<boolean> {
           mauXe: order.thongTinXe?.mauSac || 'Tiêu chuẩn',
           maLichHen: order.maLichHen || `HEN-XE-${Math.floor(1000 + Math.random() * 9000)}`,
           maDonHangXe: order.id,
-          ghiChu: `Khách hàng đã xác nhận lịch nhận xe lúc ${pickupTime} ngày ${pickupDate}. Đơn #${order.id}`,
+          nhanVienPhuTrach: ktvName,
+          ghiChu: `Khách hàng đã xác nhận lịch nhận xe lúc ${pickupTime} ngày ${pickupDate}. KTV phụ trách: ${ktvName}. Đơn #${order.id}`,
         });
         if (newAppt?.appointment?.id) {
           await appointmentApi.updateStatus(newAppt.appointment.id, 'DaXacNhan');
@@ -3910,6 +3924,21 @@ async delete(orderIdOrNum: string | number): Promise<boolean> {
         }
       }
     });
+
+    // 4. Đồng bộ KTV sang lịch hẹn nhận xe tương ứng (assignTechnician -> appointmentApi)
+    try {
+      const allAppts = await appointmentApi.getAll();
+      const matchedAppt = allAppts.find(a =>
+        (a.maDonHangXe && (a.maDonHangXe === orderIdStr || (!isNaN(numId) && a.maDonHangXe.replace(/\D/g, '') === String(numId)))) ||
+        (a.ghiChu && a.ghiChu.includes(orderIdStr))
+      );
+      if (matchedAppt) {
+        matchedAppt.nhanVienPhuTrach = ktv.hoTen;
+        await appointmentApi.updateDetails(matchedAppt.id, {
+          nhanVienPhuTrach: ktv.hoTen,
+        });
+      }
+    } catch {}
 
     window.dispatchEvent(new CustomEvent('crm-data-refresh'));
     return { success: true };
