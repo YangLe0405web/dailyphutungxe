@@ -190,7 +190,26 @@ export default function AppointmentsPage({
     let isMounted = true;
     const loadData = () => {
       appointmentApi.getAll().then(data => {
-        if (isMounted && data && data.length > 0) setAppointments(data);
+        if (isMounted && data && data.length > 0) {
+          let ktvMap: Record<string, any> = {};
+          try {
+            const raw = localStorage.getItem('crm_order_ktv_map');
+            if (raw) ktvMap = JSON.parse(raw);
+          } catch {}
+
+          const resolved = data.map(a => {
+            if (a.loaiDichVu === 'NhanXe' || a.maDonHangXe) {
+              const oId = a.maDonHangXe || (a.ghiChu?.match(/#([A-Za-z0-9-]+)/)?.[1]);
+              const numId = oId ? oId.replace(/\D/g, '') : '';
+              const mapped = oId ? (ktvMap[oId]?.hoTen || (numId ? ktvMap[numId]?.hoTen : undefined)) : undefined;
+              if (mapped && (!a.nhanVienPhuTrach || a.nhanVienPhuTrach.includes('Showroom') || a.nhanVienPhuTrach === 'Chưa phân công')) {
+                return { ...a, nhanVienPhuTrach: mapped };
+              }
+            }
+            return a;
+          });
+          setAppointments(resolved);
+        }
       });
     };
 
@@ -828,7 +847,19 @@ export default function AppointmentsPage({
         bienSo: o.thongTinXe?.bienSo || 'Showroom bàn giao',
         mauXe: o.thongTinXe?.mauSac || 'Tiêu chuẩn',
         trangThai: isCompleted ? 'DaHoanThanh' : 'DaXacNhan',
-        nhanVienPhuTrach: o.tenNV || 'Showroom bàn giao',
+        nhanVienPhuTrach: (() => {
+          let ktv = o.tenKTV || (o.thongTinXe as any)?.ktvPhuTrach;
+          if (!ktv) {
+            try {
+              const km = localStorage.getItem('crm_order_ktv_map');
+              if (km) {
+                const parsed = JSON.parse(km);
+                ktv = parsed[o.id]?.hoTen || parsed[o.id.replace(/\D/g, '')]?.hoTen;
+              }
+            } catch {}
+          }
+          return ktv || 'Trần Kỹ Thuật';
+        })(),
         ghiChu: `Lịch nhận xe theo đơn hàng #${o.id}. Trạng thái: ${isCompleted ? 'Đã hoàn tất' : 'Chờ giao xe'}`,
         maDonHangXe: o.id,
         maLichHen: o.maLichHen || `HEN-${o.id}`,

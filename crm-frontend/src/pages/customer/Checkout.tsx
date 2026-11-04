@@ -172,7 +172,9 @@ export default function Checkout({ onBack, onSuccess, currentCustomer, onCustome
         phuongThucThanhToan: pay === 'cod' ? 'TienMat' : 'ChuyenKhoan',
         trangThaiThanhToan: pay === 'cod' ? 'ChuaThanhToan' : 'DaThanhToan',
         items: checkoutItems.map(it => {
-          const rawNum = parseInt(it.part.id.replace(/\D/g, ''), 10);
+          const allParts = partApi.getAllSync();
+          const foundPart = allParts.find(p => p.tenSanPham.toLowerCase().trim() === it.part.tenSanPham.toLowerCase().trim() || p.id === it.part.id);
+          const rawNum = foundPart?.id ? parseInt(foundPart.id.replace(/\D/g, ''), 10) : parseInt(it.part.id.replace(/\D/g, ''), 10);
           const numId = (!isNaN(rawNum) && rawNum > 0 && rawNum < 2147483647) ? rawNum : 1;
           const unitPrice = it.part.giaKhuyenMai ?? it.part.giaGoc;
           return {
