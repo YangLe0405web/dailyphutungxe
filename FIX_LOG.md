@@ -1,4 +1,4 @@
-# NHẬT KÝ SỬA LỖI & THEO DÕI TẬP TIN (FIX LOG & FILE TRACKING)
+﻿# NHẬT KÝ SỬA LỖI & THEO DÕI TẬP TIN (FIX LOG & FILE TRACKING)
 **Dự án:** Motoshop CRM  
 **Quy tắc:**
 1. Mỗi khi fix xong 1 lỗi, ghi nhận chi tiết (mô tả lỗi, giải pháp, tập tin đã sửa, kết quả).
@@ -44,6 +44,7 @@ Dưới đây là danh sách toàn bộ các tập tin đã can thiệp trong d�
 33. `D:\crm-project\crm-frontend\src\components\customer\OnlineInsurancePurchaseView.tsx` (File tạo mới: Trang Mua bảo hiểm online trên web chuẩn Mockup 1)
 34. `D:\crm-project\crm-frontend\src\components\customer\RenewInsuranceModal.tsx` (File tạo mới: Modal gia hạn hợp đồng bảo hiểm tái tục chuẩn Web & Admin POS)
 35. `D:\crm-project\crm-frontend\src\pages\admin\Insurance.tsx` (Quản lý bảo hiểm: Cấp bảo hiểm tại quầy chuẩn Mockup 2, tìm khách theo SĐT/Email, chọn xe thuộc khách, 3 gói bảo hiểm, tiền mặt/chuyển khoản VietQR, in GCN, gia hạn tại quầy)
+36. `D:\crm-project\crm-frontend\src\components\shared\InsuranceCertificateModal.tsx` (File tạo mới: Modal Giấy chứng nhận bảo hiểm điện tử dùng chung giữa Khách hàng và Admin POS)
 
 ---
 
@@ -4611,3 +4612,49 @@ pm run build thành công 100% trong 1.41s, **0 lỗi TypeScript**.
   - API Backend Live Test: `PUT http://localhost:5208/api/XeKhachHang/duyet-bien-so/112` trả về `200 OK {"message":"Phê duyệt biển số thành công!"}`.
   - Tuân thủ tuyệt đối: Chỉ sửa duy nhất tính năng duyệt biển số xe, không đụng chạm bất kỳ khu vực nào khác.
   - Không tự ý push lên GitHub khi chưa nhận lệnh từ người dùng.
+
+### [Bản Fix 86] Chỉnh sửa toàn diện chức năng mua bảo hiểm xe trang người dùng (BHX01 — BHX05)
+* **Ngày thực hiện:** 04/11/2026
+* **Môi trường & Nhánh:** `develop`.
+* **Yêu cầu chi tiết:**
+  - **BHX01 — Phân biệt quyền chỉnh sửa thông tin theo hai luồng mua bảo hiểm:**
+    * Flow 1 (Mua bảo hiểm cho xe đã chọn): Thông tin chủ xe và phương tiện ở chế độ chỉ đọc (readonly), không cho phép chỉnh sửa, xóa hoàn toàn nút "Chỉnh sửa".
+    * Flow 2 (Đăng ký bảo hiểm mới): Cho phép người dùng nhấn trực tiếp vào ô thông tin để chỉnh sửa, xóa nút "Chỉnh sửa" dư thừa, hiển thị trạng thái sửa rõ ràng và validate dữ liệu.
+  - **BHX02 — Ràng buộc phương tiện tại bước 2 (Chọn phương tiện cần mua):**
+    * Flow 1: Mặc định cố định xe đã chọn từ trang Bảo hiểm, tự động hiển thị thông tin, không yêu cầu chọn lại hay đổi xe khác, khóa danh sách xe và không hiển thị nút thêm xe.
+    * Flow 2: Chỉ cho phép thêm phương tiện mới, không cho chọn lại xe đã tồn tại của khách hàng; kiểm tra chặt chẽ chống trùng biển số / số khung (VIN); thêm thành công sẽ gắn ngay xe vào hồ sơ.
+  - **BHX03 — Cố định ngày bắt đầu hiệu lực tại bước 4 (Thời gian hiệu lực và ưu đãi):**
+    * Ngày bắt đầu hiệu lực cố định bằng ngày đăng ký mua thực tế (hôm nay), hiển thị chế độ chỉ đọc (`readonly`, `disabled`), cấm can thiệp qua lịch hay nhập trực tiếp.
+  - **BHX04 — Cập nhật trạng thái phương tiện sau khi mua bảo hiểm thành công:**
+    * Sau khi thanh toán thành công và điều hướng về trang Bảo hiểm, phương tiện vừa mua nếu hợp đồng còn hiệu lực (`trangThai === 'HieuLuc'` và `ngayKetThuc >= today`) sẽ **ẩn nút `[+ MUA BẢO HIỂM CHO XE NÀY]`**, hiển thị nhãn xanh "Đã có bảo hiểm còn hạn" và nút xem GCN.
+    * Trạng thái lưu trữ bền vững (Local Storage / Backend Cache), tải lại trang hoặc đăng nhập lại vẫn duy trì chính xác.
+  - **BHX05 — Đồng bộ giao diện hóa đơn / GCN mua bảo hiểm giữa trang người dùng và Admin:**
+    * Xây dựng Shared Component `InsuranceCertificateModal.tsx` tái sử dụng 100% giữa Khách hàng và Admin POS.
+    * Bố cục chuẩn Quốc hiệu, cơ quan phát hành, 4 phần thông tin (I. Bên mua & Chủ xe, II. Phương tiện được bảo hiểm, III. Quyền lợi & Gói bảo hiểm, IV. Phí bảo hiểm & Thanh toán có VAT và ưu đãi), mã QR tra cứu điện tử và dấu mộc xác thực số.
+* **Các tập tin can thiệp:**
+  1. `crm-frontend/src/components/shared/InsuranceCertificateModal.tsx` (Component dùng chung mới)
+  2. `crm-frontend/src/components/customer/OnlineInsurancePurchaseView.tsx` (Xử lý Flow 1 vs Flow 2, readonly/editable, khóa bước 2, cố định ngày bước 4)
+  3. `crm-frontend/src/pages/customer/CustomerDashboard.tsx` (Truyền `flowMode`, logic ẩn nút mua BH theo hợp đồng còn hạn, tích hợp `InsuranceCertificateModal`)
+  4. `crm-frontend/src/pages/admin/Insurance.tsx` (Tích hợp `InsuranceCertificateModal` dùng chung)
+  5. `crm-frontend/tests/verify_insurance_purchase_flows.test.cjs` (Bộ kiểm thử tự động toàn diện 5 mã yêu cầu BHX01 - BHX05)
+* **Kết quả kiểm thử & Nghiệm thu chất lượng:**
+  - 14/14 test suites tự động PASS 100%:
+    * `verify_insurance_purchase_flows.test.cjs`: **PASS (Green Phase 100%)**.
+    * `verify_single_action_button_flow.test.cjs`: **PASS**.
+    * `verify_license_plate_approval_fix.test.cjs`: **PASS**.
+    * `verify_license_plate_approval_flow.test.cjs`: **PASS**.
+    * `verify_customer_vehicle_dedup.test.cjs`: **PASS**.
+    * `verify_mandatory_deposit_full_payment.test.cjs`: **PASS**.
+    * `verify_sales_ktv_assignment_flow.test.cjs`: **PASS**.
+    * `verify_mandatory_ktv_on_approval.test.cjs`: **PASS**.
+    * `verify_vehicle_image_display.test.cjs`: **PASS**.
+    * `verify_warranty_staff_filter.test.cjs`: **PASS**.
+    * `verify_warranty_date_filter.test.cjs`: **PASS**.
+    * `verify_customer_history_invoice.test.cjs`: **PASS**.
+    * `verify_ktv_detail_display.test.cjs`: **PASS**.
+    * `verify_view_waiting_product_full_specs.test.cjs`: **PASS**.
+  - `npm --prefix crm-frontend run build`: 0 lỗi TypeScript (`tsc && vite build` PASS trong 668ms).
+  - `dotnet build CrmBackend/CrmBackend.csproj`: 0 lỗi C# (Build succeeded 0 Errors).
+  - Bảo toàn 10 điều kiện bất biến (System Invariants) trong `QUY_TAC_KIEM_TRA_VA_BAO_TOAN_FIX.md`.
+  - Không tự ý push lên GitHub khi chưa nhận lệnh `.github --update` từ người dùng.
+

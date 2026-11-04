@@ -62,6 +62,7 @@ import { WarrantyDetailView, WarrantyClaimFormView, ExtendedWarrantyModal } from
 import WarrantyExtensionWizard from '../../components/customer/WarrantyExtensionWizard';
 import OnlineInsurancePurchaseView from '../../components/customer/OnlineInsurancePurchaseView';
 import RenewInsuranceModal from '../../components/customer/RenewInsuranceModal';
+import InsuranceCertificateModal from '../../components/shared/InsuranceCertificateModal';
 import { showroomVehicles } from './VehiclesShowroom';
 import { useCart } from '../../contexts/CartContext';
 
@@ -1556,6 +1557,7 @@ export default function CustomerDashboard({
   // Bảo hiểm
   const [isBuyingOnlineInsurance, setIsBuyingOnlineInsurance] = useState(false);
   const [buyingInsuranceInitialVehicle, setBuyingInsuranceInitialVehicle] = useState<Vehicle | null>(null);
+  const [insuranceFlowMode, setInsuranceFlowMode] = useState<'FLOW_1_BUY_FOR_VEHICLE' | 'FLOW_2_REGISTER_NEW'>('FLOW_2_REGISTER_NEW');
   const [renewingInsuranceContract, setRenewingInsuranceContract] = useState<InsuranceContract | null>(null);
   const [viewingInsuranceContract, setViewingInsuranceContract] = useState<InsuranceContract | null>(null);
   const [renewToast, setRenewToast] = useState<string | null>(null);
@@ -3358,6 +3360,7 @@ export default function CustomerDashboard({
                                     type="button"
                                     onClick={() => {
                                       setBuyingInsuranceInitialVehicle(v);
+                                      setInsuranceFlowMode('FLOW_1_BUY_FOR_VEHICLE');
                                       setIsBuyingOnlineInsurance(true);
                                       setActiveTab(4);
                                     }}
@@ -4669,6 +4672,7 @@ export default function CustomerDashboard({
                   customer={currentCustomer}
                   vehicles={myVehicles}
                   initialVehicle={buyingInsuranceInitialVehicle}
+                  flowMode={insuranceFlowMode}
                   onAddNewVehicle={() => setShowAddVehicleModal(true)}
                   onCancel={() => setIsBuyingOnlineInsurance(false)}
                   onSuccess={(newContract) => {
@@ -4713,6 +4717,7 @@ export default function CustomerDashboard({
                           return;
                         }
                         setBuyingInsuranceInitialVehicle(null);
+                        setInsuranceFlowMode('FLOW_2_REGISTER_NEW');
                         setIsBuyingOnlineInsurance(true);
                       }}
                       className="px-5 py-2.5 rounded-xl text-xs font-bold bg-red-700 hover:bg-red-800 text-white shadow transition cursor-pointer uppercase tracking-wider shrink-0"
@@ -4780,21 +4785,56 @@ export default function CustomerDashboard({
                                   </div>
                                 </div>
 
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    // BH09: Chặn nếu tài khoản bị khóa
-                                    if (currentCustomer?.trangThai === 'BiKhoa') {
-                                      alert('⚠️ TÀI KHOẢN BỊ KHÓA: Tài khoản của quý khách đang bị tạm khóa bởi Quản trị viên. Quý khách không thể thực hiện mua bảo hiểm!');
-                                      return;
-                                    }
-                                    setBuyingInsuranceInitialVehicle(veh);
-                                    setIsBuyingOnlineInsurance(true);
-                                  }}
-                                  className="px-4 py-2 rounded-xl text-xs font-bold bg-red-700 hover:bg-red-800 text-white shadow transition cursor-pointer flex items-center gap-1.5 self-start sm:self-auto"
-                                >
-                                  <span>+ MUA BẢO HIỂM CHO XE NÀY</span>
-                                </button>
+                                {(() => {
+                                  const today = new Date().toISOString().split('T')[0];
+                                  const normPlate = (veh.bienSo || '').trim().toUpperCase().replace(/[\s-.]/g, '');
+                                  const activeContract = myInsurances.find(c => {
+                                    if (c.trangThai !== 'HieuLuc') return false;
+                                    if (c.ngayKetThuc < today) return false;
+                                    if (c.vehicleId === veh.id) return true;
+                                    const cPlateNorm = (c.bienSo || '').trim().toUpperCase().replace(/[\s-.]/g, '');
+                                    if (normPlate && cPlateNorm && normPlate !== 'CHUACOBIENSO' && normPlate === cPlateNorm) return true;
+                                    if (veh.soKhung && c.soKhung && veh.soKhung.trim().toUpperCase() === c.soKhung.trim().toUpperCase()) return true;
+                                    return false;
+                                  });
+                                  const hasValidInsurance = Boolean(activeContract);
+
+                                  if (hasValidInsurance && activeContract) {
+                                    return (
+                                      <div className="flex items-center gap-2 self-start sm:self-auto">
+                                        <span className="px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-950/80 text-emerald-300 border border-emerald-700/60 flex items-center gap-1.5 shadow-2xs">
+                                          <span>🛡️</span>
+                                          <span>ĐÃ CÓ BẢO HIỂM (Hạn: {activeContract.ngayKetThuc.split('-').reverse().join('/')})</span>
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={() => setViewingInsuranceContract(activeContract)}
+                                          className="px-3 py-1.5 rounded-xl text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 transition cursor-pointer"
+                                        >
+                                          📄 Xem GCN
+                                        </button>
+                                      </div>
+                                    );
+                                  }
+
+                                  return (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (currentCustomer?.trangThai === 'BiKhoa') {
+                                          alert('⚠️ TÀI KHOẢN BỊ KHÓA: Tài khoản của quý khách đang bị tạm khóa bởi Quản trị viên. Quý khách không thể thực hiện mua bảo hiểm!');
+                                          return;
+                                        }
+                                        setBuyingInsuranceInitialVehicle(veh);
+                                        setInsuranceFlowMode('FLOW_1_BUY_FOR_VEHICLE');
+                                        setIsBuyingOnlineInsurance(true);
+                                      }}
+                                      className="px-4 py-2 rounded-xl text-xs font-bold bg-red-700 hover:bg-red-800 text-white shadow transition cursor-pointer flex items-center gap-1.5 self-start sm:self-auto"
+                                    >
+                                      <span>+ MUA BẢO HIỂM CHO XE NÀY</span>
+                                    </button>
+                                  );
+                                })()}
                               </div>
 
                               {/* Contracts list under vehicle */}
@@ -7173,52 +7213,13 @@ export default function CustomerDashboard({
         />
       )}
 
-      {/* Viewing Insurance Contract Modal (GCN) */}
+      {/* Viewing Insurance Contract Modal (GCN & Hóa đơn điện tử BHX05) */}
       {viewingInsuranceContract && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm print:p-0 print:bg-white print:fixed print:inset-0">
-          <div className="bg-[#18181b] rounded-3xl w-full max-w-2xl max-h-[92vh] overflow-y-auto shadow-2xl border border-zinc-800 p-6 sm:p-8 space-y-6 text-white print:text-black print:bg-white print:border-none print:shadow-none print:p-6">
-            <div className="flex items-center justify-between border-b border-zinc-800 pb-3 print:hidden">
-              <div className="font-mono text-xs text-red-400 font-bold">Số GCN: {viewingInsuranceContract.soGCN}</div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => window.print()}
-                  className="px-3 py-1.5 rounded-xl text-xs font-bold bg-zinc-800 text-white hover:bg-zinc-700 cursor-pointer"
-                >
-                  🖨️ In / Tải PDF
-                </button>
-                <button
-                  onClick={() => setViewingInsuranceContract(null)}
-                  className="w-8 h-8 rounded-full bg-zinc-800 text-zinc-400 hover:text-white flex items-center justify-center font-bold text-sm cursor-pointer"
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-
-            {/* Certificate Body */}
-            <div className="border-2 border-red-600/60 rounded-2xl p-6 bg-[#141416] print:bg-white print:border-red-700 space-y-4 text-xs">
-              <div className="text-center pb-3 border-b border-zinc-800">
-                <div className="text-[11px] font-bold text-zinc-400 uppercase">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</div>
-                <div className="text-base font-extrabold text-red-500 uppercase mt-1">GIẤY CHỨNG NHẬN BẢO HIỂM XE MÁY ĐIỆN TỬ</div>
-                <div className="text-[11px] font-mono text-zinc-400 mt-0.5">Số: {viewingInsuranceContract.soGCN}</div>
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex justify-between"><span className="text-zinc-400">Đơn vị cấp:</span> <strong className="text-white">{viewingInsuranceContract.nhaBaoHiem}</strong></div>
-                <div className="flex justify-between"><span className="text-zinc-400">Chủ xe:</span> <strong className="text-white">{viewingInsuranceContract.hoTenKH}</strong></div>
-                <div className="flex justify-between"><span className="text-zinc-400">Phương tiện:</span> <strong className="text-white">{viewingInsuranceContract.tenXe} ({viewingInsuranceContract.bienSo})</strong></div>
-                <div className="flex justify-between"><span className="text-zinc-400">Gói bảo hiểm:</span> <strong className="text-white">{viewingInsuranceContract.tenGoi}</strong></div>
-                <div className="flex justify-between"><span className="text-zinc-400">Thời hạn:</span> <strong className="text-white font-mono">{viewingInsuranceContract.ngayBatDau} ➔ {viewingInsuranceContract.ngayKetThuc}</strong></div>
-                <div className="flex justify-between pt-2 border-t border-zinc-800"><span className="text-zinc-400">Phí bảo hiểm:</span> <strong className="text-red-400 font-mono text-sm">{formatVND(viewingInsuranceContract.phiBaoHiem)}</strong></div>
-              </div>
-
-              <div className="text-center pt-2 text-[10px] text-zinc-500 font-mono">
-                [ĐÃ KÝ ĐIỆN TỬ VÀ XÁC THỰC HỢP CHUẨN NGHỊ ĐỊNH 67/2023/NĐ-CP]
-              </div>
-            </div>
-          </div>
-        </div>
+        <InsuranceCertificateModal
+          contract={viewingInsuranceContract}
+          onClose={() => setViewingInsuranceContract(null)}
+          isAdmin={false}
+        />
       )}
 
       {/* Password Toast */}
