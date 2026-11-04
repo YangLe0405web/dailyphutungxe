@@ -16,6 +16,16 @@ namespace CrmBackend.Controllers
             _db = db;
         }
 
+        private static bool ContainsDangerousScript(string? input)
+        {
+            if (string.IsNullOrWhiteSpace(input)) return false;
+            return input.Contains("<script", StringComparison.OrdinalIgnoreCase) ||
+                   input.Contains("</script", StringComparison.OrdinalIgnoreCase) ||
+                   input.Contains("javascript:", StringComparison.OrdinalIgnoreCase);
+        }
+
+
+
         // ── GET: api/KhachHang ── Danh sách khách hàng
         [HttpGet]
         public async Task<IActionResult> GetAll()
@@ -65,6 +75,10 @@ namespace CrmBackend.Controllers
         [HttpPost]
         public async Task<IActionResult> Create([FromBody] KhachHangCreateDto dto)
         {
+            if (ContainsDangerousScript(dto.HoTen) || ContainsDangerousScript(dto.DiaChi) || ContainsDangerousScript(dto.SoThich))
+            {
+                return BadRequest(new { message = "Dữ liệu không hợp lệ: chứa mã độc script không được phép!" });
+            }
             // 1. Kiểm tra định dạng số điện thoại (ĐK01: đúng 10 số, bắt đầu bằng 0)
             if (string.IsNullOrWhiteSpace(dto.SoDienThoai) || !System.Text.RegularExpressions.Regex.IsMatch(dto.SoDienThoai.Trim(), @"^0\d{9}$"))
             {
@@ -149,6 +163,10 @@ namespace CrmBackend.Controllers
         [HttpPut("{maKh}")]
         public async Task<IActionResult> Update(int maKh, [FromBody] KhachHangUpdateDto dto)
         {
+            if (ContainsDangerousScript(dto.HoTen) || ContainsDangerousScript(dto.DiaChi) || ContainsDangerousScript(dto.SoThich))
+            {
+                return BadRequest(new { message = "Dữ liệu không hợp lệ: chứa mã độc script không được phép!" });
+            }
             var sql = @"
                 UPDATE KHACH_HANG 
                 SET HoTen = @HoTen, NgaySinh = @NgaySinh, GioiTinh = @GioiTinh,
@@ -280,7 +298,7 @@ namespace CrmBackend.Controllers
             var input = dto.EmailHoacSdt.Trim();
             var sql = @"
                 SELECT k.MaKH, k.MaTK, k.HoTen, k.NgaySinh, k.GioiTinh, 
-                       k.SoDienThoai, k.Email, k.DiaChi, k.SoThich, k.NgayTao,
+                       k.SoDienThoai, k.Email, k.DiaChi, k.SoThich, k.Avatar, k.NgayTao,
                        t.TenDangNhap, t.MatKhau, t.TrangThai, t.VaiTro
                 FROM KHACH_HANG k
                 JOIN TAI_KHOAN t ON k.MaTK = t.MaTK
@@ -319,6 +337,7 @@ namespace CrmBackend.Controllers
                     email = user.Email,
                     diaChi = user.DiaChi,
                     soThich = user.SoThich,
+                    avatar = user.Avatar,
                     trangThai = user.TrangThai,
                     tenDangNhap = user.TenDangNhap
                 }

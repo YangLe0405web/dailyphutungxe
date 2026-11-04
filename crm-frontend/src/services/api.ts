@@ -1,3 +1,5 @@
+export const DEFAULT_WHITE_AVATAR = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'%3E%3Crect width='128' height='128' fill='%23f4f4f5'/%3E%3Ccircle cx='64' cy='48' r='24' fill='%23d4d4d8'/%3E%3Cpath d='M24 116c0-22.09 17.91-40 40-40s40 17.91 40 40z' fill='%23d4d4d8'/%3E%3C/svg%3E";
+
 export function isSameCategory(catA?: string, catB?: string): boolean {
   if (!catA || !catB) return false;
   if (catA === catB) return true;
@@ -295,7 +297,7 @@ export const customerApi = {
               soXe: customMatch?.soXe || mockMatch?.soXe || `XE00${item.maKH || 1}`,
               tongChiTieu: customMatch?.tongChiTieu ?? mockMatch?.tongChiTieu ?? 0,
               // H02: Ưu tiên avatar tùy chỉnh đã lưu
-              avatar: item.avatar || customMatch?.avatar || mockMatch?.avatar || `/images/KH/kh${item.maKH || 1}.jpg`,
+              avatar: item.avatar || customMatch?.avatar || mockMatch?.avatar || DEFAULT_WHITE_AVATAR,
               soThich: item.soThich || customMatch?.soThich || mockMatch?.soThich || 'Xe tay ga cao cấp',
               matKhau: customMatch?.matKhau || mockMatch?.matKhau || '123456',
             };
@@ -781,7 +783,7 @@ export const customerApi = {
         ngayDangKy: raw.ngayTao ? raw.ngayTao.split('T')[0] : (mockMatch?.ngayDangKy || '2024-01-01'),
         soXe: mockMatch?.soXe || `XE00${raw.maKH || 1}`,
         tongChiTieu: mockMatch?.tongChiTieu ?? 0,
-        avatar: raw.avatar || mockMatch?.avatar || `/images/KH/kh${raw.maKH || 1}.jpg`,
+        avatar: raw.avatar || raw.Avatar || mockMatch?.avatar || DEFAULT_WHITE_AVATAR,
         soThich: raw.soThich || mockMatch?.soThich || 'Xe máy, phụ tùng chính hãng',
         matKhau: raw.matKhau || mockMatch?.matKhau || '123456',
       };
@@ -3485,6 +3487,12 @@ async delete(orderIdOrNum: string | number): Promise<boolean> {
     }
 
     const order = list[matchIdx];
+    const todayStr = new Date().toISOString().split('T')[0];
+    const orderDateStr = order.ngayDat ? order.ngayDat.split('T')[0] : todayStr;
+    const minPickupDate = orderDateStr > todayStr ? orderDateStr : todayStr;
+    if (pickupDate < minPickupDate) {
+      return { success: false, message: `Ngày nhận xe không hợp lệ! Ngày nhận xe phải từ ngày đặt mua xe (${orderDateStr}) trở đi và không được ở trong quá khứ.` };
+    }
     order.trangThai = 'ChoGiaoXe';
     order.daXacNhanNgayNhan = true;
     if (order.thongTinXe) {

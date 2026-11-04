@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import type { Part, CartItem } from '../data/mockData';
 import { partApi } from '../services/api';
 
@@ -42,11 +42,42 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
+  useEffect(() => {
+    const handleSync = () => {
+      const freshParts = partApi.getAllSync();
+      setItems(prev => prev.map(item => {
+        const found = freshParts.find(p => p.id === item.part.id);
+        if (!found) return item;
+        return {
+          ...item,
+          part: {
+            ...found,
+            giaKhuyenMai: (item.part.giaKhuyenMai !== undefined && item.part.giaKhuyenMai !== null)
+              ? item.part.giaKhuyenMai
+              : (found.giaKhuyenMai ?? null),
+          }
+        };
+      }));
+    };
+    window.addEventListener('crm-data-refresh', handleSync);
+    window.addEventListener('storage', handleSync);
+    return () => {
+      window.removeEventListener('crm-data-refresh', handleSync);
+      window.removeEventListener('storage', handleSync);
+    };
+  }, []);
+
   const add = useCallback((part: Part, qty = 1): boolean => {
     // 1. Kiểm tra tồn kho khả dụng mới nhất từ partApi
     const freshParts = partApi.getAllSync();
     const currentPart = freshParts.find(p => p.id === part.id) || part;
-    const maxStock = currentPart.soLuongTon;
+    const finalPart: Part = {
+      ...currentPart,
+      giaKhuyenMai: (part.giaKhuyenMai !== undefined && part.giaKhuyenMai !== null)
+        ? part.giaKhuyenMai
+        : (currentPart.giaKhuyenMai ?? null),
+    };
+    const maxStock = finalPart.soLuongTon;
 
     if (maxStock <= 0) {
       alert(`⚠️ Sản phẩm "${currentPart.tenSanPham}" hiện đã HẾT HÀNG (Tồn kho = 0)! Không thể thêm vào giỏ.`);
@@ -63,14 +94,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           success = false;
           return prev;
         }
-        return prev.map(i => i.part.id === part.id ? { ...i, soLuong: nextQty, part: currentPart } : i);
+        return prev.map(i => i.part.id === part.id ? { ...i, soLuong: nextQty, part: finalPart } : i);
       } else {
         if (qty > maxStock) {
           alert(`⚠️ Rất tiếc! Bạn chỉ có thể chọn tối đa ${maxStock} cái do tồn kho chỉ còn ${maxStock}.`);
           success = false;
-          return [...prev, { part: currentPart, soLuong: maxStock }];
+          return [...prev, { part: finalPart, soLuong: maxStock }];
         }
-        return [...prev, { part: currentPart, soLuong: qty }];
+        return [...prev, { part: finalPart, soLuong: qty }];
       }
     });
 
@@ -139,7 +170,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     return selectedIds.has(id);
   }, [selectedIds]);
 
-  const total = items.reduce((s, i) => s + (i.part.giaKhuyenMai ?? i.part.giaGoc) * i.soLuong, 0);
+  const getEffectiveUnitPrice = (p: Part): number => {
+    if (p.giaKhuyenMai !== undefined && p.giaKhuyenMai !== null && p.giaKhuyenMai > 0 && p.giaKhuyenMai < p.giaGoc) {
+      return p.giaKhuyenMai;
+    }
+    return p.giaGoc;
+  };
+
+  const total = items.reduce((s, i) => s + getEffectiveUnitPrice(i.part) * i.soLuong, 0);
   const count = items.reduce((s, i) => s + i.soLuong, 0);
 
   const selectedItems = useMemo(() => {
@@ -147,7 +185,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   }, [items, selectedIds]);
 
   const selectedTotal = useMemo(() => {
-    return selectedItems.reduce((s, i) => s + (i.part.giaKhuyenMai ?? i.part.giaGoc) * i.soLuong, 0);
+    return selectedItems.reduce((s, i) => s + getEffectiveUnitPrice(i.part) * i.soLuong, 0);
   }, [selectedItems]);
 
   const selectedCount = useMemo(() => {

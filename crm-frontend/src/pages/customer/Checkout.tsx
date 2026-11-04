@@ -1,3 +1,4 @@
+import { validateSafeText } from '../../utils/security';
 import { useState, useEffect, useMemo } from 'react';
 import { useCart } from '../../contexts/CartContext';
 import { formatVND, mockCustomers, getCustomerTier, type Customer, type Part } from '../../data/mockData';
@@ -156,6 +157,21 @@ export default function Checkout({ onBack, onSuccess, currentCustomer, onCustome
       alert('Vui lòng đăng nhập hoặc tạo tài khoản trước khi xác nhận đặt hàng!');
       return;
     }
+    const errName = validateSafeText('Họ và tên người nhận', form.hoTen);
+    if (errName) {
+      alert('⚠️ ' + errName);
+      return;
+    }
+    const errAddress = validateSafeText('Địa chỉ giao hàng', form.diaChi);
+    if (errAddress) {
+      alert('⚠️ ' + errAddress);
+      return;
+    }
+    const errNote = validateSafeText('Ghi chú đơn hàng', form.ghiChu);
+    if (errNote) {
+      alert('⚠️ ' + errNote);
+      return;
+    }
     if (stockErrors.length > 0) {
       alert(`⚠️ Không thể đặt hàng:\n- ${stockErrors.join('\n- ')}\n\nVui lòng quay lại giỏ hàng điều chỉnh số lượng!`);
       return;
@@ -176,7 +192,7 @@ export default function Checkout({ onBack, onSuccess, currentCustomer, onCustome
           const foundPart = allParts.find(p => p.tenSanPham.toLowerCase().trim() === it.part.tenSanPham.toLowerCase().trim() || p.id === it.part.id);
           const rawNum = foundPart?.id ? parseInt(foundPart.id.replace(/\D/g, ''), 10) : parseInt(it.part.id.replace(/\D/g, ''), 10);
           const numId = (!isNaN(rawNum) && rawNum > 0 && rawNum < 2147483647) ? rawNum : 1;
-          const unitPrice = it.part.giaKhuyenMai ?? it.part.giaGoc;
+          const unitPrice = (it.part.giaKhuyenMai && it.part.giaKhuyenMai > 0 && it.part.giaKhuyenMai < it.part.giaGoc) ? it.part.giaKhuyenMai : it.part.giaGoc;
           return {
             maPhuTung: numId,
             partId: it.part.id,
