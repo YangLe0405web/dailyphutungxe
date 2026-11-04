@@ -4737,3 +4737,49 @@ pm run build thành công 100% trong 1.41s, **0 lỗi TypeScript**.
   - Bảo toàn tuyệt đối 10 điều kiện bất biến (System Invariants) trong `QUY_TAC_KIEM_TRA_VA_BAO_TOAN_FIX.md`.
   - Luồng mua xe và phụ tùng hoàn toàn không bị ảnh hưởng.
   - Không tự ý push code lên GitHub khi chưa nhận lệnh `.github --update` từ người dùng.
+
+---
+
+## [Bản Fix 89] - Khắc phục 4 lỗi QA: Đồng bộ giá phụ tùng, Avatar khách hàng & Mất sau login, Chống XSS & Ký tự đặc biệt, Validate đổi ngày nhận xe
+
+- **Ngày thực hiện:** 04/11/2026
+- **Mục tiêu:**
+  1. Vấn đề 1 (Ảnh 1, dòng 1): Giá gốc & Giá khuyến mãi phụ tùng chỉnh sửa bên Admin được nhưng bên Khách hàng không đồng bộ; khi khách mua hàng không hiển thị đúng với giá khuyến mãi.
+  2. Vấn đề 2 (Ảnh 1, dòng 2): Tạo tài khoản khách hàng avatar mặc định nên là màu trắng / placeholder; lỗi khi đổi ảnh đại diện rồi logout đăng nhập lại vẫn bị mất; đồng bộ ảnh đại diện khi xem bên Admin và Khách hàng.
+  3. Vấn đề 3 (Ảnh 2): Chống nhập ký tự đặc biệt / XSS (Bad Path) - Ngăn chặn nhập `<script>alert(1)</script>`, ký tự `' " ;` vào các trường tên, địa chỉ, ghi chú.
+  4. Vấn đề 4 (Ảnh 3): Lịch hẹn & Lái thử - Đổi ngày nhận xe: Hệ thống đang cho phép khách chọn ngày nhận xe trước ngày mua xe (hoặc ngày quá khứ) mà vẫn lưu thành công. Bổ sung validate Frontend và Backend (>= Ngày mua xe & hôm nay), hiển thị thông báo lỗi đỏ, thuộc tính min trên input date.
+- **Các tệp đã chỉnh sửa:**
+  - `crm-frontend/src/pages/customer/PartsStore.tsx`:
+    * Trong `partsWithPromo`: Ưu tiên tuyệt đối `giaKhuyenMai` cấu hình riêng của sản phẩm từ Admin (`hasManualPromo ? p.giaKhuyenMai : (disc ? disc.giaKhuyenMai : null)`), không để chiến dịch marketing chung 10% đè mất giá sản phẩm (255.000đ).
+    * Giữ đồng bộ `selectedPart` theo thời gian thực khi giá hoặc tồn kho thay đổi.
+    * Lắng nghe sự kiện `crm-data-refresh` và `storage` để tự động gọi `setRawParts(partApi.getAllSync())` ngay khi Admin sửa giá bên Quản lý phụ tùng.
+  - `crm-frontend/src/contexts/CartContext.tsx`:
+    * Bảo tồn `giaKhuyenMai` khi thêm sản phẩm vào giỏ hàng và cập nhật số lượng.
+    * Thêm hàm `getEffectiveUnitPrice` và đồng bộ giỏ hàng theo thời gian thực khi nhận sự kiện `crm-data-refresh`.
+  - `crm-frontend/src/pages/customer/Checkout.tsx`:
+    * Tính đơn giá mua hàng ưu tiên giá khuyến mãi hợp lệ: `(it.part.giaKhuyenMai && it.part.giaKhuyenMai > 0 && it.part.giaKhuyenMai < it.part.giaGoc) ? it.part.giaKhuyenMai : it.part.giaGoc`.
+    * Validate kiểm tra chống XSS và ký tự đặc biệt (`<script>`, `' " ;`) cho Họ tên người nhận, Địa chỉ giao hàng và Ghi chú đơn hàng.
+  - `CrmBackend/Controllers/KhachHangController.cs`:
+    * Bổ sung cột `k.Avatar` vào câu truy vấn SQL của endpoint `POST api/KhachHang/login` và trả về `avatar = user.Avatar` trong object `customer` (khắc phục dứt điểm nguyên nhân gốc khiến avatar bị mất khi đăng xuất/đăng nhập lại).
+    * Thêm hàm `ContainsDangerousScript` để chặn mã độc XSS ở các API tạo mới và cập nhật thông tin khách hàng.
+  - `crm-frontend/src/services/api.ts`:
+    * Định nghĩa hằng số `DEFAULT_WHITE_AVATAR` (SVG placeholder avatar màu trắng trung tính) thay thế cho việc gán mặc định ảnh người thật `kh{id}.jpg` khi tạo tài khoản mới.
+    * Bảo lưu chính xác `avatar` từ phản hồi của máy chủ khi khách hàng đăng nhập (`raw.avatar || raw.Avatar`).
+    * Thêm kiểm tra trong `confirmVehiclePickupDate`: Từ chối lưu ngày nhận xe nếu nhỏ hơn ngày đặt hàng hoặc nhỏ hơn ngày hiện tại.
+  - `crm-frontend/src/utils/security.ts` (File tạo mới):
+    * Cung cấp các hàm bảo mật: `containsXssOrSpecialChars`, `isSafeInput`, `validateSafeText`, `sanitizeInput` để phát hiện và ngăn chặn mã độc XSS `<script>` cùng các ký tự `' " ; < >`.
+  - `crm-frontend/src/pages/customer/CustomerDashboard.tsx`:
+    * Bổ sung kiểm tra an toàn dữ liệu `validateSafeText` trong modal chỉnh sửa thông tin cá nhân.
+    * Modal "ĐỔI NGÀY NHẬN XE TẠI SHOWROOM": Khóa thuộc tính `min={minPickupDate}` (với `minPickupDate` là ngày lớn hơn giữa ngày đặt hàng `order.ngayDat` và ngày hôm nay).
+    * Bổ sung validate chặn lưu nếu ngày chọn sai logic và hiển thị dòng cảnh báo lỗi màu đỏ nổi bật ngay dưới ô chọn ngày.
+  - `crm-frontend/src/layouts/CustomerLayout.tsx`:
+    * Bổ sung kiểm tra `validateSafeText` khi đăng ký tài khoản mới cho Họ tên và Địa chỉ chi tiết.
+  - `crm-frontend/tests/verify_price_sync_avatar_xss_pickup_date.test.cjs` (File tạo mới):
+    * Kiểm thử tự động toàn diện cả 4 lỗi theo quy trình TDD.
+- **Kết quả kiểm thử & Nghiệm thu:**
+  - Bộ test mới `verify_price_sync_avatar_xss_pickup_date.test.cjs`: **PASS 100%**.
+  - Toàn bộ 17/17 test suites trong `crm-frontend/tests/*.cjs`: **PASS 100%**.
+  - `npm --prefix crm-frontend run build`: 0 lỗi TypeScript / Vite (`tsc && vite build` thành công).
+  - `dotnet build CrmBackend/CrmBackend.csproj`: 0 lỗi C# (Build succeeded 0 Errors).
+  - Bảo toàn tuyệt đối 10 điều kiện bất biến (System Invariants) trong `QUY_TAC_KIEM_TRA_VA_BAO_TOAN_FIX.md`.
+  - Không tự ý push code lên GitHub khi chưa nhận lệnh `.github --update` từ người dùng.

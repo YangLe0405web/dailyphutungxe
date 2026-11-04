@@ -1,3 +1,4 @@
+import { validateSafeText } from '../../utils/security';
 import { useState, useEffect, useMemo } from 'react';
 import { matchVietnameseSearch } from '../../utils/vietnameseSearch';
 import {
@@ -520,6 +521,14 @@ function EditProfileModal({
       setErr('Vui lòng điền đầy đủ các thông tin bắt buộc (*)');
       return;
     }
+
+    // Chống XSS & Ký tự đặc biệt (<script>, ', ", ;, <, >)
+    const errName = validateSafeText('Họ và tên', form.hoTen);
+    if (errName) { setErr(errName); return; }
+    const errAddress = validateSafeText('Địa chỉ', form.diaChi);
+    if (errAddress) { setErr(errAddress); return; }
+    const errInterest = validateSafeText('Sở thích / Ghi chú', form.soThich);
+    if (errInterest) { setErr(errInterest); return; }
 
     // H01: Validate ngày sinh (>= 16 tuổi, không lớn hơn ngày hiện tại)
     if (form.ngaySinh) {
@@ -1465,6 +1474,7 @@ export default function CustomerDashboard({
   const [confirmedPickupOrderIds, setConfirmedPickupOrderIds] = useState<Record<string, boolean>>({});
   const [changingDateOrder, setChangingDateOrder] = useState<Order | null>(null);
   const [newPickupDateInput, setNewPickupDateInput] = useState<string>('');
+  const [pickupDateError, setPickupDateError] = useState<string | null>(null);
 
   // Modals state
   const [showEditProfile, setShowEditProfile] = useState(false);
@@ -7133,55 +7143,86 @@ export default function CustomerDashboard({
       )}
 
       {/* Modal Đổi ngày nhận xe tại Showroom */}
-      {changingDateOrder && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-[#18181b] rounded-3xl max-w-sm w-full p-6 border border-zinc-700 space-y-4">
-            <div className="flex justify-between items-center pb-2 border-b border-zinc-800">
-              <h3 className="font-extrabold text-sm text-white uppercase flex items-center gap-1.5">
-                <span>📅</span> <span>ĐỔI NGÀY NHẬN XE TẠI SHOWROOM</span>
-              </h3>
-              <button onClick={() => setChangingDateOrder(null)} className="text-zinc-400 hover:text-white font-bold cursor-pointer">✕</button>
-            </div>
-            <div className="space-y-1.5">
-              <label className="block text-xs text-zinc-300 font-semibold">Chọn ngày nhận xe mới:</label>
-              <input
-                type="date"
-                value={newPickupDateInput}
-                onChange={e => setNewPickupDateInput(e.target.value)}
-                className="w-full p-2.5 rounded-xl bg-zinc-900 border border-zinc-700 text-white font-mono text-xs focus:outline-none focus:border-red-600"
-              />
-              <p className="text-[11px] text-zinc-400">
-                Showroom mở cửa đón tiếp khách hàng từ 08:00 - 18:00 các ngày trong tuần.
-              </p>
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setChangingDateOrder(null)}
-                className="px-3.5 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-bold cursor-pointer"
-              >
-                Hủy bỏ
-              </button>
-              <button
-                type="button"
-                onClick={async () => {
-                  if (newPickupDateInput) {
-                    await orderApi.confirmVehiclePickupDate(changingDateOrder.id, newPickupDateInput, '09:00');
+      {changingDateOrder && (() => {
+        const todayStr = new Date().toISOString().split('T')[0];
+        const orderDateStr = changingDateOrder.ngayDat ? changingDateOrder.ngayDat.split('T')[0] : todayStr;
+        const minPickupDate = orderDateStr > todayStr ? orderDateStr : todayStr;
+        return (
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+            <div className="bg-[#18181b] rounded-3xl max-w-sm w-full p-6 border border-zinc-700 space-y-4">
+              <div className="flex justify-between items-center pb-2 border-b border-zinc-800">
+                <h3 className="font-extrabold text-sm text-white uppercase flex items-center gap-1.5">
+                  <span>📅</span> <span>ĐỔI NGÀY NHẬN XE TẠI SHOWROOM</span>
+                </h3>
+                <button onClick={() => { setChangingDateOrder(null); setPickupDateError(null); }} className="text-zinc-400 hover:text-white font-bold cursor-pointer">✕</button>
+              </div>
+              <div className="space-y-1.5">
+                <label className="block text-xs text-zinc-300 font-semibold">Chọn ngày nhận xe mới:</label>
+                <input
+                  type="date"
+                  min={minPickupDate}
+                  value={newPickupDateInput}
+                  onChange={e => {
+                    setNewPickupDateInput(e.target.value);
+                    if (e.target.value && e.target.value < minPickupDate) {
+                      setPickupDateError('⚠️ Ngày nhận xe không hợp lệ! Ngày nhận xe phải từ ngày đặt mua xe (' + orderDateStr + ') trở đi và không được ở trong quá khứ.');
+                    } else {
+                      setPickupDateError(null);
+                    }
+                  }}
+                  className={`w-full p-2.5 rounded-xl bg-zinc-900 border text-white font-mono text-xs focus:outline-none ${
+                    pickupDateError ? 'border-red-500 ring-1 ring-red-500' : 'border-zinc-700 focus:border-red-600'
+                  }`}
+                />
+                {pickupDateError && (
+                  <p className="text-xs text-red-400 font-semibold mt-1">
+                    {pickupDateError}
+                  </p>
+                )}
+                <p className="text-[11px] text-zinc-400">
+                  Showroom mở cửa đón tiếp khách hàng từ 08:00 - 18:00 các ngày trong tuần.
+                </p>
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => { setChangingDateOrder(null); setPickupDateError(null); }}
+                  className="px-3.5 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-bold cursor-pointer"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!newPickupDateInput) {
+                      setPickupDateError('Vui lòng chọn ngày nhận xe!');
+                      return;
+                    }
+                    if (newPickupDateInput < minPickupDate) {
+                      setPickupDateError('⚠️ Ngày nhận xe không hợp lệ! Ngày nhận xe phải từ ngày đặt mua xe (' + orderDateStr + ') trở đi và không được ở trong quá khứ.');
+                      return;
+                    }
+                    const res = await orderApi.confirmVehiclePickupDate(changingDateOrder.id, newPickupDateInput, '09:00');
+                    if (!res.success) {
+                      setPickupDateError('⚠️ ' + res.message);
+                      return;
+                    }
                     setAllOrders(orderApi.getAllSync());
                     appointmentApi.getAll().then(d => { if (d) setAllAppts(d); });
                     setChangingDateOrder(null);
+                    setPickupDateError(null);
                     window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'appointment_updated' } }));
                     alert('✓ Đã cập nhật và xác nhận ngày nhận xe mới: ' + newPickupDateInput + '. Lịch hẹn và Lịch biểu Showroom đã được đồng bộ!');
-                  }
-                }}
-                className="px-4 py-1.5 rounded-xl bg-red-700 hover:bg-red-800 text-white text-xs font-bold cursor-pointer"
-              >
-                ✓ Lưu ngày mới
-              </button>
+                  }}
+                  className="px-4 py-1.5 rounded-xl bg-red-700 hover:bg-red-800 text-white text-xs font-bold cursor-pointer"
+                >
+                  ✓ Lưu ngày mới
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Review Modal */}
       {reviewModalPart && (

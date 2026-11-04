@@ -299,9 +299,16 @@ export default function PartsStore({ currentCustomer, onRequireLogin, onNavigate
   }, [rawParts]);
 
   useEffect(() => {
-    const handleRefresh = () => setPromoRefreshKey(k => k + 1);
+    const handleRefresh = () => {
+      setRawParts(partApi.getAllSync());
+      setPromoRefreshKey(k => k + 1);
+    };
     window.addEventListener('crm-data-refresh', handleRefresh);
-    return () => window.removeEventListener('crm-data-refresh', handleRefresh);
+    window.addEventListener('storage', handleRefresh);
+    return () => {
+      window.removeEventListener('crm-data-refresh', handleRefresh);
+      window.removeEventListener('storage', handleRefresh);
+    };
   }, []);
 
   // Dynamically compute discounted price based on active promotions & filter out hidden parts (PT12)
@@ -310,12 +317,26 @@ export default function PartsStore({ currentCustomer, onRequireLogin, onNavigate
       .filter(p => p.trangThaiHienThi !== 'An') // PT12: Sản phẩm bị ẩn không hiển thị trên Web
       .map(p => {
         const disc = promotionApi.calculateDiscount(p);
+        const hasManualPromo = p.giaKhuyenMai !== undefined && p.giaKhuyenMai !== null && p.giaKhuyenMai > 0 && p.giaKhuyenMai < p.giaGoc;
+        const effectivePromo = hasManualPromo
+          ? p.giaKhuyenMai
+          : (disc ? disc.giaKhuyenMai : null);
         return {
           ...p,
-          giaKhuyenMai: disc ? disc.giaKhuyenMai : null,
+          giaKhuyenMai: effectivePromo,
         };
       });
   }, [rawParts, promoRefreshKey]);
+
+  // Keep selectedPart in sync when price or stock updates from Admin
+  useEffect(() => {
+    if (selectedPart) {
+      const fresh = partsWithPromo.find(p => p.id === selectedPart.id);
+      if (fresh && (fresh.giaKhuyenMai !== selectedPart.giaKhuyenMai || fresh.giaGoc !== selectedPart.giaGoc || fresh.soLuongTon !== selectedPart.soLuongTon)) {
+        setSelectedPart(fresh);
+      }
+    }
+  }, [partsWithPromo]);
 
   // Extract all unique brands dynamically
   const brands = useMemo(() => {

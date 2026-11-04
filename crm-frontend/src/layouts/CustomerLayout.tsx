@@ -1,3 +1,4 @@
+import { validateSafeText } from '../utils/security';
 import React, { useState, useEffect, useRef } from 'react';
 import { useCart } from '../contexts/CartContext';
 import { mockCustomers, type Customer } from '../data/mockData';
@@ -1463,6 +1464,18 @@ function CustomerAuthModal({
 
     if (!form.hoTen.trim()) {
       setRegisterErr('Vui lòng nhập họ và tên!');
+      return;
+    }
+
+    const errName = validateSafeText('Họ và tên', form.hoTen);
+    if (errName) {
+      setRegisterErr(errName);
+      return;
+    }
+
+    const errStreet = validateSafeText('Số nhà / Tên đường', form.streetAddress);
+    if (errStreet) {
+      setRegisterErr(errStreet);
       return;
     }
 
