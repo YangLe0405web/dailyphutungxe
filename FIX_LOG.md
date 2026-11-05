@@ -4783,3 +4783,110 @@ pm run build thành công 100% trong 1.41s, **0 lỗi TypeScript**.
   - `dotnet build CrmBackend/CrmBackend.csproj`: 0 lỗi C# (Build succeeded 0 Errors).
   - Bảo toàn tuyệt đối 10 điều kiện bất biến (System Invariants) trong `QUY_TAC_KIEM_TRA_VA_BAO_TOAN_FIX.md`.
   - Không tự ý push code lên GitHub khi chưa nhận lệnh `.github --update` từ người dùng.
+
+
+---
+
+## [Bản Fix 90] - Nâng cấp Toàn diện Hệ thống Khuyến mãi & Kho Voucher Khách hàng (7 Ảnh Mockup)
+
+- **Ngày thực hiện:** 05/11/2026
+- **Mục tiêu:**
+  1. **Giao diện trang Quản trị Khuyến mãi Admin (Ảnh 1):** Bổ sung nút `[+ Tạo mã khuyến mãi]` trên header, 5 thẻ KPI thống kê trực quan (*Số lượng Voucher đã phát: 1,850, Đang diễn ra: 12, Sắp diễn ra: 4, Đã kết thúc: 112, Đã tạm dừng: 2*), thanh tabs lọc trạng thái nhanh, cột Đã dùng / Giới hạn với progress bar trực quan, công tắc Toggle Switch bật/tắt nhanh và nút sao chép mã tiện lợi.
+  2. **Tạo mã khuyến mãi - Modal 3 loại chuyên biệt (Ảnh 2, 3, 4):**
+     - **Loại 1 (Ảnh 2) - Khuyến mãi theo sản phẩm:** Flash Sale giảm trực tiếp trên web cho khách hàng (không cần nhập mã khi checkout); thiết lập khung giờ flash sale (`08:00 - 22:00`); bảng "Chọn sản phẩm từ hệ thống" với checkbox, hình ảnh, SKU, giá gốc, giá sau giảm tự động tính và quota số lượng áp dụng.
+     - **Loại 2 (Ảnh 3) - Khuyến mãi theo đợt / Voucher:** Mã voucher tùy biến (kèm nút *Tạo mã ngẫu nhiên*), thiết lập đơn tối thiểu, tổng số lượng phát hành, giới hạn lượt dùng mỗi khách, chế độ công khai/riêng tư, thẻ xem trước Voucher màu cam Motoshop với hoa văn vé xé rãnh.
+     - **Loại 3 (Ảnh 4) - Khuyến mãi theo loại khách hàng:** Nhắm đúng nhóm đối tượng (VIP / Thân thiết, Sinh nhật trong tháng, Khách mới, Khách lâu ngày chưa quay lại); tùy chọn áp dụng quanh năm; thẻ xem trước Voucher VIP màu vàng Gold ánh kim sang trọng.
+  3. **Khách hàng - Kho Voucher của tôi (Ảnh 5):** Thêm menu sidebar trái `% Kho Voucher` kèm badge số lượng; giao diện Kho Voucher với ô nhập mã lưu vào ví cá nhân; 4 tabs phân loại (*Tất cả, Phụ tùng & Phụ kiện, Dịch vụ & Bảo dưỡng, Ưu đãi đặc biệt*); lưới thẻ voucher với 4 phong cách đặc trưng (Đỏ Motoshop, Xanh/Đỏ Dịch vụ, Vàng VIP, Cam Sinh nhật) cùng nút `[Dùng ngay]` điều hướng tức thì.
+  4. **Khách hàng - Thanh toán & Chọn Voucher (Ảnh 6, 7):** Cột tóm tắt đơn hàng bổ sung phần *Khuyến mãi (Chọn hoặc nhập mã)*, ô nhập nhanh + nút `[ÁP DỤNG]`, nút `[CHỌN MÃ →]`, card voucher đã áp dụng, dòng khấu trừ `Giảm giá (Voucher): - X.XXX đ`; Modal `CHỌN VOUCHER / MÃ GIẢM GIÁ` phân chia 2 khu vực rõ ràng: *Voucher khả dụng cho đơn hàng này* (radio select, tính trước số tiền giảm) và *Voucher chưa đủ điều kiện* (làm mờ, giải thích rõ lý do cần mua thêm bao nhiêu để áp dụng).
+- **Các tệp đã chỉnh sửa:**
+  - [`crm-frontend/src/services/api.ts`](file:///d:/crm-project/crm-frontend/src/services/api.ts):
+    * Mở rộng interface `Promotion` và `PromotionAppliedProduct` với các thuộc tính: `loaiKhuyenMai`, `maVoucher`, `donHangToiThieu`, `giamToiDa`, `gioiHanMoiKhach`, `tongSoLuong`, `daSuDung`, `hienThiMa`, `doiTuongKhachHang`, `apDungChoLoai`, `gioBatDau`, `gioKetThuc`, `sanPhamApDungList`.
+    * Cung cấp mock data phong phú tương ứng ảnh mockup (`MOTOFLASH15`, `MOTO50K`, `MOTO20K`, `VIPCUSTOMER`, `SINHNHAT`, `MOTOCARE30`, `NOVISSALE`, `BF1111`, `PO2026`, `HE2024`).
+    * Bổ sung các phương thức: `getVoucherStats()`, `getVouchersForCustomer(customer)`, `saveVoucherToCustomerWallet(code, customerId)`, `validateVoucher(code, orderTotal, customer)`.
+    * Cập nhật `orderApi.create` nhận `maVoucher` và `giamVoucher` lưu vào đơn hàng.
+  - [`crm-frontend/src/data/mockData.ts`](file:///d:/crm-project/crm-frontend/src/data/mockData.ts):
+    * Thêm trường `maVoucher?: string` và `giamVoucher?: number` vào interface `Order`.
+  - [`crm-frontend/src/pages/admin/Promotions.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/Promotions.tsx):
+    * Header với tiêu đề `TRUNG TÂM KHUYẾN MÃI & MARKETING` và nút `[+ Tạo mã khuyến mãi]`.
+    * 5 thẻ KPI thống kê chuẩn Ảnh 1; thanh tabs trạng thái và bộ lọc loại KM.
+    * Bảng danh sách với badge loại KM, mức ưu đãi, thời gian, progress bar đã dùng, toggle switch on/off.
+    * Modal Tạo/Sửa mã KM tích hợp 3 tabs chuyên biệt (Ảnh 2, 3, 4) kèm bảng chọn sản phẩm và preview ticket.
+  - [`crm-frontend/src/pages/customer/CustomerDashboard.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/CustomerDashboard.tsx):
+    * Menu sidebar có mục `% Kho Voucher` kèm badge số lượng.
+    * Tab 6 `KHO VOUCHER CỦA TÔI`: Thanh lưu mã voucher, tabs phân loại ngành hàng, 4 loại ticket card chuẩn Ảnh 5 kèm nút `[Dùng ngay]`.
+  - [`crm-frontend/src/pages/customer/Checkout.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/Checkout.tsx):
+    * Tích hợp khung nhập và nút `[CHỌN MÃ]` tại cột tổng quan thanh toán (Ảnh 6).
+    * Hiển thị dòng `Giảm giá (Voucher): - X.XXX đ` và tính toán lại `Tổng thanh toán`.
+    * Modal `CHỌN VOUCHER / MÃ GIẢM GIÁ` (Ảnh 7) với danh sách voucher khả dụng và chưa đủ điều kiện.
+  - [`crm-frontend/tests/verify_promotions_and_voucher_wallet.test.cjs`](file:///d:/crm-project/crm-frontend/tests/verify_promotions_and_voucher_wallet.test.cjs):
+    * Test suite TDD tự động kiểm tra toàn bộ 4 phân hệ (Admin 1.1-1.4, API 2.1-2.2, Kho Voucher 3.1-3.2, Checkout 4.1-4.2).
+- **Kết quả kiểm thử & Nghiệm thu:**
+  - Bộ test mới `verify_promotions_and_voucher_wallet.test.cjs`: **PASS 100%**.
+  - Toàn bộ 18/18 test suites trong `crm-frontend/tests/*.cjs`: **PASS 18/18 (0 failed)**.
+  - `npm --prefix crm-frontend run build`: **0 lỗi TypeScript / Vite** (`tsc && vite build` thành công).
+  - `dotnet build CrmBackend/CrmBackend.csproj`: **0 lỗi C#** (Build succeeded 0 Errors).
+  - Bảo toàn tuyệt đối 10 điều kiện bất biến (System Invariants) trong `QUY_TAC_KIEM_TRA_VA_BAO_TOAN_FIX.md`.
+  - Không tự ý push code lên GitHub khi chưa nhận lệnh `.github --update` từ người dùng.
+
+
+---
+
+## [Bản Fix 91] - Khắc phục 5 vấn đề Voucher: Cột Đã dùng/Giới hạn, Hiển thị giảm giá Admin & Khách hàng, Ẩn voucher hết lượt, Làm mờ voucher, Giảm 100% về 0đ
+
+- **Ngày thực hiện:** 05/11/2026
+- **Mục tiêu:**
+  1. **Kích hoạt Cột Đã dùng / Giới hạn (Ảnh 1):** Khắc phục lỗi hiển thị `0 / 500 0%` trên bảng Quản trị Khuyến mãi Admin; tự động đồng bộ số liệu thực tế và đếm số lượng đơn hàng có áp dụng mã voucher.
+  2. **Hiển thị đúng số tiền giảm giá Chi tiết đơn hàng (Ảnh 2):** Khắc phục lỗi hardcode `0 đ` trong Chi tiết đơn hàng ở cả phía **Khách hàng** (`CustomerDashboard.tsx`) và **Admin** (`Sales.tsx`), hiển thị số tiền trừ màu xanh lá kèm mã voucher đã áp dụng (`- XX.XXX đ (MÃ_VOUCHER)`).
+  3. **Voucher hết lượt dùng biến mất khỏi Kho Voucher:** Lưu vết lịch sử dùng theo từng khách hàng (`crm_customer_voucher_usage_{customerId}`). Khi khách hàng đã dùng hết số lượt giới hạn (`gioiHanMoiKhach`), voucher sẽ tự động biến mất khỏi Kho Voucher cá nhân và danh sách chọn mã.
+  4. **Làm mờ voucher không đủ điều kiện:** Trong modal chọn mã khi thanh toán, các voucher chưa đạt điều kiện (chưa đủ giá trị đơn tối thiểu, yêu cầu khách VIP, hết lượt) được làm mờ trực quan (`opacity-40 grayscale-[25%] pointer-events-none`) và ghi rõ lý do.
+  5. **Voucher giảm 100% buộc giá về 0đ:** Khấu trừ toàn bộ tiền hàng và phí giao hàng, buộc `Tổng thanh toán` về đúng `0 đ`, tự động gắn trạng thái thanh toán `DaThanhToan` và cho phép đặt hàng thành công.
+- **Các tệp đã chỉnh sửa:**
+  - [`crm-frontend/src/services/api.ts`](file:///d:/crm-project/crm-frontend/src/services/api.ts):
+    * Bổ sung phương thức `promotionApi.recordUsage(code, customerId)` ghi nhận lượt dùng toàn cục và riêng của từng khách hàng.
+    * Nâng cấp `promotionApi.getAll()` tự động tính toán lượt dùng từ dữ liệu mẫu và đếm thực tế các đơn hàng có áp dụng mã.
+    * Nâng cấp `promotionApi.getVouchersForCustomer(customer)` tự động loại bỏ voucher nếu khách đã dùng hết lượt.
+    * Nâng cấp `promotionApi.validateVoucher(code, orderTotal, customer)` hỗ trợ voucher 100% (chiết khấu bao gồm cả phí ship, `finalTotal = 0`) và kiểm tra giới hạn lượt dùng của khách.
+    * Trong `orderApi.getAll`: Bảo lưu chính xác `maVoucher` và `giamVoucher` khi map dữ liệu đơn hàng.
+    * Trong `orderApi.create`: Tự động gọi `promotionApi.recordUsage` và gán `trangThaiThanhToan = 'DaThanhToan'` khi `tongTien === 0`.
+  - [`crm-frontend/src/pages/customer/CustomerDashboard.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/CustomerDashboard.tsx):
+    * Thay thế đoạn hardcode `0 đ` bằng công thức tính giảm giá thực tế `selectedOrderDetail.giamVoucher ?? ((itemSubtotal + shippingFee > selectedOrderDetail.tongTien) ? (itemSubtotal + shippingFee - selectedOrderDetail.tongTien) : 0)`.
+    * Hiển thị dòng giảm giá màu xanh lá `- {formatVND(discountAmount)}` kèm mã voucher.
+  - [`crm-frontend/src/pages/admin/Sales.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/Sales.tsx):
+    * Cập nhật Modal Chi tiết đơn hàng Admin hiển thị đúng số tiền giảm giá của voucher.
+  - [`crm-frontend/src/pages/customer/Checkout.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/Checkout.tsx):
+    * Xử lý trường hợp voucher 100%: Buộc `grand = 0đ`, hiển thị khấu trừ toàn bộ tiền hàng + ship, cho phép đặt đơn 0đ.
+    * Áp dụng styling làm mờ nổi bật (`opacity-40 grayscale-[25%] pointer-events-none`) cho các voucher chưa đủ điều kiện.
+    * Gọi `promotionApi.recordUsage` ngay sau khi đặt hàng thành công.
+  - [`crm-frontend/tests/verify_voucher_fixes_5_issues.test.cjs`](file:///d:/crm-project/crm-frontend/tests/verify_voucher_fixes_5_issues.test.cjs):
+    * Bộ test kiểm thử tự động toàn bộ 5 vấn đề.
+- **Kết quả kiểm thử & Nghiệm thu:**
+  - Bộ test mới `verify_voucher_fixes_5_issues.test.cjs`: **PASS 100%**.
+  - Toàn bộ 19/19 test suites trong `crm-frontend/tests/*.cjs`: **PASS 19/19 (0 failed)**.
+  - `npm --prefix crm-frontend run build`: **0 lỗi TypeScript / Vite**.
+  - `dotnet build CrmBackend/CrmBackend.csproj`: **0 lỗi C#**.
+  - Bảo toàn tuyệt đối 10 điều kiện bất biến (System Invariants) trong `QUY_TAC_KIEM_TRA_VA_BAO_TOAN_FIX.md`.
+
+
+---
+
+## [Bản Fix 92] - Khắc phục Nút Thu tiền Đơn xe máy (Ảnh người dùng gửi) & Đồng bộ Trạng thái Thanh toán Backend
+
+- **Ngày thực hiện:** 05/11/2026
+- **Mục tiêu:**
+  1. **Khắc phục lỗi nút Thu tiền đơn xe máy (Ảnh chụp màn hình):** Trong trang Quản lý bán hàng (`Sales.tsx`), khi đơn xe máy ở trạng thái `Chờ giao xe`, bấm nút `[💵 Thu tiền (72.000.000 đ)]` và xác nhận thu đủ tiền, đơn hàng được cập nhật tức thì thành `Đã thanh toán`, `soTienConLai = 0`, nút hành động lập tức chuyển đổi thành `[✅ Hoàn tất]`.
+  2. **Đồng bộ hóa Backend API & Database SQL Server:**
+     - Khắc phục điều kiện lọc `!isXe` trong `orderApi.updatePaymentStatus` khiến các đơn xe máy bị bỏ qua không gửi `PUT /DonHang/{numId}/thanh-toan` lên máy chủ. Nay cả đơn xe máy (`DH-XE-...`) và đơn phụ tùng đều đồng bộ trạng thái thanh toán trực tiếp vào bảng `DON_HANG` của SQL Server.
+     - Khi hoàn tất đơn xe (`HoanThanh`), `orderApi.updateStatus` tự động gửi đồng bộ `trangThaiThanhToan: 'DaThanhToan'` lên backend để đảm bảo tính toàn vẹn dữ liệu.
+     - Trong `orderApi.getAll()`, nếu trạng thái trong cache đã là `DaThanhToan`, ưu tiên giữ nguyên và không để dữ liệu cũ từ máy chủ ghi đè; đồng thời `mergedThongTinXe` luôn gán `soTienConLai: 0` khi đơn đã thanh toán.
+  3. **Bảo toàn nguyên bản Chức năng Mua xe máy từ GitHub:**
+     - Toàn bộ luồng mua xe máy tại Showroom (`VehiclesShowroom.tsx`: Đặt cọc 2.000.000đ / Thanh toán 100%, chọn màu sắc, phiên bản, tính phí lăn bánh, giao xe tận nơi / nhận tại showroom, tạo lịch hẹn nhận xe QR Code) được bảo toàn nguyên vẹn 100% khớp bản mới nhất trên GitHub.
+- **Các tệp đã chỉnh sửa:**
+  - [`crm-frontend/src/services/api.ts`](file:///d:/crm-project/crm-frontend/src/services/api.ts):
+    * Sửa `orderApi.updatePaymentStatus`: Bỏ điều kiện chặn `!isXe`, cho phép gọi backend PUT `/DonHang/{numId}/thanh-toan` cho tất cả đơn hàng; cập nhật cache `crm_orders_cache` ngay cả khi đơn hàng lấy từ backend.
+    * Sửa `orderApi.updateStatus`: Tự động gọi backend PUT `/DonHang/{numId}/thanh-toan` khi trạng thái là `HoanThanh`.
+    * Sửa `orderApi.getAll`: Ưu tiên `DaThanhToan` từ cache, triệt để gán `soTienConLai: 0` khi `finalPayment === 'DaThanhToan'`.
+- **Kết quả kiểm thử & Nghiệm thu:**
+  - Toàn bộ 19/19 test suites trong `crm-frontend/tests/*.cjs`: **PASS 19/19 (0 failed)**.
+  - `npm --prefix crm-frontend run build`: **0 lỗi TypeScript / Vite**.
+  - `dotnet build CrmBackend/CrmBackend.csproj`: **0 lỗi C#**.
+  - Luồng mua xe máy và phụ tùng chạy trơn tru, bảo toàn tuyệt đối 10 điều kiện bất biến (System Invariants) trong `QUY_TAC_KIEM_TRA_VA_BAO_TOAN_FIX.md`.
