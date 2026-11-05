@@ -426,6 +426,8 @@ export interface Order {
   qrCodeUrl?: string;
   maKTV?: string;
   tenKTV?: string;
+  maVoucher?: string;
+  giamVoucher?: number;
 }
 
 export interface AppointmentTimelineItem {

@@ -4089,10 +4089,13 @@ function OrderDetailModal({
               const itemSubtotal = (order.items && order.items.length > 0)
                 ? order.items.reduce((s, it) => s + ((it.donGia || 0) * (it.soLuong || 1)), 0)
                 : Math.max(0, order.tongTien - 30000);
-              const shippingFee = (order.tongTien > itemSubtotal)
-                ? (order.tongTien - itemSubtotal)
-                : (order.kenhBan === 'TaiQuay' ? 0 : 30000);
-              const displayTotal = order.tongTien > 0 ? order.tongTien : (itemSubtotal + shippingFee);
+              const shippingFee = order.kenhBan === 'TaiQuay' ? 0 : 30000;
+              const discountAmount = order.giamVoucher ?? (
+                (itemSubtotal + shippingFee > order.tongTien)
+                  ? (itemSubtotal + shippingFee - order.tongTien)
+                  : 0
+              );
+              const displayTotal = order.tongTien;
 
               return (
                 <div className="p-4 rounded-2xl bg-[#1c1d22] border border-zinc-800 text-xs flex flex-col justify-between space-y-2">
@@ -4112,7 +4115,10 @@ function OrderDetailModal({
                     </div>
                     <div className="flex justify-between">
                       <span>Giảm giá (Voucher):</span>
-                      <span className="font-mono text-zinc-400">0 đ</span>
+                      <span className={`font-mono font-bold ${discountAmount > 0 ? 'text-emerald-400' : 'text-zinc-400'}`}>
+                        {discountAmount > 0 ? `-${formatVND(discountAmount)}` : '0 đ'}
+                        {order.maVoucher ? ` (${order.maVoucher})` : ''}
+                      </span>
                     </div>
                   </div>
                   <div className="border-t border-zinc-800/90 pt-2.5 flex justify-between items-center">

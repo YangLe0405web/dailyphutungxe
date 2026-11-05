@@ -54,6 +54,8 @@ import {
   DEFAULT_CATALOG_VEHICLES,
   catalogVehicleApi,
   partApi,
+  promotionApi,
+  type Promotion,
   normalizeDateStr,
   cleanBikeName,
   safeLocalStorageSet,
@@ -2865,6 +2867,81 @@ export default function CustomerDashboard({
     return count;
   }, [myOrders, myVehicles, myCustomerFeedbacks, currentCustomer]);
 
+  // Vouchers state for customer (Ảnh 5 - Kho Voucher)
+  const [customerVouchers, setCustomerVouchers] = useState<Promotion[]>(() => {
+    return promotionApi.getVouchersForCustomer(currentCustomer);
+  });
+  const [inputVoucherCode, setInputVoucherCode] = useState('');
+  const [voucherClaimMsg, setVoucherClaimMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [activeVoucherCategoryTab, setActiveVoucherCategoryTab] = useState<'All' | 'PhuTung' | 'DichVu' | 'DacBiet'>('All');
+  const [voucherCopiedCode, setVoucherCopiedCode] = useState<string | null>(null);
+
+  useEffect(() => {
+    const loadVouchers = () => {
+      setCustomerVouchers(promotionApi.getVouchersForCustomer(currentCustomer));
+    };
+    loadVouchers();
+    window.addEventListener('crm-data-refresh', loadVouchers);
+    return () => window.removeEventListener('crm-data-refresh', loadVouchers);
+  }, [currentCustomer]);
+
+  const handleClaimVoucherInWallet = () => {
+    if (!inputVoucherCode.trim()) {
+      setVoucherClaimMsg({ type: 'error', text: 'Vui lòng nhập mã voucher!' });
+      return;
+    }
+    const customerId = currentCustomer?.id || 'KH-GUEST';
+    const res = promotionApi.saveVoucherToCustomerWallet(inputVoucherCode, customerId);
+    if (res.success) {
+      setVoucherClaimMsg({ type: 'success', text: res.message });
+      setInputVoucherCode('');
+      setCustomerVouchers(promotionApi.getVouchersForCustomer(currentCustomer));
+    } else {
+      setVoucherClaimMsg({ type: 'error', text: res.message });
+    }
+    setTimeout(() => setVoucherClaimMsg(null), 4000);
+  };
+
+  const handleCopyVoucherCode = (code: string) => {
+    navigator.clipboard?.writeText(code);
+    setVoucherCopiedCode(code);
+    setTimeout(() => setVoucherCopiedCode(null), 2000);
+  };
+
+  const handleUseVoucherAction = (v: Promotion) => {
+    if (v.apDungChoLoai === 'DichVu') {
+      setActiveTab(2); // Chuyển sang tab Lịch hẹn đặt dịch vụ
+    } else {
+      if (onNavigateToStore) {
+        onNavigateToStore();
+      } else {
+        alert(`Đã sao chép mã "${v.maVoucher || v.id}". Hãy sử dụng mã này tại trang Thanh toán phụ tùng!`);
+      }
+    }
+  };
+
+  const filteredCustomerVouchers = useMemo(() => {
+    if (activeVoucherCategoryTab === 'All') return customerVouchers;
+    if (activeVoucherCategoryTab === 'PhuTung') {
+      return customerVouchers.filter(v => v.apDungChoLoai === 'PhuTung' || v.loaiKhuyenMai === 'TheoSanPham' || (v.sanPhamIds && v.sanPhamIds.length > 0));
+    }
+    if (activeVoucherCategoryTab === 'DichVu') {
+      return customerVouchers.filter(v => v.apDungChoLoai === 'DichVu' || (v.tenChuongTrinh && (v.tenChuongTrinh.toLowerCase().includes('dịch vụ') || v.tenChuongTrinh.toLowerCase().includes('bảo dưỡng'))));
+    }
+    if (activeVoucherCategoryTab === 'DacBiet') {
+      return customerVouchers.filter(v => v.doiTuongKhachHang === 'VIP' || v.doiTuongKhachHang === 'SinhNhat' || v.doiTuongKhachHang === 'Moi' || v.loaiKhuyenMai === 'TheoLoaiKhachHang');
+    }
+    return customerVouchers;
+  }, [customerVouchers, activeVoucherCategoryTab]);
+
+  const voucherCounts = useMemo(() => {
+    const total = customerVouchers.length;
+    const phuTung = customerVouchers.filter(v => v.apDungChoLoai === 'PhuTung' || v.loaiKhuyenMai === 'TheoSanPham' || (v.sanPhamIds && v.sanPhamIds.length > 0)).length;
+    const dichVu = customerVouchers.filter(v => v.apDungChoLoai === 'DichVu' || (v.tenChuongTrinh && (v.tenChuongTrinh.toLowerCase().includes('dịch vụ') || v.tenChuongTrinh.toLowerCase().includes('bảo dưỡng')))).length;
+    const dacBiet = customerVouchers.filter(v => v.doiTuongKhachHang === 'VIP' || v.doiTuongKhachHang === 'SinhNhat' || v.doiTuongKhachHang === 'Moi' || v.loaiKhuyenMai === 'TheoLoaiKhachHang').length;
+    return { total, phuTung, dichVu, dacBiet };
+  }, [customerVouchers]);
+
   const sidebarNavItems = [
     { id: 0, label: 'Phương tiện của tôi', count: myVehicles.length, icon: '🏍️' },
     { id: 1, label: 'Đơn mua hàng', count: myOrders.length, icon: '🛍️' },
@@ -2872,6 +2949,7 @@ export default function CustomerDashboard({
     { id: 3, label: 'Lịch sử dịch vụ', count: completedServicesCount, icon: '🕒' },
     { id: 4, label: 'Bảo hiểm', count: myInsurances.length, icon: '🛡️' },
     { id: 5, label: 'Khảo sát & Đánh giá', count: unreviewedOrdersCount, icon: '📝' },
+    { id: 6, label: 'Kho Voucher', count: customerVouchers.length, icon: '%' },
   ];
 
   return (
@@ -5697,6 +5775,185 @@ export default function CustomerDashboard({
                 )}
               </div>
             )}
+
+            {/* ── TAB 6: KHO VOUCHER CỦA TÔI (Ảnh 5) ── */}
+            {activeTab === 6 && (
+              <div className="space-y-6 animate-in fade-in">
+                {/* Header Tiêu đề */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-zinc-800">
+                  <div>
+                    <h2 className="text-xl sm:text-2xl font-black text-white uppercase tracking-tight flex items-center gap-2">
+                      <span className="text-red-500 font-mono">%</span> KHO VOUCHER CỦA TÔI
+                    </h2>
+                    <p className="text-xs text-zinc-400 font-mono mt-1">
+                      Thu thập mã giảm giá và sử dụng khi đặt mua phụ tùng hoặc đặt lịch bảo dưỡng
+                    </p>
+                  </div>
+                </div>
+
+                {/* Thanh nhập mã voucher lưu vào kho */}
+                <div className="p-4 sm:p-5 rounded-3xl bg-[#141416] border border-zinc-800 shadow-md">
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <div className="relative flex-1">
+                      <input
+                        type="text"
+                        placeholder="Nhập mã voucher để lưu vào kho (VD: MOTO50K, MOTOFLASH15, VIPCUSTOMER)..."
+                        value={inputVoucherCode}
+                        onChange={e => setInputVoucherCode(e.target.value.toUpperCase())}
+                        onKeyDown={e => e.key === 'Enter' && handleClaimVoucherInWallet()}
+                        className="w-full pl-10 pr-4 py-3 rounded-2xl bg-zinc-900 border border-zinc-700 text-xs font-mono font-bold uppercase text-white focus:outline-none focus:border-red-500 placeholder:normal-case placeholder:font-normal placeholder:text-zinc-500"
+                      />
+                      <span className="absolute left-3.5 top-3.5 text-zinc-400 text-sm">🎟️</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleClaimVoucherInWallet}
+                      className="px-6 py-3 rounded-2xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold font-mono transition cursor-pointer shadow-md flex items-center justify-center gap-2 shrink-0"
+                    >
+                      <span>+</span>
+                      <span>LƯU MÃ</span>
+                    </button>
+                  </div>
+                  {voucherClaimMsg && (
+                    <div className={`mt-3 px-3.5 py-2 rounded-xl text-xs font-medium flex items-center gap-2 ${voucherClaimMsg.type === 'success' ? 'bg-emerald-950/60 text-emerald-300 border border-emerald-800' : 'bg-red-950/60 text-red-300 border border-red-800'}`}>
+                      <span>{voucherClaimMsg.type === 'success' ? '✓' : '⚠️'}</span>
+                      <span>{voucherClaimMsg.text}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Các Tab phân loại danh mục Voucher Chuẩn Ảnh 5 */}
+                <div className="flex flex-wrap items-center gap-2 border-b border-zinc-800 pb-2">
+                  {[
+                    { key: 'All', label: `Tất cả (${voucherCounts.total})` },
+                    { key: 'PhuTung', label: `Phụ tùng & Phụ kiện (${voucherCounts.phuTung})` },
+                    { key: 'DichVu', label: `Dịch vụ & Bảo dưỡng (${voucherCounts.dichVu})` },
+                    { key: 'DacBiet', label: `Ưu đãi đặc biệt (${voucherCounts.dacBiet})` },
+                  ].map(tab => {
+                    const isActive = activeVoucherCategoryTab === tab.key;
+                    return (
+                      <button
+                        key={tab.key}
+                        onClick={() => setActiveVoucherCategoryTab(tab.key as any)}
+                        className={`px-4 py-2 rounded-2xl text-xs font-bold transition cursor-pointer ${isActive ? 'bg-red-600 text-white shadow-md' : 'bg-zinc-900/80 text-zinc-400 hover:text-white hover:bg-zinc-800'}`}
+                      >
+                        {tab.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Danh sách thẻ Voucher dạng Ticket Card Chuẩn Ảnh 5 */}
+                {filteredCustomerVouchers.length === 0 ? (
+                  <div className="py-16 text-center rounded-3xl bg-[#141416] border border-zinc-800 text-zinc-500">
+                    <div className="text-4xl mb-3">🎟️</div>
+                    <h4 className="text-sm font-bold text-zinc-300">Kho Voucher của bạn đang trống</h4>
+                    <p className="text-xs text-zinc-500 mt-1 max-w-sm mx-auto">
+                      Hãy nhập mã khuyến mãi ở khung trên hoặc theo dõi các đợt Flash Sale của Motoshop!
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {filteredCustomerVouchers.map(v => {
+                      const isVip = v.doiTuongKhachHang === 'VIP' || v.maVoucher === 'VIPCUSTOMER';
+                      const isBirthday = v.doiTuongKhachHang === 'SinhNhat' || v.maVoucher === 'SINHNHAT';
+                      const isService = v.apDungChoLoai === 'DichVu' || v.maVoucher === 'MOTOCARE30';
+
+                      const ticketColorClass = isVip
+                        ? 'from-amber-600 via-yellow-500 to-amber-700 text-zinc-950'
+                        : isBirthday
+                        ? 'from-orange-600 to-amber-600 text-white'
+                        : isService
+                        ? 'from-blue-700 to-indigo-800 text-white'
+                        : 'from-red-600 to-rose-700 text-white';
+
+                      const borderClass = isVip
+                        ? 'border-yellow-500/40 hover:border-yellow-400'
+                        : isBirthday
+                        ? 'border-orange-500/40 hover:border-orange-400'
+                        : isService
+                        ? 'border-blue-500/40 hover:border-blue-400'
+                        : 'border-red-900/40 hover:border-red-700/60';
+
+                      return (
+                        <div
+                          key={v.id}
+                          className={`relative flex rounded-3xl overflow-hidden bg-[#141416] border ${borderClass} shadow-md transition-all duration-300 group hover:-translate-y-0.5`}
+                        >
+                          {/* Cuống vé trái */}
+                          <div
+                            className={`p-4 sm:p-5 flex flex-col items-center justify-center border-r-2 border-dashed border-zinc-800/80 bg-gradient-to-br ${ticketColorClass} min-w-[110px] sm:min-w-[125px] shrink-0 text-center relative`}
+                          >
+                            <div className="absolute -top-3 -right-3 w-6 h-6 rounded-full bg-[#0e0e10] border border-zinc-800" />
+                            <div className="absolute -bottom-3 -right-3 w-6 h-6 rounded-full bg-[#0e0e10] border border-zinc-800" />
+
+                            <span className="text-xl sm:text-2xl font-black font-mono tracking-tight">
+                              {v.loaiGiamGia === 'PhanTram' ? `-${v.mucGiam}%` : `${v.mucGiam / 1000}K`}
+                            </span>
+                            <span className="text-[10px] font-mono tracking-wider uppercase mt-0.5 font-bold opacity-90">
+                              {isVip ? '👑 VIP' : isBirthday ? '🎂 B-DAY' : isService ? 'DỊCH VỤ' : 'PHỤ TÙNG'}
+                            </span>
+                          </div>
+
+                          {/* Thân vé phải */}
+                          <div className="p-4 flex-1 flex flex-col justify-between min-w-0">
+                            <div>
+                              <div className="flex items-start justify-between gap-2">
+                                <h3 className="font-extrabold text-xs sm:text-sm text-zinc-100 line-clamp-1 group-hover:text-red-400 transition">
+                                  {v.tenChuongTrinh}
+                                </h3>
+                              </div>
+
+                              <div className="text-[11px] text-zinc-400 font-mono mt-1">
+                                {v.donHangToiThieu && v.donHangToiThieu > 0
+                                  ? `Đơn tối thiểu: ${formatVND(v.donHangToiThieu)}`
+                                  : 'Áp dụng cho mọi đơn hàng'}
+                              </div>
+
+                              <div className="text-[10px] text-zinc-500 font-mono mt-0.5">
+                                HSD: {v.ngayKetThuc >= '2030-01-01' ? 'Áp dụng quanh năm' : v.ngayKetThuc}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-between gap-2 mt-3 pt-2.5 border-t border-zinc-800/80">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-mono text-xs font-black px-2 py-0.5 rounded bg-zinc-900 border border-zinc-700 text-zinc-200">
+                                  {v.maVoucher || v.id}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleCopyVoucherCode(v.maVoucher || v.id)}
+                                  className="text-zinc-500 hover:text-white p-1 rounded cursor-pointer"
+                                  title="Sao chép mã"
+                                >
+                                  {voucherCopiedCode === (v.maVoucher || v.id) ? (
+                                    <span className="text-[10px] text-emerald-400 font-bold">✓</span>
+                                  ) : (
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                                    </svg>
+                                  )}
+                                </button>
+                              </div>
+
+                              {/* Nút Dùng ngay chuẩn Ảnh 5 */}
+                              <button
+                                type="button"
+                                onClick={() => handleUseVoucherAction(v)}
+                                className="px-3.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold font-mono transition cursor-pointer shadow-sm hover:shadow"
+                              >
+                                Dùng ngay
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -6978,15 +7235,18 @@ export default function CustomerDashboard({
                   </div>
                 </div>
 
-                {/* Cột phải: CHI TIẾT THANH TOÁN */}
+                {/* Cột phải: CHI TIẾT THANH TOÁN - Chuẩn Ảnh 2 */}
                 {(() => {
                   const itemSubtotal = (selectedOrderDetail.items && selectedOrderDetail.items.length > 0)
                     ? selectedOrderDetail.items.reduce((s, it) => s + ((it.donGia || 0) * (it.soLuong || 1)), 0)
                     : Math.max(0, selectedOrderDetail.tongTien - 30000);
-                  const shippingFee = (selectedOrderDetail.tongTien > itemSubtotal)
-                    ? (selectedOrderDetail.tongTien - itemSubtotal)
-                    : (selectedOrderDetail.kenhBan === 'TaiQuay' ? 0 : 30000);
-                  const displayTotal = selectedOrderDetail.tongTien > 0 ? selectedOrderDetail.tongTien : (itemSubtotal + shippingFee);
+                  const shippingFee = selectedOrderDetail.kenhBan === 'TaiQuay' ? 0 : 30000;
+                  const discountAmount = selectedOrderDetail.giamVoucher ?? (
+                    (itemSubtotal + shippingFee > selectedOrderDetail.tongTien)
+                      ? (itemSubtotal + shippingFee - selectedOrderDetail.tongTien)
+                      : 0
+                  );
+                  const displayTotal = selectedOrderDetail.tongTien;
 
                   return (
                     <div className="p-4 rounded-2xl bg-[#121214] border border-zinc-800 text-xs flex flex-col justify-between space-y-2">
@@ -7006,7 +7266,10 @@ export default function CustomerDashboard({
                         </div>
                         <div className="flex justify-between">
                           <span>+ Giảm giá:</span>
-                          <span className="font-mono text-zinc-400">0 đ</span>
+                          <span className={`font-mono font-bold ${discountAmount > 0 ? 'text-emerald-400' : 'text-zinc-400'}`}>
+                            {discountAmount > 0 ? `-${formatVND(discountAmount)}` : '0 đ'}
+                            {selectedOrderDetail.maVoucher ? ` (${selectedOrderDetail.maVoucher})` : ''}
+                          </span>
                         </div>
                       </div>
                       <div className="border-t border-zinc-800/90 pt-2.5 flex justify-between items-center">

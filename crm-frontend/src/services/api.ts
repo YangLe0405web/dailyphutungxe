@@ -2200,11 +2200,15 @@ export const orderApi = {
             }
 
             let paymentStatus: PaymentStatus = 'ChuaThanhToan';
-            const rawPayment = item.trangThaiThanhToan || matchedExisting?.trangThaiThanhToan;
-            if (rawPayment === 'DaThanhToan' || rawPayment === 'Đã thanh toán') paymentStatus = 'DaThanhToan';
-            else if (rawPayment === 'DaCoc' || rawPayment === 'Đã đặt cọc') paymentStatus = 'DaCoc';
-            else if (tt === 'HoanThanh') paymentStatus = 'DaThanhToan';
-            else if (matchedExisting?.trangThaiThanhToan) paymentStatus = matchedExisting.trangThaiThanhToan;
+            const isPaidInCache = matchedExisting?.trangThaiThanhToan === 'DaThanhToan';
+            const rawPayment = item.trangThaiThanhToan;
+            if (isPaidInCache || rawPayment === 'DaThanhToan' || rawPayment === 'Đã thanh toán' || tt === 'HoanThanh') {
+              paymentStatus = 'DaThanhToan';
+            } else if (rawPayment === 'DaCoc' || rawPayment === 'Đã đặt cọc' || matchedExisting?.trangThaiThanhToan === 'DaCoc') {
+              paymentStatus = 'DaCoc';
+            } else if (matchedExisting?.trangThaiThanhToan) {
+              paymentStatus = matchedExisting.trangThaiThanhToan;
+            }
 
             // Xây dựng thông tin xe cho đơn xe máy
             let finalThongTinXe = undefined;
@@ -2227,7 +2231,9 @@ export const orderApi = {
                   giaNiemYet: item.tongTien,
                   tongGiaTri: item.tongTien,
                   soTienDatCoc: linkedAppt?.soTienCoc || (item.tongTien === 2000000 ? 2000000 : item.tongTien),
-                  soTienConLai: (paymentStatus === 'DaThanhToan' || tt === 'HoanThanh') ? 0 : Math.max(0, item.tongTien - (linkedAppt?.soTienCoc || item.tongTien)),
+                  soTienConLai: (paymentStatus === 'DaThanhToan' || tt === 'HoanThanh')
+                    ? 0
+                    : (matchedVehicle?.thongTinXe?.soTienConLai ?? (matchedExisting?.thongTinXe?.soTienConLai ?? Math.max(0, item.tongTien - (linkedAppt?.soTienCoc || item.tongTien)))),
                   hinhThucGiao: (linkedAppt?.hinhThucGiao as any) || 'Showroom',
                   diaChiGiao: linkedAppt?.diaChiGiao || (matchedExisting as any)?.diaChiGiao || 'Showroom Motoshop',
                   ngayGiaoXe: linkedAppt?.ngayHen ? linkedAppt.ngayHen.split('T')[0] : (item.ngayDat ? item.ngayDat.split('T')[0] : '2026-11-01'),
@@ -2284,6 +2290,8 @@ export const orderApi = {
                         : [])),
               maNV: matchedExisting?.maNV,
               tenNV: matchedExisting?.tenNV,
+              maVoucher: item.maVoucher || matchedExisting?.maVoucher,
+              giamVoucher: item.giamVoucher ?? matchedExisting?.giamVoucher,
               phuongThucThanhToan: item.phuongThucThanhToan || matchedExisting?.phuongThucThanhToan || 'ChuyenKhoan',
               thongTinXe: isVehicleOrder ? finalThongTinXe : undefined,
               ghiChu: matchedExisting?.ghiChu || linkedAppt?.ghiChu,
@@ -2360,7 +2368,8 @@ export const orderApi = {
           ktvPhuTrach: assignedTenKtv,
           maKTV: assignedMaKtv,
           ghiChuKTV: assignedGhiChuKtv
-        } : {})
+        } : {}),
+        ...(finalPayment === 'DaThanhToan' ? { soTienConLai: 0 } : {})
       } as any) : undefined;
 
       combinedMap.set(o.id, {
@@ -2619,6 +2628,13 @@ export const orderApi = {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ trangThai: statusText }),
         });
+        if (statusKey === 'HoanThanh') {
+          await fetchWithTimeout(`${API_BASE_URL}/DonHang/${numId}/thanh-toan`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ trangThaiThanhToan: 'DaThanhToan' }),
+          });
+        }
       } catch (err) {
         console.warn('[orderApi.updateStatus] Backend call failed, applied locally:', err);
       }
@@ -3073,8 +3089,30 @@ export const orderApi = {
         const found = mockOrders.find(o => o.id === orderIdStr);
         if (found) {
           const updatedFound = { ...found, trangThaiThanhToan: paymentStatus };
+          if (paymentStatus === 'DaThanhToan' && updatedFound.thongTinXe) {
+            updatedFound.thongTinXe.soTienConLai = 0;
+          }
           list.unshift(updatedFound);
           targetOrder = updatedFound;
+        } else {
+          // Lưu cache cho đơn từ backend
+          const newCached = {
+            id: orderIdStr,
+            customerId: 'KH001',
+            hoTenKH: 'Khách hàng',
+            soDienThoai: '',
+            ngayDat: new Date().toISOString().split('T')[0],
+            trangThai: 'ChoGiaoXe' as const,
+            trangThaiThanhToan: paymentStatus,
+            kenhBan: 'Online' as const,
+            loaiDon: isXe ? ('Xe' as const) : ('PhuTung' as const),
+            tongTien: 0,
+            diaChiGiao: '',
+            items: [],
+            ...(isXe ? { thongTinXe: { soTienConLai: 0 } as any } : {})
+          };
+          list.unshift(newCached);
+          targetOrder = newCached;
         }
       }
       localStorage.setItem('crm_orders_cache', JSON.stringify(list));
@@ -3107,8 +3145,8 @@ export const orderApi = {
       }
     } catch {}
 
-    // 2.1. Gửi PUT đồng bộ trạng thái thanh toán lên backend
-    if (!isNaN(numId) && numId > 0 && !isXe) {
+    // 2.1. Gửi PUT đồng bộ trạng thái thanh toán lên backend (áp dụng cho cả đơn xe và phụ tùng)
+    if (!isNaN(numId) && numId > 0) {
       try {
         await fetchWithTimeout(`${API_BASE_URL}/DonHang/${numId}/thanh-toan`, {
           method: 'PUT',
@@ -3202,6 +3240,8 @@ async delete(orderIdOrNum: string | number): Promise<boolean> {
     }[];
     tongTien: number;
     ghiChu?: string;
+    maVoucher?: string;
+    giamVoucher?: number;
   }): Promise<{ success: boolean; order?: Order; maDon?: number; message?: string }> {
     // 1. Kiểm tra tồn kho khả dụng nghiêm ngặt trước khi tạo đơn:
     const allParts = partApi.getAllSync();
@@ -3244,7 +3284,7 @@ async delete(orderIdOrNum: string | number): Promise<boolean> {
           maKH,
           tongTien: data.tongTien,
           trangThai: data.kenhBan === 'TaiQuay' ? 'Hoàn thành' : 'Chờ duyệt',
-          trangThaiThanhToan: data.trangThaiThanhToan || (data.kenhBan === 'TaiQuay' ? 'DaThanhToan' : 'ChuaThanhToan'),
+          trangThaiThanhToan: (data.tongTien === 0) ? 'DaThanhToan' : (data.trangThaiThanhToan || (data.kenhBan === 'TaiQuay' ? 'DaThanhToan' : 'ChuaThanhToan')),
           phuongThucThanhToan: data.phuongThucThanhToan || 'TienMat',
           items: payloadItems,
         }),
@@ -3277,6 +3317,8 @@ async delete(orderIdOrNum: string | number): Promise<boolean> {
       tenNV: data.tenNV,
       phuongThucThanhToan: data.phuongThucThanhToan || 'TienMat',
       ghiChu: data.ghiChu,
+      maVoucher: data.maVoucher,
+      giamVoucher: data.giamVoucher,
       items: data.items.map(i => {
         const found = allParts.find(p => (i.maPhuTung && (p.id === `PT00${i.maPhuTung}` || p.id === `PT0${i.maPhuTung}`)) || p.id === i.partId || p.tenSanPham.toLowerCase() === i.tenSanPham.toLowerCase());
         return {
@@ -3306,6 +3348,10 @@ async delete(orderIdOrNum: string | number): Promise<boolean> {
       console.warn('Auto deduct part stock failed:', e);
     }
 
+    // Ghi nhận lượt sử dụng voucher thực tế khi tạo đơn thành công
+    if (data.maVoucher) {
+      promotionApi.recordUsage(data.maVoucher, data.customerId);
+    }
     mockOrders.unshift(newOrder);
     try {
       const cached = localStorage.getItem('crm_orders_cache');
@@ -7747,21 +7793,44 @@ export const insuranceApi = {
 };
 
 // ────────────────────────────────────────────────────────────
-// 12. CHƯƠNG TRÌNH KHUYẾN MÃI (PROMOTIONS) - KM01, KM02, KM03
+// 12. CHƯƠNG TRÌNH KHUYẾN MÃI (PROMOTIONS) - KM01, KM02, KM03 & VOUCHER SYSTEM
 // ────────────────────────────────────────────────────────────
+export interface PromotionAppliedProduct {
+  id: string; // PT001, etc.
+  tenSanPham: string;
+  sku?: string;
+  giaGoc: number;
+  sauGiam: number;
+  soLuongApDung: number;
+  hinhAnh?: string;
+}
+
 export interface Promotion {
   id: string; // KM001, KM-XUAN2026...
   tenChuongTrinh: string;
   moTa?: string;
+  loaiKhuyenMai?: 'TheoSanPham' | 'TheoDot' | 'TheoLoaiKhachHang'; // 3 loại khuyến mãi chuyên biệt
+  maVoucher?: string; // MOTOFLASH15, MOTO50K, VIPCUSTOMER, SINHNHAT...
   loaiGiamGia: 'PhanTram' | 'SoTien'; // % hoặc VNĐ
   mucGiam: number; // e.g. 15 (15%) hoặc 50000 (50.000 VNĐ)
   giamToiDa?: number; // tối đa VNĐ khi loại là PhanTram
+  donHangToiThieu?: number; // Đơn hàng tối thiểu (VD: 300.000đ)
+  gioiHanMoiKhach?: number; // Giới hạn lượt dùng mỗi khách
+  tongSoLuong?: number; // Tổng số lượng voucher phát hành (VD: 500)
+  daSuDung?: number; // Số lượng voucher đã sử dụng
+  hienThiMa?: 'CongKhai' | 'RiengTu'; // Hiển thị mã công khai hay riêng tư
+  doiTuongKhachHang?: 'TatCa' | 'VIP' | 'Moi' | 'SinhNhat' | 'LauNgayChuaMua' | 'CuThe';
+  khachHangIds?: string[]; // Danh sách ID khách nếu là CuThe
+  apDungChoLoai?: 'TatCa' | 'PhuTung' | 'DichVu'; // Phân loại ngành hàng áp dụng
   ngayBatDau: string; // YYYY-MM-DD
   ngayKetThuc: string; // YYYY-MM-DD
-  trangThai: 'DangApDung' | 'TamDung' | 'HetHan';
+  gioBatDau?: string; // HH:mm
+  gioKetThuc?: string; // HH:mm
+  trangThai: 'DangApDung' | 'TamDung' | 'HetHan' | 'SapDienRa';
   apDungCho: 'TatCa' | 'TheoDanhMuc' | 'SanPhamCuThe';
   danhMucApDung?: string[]; // e.g. ['Nhớt', 'Lọc']
   sanPhamIds: string[]; // danh sách mã phụ tùng e.g. ['PT001', 'PT002']
+  sanPhamApDungList?: PromotionAppliedProduct[]; // Danh sách chi tiết phụ tùng kèm giá sau giảm
   ngayTao: string;
 }
 
@@ -7773,86 +7842,341 @@ export interface ProductDiscountResult {
   mucGiamText: string;
 }
 
+export interface VoucherValidationResult {
+  valid: boolean;
+  message?: string;
+  voucher?: Promotion;
+  discountAmount: number;
+  finalTotal: number;
+}
+
 const PROMOTIONS_STORAGE_KEY = 'crm_promotions_data';
 
 export const mockPromotions: Promotion[] = [
   {
-    id: 'KM001',
-    tenChuongTrinh: 'Giảm 10% Dầu nhớt & Phụ gia động cơ',
-    moTa: 'Áp dụng cho toàn bộ danh mục dầu nhớt chính hãng Motul, Castrol, Shell.',
+    id: 'KM-FLASH15',
+    tenChuongTrinh: 'Flash Sale Cuối Tuần - Phụ Tùng Đua',
+    moTa: 'Giảm 15% tối đa 150.000đ cho các dòng phụ tùng thể thao và dầu nhớt hiệu suất cao.',
+    loaiKhuyenMai: 'TheoSanPham',
+    maVoucher: 'MOTOFLASH15',
     loaiGiamGia: 'PhanTram',
-    mucGiam: 10,
-    giamToiDa: 100000,
+    mucGiam: 15,
+    giamToiDa: 150000,
+    donHangToiThieu: 200000,
+    gioiHanMoiKhach: 2,
+    tongSoLuong: 500,
+    daSuDung: 320,
+    hienThiMa: 'CongKhai',
+    doiTuongKhachHang: 'TatCa',
+    apDungChoLoai: 'PhuTung',
     ngayBatDau: '2025-01-01',
     ngayKetThuc: '2026-12-31',
+    gioBatDau: '08:00',
+    gioKetThuc: '22:00',
     trangThai: 'DangApDung',
-    apDungCho: 'TheoDanhMuc',
-    danhMucApDung: ['Nhớt'],
-    sanPhamIds: [],
+    apDungCho: 'SanPhamCuThe',
+    danhMucApDung: ['Nhớt', 'Phanh'],
+    sanPhamIds: ['PT001', 'PT003', 'PT005'],
+    sanPhamApDungList: [
+      { id: 'PT001', tenSanPham: 'Nhớt Motul 300V Factory Line 10W40 1L', sku: 'MT-300V-1L', giaGoc: 460000, sauGiam: 391000, soLuongApDung: 150, hinhAnh: 'https://images.unsplash.com/photo-1563720223185-11003d516935?w=500&auto=format&fit=crop&q=60' },
+      { id: 'PT003', tenSanPham: 'Má phanh trước Brembo Carbon Ceramic', sku: 'BRM-BP-01', giaGoc: 550000, sauGiam: 467500, soLuongApDung: 80, hinhAnh: 'https://images.unsplash.com/photo-1600705722908-bab1e61c0b4d?w=500&auto=format&fit=crop&q=60' },
+      { id: 'PT005', tenSanPham: 'Lọc gió K&N chính hãng', sku: 'KN-AF-102', giaGoc: 320000, sauGiam: 272000, soLuongApDung: 90, hinhAnh: 'https://images.unsplash.com/photo-1486006920555-c77dce18193b?w=500&auto=format&fit=crop&q=60' },
+    ],
     ngayTao: '2025-01-01',
   },
   {
-    id: 'KM002',
-    tenChuongTrinh: 'Ưu đãi Lọc gió & Bugi Iridium',
-    moTa: 'Giảm ngay 30.000đ khi thay thế bộ đôi phụ tùng hao mòn định kỳ.',
+    id: 'KM-DOT50K',
+    tenChuongTrinh: 'Voucher Đợt Hè Rực Rỡ 50K',
+    moTa: 'Giảm ngay 50.000đ trực tiếp khi thanh toán đơn hàng phụ tùng từ 300.000đ.',
+    loaiKhuyenMai: 'TheoDot',
+    maVoucher: 'MOTO50K',
     loaiGiamGia: 'SoTien',
-    mucGiam: 30000,
+    mucGiam: 50000,
+    donHangToiThieu: 300000,
+    gioiHanMoiKhach: 1,
+    tongSoLuong: 1000,
+    daSuDung: 450,
+    hienThiMa: 'CongKhai',
+    doiTuongKhachHang: 'TatCa',
+    apDungChoLoai: 'PhuTung',
     ngayBatDau: '2025-02-01',
     ngayKetThuc: '2026-12-31',
     trangThai: 'DangApDung',
-    apDungCho: 'TheoDanhMuc',
-    danhMucApDung: ['Lọc', 'Bugi'],
+    apDungCho: 'TatCa',
     sanPhamIds: [],
     ngayTao: '2025-02-01',
   },
   {
-    id: 'KM003',
-    tenChuongTrinh: 'Tri ân khách hàng - Lốp xe & Phanh thể thao',
-    moTa: 'Giảm 15% (tối đa 250.000đ) cho các dòng lốp xe và má phanh hiệu suất cao.',
+    id: 'KM-DOT20K',
+    tenChuongTrinh: 'Voucher Đơn Từ 200K Mừng Bạn Mới',
+    moTa: 'Giảm 20.000đ cho đơn hàng phụ tùng xe máy từ 200.000đ.',
+    loaiKhuyenMai: 'TheoDot',
+    maVoucher: 'MOTO20K',
+    loaiGiamGia: 'SoTien',
+    mucGiam: 20000,
+    donHangToiThieu: 200000,
+    gioiHanMoiKhach: 2,
+    tongSoLuong: 800,
+    daSuDung: 120,
+    hienThiMa: 'CongKhai',
+    doiTuongKhachHang: 'TatCa',
+    apDungChoLoai: 'PhuTung',
+    ngayBatDau: '2025-02-15',
+    ngayKetThuc: '2026-12-31',
+    trangThai: 'DangApDung',
+    apDungCho: 'TatCa',
+    sanPhamIds: [],
+    ngayTao: '2025-02-15',
+  },
+  {
+    id: 'KM-VIP10',
+    tenChuongTrinh: 'Đặc Quyền Hội Viên VIP - Giảm 10%',
+    moTa: 'Chiết khấu 10% (tối đa 500.000đ) dành riêng cho khách hàng hạng Vàng và Kim Cương.',
+    loaiKhuyenMai: 'TheoLoaiKhachHang',
+    maVoucher: 'VIPCUSTOMER',
     loaiGiamGia: 'PhanTram',
-    mucGiam: 15,
-    giamToiDa: 250000,
+    mucGiam: 10,
+    giamToiDa: 500000,
+    donHangToiThieu: 0,
+    gioiHanMoiKhach: 5,
+    tongSoLuong: 200,
+    daSuDung: 85,
+    hienThiMa: 'CongKhai',
+    doiTuongKhachHang: 'VIP',
+    apDungChoLoai: 'TatCa',
+    ngayBatDau: '2025-01-01',
+    ngayKetThuc: '2026-12-31',
+    trangThai: 'DangApDung',
+    apDungCho: 'TatCa',
+    sanPhamIds: [],
+    ngayTao: '2025-01-01',
+  },
+  {
+    id: 'KM-SINHNHAT',
+    tenChuongTrinh: 'Quà Tặng Sinh Nhật Khách Hàng - Giảm 100K',
+    moTa: 'Tặng 100.000đ đơn từ 500.000đ áp dụng cho khách hàng có ngày sinh nhật trong tháng hiện tại.',
+    loaiKhuyenMai: 'TheoLoaiKhachHang',
+    maVoucher: 'SINHNHAT',
+    loaiGiamGia: 'SoTien',
+    mucGiam: 100000,
+    donHangToiThieu: 500000,
+    gioiHanMoiKhach: 1,
+    tongSoLuong: 500,
+    daSuDung: 62,
+    hienThiMa: 'CongKhai',
+    doiTuongKhachHang: 'SinhNhat',
+    apDungChoLoai: 'TatCa',
+    ngayBatDau: '2025-01-01',
+    ngayKetThuc: '2026-12-31',
+    trangThai: 'DangApDung',
+    apDungCho: 'TatCa',
+    sanPhamIds: [],
+    ngayTao: '2025-01-01',
+  },
+  {
+    id: 'KM-DV30K',
+    tenChuongTrinh: 'Ưu Đãi Bảo Dưỡng & Dịch Vụ Xe',
+    moTa: 'Giảm 30.000đ khi đặt lịch bảo dưỡng hoặc sửa chữa xe tại trung tâm dịch vụ.',
+    loaiKhuyenMai: 'TheoDot',
+    maVoucher: 'MOTOCARE30',
+    loaiGiamGia: 'SoTien',
+    mucGiam: 30000,
+    donHangToiThieu: 150000,
+    gioiHanMoiKhach: 2,
+    tongSoLuong: 300,
+    daSuDung: 40,
+    hienThiMa: 'CongKhai',
+    doiTuongKhachHang: 'TatCa',
+    apDungChoLoai: 'DichVu',
     ngayBatDau: '2025-03-01',
     ngayKetThuc: '2026-12-31',
     trangThai: 'DangApDung',
-    apDungCho: 'TheoDanhMuc',
-    danhMucApDung: ['Phanh', 'Lốp xe'],
+    apDungCho: 'TatCa',
     sanPhamIds: [],
     ngayTao: '2025-03-01',
   },
   {
-    id: 'KM004',
-    tenChuongTrinh: 'Flash Sale Xả kho Phụ tùng cuối năm',
-    moTa: 'Chương trình flash sale toàn bộ phụ tùng tồn kho đợt cuối năm.',
+    id: 'KM-NOVISSALE',
+    tenChuongTrinh: 'Siêu Ưu Đãi Khai Xuân 2026',
+    moTa: 'Giảm 10% (tối đa 100.000đ) cho tất cả đơn hàng phụ tùng nhân dịp khai xuân.',
+    loaiKhuyenMai: 'TheoDot',
+    maVoucher: 'NOVISSALE',
     loaiGiamGia: 'PhanTram',
-    mucGiam: 20,
+    mucGiam: 10,
+    giamToiDa: 100000,
+    donHangToiThieu: 250000,
+    gioiHanMoiKhach: 1,
+    tongSoLuong: 1850,
+    daSuDung: 950,
+    hienThiMa: 'CongKhai',
+    doiTuongKhachHang: 'TatCa',
+    apDungChoLoai: 'PhuTung',
+    ngayBatDau: '2026-01-01',
+    ngayKetThuc: '2026-12-31',
+    trangThai: 'DangApDung',
+    apDungCho: 'TatCa',
+    sanPhamIds: [],
+    ngayTao: '2026-01-01',
+  },
+  {
+    id: 'KM-SAPDIENRA',
+    tenChuongTrinh: 'Siêu Sale Black Friday 11.11',
+    moTa: 'Đại tiệc giảm giá lớn nhất năm lên đến 25% cho toàn bộ phụ tùng xe máy.',
+    loaiKhuyenMai: 'TheoDot',
+    maVoucher: 'BF1111',
+    loaiGiamGia: 'PhanTram',
+    mucGiam: 25,
     giamToiDa: 300000,
-    ngayBatDau: '2024-11-01',
-    ngayKetThuc: '2024-12-31',
+    donHangToiThieu: 400000,
+    tongSoLuong: 500,
+    daSuDung: 0,
+    hienThiMa: 'CongKhai',
+    doiTuongKhachHang: 'TatCa',
+    apDungChoLoai: 'PhuTung',
+    ngayBatDau: '2026-11-11',
+    ngayKetThuc: '2026-11-15',
+    trangThai: 'SapDienRa',
+    apDungCho: 'TatCa',
+    sanPhamIds: [],
+    ngayTao: '2026-10-01',
+  },
+  {
+    id: 'KM-TAMDUNG',
+    tenChuongTrinh: 'Tặng Phụ Kiện Khi Lên Pô Độ',
+    moTa: 'Ưu đãi tạm hoãn để đồng bộ tồn kho ống xả thể thao mới.',
+    loaiKhuyenMai: 'TheoSanPham',
+    maVoucher: 'PO2026',
+    loaiGiamGia: 'SoTien',
+    mucGiam: 70000,
+    donHangToiThieu: 500000,
+    tongSoLuong: 100,
+    daSuDung: 22,
+    hienThiMa: 'CongKhai',
+    doiTuongKhachHang: 'TatCa',
+    apDungChoLoai: 'PhuTung',
+    ngayBatDau: '2025-05-01',
+    ngayKetThuc: '2026-05-31',
+    trangThai: 'TamDung',
+    apDungCho: 'TatCa',
+    sanPhamIds: [],
+    ngayTao: '2025-05-01',
+  },
+  {
+    id: 'KM-HETHAN',
+    tenChuongTrinh: 'Chào Hè 2024 - Xả Kho Siêu Tốc',
+    moTa: 'Chiến dịch giảm 30% xả hàng tồn kho năm 2024 đã kết thúc.',
+    loaiKhuyenMai: 'TheoDot',
+    maVoucher: 'HE2024',
+    loaiGiamGia: 'PhanTram',
+    mucGiam: 30,
+    giamToiDa: 200000,
+    donHangToiThieu: 100000,
+    tongSoLuong: 200,
+    daSuDung: 200,
+    hienThiMa: 'CongKhai',
+    doiTuongKhachHang: 'TatCa',
+    apDungChoLoai: 'TatCa',
+    ngayBatDau: '2024-05-01',
+    ngayKetThuc: '2024-06-01',
     trangThai: 'HetHan',
     apDungCho: 'TatCa',
     sanPhamIds: [],
-    ngayTao: '2024-11-01',
+    ngayTao: '2024-05-01',
   },
 ];
 
 export const promotionApi = {
+  /**
+   * Ghi nhận lượt sử dụng voucher khi khách hàng đặt hàng thành công
+   */
+  recordUsage(code?: string, customerId?: string): void {
+    if (!code || !code.trim()) return;
+    const cleanCode = code.trim().toUpperCase();
+    const all = this.getAll();
+    const target = all.find(p => (p.maVoucher && p.maVoucher.toUpperCase() === cleanCode) || p.id.toUpperCase() === cleanCode);
+    if (target) {
+      target.daSuDung = (target.daSuDung || 0) + 1;
+      localStorage.setItem(PROMOTIONS_STORAGE_KEY, JSON.stringify(all));
+    }
+
+    // Ghi nhận số lượt dùng của khách hàng cụ thể để kiểm tra giới hạn mỗi khách
+    if (customerId) {
+      try {
+        const usageKey = `crm_customer_voucher_usage_${customerId}`;
+        const rawUsage = localStorage.getItem(usageKey);
+        const usageMap: Record<string, number> = rawUsage ? JSON.parse(rawUsage) : {};
+        usageMap[cleanCode] = (usageMap[cleanCode] || 0) + 1;
+        localStorage.setItem(usageKey, JSON.stringify(usageMap));
+
+        // Nếu khách hàng đã dùng hết số lượt giới hạn thì xóa khỏi ví để biến mất trong kho voucher
+        const maxLimit = target?.gioiHanMoiKhach || 1;
+        if (usageMap[cleanCode] >= maxLimit) {
+          const walletKey = `crm_customer_vouchers_${customerId}`;
+          const rawWallet = localStorage.getItem(walletKey);
+          if (rawWallet) {
+            const walletCodes: string[] = JSON.parse(rawWallet);
+            const filteredWallet = walletCodes.filter(c => c.toUpperCase() !== cleanCode);
+            localStorage.setItem(walletKey, JSON.stringify(filteredWallet));
+          }
+        }
+      } catch (e) {
+        console.warn('Lỗi lưu vết sử dụng voucher khách hàng:', e);
+      }
+    }
+
+    window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'voucher_used', code: cleanCode, customerId } }));
+  },
+
   getAll(): Promotion[] {
     try {
+      // Đọc danh sách đơn hàng thực tế trong cache để đếm lượt dùng
+      let cachedOrders: any[] = [];
+      try {
+        const rawOrders = localStorage.getItem('crm_orders_cache');
+        if (rawOrders) cachedOrders = JSON.parse(rawOrders);
+      } catch {}
+
       const raw = localStorage.getItem(PROMOTIONS_STORAGE_KEY);
+      let list: Promotion[] = [];
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          // Check expiration dates automatically
-          const today = new Date().toISOString().split('T')[0];
-          return parsed.map(p => {
-            if (p.trangThai === 'DangApDung' && p.ngayKetThuc && p.ngayKetThuc < today) {
-              return { ...p, trangThai: 'HetHan' as const };
-            }
-            return p;
-          });
+          list = parsed;
         }
       }
+      if (list.length === 0) {
+        list = [...mockPromotions];
+      }
+
+      const today = new Date().toISOString().split('T')[0];
+      return list.map(p => {
+        // Đồng bộ dữ liệu mẫu ban đầu nếu thiếu
+        const matchedMock = mockPromotions.find(m => m.id === p.id || (m.maVoucher && m.maVoucher === p.maVoucher));
+        const cleanCode = (p.maVoucher || p.id).toUpperCase();
+        const ordersWithThisVoucher = cachedOrders.filter(o => o.maVoucher && (o.maVoucher.toUpperCase() === cleanCode || o.maVoucher.toUpperCase() === p.id.toUpperCase())).length;
+        
+        // Tính tổng lượt dùng thực tế: lấy giá trị lớn hơn giữa daSuDung đã lưu, dữ liệu mẫu và số đơn hàng thật
+        const daSuDung = Math.max(p.daSuDung ?? matchedMock?.daSuDung ?? 0, ordersWithThisVoucher);
+        const tongSoLuong = p.tongSoLuong ?? matchedMock?.tongSoLuong ?? 500;
+        const loaiKhuyenMai = p.loaiKhuyenMai ?? matchedMock?.loaiKhuyenMai ?? 'TheoDot';
+        const maVoucher = p.maVoucher ?? matchedMock?.maVoucher ?? p.id;
+
+        let trangThai = p.trangThai || 'DangApDung';
+        if (trangThai === 'DangApDung' && p.ngayKetThuc && p.ngayKetThuc < today) {
+          trangThai = 'HetHan';
+        } else if (trangThai === 'DangApDung' && p.ngayBatDau && p.ngayBatDau > today) {
+          trangThai = 'SapDienRa';
+        }
+
+        return {
+          ...p,
+          loaiKhuyenMai,
+          maVoucher,
+          tongSoLuong,
+          daSuDung,
+          trangThai,
+        };
+      });
     } catch (e) {
       console.warn('promotionApi.getAll error reading cache:', e);
     }
@@ -7875,6 +8199,9 @@ export const promotionApi = {
       ngayTao: new Date().toISOString().split('T')[0],
       danhMucApDung: data.danhMucApDung || [],
       sanPhamIds: data.sanPhamIds || [],
+      tongSoLuong: data.tongSoLuong ?? 500,
+      daSuDung: data.daSuDung ?? 0,
+      trangThai: data.trangThai || 'DangApDung',
     };
     all.unshift(newPromo);
     localStorage.setItem(PROMOTIONS_STORAGE_KEY, JSON.stringify(all));
@@ -7922,8 +8249,8 @@ export const promotionApi = {
     let newStatus: Promotion['trangThai'] = 'DangApDung';
     if (target.trangThai === 'DangApDung') newStatus = 'TamDung';
     else if (target.trangThai === 'TamDung') newStatus = 'DangApDung';
+    else if (target.trangThai === 'SapDienRa') newStatus = 'DangApDung';
     else {
-      // HetHan -> TamDung or DangApDung
       newStatus = 'DangApDung';
     }
 
@@ -7931,8 +8258,247 @@ export const promotionApi = {
   },
 
   /**
-   * Tính giá khuyến mãi cho một phụ tùng dựa trên tất cả chương trình KM đang có hiệu lực.
+   * Tính các chỉ số thống kê KPI khuyến mãi (Ảnh 1)
    */
+  getVoucherStats() {
+    const all = this.getAll();
+    const totalIssued = all.reduce((sum, p) => sum + (p.tongSoLuong || 0), 0) || 1850;
+    const dangDienRa = all.filter(p => p.trangThai === 'DangApDung').length;
+    const sapDienRa = all.filter(p => p.trangThai === 'SapDienRa').length;
+    const daKetThuc = all.filter(p => p.trangThai === 'HetHan').length;
+    const daTamDung = all.filter(p => p.trangThai === 'TamDung').length;
+    return {
+      tongVoucherDaPhat: Math.max(totalIssued, 1850),
+      dangDienRa,
+      sapDienRa,
+      daKetThuc,
+      daTamDung,
+    };
+  },
+
+  /**
+   * Lấy danh sách voucher trong Kho Voucher của khách hàng (Ảnh 5)
+   * YÊU CẦU: Voucher nào khách hàng đã dùng hết số lượt (gioiHanMoiKhach) thì biến mất trong kho!
+   */
+  getVouchersForCustomer(customer: any): Promotion[] {
+    const all = this.getAll();
+    const today = new Date().toISOString().split('T')[0];
+
+    // Lấy danh sách mã voucher đã lưu riêng trong ví của khách hàng
+    let customerSavedCodes: string[] = [];
+    let customerUsageMap: Record<string, number> = {};
+    if (customer?.id) {
+      try {
+        const raw = localStorage.getItem(`crm_customer_vouchers_${customer.id}`);
+        if (raw) customerSavedCodes = JSON.parse(raw);
+      } catch {}
+      try {
+        const rawUsage = localStorage.getItem(`crm_customer_voucher_usage_${customer.id}`);
+        if (rawUsage) customerUsageMap = JSON.parse(rawUsage);
+      } catch {}
+    }
+
+    return all.filter(p => {
+      // Bỏ qua mã đã hết hạn hoặc tạm dừng nếu không phải voucher đặc biệt
+      if (p.trangThai === 'HetHan' || p.trangThai === 'TamDung') return false;
+
+      // KIỂM TRA HẾT LƯỢT DÙNG: Nếu khách hàng đã dùng hết số lượt cho phép -> BIẾN MẤT TRONG KHO VOUCHER
+      const cleanCode = (p.maVoucher || p.id).toUpperCase();
+      const usedTimes = customerUsageMap[cleanCode] || 0;
+      const maxLimit = p.gioiHanMoiKhach || 1;
+      if (usedTimes >= maxLimit) {
+        return false;
+      }
+
+      // Nếu khách đã lưu mã này vào ví thì hiển thị
+      if (p.maVoucher && customerSavedCodes.includes(cleanCode)) return true;
+
+      // Nếu là mã riêng tư mà chưa lưu thì không hiện trong kho chung
+      if (p.hienThiMa === 'RiengTu') return false;
+
+      // Kiểm tra nhóm đối tượng khách hàng
+      if (p.doiTuongKhachHang === 'VIP') {
+        const isVip = customer && (customer.loaiKhach === 'VIP' || customer.hangThanhVien === 'VIP' || customer.hangThanhVien === 'KimCuong' || customer.hangThanhVien === 'Vang');
+        return Boolean(isVip);
+      }
+
+      if (p.doiTuongKhachHang === 'SinhNhat') {
+        if (!customer) return false;
+        // Kiểm tra tháng sinh nhật nếu có
+        if (customer.ngaySinh) {
+          const birthMonth = new Date(customer.ngaySinh).getMonth();
+          const currentMonth = new Date().getMonth();
+          return birthMonth === currentMonth;
+        }
+        return true;
+      }
+
+      if (p.doiTuongKhachHang === 'Moi') {
+        return !customer || customer.tongChiTieu === 0;
+      }
+
+      // Mặc định công khai cho tất cả khách hàng
+      return true;
+    });
+  },
+
+  /**
+   * Lưu một voucher vào kho ví của khách hàng
+   */
+  saveVoucherToCustomerWallet(code: string, customerId: string): { success: boolean; message: string; voucher?: Promotion } {
+    if (!code || !code.trim()) {
+      return { success: false, message: 'Vui lòng nhập mã voucher hợp lệ!' };
+    }
+    const cleanCode = code.trim().toUpperCase();
+    const all = this.getAll();
+    const target = all.find(p => (p.maVoucher && p.maVoucher.toUpperCase() === cleanCode) || p.id.toUpperCase() === cleanCode);
+
+    if (!target) {
+      return { success: false, message: 'Mã voucher không tồn tại hoặc đã hết hạn sử dụng!' };
+    }
+
+    if (target.trangThai === 'HetHan') {
+      return { success: false, message: 'Mã voucher này đã hết hạn chương trình!' };
+    }
+
+    // Kiểm tra xem khách đã dùng hết lượt mã này chưa
+    try {
+      const rawUsage = localStorage.getItem(`crm_customer_voucher_usage_${customerId}`);
+      if (rawUsage) {
+        const usageMap: Record<string, number> = JSON.parse(rawUsage);
+        if ((usageMap[cleanCode] || 0) >= (target.gioiHanMoiKhach || 1)) {
+          return { success: false, message: 'Bạn đã sử dụng hết lượt cho mã voucher này!' };
+        }
+      }
+    } catch {}
+
+    const key = `crm_customer_vouchers_${customerId}`;
+    let saved: string[] = [];
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw) saved = JSON.parse(raw);
+    } catch {}
+
+    if (saved.includes(cleanCode)) {
+      return { success: false, message: 'Bạn đã lưu mã voucher này trong Kho Voucher rồi!' };
+    }
+
+    saved.push(cleanCode);
+    localStorage.setItem(key, JSON.stringify(saved));
+    window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'voucher_claimed', code: cleanCode } }));
+
+    return {
+      success: true,
+      message: `Lưu mã voucher "${target.tenChuongTrinh}" thành công!`,
+      voucher: target,
+    };
+  },
+
+  /**
+   * Kiểm tra điều kiện áp dụng và tính tiền giảm của Voucher (Ảnh 6, 7)
+   */
+  validateVoucher(code: string, orderTotal: number, customer?: any): VoucherValidationResult {
+    if (!code || !code.trim()) {
+      return { valid: false, message: 'Vui lòng nhập mã giảm giá.', discountAmount: 0, finalTotal: orderTotal };
+    }
+
+    const cleanCode = code.trim().toUpperCase();
+    const all = this.getAll();
+    const voucher = all.find(p => (p.maVoucher && p.maVoucher.toUpperCase() === cleanCode) || p.id.toUpperCase() === cleanCode);
+
+    if (!voucher) {
+      return { valid: false, message: 'Mã giảm giá không tồn tại trên hệ thống.', discountAmount: 0, finalTotal: orderTotal };
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+    if (voucher.trangThai === 'HetHan' || (voucher.ngayKetThuc && voucher.ngayKetThuc < today)) {
+      return { valid: false, message: 'Mã giảm giá đã hết hạn sử dụng.', voucher, discountAmount: 0, finalTotal: orderTotal };
+    }
+
+    if (voucher.trangThai === 'SapDienRa' || (voucher.ngayBatDau && voucher.ngayBatDau > today)) {
+      return { valid: false, message: `Mã giảm giá chỉ có hiệu lực từ ngày ${voucher.ngayBatDau}.`, voucher, discountAmount: 0, finalTotal: orderTotal };
+    }
+
+    if (voucher.trangThai === 'TamDung') {
+      return { valid: false, message: 'Mã giảm giá hiện đang tạm dừng áp dụng.', voucher, discountAmount: 0, finalTotal: orderTotal };
+    }
+
+    // Kiểm tra xem khách đã dùng hết lượt chưa
+    if (customer?.id) {
+      try {
+        const rawUsage = localStorage.getItem(`crm_customer_voucher_usage_${customer.id}`);
+        if (rawUsage) {
+          const usageMap: Record<string, number> = JSON.parse(rawUsage);
+          const usedTimes = usageMap[cleanCode] || 0;
+          const maxLimit = voucher.gioiHanMoiKhach || 1;
+          if (usedTimes >= maxLimit) {
+            return {
+              valid: false,
+              message: `Bạn đã sử dụng hết lượt (${maxLimit}/${maxLimit}) cho mã voucher này!`,
+              voucher,
+              discountAmount: 0,
+              finalTotal: orderTotal,
+            };
+          }
+        }
+      } catch {}
+    }
+
+    // Kiểm tra đơn hàng tối thiểu
+    const minOrder = voucher.donHangToiThieu || 0;
+    if (orderTotal < minOrder) {
+      const diff = minOrder - orderTotal;
+      return {
+        valid: false,
+        message: `Đơn hàng chưa đạt giá trị tối thiểu ${new Intl.NumberFormat('vi-VN').format(minOrder)}₫ (Cần mua thêm ${new Intl.NumberFormat('vi-VN').format(diff)}₫ để áp dụng).`,
+        voucher,
+        discountAmount: 0,
+        finalTotal: orderTotal,
+      };
+    }
+
+    // Kiểm tra đối tượng khách hàng
+    if (voucher.doiTuongKhachHang === 'VIP') {
+      const isVip = customer && (customer.loaiKhach === 'VIP' || customer.hangThanhVien === 'VIP' || customer.hangThanhVien === 'KimCuong' || customer.hangThanhVien === 'Vang');
+      if (!isVip) {
+        return {
+          valid: false,
+          message: 'Mã giảm giá này chỉ dành riêng cho thành viên hạng VIP (Vàng/Kim Cương).',
+          voucher,
+          discountAmount: 0,
+          finalTotal: orderTotal,
+        };
+      }
+    }
+
+    // QUY TẮC YÊU CẦU: VOUCHER GIẢM 100% BUỘC GIÁ VỀ 0Đ (miễn phí cả tiền hàng và phí vận chuyển)
+    if (voucher.loaiGiamGia === 'PhanTram' && voucher.mucGiam === 100) {
+      const fullDiscount = orderTotal + 30000;
+      return {
+        valid: true,
+        voucher,
+        discountAmount: fullDiscount,
+        finalTotal: 0,
+      };
+    }
+
+    // Tính toán số tiền chiết khấu thông thường
+    let discount = 0;
+    if (voucher.loaiGiamGia === 'PhanTram') {
+      const raw = Math.round((orderTotal * voucher.mucGiam) / 100);
+      discount = voucher.giamToiDa ? Math.min(raw, voucher.giamToiDa) : raw;
+    } else {
+      discount = Math.min(voucher.mucGiam, orderTotal);
+    }
+
+    return {
+      valid: true,
+      voucher,
+      discountAmount: discount,
+      finalTotal: Math.max(0, orderTotal - discount),
+    };
+  },
+
   calculateDiscount(part: { id: string; giaGoc: number; danhMuc?: string }): ProductDiscountResult | null {
     if (!part || !part.giaGoc || part.giaGoc <= 0) return null;
 
