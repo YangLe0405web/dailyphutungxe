@@ -553,6 +553,17 @@ export default function PartsStore({ currentCustomer, onRequireLogin, onNavigate
     ? allReviews.filter(r => isMatchPartReview(r, selectedPart.id, selectedPart.tenSanPham))
     : [];
 
+  const [partReviewRatingFilter, setPartReviewRatingFilter] = useState<'All' | number>('All');
+  const [partReviewHasImageFilter, setPartReviewHasImageFilter] = useState<boolean>(false);
+
+  const filteredPartReviews = useMemo(() => {
+    return selectedPartReviews.filter(r => {
+      if (partReviewRatingFilter !== 'All' && r.soSao !== partReviewRatingFilter) return false;
+      if (partReviewHasImageFilter && (!r.hinhAnhDinhKem || r.hinhAnhDinhKem.length === 0)) return false;
+      return true;
+    });
+  }, [selectedPartReviews, partReviewRatingFilter, partReviewHasImageFilter]);
+
   // ─────────────────────────────────────────────────────────────
   // 1. DEDICATED PRODUCT DETAIL PAGE VIEW (TC04)
   // ─────────────────────────────────────────────────────────────
@@ -920,14 +931,95 @@ export default function PartsStore({ currentCustomer, onRequireLogin, onNavigate
                     </span>
                   </div>
 
+                  {/* BỘ LỌC ĐÁNH GIÁ (Shopee / Tiki style - Ảnh 1) */}
+                  <div className="p-4 rounded-2xl bg-white border border-zinc-200 shadow-2xs space-y-3">
+                    <div className="flex items-center justify-between flex-wrap gap-2 text-xs">
+                      <span className="font-bold text-zinc-700 flex items-center gap-1.5 uppercase font-mono tracking-wider">
+                        <span>🔍</span> Bộ lọc đánh giá
+                      </span>
+                      {(partReviewRatingFilter !== 'All' || partReviewHasImageFilter) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPartReviewRatingFilter('All');
+                            setPartReviewHasImageFilter(false);
+                          }}
+                          className="text-[11px] text-red-600 hover:text-red-700 font-mono underline cursor-pointer"
+                        >
+                          ✕ Xóa bộ lọc
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Hàng nút lọc số sao & có hình ảnh */}
+                    <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none text-xs flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => setPartReviewRatingFilter('All')}
+                        className={`px-3 py-1.5 rounded-xl font-bold transition cursor-pointer whitespace-nowrap text-xs border ${
+                          partReviewRatingFilter === 'All'
+                            ? 'bg-red-600 text-white border-red-600 shadow-xs'
+                            : 'bg-zinc-50 text-zinc-700 hover:bg-zinc-100 border-zinc-200'
+                        }`}
+                      >
+                        Tất cả ({selectedPartReviews.length})
+                      </button>
+                      {[5, 4, 3, 2, 1].map(stars => {
+                        const count = selectedPartReviews.filter(r => r.soSao === stars).length;
+                        return (
+                          <button
+                            key={stars}
+                            type="button"
+                            onClick={() => setPartReviewRatingFilter(stars)}
+                            className={`px-3 py-1.5 rounded-xl font-bold transition cursor-pointer whitespace-nowrap text-xs flex items-center gap-1 border ${
+                              partReviewRatingFilter === stars
+                                ? 'bg-amber-500 text-white border-amber-500 shadow-xs font-extrabold'
+                                : 'bg-zinc-50 text-zinc-700 hover:bg-zinc-100 border-zinc-200'
+                            }`}
+                          >
+                            <span>{stars}★</span>
+                            <span className="font-mono text-[11px]">({count})</span>
+                          </button>
+                        );
+                      })}
+
+                      <button
+                        type="button"
+                        onClick={() => setPartReviewHasImageFilter(!partReviewHasImageFilter)}
+                        className={`px-3 py-1.5 rounded-xl font-bold transition cursor-pointer text-xs flex items-center gap-1.5 border ${
+                          partReviewHasImageFilter
+                            ? 'bg-blue-600 text-white border-blue-500 shadow-xs'
+                            : 'bg-zinc-50 text-zinc-700 hover:bg-zinc-100 border-zinc-200'
+                        }`}
+                      >
+                        <span>📷 Có hình ảnh</span>
+                        <span className="font-mono text-[11px]">
+                          ({selectedPartReviews.filter(r => r.hinhAnhDinhKem && r.hinhAnhDinhKem.length > 0).length})
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+
                   {/* Reviews List */}
                   <div className="space-y-3">
-                    {selectedPartReviews.length === 0 ? (
-                      <div className="p-6 text-center text-zinc-500 text-xs">
-                        Chưa có đánh giá nào cho phụ tùng này. Hãy là người đầu tiên chia sẻ cảm nhận!
+                    {filteredPartReviews.length === 0 ? (
+                      <div className="p-8 text-center text-zinc-500 text-xs bg-zinc-50 rounded-2xl border border-dashed border-zinc-200 space-y-2">
+                        <div>Chưa có đánh giá nào phù hợp với bộ lọc đã chọn.</div>
+                        {(partReviewRatingFilter !== 'All' || partReviewHasImageFilter) && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPartReviewRatingFilter('All');
+                              setPartReviewHasImageFilter(false);
+                            }}
+                            className="text-xs text-red-600 font-bold underline cursor-pointer"
+                          >
+                            ✕ Xóa bộ lọc để xem tất cả
+                          </button>
+                        )}
                       </div>
                     ) : (
-                      selectedPartReviews.map(r => (
+                      filteredPartReviews.map(r => (
                         <div key={r.id} className="p-4 rounded-2xl bg-white border border-zinc-200 shadow-2xs space-y-2">
                           <div className="flex items-center justify-between text-xs">
                             <div className="flex items-center gap-2">
