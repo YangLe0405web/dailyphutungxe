@@ -1900,7 +1900,19 @@ export default function CustomersPage() {
                 );
                 const completedSpent = custOrders
                   .filter(o => o.trangThai === 'HoanThanh' || (o.trangThai as any) === 'DaHoanThanh' || (o.trangThai as any) === 'Hoàn thành')
-                  .reduce((sum, o) => sum + (o.tongTien || 0), 0);
+                  .reduce((sum, o) => {
+                    const isVehicle = o.loaiDon !== 'PhuTung' && (
+                      o.loaiDon === 'Xe' ||
+                      (!!o.thongTinXe && (!o.items || o.items.length === 0)) ||
+                      (o.id && o.id.includes('XE') && (!o.items || o.items.length === 0)) ||
+                      (!o.items?.length && o.tongTien >= 2000000)
+                    );
+                    if (isVehicle && o.thongTinXe) {
+                      const fullPrice = o.thongTinXe.tongGiaTri || o.thongTinXe.giaNiemYet || 0;
+                      if (fullPrice > 0) return sum + fullPrice;
+                    }
+                    return sum + (o.tongTien || 0);
+                  }, 0);
                 const realSpent = Math.max(c.tongChiTieu || 0, completedSpent);
                 const tier = getCustomerTier(realSpent);
                 return (

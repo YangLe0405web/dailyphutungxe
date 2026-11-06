@@ -2214,9 +2214,38 @@ export const orderApi = {
             let finalThongTinXe = undefined;
             if (isVehicleOrder) {
               finalThongTinXe = matchedVehicle?.thongTinXe || (matchedExisting?.loaiDon === 'Xe' ? matchedExisting?.thongTinXe : undefined);
+              const rawBikeName = linkedAppt?.tenXe || (linkedAppt?.loaiDichVu ? linkedAppt.loaiDichVu.replace(/Nhận xe mới:\s*/i, '').trim() : '') || (finalThongTinXe?.tenXe || '');
+              const bikeName = rawBikeName || (item.tongTien > 60000000 ? 'Honda Winner X 150' : 'Xe máy chính hãng Motoshop');
+
+              const resolveCatalogPrice = (name: string): number => {
+                const n = (name || '').toLowerCase();
+                if (n.includes('vespa sprint') || n.includes('sprint s 150') || n.includes('vespa')) return 97800000;
+                if (n.includes('mt-15') || n.includes('mt 15')) return 69000000;
+                if (n.includes('sh 160') || n.includes('sh160')) return 95900000;
+                if (n.includes('sh 125') || n.includes('sh125') || n.includes('sh 350') || n.includes('sh mode')) return 81300000;
+                if (n.includes('cbr150')) return 72290000;
+                if (n.includes('air blade') || n.includes('airblade')) return 56690000;
+                if (n.includes('nvx')) return 55500000;
+                if (n.includes('exciter')) return 55000000;
+                if (n.includes('satria')) return 53490000;
+                if (n.includes('raider')) return 51190000;
+                if (n.includes('winner')) return 50560000;
+                if (n.includes('grande')) return 46047000;
+                if (n.includes('lead')) return 42790000;
+                if (n.includes('vision')) return 36612000;
+                if (n.includes('pg-1') || n.includes('pg 1')) return 30437000;
+                if (n.includes('wave')) return 19290000;
+                return 74000000;
+              };
+
+              const realCatalogPrice = resolveCatalogPrice(bikeName);
+
               if (!finalThongTinXe) {
-                const rawBikeName = linkedAppt?.tenXe || (linkedAppt?.loaiDichVu ? linkedAppt.loaiDichVu.replace(/Nhận xe mới:\s*/i, '').trim() : '') || '';
-                const bikeName = rawBikeName || (item.tongTien > 60000000 ? 'Honda Winner X 150' : 'Xe máy chính hãng Motoshop');
+                const basePrice = item.tongTien > 5000000 ? item.tongTien : realCatalogPrice;
+                const phiTruocBa = Math.round(basePrice * 0.05);
+                const phiDangKyBienSo = 2000000;
+                const phiBaoHiem = 500000;
+                const tongGiaTri = basePrice + phiTruocBa + phiDangKyBienSo + phiBaoHiem;
                 finalThongTinXe = {
                   maXe: (linkedAppt as any)?.maXe || `XM-${numId}`,
                   tenXe: bikeName,
@@ -2224,16 +2253,16 @@ export const orderApi = {
                   phienBan: linkedAppt?.phienBan || 'Tiêu chuẩn',
                   soKhungVIN: (linkedAppt as any)?.soKhungVIN || undefined,
                   customerType: 'CaNhan',
-                  phiTruocBa: Math.round(item.tongTien * 0.05),
-                  phiDangKyBienSo: 2000000,
-                  phiBaoHiem: 500000,
+                  phiTruocBa,
+                  phiDangKyBienSo,
+                  phiBaoHiem,
                   khuyenMai: 0,
-                  giaNiemYet: item.tongTien,
-                  tongGiaTri: item.tongTien,
+                  giaNiemYet: basePrice,
+                  tongGiaTri,
                   soTienDatCoc: linkedAppt?.soTienCoc || (item.tongTien === 2000000 ? 2000000 : item.tongTien),
                   soTienConLai: (paymentStatus === 'DaThanhToan' || tt === 'HoanThanh')
                     ? 0
-                    : (matchedVehicle?.thongTinXe?.soTienConLai ?? (matchedExisting?.thongTinXe?.soTienConLai ?? Math.max(0, item.tongTien - (linkedAppt?.soTienCoc || item.tongTien)))),
+                    : (matchedVehicle?.thongTinXe?.soTienConLai ?? (matchedExisting?.thongTinXe?.soTienConLai ?? Math.max(0, tongGiaTri - (linkedAppt?.soTienCoc || item.tongTien)))),
                   hinhThucGiao: (linkedAppt?.hinhThucGiao as any) || 'Showroom',
                   diaChiGiao: linkedAppt?.diaChiGiao || (matchedExisting as any)?.diaChiGiao || 'Showroom Motoshop',
                   ngayGiaoXe: linkedAppt?.ngayHen ? linkedAppt.ngayHen.split('T')[0] : (item.ngayDat ? item.ngayDat.split('T')[0] : '2026-11-01'),
@@ -2251,6 +2280,16 @@ export const orderApi = {
                     banGiaoXe: false,
                   },
                 } as any;
+              } else {
+                if (!finalThongTinXe.giaNiemYet || finalThongTinXe.giaNiemYet <= 5000000) {
+                  finalThongTinXe.giaNiemYet = realCatalogPrice;
+                }
+                if (!finalThongTinXe.tongGiaTri || finalThongTinXe.tongGiaTri <= 5000000) {
+                  const ptb = finalThongTinXe.phiTruocBa || Math.round(finalThongTinXe.giaNiemYet * 0.05);
+                  const pdk = finalThongTinXe.phiDangKyBienSo || 2000000;
+                  const pbh = finalThongTinXe.phiBaoHiem || 500000;
+                  finalThongTinXe.tongGiaTri = finalThongTinXe.giaNiemYet + ptb + pdk + pbh - (finalThongTinXe.khuyenMai || 0);
+                }
               }
             }
 

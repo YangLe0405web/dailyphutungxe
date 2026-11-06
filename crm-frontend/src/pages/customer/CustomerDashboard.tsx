@@ -2287,11 +2287,24 @@ export default function CustomerDashboard({
     } catch {}
 
     const completedOrders = myOrders.filter(o => o.trangThai === 'HoanThanh' || (o.trangThai as any) === 'DaHoanThanh');
-    const totalOrderSpent = completedOrders.reduce((sum, o) => sum + (o.tongTien || 0), 0);
+    const totalOrderSpent = completedOrders.reduce((sum, o) => {
+      const isVehicle = o.loaiDon !== 'PhuTung' && (
+        o.loaiDon === 'Xe' ||
+        (!!o.thongTinXe && (!o.items || o.items.length === 0)) ||
+        (o.id && o.id.includes('XE') && (!o.items || o.items.length === 0)) ||
+        (!o.items?.length && o.tongTien >= 2000000)
+      );
+      if (isVehicle && o.thongTinXe) {
+        const fullPrice = o.thongTinXe.tongGiaTri || o.thongTinXe.giaNiemYet || 0;
+        if (fullPrice > 0) return sum + fullPrice;
+      }
+      return sum + (o.tongTien || 0);
+    }, 0);
     const totalInsuranceSpent = myInsurances
       .filter(ins => ins.trangThai !== 'TuChoi')
       .reduce((sum, ins) => sum + (ins.tongTien || ins.phiBaoHiem || 0), 0);
-    return Math.max(baseSpent, totalOrderSpent + totalInsuranceSpent);
+    const calculatedTotal = totalOrderSpent + totalInsuranceSpent;
+    return Math.max(baseSpent, calculatedTotal);
   }, [myOrders, myInsurances, currentCustomer]);
 
   // Sync back spending

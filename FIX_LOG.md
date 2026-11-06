@@ -4890,3 +4890,35 @@ pm run build thành công 100% trong 1.41s, **0 lỗi TypeScript**.
   - `npm --prefix crm-frontend run build`: **0 lỗi TypeScript / Vite**.
   - `dotnet build CrmBackend/CrmBackend.csproj`: **0 lỗi C#**.
   - Luồng mua xe máy và phụ tùng chạy trơn tru, bảo toàn tuyệt đối 10 điều kiện bất biến (System Invariants) trong `QUY_TAC_KIEM_TRA_VA_BAO_TOAN_FIX.md`.
+
+
+---
+
+## [Bản Fix 93] - Bộ lọc Đánh giá Phụ tùng (Ảnh 1) & Khắc phục Tính Chi tiêu Tích lũy Xe máy (Ảnh 2)
+
+- **Ngày thực hiện:** 06/11/2026
+- **Mục tiêu:**
+  1. **Bổ sung Bộ lọc Đánh giá phụ tùng (Ảnh 1):**
+     - Trong Modal xem chi tiết sản phẩm phụ tùng (`detailTab === 'reviews'`) tại [`PartsStore.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/PartsStore.tsx), bổ sung thanh bộ lọc đánh giá phong cách Shopee / Tiki trực quan:
+       * Nút `Tất cả (count)`
+       * Các nút sao: `5★ (count)`, `4★ (count)`, `3★ (count)`, `2★ (count)`, `1★ (count)`
+       * Nút lọc `📷 Có hình ảnh (count)`
+       * Nút `✕ Xóa bộ lọc` khi đang kích hoạt bất kỳ bộ lọc nào
+       * Thông báo thân thiện khi không có đánh giá phù hợp kèm nút xóa bộ lọc.
+  2. **Khắc phục Tính Chi tiêu Tích lũy Xe máy (Ảnh 2):**
+     - Giải quyết triệt để lỗi tài khoản khách hàng hoàn tất mua xe máy nhưng chi tiêu tích lũy chỉ cộng 2.000.000đ tiền cọc:
+       * Tại [`CustomerDashboard.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/CustomerDashboard.tsx): Trong `realCustomerSpending`, khi tính tổng đơn hàng hoàn tất (`completedOrders`), nếu là đơn xe máy (`isVehicle`), lấy toàn bộ giá trị xe (`o.thongTinXe.tongGiaTri` hoặc `o.thongTinXe.giaNiemYet`) thay vì chỉ tính 2.000.000đ tiền cọc online.
+       * Tại [`api.ts`](file:///d:/crm-project/crm-frontend/src/services/api.ts): Bổ sung hàm tra cứu giá xe danh mục gốc `resolveCatalogPrice` (Vespa Sprint: 97.8M, MT-15: 69M, SH 160: 95.9M - 104.9M...) để khi dựng `finalThongTinXe` cho đơn xe từ CSDL, `giaNiemYet` và `tongGiaTri` luôn mang giá trị xe thực tế thay vì bị gán nhầm 2.000.000đ.
+       * Tại [`Customers.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/Customers.tsx): Đồng bộ công thức tính giá trị xe hoàn tất cho cột Chi tiêu & Hạng CLV của Admin, nâng hạng chính xác lên 👑 VIP.
+- **Các tệp đã chỉnh sửa:**
+  - [`crm-frontend/src/pages/customer/PartsStore.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/PartsStore.tsx): Bổ sung state và giao diện thanh bộ lọc đánh giá (`partReviewRatingFilter`, `partReviewHasImageFilter`, `filteredPartReviews`).
+  - [`crm-frontend/src/pages/customer/CustomerDashboard.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/CustomerDashboard.tsx): Tính đủ tổng giá trị xe máy hoàn tất vào `realCustomerSpending`, tự động cập nhật hạng thành viên VIP khi đạt ngưỡng.
+  - [`crm-frontend/src/pages/admin/Customers.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/Customers.tsx): Đồng bộ công thức tính chi tiêu xe máy hoàn tất cho giao diện quản trị Admin.
+  - [`crm-frontend/src/services/api.ts`](file:///d:/crm-project/crm-frontend/src/services/api.ts): Chuẩn hóa giá trị `giaNiemYet` và `tongGiaTri` trong `finalThongTinXe` từ danh mục xe thực tế thay vì 2.000.000đ tiền cọc.
+  - [`crm-frontend/tests/verify_review_filter_and_accumulated_spending.test.cjs`](file:///d:/crm-project/crm-frontend/tests/verify_review_filter_and_accumulated_spending.test.cjs): Bộ test TDD tự động hóa kiểm thử cho cả 2 tính năng.
+- **Kết quả kiểm thử & Nghiệm thu:**
+  - Bộ test mới `verify_review_filter_and_accumulated_spending.test.cjs`: **PASS 100%**.
+  - Toàn bộ 20/20 test suites trong hệ thống (`crm-frontend/tests/*.cjs`): **PASS 20/20 (0 failed)**.
+  - `npm --prefix crm-frontend run build`: **0 lỗi TypeScript / Vite**.
+  - `dotnet build CrmBackend/CrmBackend.csproj`: **0 lỗi C#**.
+  - Bảo toàn nguyên vẹn toàn bộ 10 System Invariants, không ảnh hưởng bất kỳ chức năng nào của các bản Fix trước.
