@@ -23,6 +23,7 @@ import ImageUploader from '../../components/shared/ImageUploader';
 import { VIETNAM_LOCATIONS } from '../../data/vietnamLocations';
 
 const PAGE_SIZE = 8;
+const isNoPlate = (p?: string) => !p || p === 'Chưa có biển số' || p.includes('Chưa có') || p.startsWith('TAM-');
 
 /* ── Modal Thêm khách hàng (H01, H02, H04, ĐK01, ĐK02) ── */
 function AddModal({ onClose, onAdd }: { onClose: () => void; onAdd: (c: Customer) => void }) {
@@ -856,13 +857,25 @@ function Customer360Modal({
     setApprovingPlateId(vId);
     try {
       const targetV = vehicles.find(x => x.id === vId);
-      const proposedPlate = targetV?.bienSoChoDuyet || (targetV?.bienSo && targetV.bienSo !== 'Chưa có biển số' && !targetV.bienSo.includes('Chưa có') ? targetV.bienSo : '');
+      const proposedPlate = targetV?.bienSoChoDuyet || (targetV?.bienSo && !isNoPlate(targetV.bienSo) ? targetV.bienSo : '');
       if (!proposedPlate) {
         alert('Xe chưa có biển số đề xuất từ Cà vẹt của khách! Vui lòng vào trang Quản lý biển số để đối chiếu giấy tờ và cấp biển số.');
         return;
       }
       await vehicleApi.approveLicensePlate(vId, proposedPlate, targetV);
-      setVehicles(prev => prev.map(x => x.id === vId ? { ...x, bienSo: proposedPlate, trangThaiDuyetBienSo: 'DaDuyet', bienSoChoDuyet: undefined } : x));
+      setVehicles(prev => {
+        const updated = prev.map(x => {
+          const isTarget = x.id === vId || (targetV && targetV.tenXe && x.tenXe === targetV.tenXe && (x.customerId === targetV.customerId || parseInt(x.customerId.replace(/\D/g, ''), 10) === parseInt(targetV.customerId.replace(/\D/g, ''), 10)));
+          return isTarget ? { ...x, bienSo: proposedPlate, trangThaiDuyetBienSo: 'DaDuyet' as const, bienSoChoDuyet: undefined } : x;
+        });
+        const seen = new Map<string, Vehicle>();
+        updated.forEach(v => {
+          const plate = (v.bienSo || '').toUpperCase().trim();
+          const k = !isNoPlate(plate) ? `PLATE_${plate}` : `MODEL_${v.tenXe}`;
+          if (!seen.has(k)) seen.set(k, v);
+        });
+        return Array.from(seen.values());
+      });
       window.dispatchEvent(new CustomEvent('crm-data-refresh', { detail: { type: 'license_plate_approved', vehicleId: vId, plate: proposedPlate } }));
     } finally {
       setApprovingPlateId(null);
@@ -894,7 +907,7 @@ function Customer360Modal({
       setFeedbacks(match);
     });
 
-    // 4. Vehicles (Khớp ID chuỗi, ID số và soXe)
+    // 4. Vehicles (Khớp ID chuỗi, ID số và soXe, khử trùng lặp đa tầng)
     vehicleApi.getAll().then(allVehicles => {
       const cNum = parseInt(customer.id.replace(/\D/g, ''), 10);
       const match = (allVehicles || mockVehicles).filter(v => {
@@ -904,7 +917,46 @@ function Customer360Modal({
         if (customer.soXe && (customer.soXe === v.id || customer.soXe === v.bienSo)) return true;
         return false;
       });
-      setVehicles(match);
+
+      // Khử trùng lặp xe cấp độ khách hàng: Gộp bản ghi tạm từ đơn hàng với bản ghi CSDL SQL Server
+      const isPlaceholderVin = (vin?: string) => !vin || /0000$/.test(vin) || vin.includes('0270000');
+      const isPlaceholderEngine = (eng?: string) => !eng || /8888$/.test(eng) || eng.includes('0278888');
+      const getCleanModelKey = (name?: string) => (name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+      const mergedVehicleMap = new Map<string, Vehicle>();
+      match.forEach(v => {
+        const plate = (v.bienSo || v.bienSoChoDuyet || '').toUpperCase().trim();
+        const modelKey = getCleanModelKey(v.tenXe);
+        const hasRealPlate = !isNoPlate(plate);
+        const groupKey = hasRealPlate ? `PLATE_${plate}` : `MODEL_${modelKey}`;
+
+        if (!mergedVehicleMap.has(groupKey)) {
+          mergedVehicleMap.set(groupKey, { ...v });
+        } else {
+          const existing = mergedVehicleMap.get(groupKey)!;
+          if (isPlaceholderVin(existing.soKhung) && v.soKhung && !isPlaceholderVin(v.soKhung)) {
+            existing.soKhung = v.soKhung;
+          }
+          if (isPlaceholderEngine(existing.soMay) && v.soMay && !isPlaceholderEngine(v.soMay)) {
+            existing.soMay = v.soMay;
+          }
+          if (v.id && v.id.startsWith('XE') && !v.id.includes('-') && existing.id.includes('-')) {
+            existing.id = v.id;
+          }
+          if (!existing.anhCaVet && v.anhCaVet) {
+            existing.anhCaVet = v.anhCaVet;
+          }
+          if (v.bienSoChoDuyet && !isNoPlate(v.bienSoChoDuyet)) existing.bienSoChoDuyet = v.bienSoChoDuyet;
+          if (v.trangThaiDuyetBienSo === 'DaDuyet') {
+            existing.trangThaiDuyetBienSo = 'DaDuyet';
+            existing.trangThaiDuyet = 'DaDuyet';
+            if (v.bienSo && !isNoPlate(v.bienSo)) existing.bienSo = v.bienSo;
+          } else if (v.trangThaiDuyetBienSo === 'ChoDuyet' && existing.trangThaiDuyetBienSo !== 'DaDuyet') {
+            existing.trangThaiDuyetBienSo = 'ChoDuyet';
+          }
+        }
+      });
+      setVehicles(Array.from(mergedVehicleMap.values()));
     });
   }, [customer]);
 
@@ -1973,13 +2025,28 @@ export default function CustomersPage() {
                           {/* Phương tiện khách hàng sở hữu */}
                           {(() => {
                             const cNum = parseInt(c.id.replace(/\D/g, ''), 10);
-                            const custVehicles = allVehicles.filter(v => {
+                            const rawCustVehicles = allVehicles.filter(v => {
                               if (v.customerId === c.id) return true;
                               const vNum = parseInt(v.customerId.replace(/\D/g, ''), 10);
                               if (!isNaN(cNum) && !isNaN(vNum) && cNum === vNum) return true;
                               if (c.soXe && (c.soXe === v.id || c.soXe === v.bienSo)) return true;
                               return false;
                             });
+
+                            const isPlaceholderVin = (vin?: string) => !vin || /0000$/.test(vin) || vin.includes('0270000');
+                            const seenPlates = new Map<string, Vehicle>();
+                            rawCustVehicles.forEach(v => {
+                              const plate = (v.bienSo || v.bienSoChoDuyet || '').toUpperCase().trim();
+                              const modelKey = (v.tenXe || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                              const hasRealPlate = !isNoPlate(plate);
+                              const groupKey = hasRealPlate ? `PLATE_${plate}` : `MODEL_${modelKey}`;
+                              if (!seenPlates.has(groupKey)) {
+                                seenPlates.set(groupKey, v);
+                              } else if (isPlaceholderVin(seenPlates.get(groupKey)!.soKhung) && v.soKhung && !isPlaceholderVin(v.soKhung)) {
+                                seenPlates.set(groupKey, v);
+                              }
+                            });
+                            const custVehicles = Array.from(seenPlates.values());
 
                             if (custVehicles.length === 0) {
                               return <div className="text-[10px] text-zinc-400 italic mt-0.5">Chưa có xe</div>;

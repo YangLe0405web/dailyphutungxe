@@ -11,7 +11,7 @@ import {
   type VehicleOrderDetails,
   type Vehicle,
 } from '../../data/mockData';
-import { catalogVehicleApi, feedbackApi, surveyApi, orderApi, appointmentApi, vehicleApi, addCustomerNotification, isSameCategory } from '../../services/api';
+import { catalogVehicleApi, feedbackApi, surveyApi, orderApi, appointmentApi, vehicleApi, addCustomerNotification, isSameCategory, chatApi, formatCustomerId, type PinnedChatContext } from '../../services/api';
 
 export interface ShowroomVehicle {
   id: string;
@@ -1540,6 +1540,8 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
   const [reviewSubmitted, setReviewSubmitted] = useState(false);
   const [isEditingReview, setIsEditingReview] = useState(false);
   const [reviewToast, setReviewToast] = useState<string | null>(null);
+  const [vehicleReviewRatingFilter, setVehicleReviewRatingFilter] = useState<'All' | number>('All');
+  const [vehicleReviewHasImageFilter, setVehicleReviewHasImageFilter] = useState<boolean>(false);
 
   // Helper kiểm tra đánh giá có thuộc về xe tương ứng hay không
   const isMatchVehicleReview = (r: ProductReview, vId: string, vName: string) => {
@@ -1805,6 +1807,16 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
   if (detailVehicle) {
     const meta = brandMeta[detailVehicle.hang] || { color: '#dc2626', bg: '#fef2f2', badge: detailVehicle.hang };
     const vReviews = allReviews.filter(r => isMatchVehicleReview(r, detailVehicle.id, detailVehicle.tenXe));
+    const vAvgScore = vReviews.length > 0 
+      ? Number((vReviews.reduce((sum, r) => sum + r.soSao, 0) / vReviews.length).toFixed(1)) 
+      : 5.0;
+    const vStarFilled = Math.round(vAvgScore);
+    const vStarDisplay = '★'.repeat(vStarFilled) + '☆'.repeat(5 - vStarFilled);
+    const filteredVehicleReviews = vReviews.filter(r => {
+      if (vehicleReviewRatingFilter !== 'All' && r.soSao !== vehicleReviewRatingFilter) return false;
+      if (vehicleReviewHasImageFilter && (!r.hinhAnhDinhKem || r.hinhAnhDinhKem.length === 0)) return false;
+      return true;
+    });
     const relatedVehicles = vehicles
       .filter(v => v.id !== detailVehicle.id && (v.hang === detailVehicle.hang || v.phanKhuc === detailVehicle.phanKhuc))
       .slice(0, 4);
@@ -1957,12 +1969,12 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
                   {/* Rating & reviews */}
                   <div className="flex items-center gap-4 text-xs flex-wrap pb-2 border-b border-zinc-100">
                     <div className="flex items-center gap-1.5 text-amber-500">
-                      <span className="font-bold text-sm text-zinc-900 underline">4.9</span>
-                      <span>★★★★★</span>
+                      <span className="font-bold text-sm text-zinc-900 underline">{vAvgScore}</span>
+                      <span>{vStarDisplay}</span>
                     </div>
                     <span className="text-zinc-300">|</span>
                     <span className="text-zinc-600">
-                      <strong className="text-zinc-900">{vReviews.length || 2}</strong> Đánh giá từ khách hàng
+                      <strong className="text-zinc-900">{vReviews.length}</strong> Đánh giá từ khách hàng
                     </span>
                     <span className="text-zinc-300">|</span>
                     <span className="text-emerald-700 font-semibold flex items-center gap-1">
@@ -2062,6 +2074,31 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
                     </a>
                   </div>
 
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const custId = currentCustomer ? formatCustomerId(currentCustomer.id) : 'KH-GUEST';
+                      const pinned: PinnedChatContext = {
+                        title: '📌 BẠN ĐANG HỎI VỀ XE MÁY',
+                        productName: detailVehicle.tenXe,
+                        productImage: detailVehicle.hinhAnh,
+                        orderId: `Mã xe: ${detailVehicle.id} · Giá: ${formatVND(detailVehicle.giaNiemYet)}`,
+                        comment: `Hãng: ${detailVehicle.hang} · Phân khúc: ${detailVehicle.phanKhuc || 'Tiêu chuẩn'}`,
+                      };
+                      chatApi.syncPinnedContext(custId, pinned);
+                      window.dispatchEvent(new CustomEvent('crm-open-chat', {
+                        detail: {
+                          pinnedContext: pinned,
+                          prefillMessage: `Dạ chào Shop, em muốn tư vấn thêm về mẫu xe "${detailVehicle.tenXe}" (giá niêm yết: ${formatVND(detailVehicle.giaNiemYet)}) ạ!`,
+                        }
+                      }));
+                    }}
+                    className="w-full py-3 px-4 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs uppercase tracking-wider transition-all shadow-sm cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    <span className="text-base">💬</span>
+                    <span>Liên hệ với shop tư vấn xe này</span>
+                  </button>
+
                   {!currentCustomer && (
                     <div className="text-center text-[11px] text-zinc-500 font-sans">
                       🔒 Chưa đăng nhập? Nhấn nút "Đặt mua xe / Cọc Online" hệ thống sẽ mở form đăng nhập để ghi nhận đơn hàng và lịch hẹn của bạn.
@@ -2096,7 +2133,7 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
               >
                 <span>⭐ ĐÁNH GIÁ KHÁCH HÀNG</span>
                 <span className="px-2 py-0.5 rounded-full text-[10px] bg-red-100 text-red-700 font-mono font-bold">
-                  {vReviews.length || 2}
+                  {vReviews.length}
                 </span>
               </button>
             </div>
@@ -2184,11 +2221,13 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
                   {/* Rating Overview */}
                   <div className="p-5 rounded-2xl bg-zinc-50 border border-zinc-200 flex items-center justify-between flex-wrap gap-4">
                     <div className="flex items-center gap-4">
-                      <div className="text-4xl font-extrabold text-zinc-900 font-mono">4.9</div>
+                      <div className="text-4xl font-extrabold text-zinc-900 font-mono">{vAvgScore}</div>
                       <div>
-                        <div className="flex text-amber-500 text-base">★★★★★</div>
+                        <div className="flex text-amber-500 text-base">{vStarDisplay}</div>
                         <div className="text-xs text-zinc-500 font-mono mt-0.5">
-                          Dựa trên {vReviews.length || 2} nhận xét thực tế từ khách hàng đã mua xe
+                          {vReviews.length > 0
+                            ? `Dựa trên ${vReviews.length} nhận xét thực tế từ khách hàng đã mua xe`
+                            : 'Dòng xe mới - 5.0 ★ tiêu chuẩn Showroom'}
                         </div>
                       </div>
                     </div>
@@ -2197,14 +2236,92 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
                     </span>
                   </div>
 
+                  {/* BỘ LỌC ĐÁNH GIÁ XE MÁY (Shopee / Tiki style) */}
+                  <div className="p-4 rounded-2xl bg-white border border-zinc-200 shadow-2xs space-y-3">
+                    <div className="flex items-center justify-between flex-wrap gap-2 text-xs">
+                      <span className="font-bold text-zinc-700 flex items-center gap-1.5 uppercase font-mono tracking-wider">
+                        <span>🔍</span> Bộ lọc đánh giá xe
+                      </span>
+                      {(vehicleReviewRatingFilter !== 'All' || vehicleReviewHasImageFilter) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setVehicleReviewRatingFilter('All');
+                            setVehicleReviewHasImageFilter(false);
+                          }}
+                          className="text-[11px] text-red-600 hover:text-red-700 font-mono underline cursor-pointer"
+                        >
+                          ✕ Xóa bộ lọc
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none text-xs flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => setVehicleReviewRatingFilter('All')}
+                        className={`px-3 py-1.5 rounded-xl font-bold transition cursor-pointer whitespace-nowrap text-xs border ${
+                          vehicleReviewRatingFilter === 'All'
+                            ? 'bg-red-600 text-white border-red-600 shadow-xs'
+                            : 'bg-zinc-50 text-zinc-700 hover:bg-zinc-100 border-zinc-200'
+                        }`}
+                      >
+                        Tất cả ({vReviews.length})
+                      </button>
+                      {[5, 4, 3, 2, 1].map(stars => {
+                        const count = vReviews.filter(r => r.soSao === stars).length;
+                        return (
+                          <button
+                            key={stars}
+                            type="button"
+                            onClick={() => setVehicleReviewRatingFilter(stars)}
+                            className={`px-3 py-1.5 rounded-xl font-bold transition cursor-pointer whitespace-nowrap text-xs flex items-center gap-1 border ${
+                              vehicleReviewRatingFilter === stars
+                                ? 'bg-amber-500 text-white border-amber-500 shadow-xs font-extrabold'
+                                : 'bg-zinc-50 text-zinc-700 hover:bg-zinc-100 border-zinc-200'
+                            }`}
+                          >
+                            <span>{stars}★</span>
+                            <span className="font-mono text-[11px]">({count})</span>
+                          </button>
+                        );
+                      })}
+                      <button
+                        type="button"
+                        onClick={() => setVehicleReviewHasImageFilter(!vehicleReviewHasImageFilter)}
+                        className={`px-3 py-1.5 rounded-xl font-bold transition cursor-pointer text-xs flex items-center gap-1.5 border ${
+                          vehicleReviewHasImageFilter
+                            ? 'bg-blue-600 text-white border-blue-500 shadow-xs'
+                            : 'bg-zinc-50 text-zinc-700 hover:bg-zinc-100 border-zinc-200'
+                        }`}
+                      >
+                        <span>📷 Có hình ảnh / Video</span>
+                        <span className="font-mono text-[11px]">
+                          ({vReviews.filter(r => r.hinhAnhDinhKem && r.hinhAnhDinhKem.length > 0).length})
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+
                   {/* Reviews List */}
                   <div className="space-y-3">
-                    {vReviews.length === 0 ? (
-                      <div className="p-8 text-center text-zinc-500 text-xs bg-zinc-50 rounded-2xl">
-                        Chưa có đánh giá nào cho xe này. Hãy là người đầu tiên để lại nhận xét!
+                    {filteredVehicleReviews.length === 0 ? (
+                      <div className="p-8 text-center text-zinc-500 text-xs bg-zinc-50 rounded-2xl border border-dashed border-zinc-200 space-y-2">
+                        <div>Chưa có đánh giá nào phù hợp với bộ lọc đã chọn.</div>
+                        {(vehicleReviewRatingFilter !== 'All' || vehicleReviewHasImageFilter) && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setVehicleReviewRatingFilter('All');
+                              setVehicleReviewHasImageFilter(false);
+                            }}
+                            className="text-xs text-red-600 font-bold underline cursor-pointer"
+                          >
+                            ✕ Xóa bộ lọc để xem tất cả
+                          </button>
+                        )}
                       </div>
                     ) : (
-                      vReviews.map(r => (
+                      filteredVehicleReviews.map(r => (
                         <div key={r.id} className="p-4 rounded-2xl bg-white border border-zinc-200/80 space-y-2">
                           <div className="flex items-center justify-between text-xs">
                             <div className="flex items-center gap-2">
@@ -2882,6 +2999,9 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
             {paginatedVehicles.map(v => {
               const meta = brandMeta[v.hang] || { color: '#dc2626', bg: '#fef2f2', badge: v.hang };
               const vReviews = allReviews.filter(r => isMatchVehicleReview(r, v.id, v.tenXe));
+              const cardAvgScore = vReviews.length > 0 
+                ? Number((vReviews.reduce((sum, r) => sum + r.soSao, 0) / vReviews.length).toFixed(1)) 
+                : 5.0;
 
               return (
                 <div
@@ -2935,7 +3055,7 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
                         </div>
                       </div>
                       <span className="text-[11px] font-mono text-zinc-300 bg-black/40 px-2 py-0.5 rounded">
-                        ⭐ 4.9 ({vReviews.length || 2} ĐG)
+                        ⭐ {cardAvgScore} ({vReviews.length} ĐG)
                       </span>
                     </div>
                   </div>
@@ -2999,7 +3119,33 @@ export default function VehiclesShowroom({ onBookTestDrive, currentCustomer, onR
                           }}
                           className="flex-1 py-2 rounded-xl text-xs font-bold border border-zinc-300 text-zinc-700 hover:bg-zinc-100 transition cursor-pointer flex items-center justify-center gap-1"
                         >
-                          <span>💬</span> Đánh giá ({vReviews.length || 2})
+                          <span>⭐</span> Đánh giá ({vReviews.length})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const custId = currentCustomer ? formatCustomerId(currentCustomer.id) : 'KH-GUEST';
+                            const pinned: PinnedChatContext = {
+                              title: '📌 BẠN ĐANG HỎI VỀ XE MÁY',
+                              productName: v.tenXe,
+                              productImage: v.hinhAnh,
+                              orderId: `Mã xe: ${v.id} · Giá: ${formatVND(v.giaNiemYet)}`,
+                              comment: `Hãng: ${v.hang} · Phân khúc: ${v.phanKhuc || 'Tiêu chuẩn'}`,
+                            };
+                            chatApi.syncPinnedContext(custId, pinned);
+                            window.dispatchEvent(new CustomEvent('crm-open-chat', {
+                              detail: {
+                                pinnedContext: pinned,
+                                prefillMessage: `Dạ chào Shop, em muốn tư vấn thêm về mẫu xe "${v.tenXe}" (giá: ${formatVND(v.giaNiemYet)}) ạ!`,
+                              }
+                            }));
+                          }}
+                          className="px-3 py-2 rounded-xl text-xs font-bold bg-amber-50 border border-amber-300 text-amber-800 hover:bg-amber-100 transition cursor-pointer flex items-center justify-center gap-1"
+                          title="Liên hệ tư vấn xe này"
+                        >
+                          <span>💬</span>
+                          <span>Tư vấn</span>
                         </button>
                         {v.coTheLaiThu ? (
                           <button

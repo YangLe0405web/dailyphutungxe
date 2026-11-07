@@ -18,6 +18,7 @@ export function isSameCategory(catA?: string, catB?: string): boolean {
 import {
   type Customer,
   type Vehicle,
+  getCustomerTier,
   type Part,
   type Order,
   type OrderStatus,
@@ -1087,48 +1088,71 @@ export const vehicleApi = {
       return !plate.includes('LÁI-THỬ') && !plate.includes('LAI-THU') && !plate.includes('XE-LÁI') && !name.includes('LÁI THỬ') && !name.includes('LAI THU');
     });
 
-    // Lọc sạch trùng lặp phương tiện của khách hàng (Deduplication)
+    // Lọc sạch trùng lặp phương tiện của khách hàng (Deduplication đa tầng thông minh)
+    const isPlaceholderVin = (vin?: string) => !vin || /0000$/.test(vin) || vin.includes('0270000');
+    const isPlaceholderEngine = (eng?: string) => !eng || /8888$/.test(eng) || eng.includes('0278888');
+    const getCleanModelKey = (name?: string) => (name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
     const seenCustVeh = new Set<string>();
     const cleanedResult: Vehicle[] = [];
     for (const v of rawList) {
+      const custIdNum = v.customerId ? v.customerId.replace(/\D/g, '') : '';
       const plate = (v.bienSo || v.bienSoChoDuyet || '').toUpperCase().trim();
-      const name = (v.tenXe || '').toUpperCase().trim();
-      const color = (v.mauSac || '').toUpperCase().trim();
-      const vin = (v.soKhung || '').toUpperCase().trim();
+      const modelKey = getCleanModelKey(v.tenXe);
       const isPlateEmpty = isNoPlate(plate);
-      const dedupKey = vin
-        ? `VIN_${vin}`
-        : (!isPlateEmpty)
-        ? `PLATE_${plate}`
-        : `CUST_${v.customerId}_${name}_${color}`;
+      
+      // Khóa phân nhóm: Nếu xe đã có biển số (hoặc biển đề xuất hợp lệ), gom nhóm theo biển số của khách; nếu chưa có thì gom theo dòng xe
+      const dedupKey = (!isPlateEmpty)
+        ? `PLATE_${custIdNum || v.customerId}_${plate}`
+        : (v.soKhung && !isPlaceholderVin(v.soKhung))
+        ? `VIN_${v.soKhung.toUpperCase().trim()}`
+        : `CUST_${custIdNum || v.customerId}_MODEL_${modelKey}`;
+
       if (seenCustVeh.has(dedupKey)) {
-        // Hợp nhất dữ liệu biển số đề xuất và ảnh cà vẹt nếu vehicle hiện tại có thông tin
+        // Hợp nhất dữ liệu thông minh vào bản ghi đã tồn tại
         const existing = cleanedResult.find(ev => {
-          const eVin = (ev.soKhung || '').toUpperCase().trim();
+          const eCustIdNum = ev.customerId ? ev.customerId.replace(/\D/g, '') : '';
           const ePlate = (ev.bienSo || ev.bienSoChoDuyet || '').toUpperCase().trim();
-          const eName = (ev.tenXe || '').toUpperCase().trim();
-          const eColor = (ev.mauSac || '').toUpperCase().trim();
+          const eModelKey = getCleanModelKey(ev.tenXe);
           const ePlateEmpty = isNoPlate(ePlate);
-          const eKey = eVin
-            ? `VIN_${eVin}`
-            : (!ePlateEmpty)
-            ? `PLATE_${ePlate}`
-            : `CUST_${ev.customerId}_${eName}_${eColor}`;
+          const eKey = (!ePlateEmpty)
+            ? `PLATE_${eCustIdNum || ev.customerId}_${ePlate}`
+            : (ev.soKhung && !isPlaceholderVin(ev.soKhung))
+            ? `VIN_${ev.soKhung.toUpperCase().trim()}`
+            : `CUST_${eCustIdNum || ev.customerId}_MODEL_${eModelKey}`;
           return eKey === dedupKey;
         });
+
         if (existing) {
-          // Ưu tiên các thông tin trạng thái duyệt biển số và ảnh cà vẹt mới nhất từ cache
+          // Ưu tiên số khung (VIN) thực tế từ DB hoặc Cà vẹt
+          if (isPlaceholderVin(existing.soKhung) && v.soKhung && !isPlaceholderVin(v.soKhung)) {
+            existing.soKhung = v.soKhung;
+          }
+          // Ưu tiên số máy thực tế
+          if (isPlaceholderEngine(existing.soMay) && v.soMay && !isPlaceholderEngine(v.soMay)) {
+            existing.soMay = v.soMay;
+          }
+          // Ưu tiên ID chuẩn từ cơ sở dữ liệu
+          if (v.id && v.id.startsWith('XE') && !v.id.includes('-') && existing.id.includes('-')) {
+            existing.id = v.id;
+          }
+          // Bảo toàn ảnh cà vẹt xe
+          if (!existing.anhCaVet && v.anhCaVet) {
+            existing.anhCaVet = v.anhCaVet;
+          }
+          // Ưu tiên các thông tin trạng thái duyệt biển số và ảnh cà vẹt mới nhất
           if (v.bienSoChoDuyet && !isNoPlate(v.bienSoChoDuyet)) existing.bienSoChoDuyet = v.bienSoChoDuyet;
-          if (v.anhCaVet) existing.anhCaVet = v.anhCaVet;
           if (v.trangThaiDuyetBienSo === 'ChoDuyet' || v.trangThaiDuyetBienSo === 'TuChoi') {
-            existing.trangThaiDuyetBienSo = v.trangThaiDuyetBienSo;
+            if (existing.trangThaiDuyetBienSo !== 'DaDuyet') {
+              existing.trangThaiDuyetBienSo = v.trangThaiDuyetBienSo;
+            }
           } else if (v.trangThaiDuyetBienSo === 'DaDuyet') {
             existing.trangThaiDuyetBienSo = 'DaDuyet';
             existing.bienSoChoDuyet = undefined;
             if (v.bienSo && !isNoPlate(v.bienSo)) existing.bienSo = v.bienSo;
             delete (existing as any).lyDoTuChoiBienSo;
           }
-          if (v.lyDoTuChoiBienSo) existing.lyDoTuChoiBienSo = v.lyDoTuChoiBienSo;
+          if (v.lyDoTuChoiBienSo && existing.trangThaiDuyetBienSo !== 'DaDuyet') existing.lyDoTuChoiBienSo = v.lyDoTuChoiBienSo;
           if (v.bienSo && !isNoPlate(v.bienSo) && (isNoPlate(existing.bienSo) || v.trangThaiDuyetBienSo === 'DaDuyet')) {
             existing.bienSo = v.bienSo;
           }
@@ -1649,10 +1673,10 @@ export const vehicleApi = {
       }
     }
 
-    // Cập nhật triệt để vào cache crm_customer_vehicles
+    // Cập nhật triệt để vào cache crm_customer_vehicles và dọn dẹp bản ghi trùng lặp
     try {
       const cached = localStorage.getItem('crm_customer_vehicles');
-      const list: Vehicle[] = cached ? JSON.parse(cached) : [];
+      let list: Vehicle[] = cached ? JSON.parse(cached) : [];
       let updatedCount = 0;
       list.forEach(v => {
         if (isMatchVehicle(v)) {
@@ -1667,6 +1691,25 @@ export const vehicleApi = {
           updatedCount++;
         }
       });
+
+      // Tự động gộp và dọn dẹp các bản ghi tạm từ đơn hàng (ví dụ XE-DH-...) nếu đã có bản ghi xe chính thức
+      const matchingVehs = list.filter(isMatchVehicle);
+      if (matchingVehs.length > 1) {
+        const primaryVeh = matchingVehs.find(v => !v.id.includes('-') && v.id.startsWith('XE')) || matchingVehs[0];
+        matchingVehs.forEach(mv => {
+          if (mv !== primaryVeh) {
+            if (mv.anhCaVet && !primaryVeh.anhCaVet) primaryVeh.anhCaVet = mv.anhCaVet;
+            if (mv.soKhung && !mv.soKhung.endsWith('0000') && (primaryVeh.soKhung?.endsWith('0000') || !primaryVeh.soKhung)) {
+              primaryVeh.soKhung = mv.soKhung;
+            }
+            if (mv.soMay && !mv.soMay.endsWith('8888') && (primaryVeh.soMay?.endsWith('8888') || !primaryVeh.soMay)) {
+              primaryVeh.soMay = mv.soMay;
+            }
+          }
+        });
+        // Lọc bỏ các bản ghi tạm dư thừa
+        list = list.filter(v => !isMatchVehicle(v) || v === primaryVeh);
+      }
 
       if (updatedCount === 0) {
         const fallbackObj: Vehicle = (vehicleData as Vehicle) || {
@@ -6577,6 +6620,22 @@ export const chatApi = {
       } catch {}
     }
 
+    // Bổ sung thông báo Realtime cho Admin khi khách hàng gửi tin nhắn (Bản Fix 94)
+    if (msg.sender === 'customer') {
+      try {
+        addAdminNotification({
+          category: 'customer',
+          type: 'customer_chat_message',
+          title: `💬 Tin nhắn từ ${msg.senderName} (${targetCustId})`,
+          message: msg.content.length > 80 ? msg.content.slice(0, 80) + '...' : msg.content,
+          linkPage: 'feedback',
+          meta: { customerId: targetCustId, customerName: msg.senderName, messageId: newMsg.id }
+        });
+      } catch (e) {
+        console.warn('[chatApi] Không thể dispatch admin notification:', e);
+      }
+    }
+
     // Broadcast in current window
     window.dispatchEvent(new CustomEvent('crm-chat-update', { detail: newMsg }));
     return newMsg;
@@ -7542,8 +7601,36 @@ export const surveyApi = {
 
   submitResponse(response: Omit<SurveyResponse, 'id' | 'submittedDate'>): SurveyResponse {
     const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 16);
+
+    // Tự động phân loại mức độ đánh giá: Tốt / Bình thường / Tệ dựa trên cảm xúc câu trả lời
+    let calculatedRating = response.danhGiaChung;
+    if (!calculatedRating && response.answers) {
+      const answersList = Object.values(response.answers).map(a => String(a).toLowerCase());
+      const negativeKeywords = ['chưa hài lòng', 'cần cải thiện', 'kém', 'tệ', 'không hài lòng', 'thất vọng', 'chưa chắc chắn', 'chưa được', 'không tốt'];
+      const positiveKeywords = ['rất hài lòng', 'nhiệt tình', 'rất tốt', 'tuyệt vời', 'chắc chắn sẽ giới thiệu', 'rất chuyên nghiệp', 'rất chi tiết', 'hài lòng'];
+      
+      let negCount = 0;
+      let posCount = 0;
+      answersList.forEach(ans => {
+        if (negativeKeywords.some(kw => ans.includes(kw))) {
+          negCount++;
+        } else if (positiveKeywords.some(kw => ans.includes(kw))) {
+          posCount++;
+        }
+      });
+
+      if (negCount > 0) {
+        calculatedRating = 'Tệ / Cần chăm sóc CSKH ⚠️';
+      } else if (posCount >= 2 || (posCount > 0 && negCount === 0)) {
+        calculatedRating = 'Tốt / Rất hài lòng 😊';
+      } else {
+        calculatedRating = 'Bình thường 😐';
+      }
+    }
+
     const newResp: SurveyResponse = {
       ...response,
+      danhGiaChung: calculatedRating || 'Tốt / Rất hài lòng 😊',
       id: `RSP${Date.now().toString().slice(-4)}`,
       submittedDate: nowStr,
     };
@@ -7553,11 +7640,16 @@ export const surveyApi = {
     localStorage.setItem(SURVEY_RESPONSE_KEY, JSON.stringify(all));
 
     const sMatch = surveyApi.getAll().find(s => s.id === response.surveyId);
+    const isBadRating = Boolean(newResp.danhGiaChung && (newResp.danhGiaChung.includes('Tệ') || newResp.danhGiaChung.includes('Cần chăm sóc')));
 
     addAdminNotification({
-      type: 'survey_submitted',
-      title: '📊 Khách hàng vừa gửi câu trả lời khảo sát',
-      message: `${response.customerName} (${response.customerId}) đã hoàn thành khảo sát "${sMatch?.title || response.surveyId}".`,
+      type: isBadRating ? 'complaint' : 'survey_submitted',
+      title: isBadRating 
+        ? '⚠️ Khách hàng đánh giá tiêu cực khảo sát nhận xe - Cần CSKH gấp!' 
+        : '📊 Khách hàng vừa gửi câu trả lời khảo sát',
+      message: isBadRating
+        ? `${response.customerName} (${response.customerId}) vừa phản hồi chưa hài lòng khảo sát "${sMatch?.title || response.surveyId}". Đánh giá: ${newResp.danhGiaChung}`
+        : `${response.customerName} (${response.customerId}) đã hoàn thành khảo sát "${sMatch?.title || response.surveyId}".`,
       linkPage: 'feedback',
       meta: newResp,
     });
@@ -8355,10 +8447,24 @@ export const promotionApi = {
       // Nếu là mã riêng tư mà chưa lưu thì không hiện trong kho chung
       if (p.hienThiMa === 'RiengTu') return false;
 
-      // Kiểm tra nhóm đối tượng khách hàng
-      if (p.doiTuongKhachHang === 'VIP') {
-        const isVip = customer && (customer.loaiKhach === 'VIP' || customer.hangThanhVien === 'VIP' || customer.hangThanhVien === 'KimCuong' || customer.hangThanhVien === 'Vang');
-        return Boolean(isVip);
+      // Kiểm tra nhóm đối tượng khách hàng (Bản Fix 94: Chuẩn hóa theo getCustomerTier và chi tiêu)
+      if (p.doiTuongKhachHang === 'VIP' || p.maVoucher === 'VIPCUSTOMER') {
+        const tier = customer ? getCustomerTier(customer.tongChiTieu || 0) : null;
+        const isVip = Boolean(
+          (customer && (customer.loaiKhach === 'VIP' || customer.hangThanhVien === 'VIP' || customer.hangThanhVien === 'KimCuong' || customer.hangThanhVien === 'Vang')) ||
+          (tier && tier.tier === 'VIP') ||
+          (customer && (customer.tongChiTieu || 0) >= 10000000)
+        );
+        return isVip;
+      }
+
+      if (p.doiTuongKhachHang === ('ThanThiet' as any)) {
+        const tier = customer ? getCustomerTier(customer.tongChiTieu || 0) : null;
+        const isThanThiet = Boolean(
+          (tier && (tier.tier === 'ThanThiet' || tier.tier === 'VIP')) ||
+          (customer && (customer.tongChiTieu || 0) >= 4000000)
+        );
+        return isThanThiet;
       }
 
       if (p.doiTuongKhachHang === 'SinhNhat') {
@@ -8379,6 +8485,19 @@ export const promotionApi = {
       // Mặc định công khai cho tất cả khách hàng
       return true;
     });
+  },
+
+  /**
+   * Lấy danh sách các mã voucher đã lưu trong kho của khách hàng (Bản Fix 94)
+   */
+  getSavedVoucherCodes(customerId: string): string[] {
+    if (!customerId) return [];
+    try {
+      const raw = localStorage.getItem(`crm_customer_vouchers_${customerId}`);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
   },
 
   /**
@@ -8496,13 +8615,35 @@ export const promotionApi = {
       };
     }
 
-    // Kiểm tra đối tượng khách hàng
-    if (voucher.doiTuongKhachHang === 'VIP') {
-      const isVip = customer && (customer.loaiKhach === 'VIP' || customer.hangThanhVien === 'VIP' || customer.hangThanhVien === 'KimCuong' || customer.hangThanhVien === 'Vang');
+    // Kiểm tra đối tượng khách hàng (Bản Fix 94: Chuẩn hóa theo getCustomerTier và chi tiêu)
+    if (voucher.doiTuongKhachHang === 'VIP' || voucher.maVoucher === 'VIPCUSTOMER') {
+      const tier = customer ? getCustomerTier(customer.tongChiTieu || 0) : null;
+      const isVip = Boolean(
+        (customer && (customer.loaiKhach === 'VIP' || customer.hangThanhVien === 'VIP' || customer.hangThanhVien === 'KimCuong' || customer.hangThanhVien === 'Vang')) ||
+        (tier && tier.tier === 'VIP') ||
+        (customer && (customer.tongChiTieu || 0) >= 10000000)
+      );
       if (!isVip) {
         return {
           valid: false,
-          message: 'Mã giảm giá này chỉ dành riêng cho thành viên hạng VIP (Vàng/Kim Cương).',
+          message: 'Mã giảm giá này chỉ dành riêng cho thành viên hạng VIP (Chi tiêu tích lũy từ 10.000.000₫ trở lên).',
+          voucher,
+          discountAmount: 0,
+          finalTotal: orderTotal,
+        };
+      }
+    }
+
+    if (voucher.doiTuongKhachHang === ('ThanThiet' as any)) {
+      const tier = customer ? getCustomerTier(customer.tongChiTieu || 0) : null;
+      const isThanThiet = Boolean(
+        (tier && (tier.tier === 'ThanThiet' || tier.tier === 'VIP')) ||
+        (customer && (customer.tongChiTieu || 0) >= 4000000)
+      );
+      if (!isThanThiet) {
+        return {
+          valid: false,
+          message: 'Mã giảm giá này chỉ dành riêng cho thành viên hạng Thân thiết trở lên (Chi tiêu từ 4.000.000₫).',
           voucher,
           discountAmount: 0,
           finalTotal: orderTotal,

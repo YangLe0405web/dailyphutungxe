@@ -134,18 +134,56 @@ export default function LicensePlateApproval() {
       return false;
     });
 
-    // Lọc trùng lặp phương tiện cùng số khung hoặc cùng ID để tránh double xe
-    const seen = new Set<string>();
-    const deduped: Vehicle[] = [];
+    // Lọc trùng lặp phương tiện cùng số khung, cùng biển số hoặc cùng đơn hàng để tránh double xe
+    const isPlaceholderVin = (vin?: string) => !vin || /0000$/.test(vin) || vin.includes('0270000');
+    const isPlaceholderEngine = (eng?: string) => !eng || /8888$/.test(eng) || eng.includes('0278888');
+    const getCleanModelKey = (name?: string) => (name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    const seenGroup = new Map<string, Vehicle>();
     for (const v of rawList) {
-      const vinKey = v.soKhung?.trim().toUpperCase();
-      const numId = parseInt(v.id.replace(/\D/g, ''), 10);
-      const key = vinKey || (numId ? `NUM_${numId}` : v.id);
-      if (!seen.has(key)) {
-        seen.add(key);
-        deduped.push(v);
+      const custIdNum = v.customerId ? v.customerId.replace(/\D/g, '') : '';
+      const plate = (v.bienSo || v.bienSoChoDuyet || '').toUpperCase().trim();
+      const modelKey = getCleanModelKey(v.tenXe);
+      const isPlateEmpty = isNoPlate(plate);
+      
+      const groupKey = (!isPlateEmpty)
+        ? `PLATE_${custIdNum || v.customerId}_${plate}`
+        : (v.soKhung && !isPlaceholderVin(v.soKhung))
+        ? `VIN_${v.soKhung.toUpperCase().trim()}`
+        : `CUST_${custIdNum || v.customerId}_MODEL_${modelKey}`;
+
+      if (!seenGroup.has(groupKey)) {
+        seenGroup.set(groupKey, { ...v });
+      } else {
+        const existing = seenGroup.get(groupKey)!;
+        // Ưu tiên số khung thực tế
+        if (isPlaceholderVin(existing.soKhung) && v.soKhung && !isPlaceholderVin(v.soKhung)) {
+          existing.soKhung = v.soKhung;
+        }
+        // Ưu tiên số máy thực tế
+        if (isPlaceholderEngine(existing.soMay) && v.soMay && !isPlaceholderEngine(v.soMay)) {
+          existing.soMay = v.soMay;
+        }
+        // Ưu tiên ID chuẩn từ DB
+        if (v.id && v.id.startsWith('XE') && !v.id.includes('-') && existing.id.includes('-')) {
+          existing.id = v.id;
+        }
+        // Bảo toàn ảnh cà vẹt xe
+        if (!existing.anhCaVet && v.anhCaVet) {
+          existing.anhCaVet = v.anhCaVet;
+        }
+        // Bảo toàn trạng thái duyệt
+        if (v.bienSoChoDuyet && !isNoPlate(v.bienSoChoDuyet)) existing.bienSoChoDuyet = v.bienSoChoDuyet;
+        if (v.trangThaiDuyetBienSo === 'DaDuyet') {
+          existing.trangThaiDuyetBienSo = 'DaDuyet';
+          existing.trangThaiDuyet = 'DaDuyet';
+          if (v.bienSo && !isNoPlate(v.bienSo)) existing.bienSo = v.bienSo;
+        } else if (v.trangThaiDuyetBienSo === 'ChoDuyet' && existing.trangThaiDuyetBienSo !== 'DaDuyet') {
+          existing.trangThaiDuyetBienSo = 'ChoDuyet';
+        }
       }
     }
+    const deduped: Vehicle[] = Array.from(seenGroup.values());
     return deduped;
   }, [vehicles]);
 
@@ -230,10 +268,6 @@ export default function LicensePlateApproval() {
       return;
     }
 
-    if (!window.confirm(`Xác nhận phê duyệt ngay biển số "${plateToAssign}" cho xe "${vehicle.tenXe}"?`)) {
-      return;
-    }
-
     setIsSubmitting(true);
     try {
       await vehicleApi.approveLicensePlate(vehicle.id, plateToAssign, vehicle);
@@ -243,7 +277,7 @@ export default function LicensePlateApproval() {
           const isTarget = v.id === vehicle.id ||
             (vehicle.soKhung && v.soKhung && v.soKhung.trim().toUpperCase() === vehicle.soKhung.trim().toUpperCase()) ||
             (parseInt(v.id.replace(/\D/g, ''), 10) === parseInt(vehicle.id.replace(/\D/g, ''), 10)) ||
-            (v.customerId === vehicle.customerId && v.tenXe && v.tenXe.toLowerCase().trim() === vehicle.tenXe.toLowerCase().trim());
+            (isSameCustomer(v.customerId, vehicle.customerId) && v.tenXe && v.tenXe.toLowerCase().trim() === vehicle.tenXe.toLowerCase().trim());
           return isTarget
             ? {
                 ...v,
