@@ -9,7 +9,7 @@ import {
   type StaffAccount,
   formatVND,
 } from '../../data/mockData';
-import { appointmentApi, orderApi, normalizeDateStr } from '../../services/api';
+import { appointmentApi, orderApi, normalizeDateStr, catalogVehicleApi, DEFAULT_CATALOG_VEHICLES, type CatalogVehicle } from '../../services/api';
 
 const apptStatuses: { key: AppointmentStatus; label: string; color: string; bg: string }[] = [
   { key: 'ChoXacNhan', label: 'Chờ xác nhận', color: '#d97706', bg: '#fef3c7' },
@@ -184,6 +184,26 @@ export default function AppointmentsPage({
   // Calendar View mode
   const [apptViewMode, setApptViewMode] = useState<'table' | 'calendar'>(moduleType === 'calendar' ? 'calendar' : 'table');
   const [currentCalendarDate, setCurrentCalendarDate] = useState<Date>(new Date());
+
+  // Lái thử vãng lai tại Showroom: Modal tạo hóa đơn / ghi nhận khách vãng lai
+  const [showWalkInTestDriveModal, setShowWalkInTestDriveModal] = useState(false);
+  const [walkInForm, setWalkInForm] = useState({
+    hoTenKH: '',
+    soDienThoai: '',
+    tenXe: 'Honda SH 160i ABS 2025',
+    nhanVienPhuTrach: currentStaff?.hoTen || 'Trần Văn Quản Lý',
+    soGPLX: '',
+    ghiChu: 'Khách hàng vãng lai trực tiếp tại Showroom đăng ký lái thử',
+  });
+  const [walkInErrors, setWalkInErrors] = useState<Record<string, string>>({});
+
+  const testDriveVehicles = useMemo(() => {
+    try {
+      const list = catalogVehicleApi.getAllSync();
+      if (list && list.length > 0) return list.filter(v => v.coTheLaiThu !== false && v.trangThaiHienThi !== 'An');
+    } catch {}
+    return DEFAULT_CATALOG_VEHICLES.filter(v => v.coTheLaiThu !== false && v.trangThaiHienThi !== 'An');
+  }, []);
 
   // Load appointments from API / storage
   useEffect(() => {
@@ -578,6 +598,53 @@ export default function AppointmentsPage({
     setChangeKtvModalAppt(null);
   }
 
+  // Ghi nhận và tạo hóa đơn cho khách hàng vãng lai lái thử trực tiếp tại Showroom
+  const handleSaveWalkInTestDrive = (proceedToInvoice = false) => {
+    const errs: Record<string, string> = {};
+    if (!walkInForm.hoTenKH.trim()) {
+      errs.hoTenKH = 'Vui lòng nhập họ và tên khách hàng!';
+    }
+    const cleanPhone = walkInForm.soDienThoai.replace(/\D/g, '');
+    if (!cleanPhone) {
+      errs.soDienThoai = 'Vui lòng nhập số điện thoại!';
+    } else if (cleanPhone.length !== 10 || !cleanPhone.startsWith('0')) {
+      errs.soDienThoai = 'Số điện thoại phải có đúng 10 chữ số và bắt đầu bằng số 0!';
+    }
+
+    if (Object.keys(errs).length > 0) {
+      setWalkInErrors(errs);
+      return;
+    }
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    const nowTimeStr = new Date().toTimeString().slice(0, 5);
+    const newId = `LH-VL-${Date.now().toString().slice(-4)}`;
+
+    const newAppt: Appointment = {
+      id: newId,
+      customerId: 'KH-VANGLAI',
+      hoTenKH: walkInForm.hoTenKH.trim(),
+      soDienThoai: cleanPhone,
+      loaiDichVu: 'LaiThu',
+      tenXe: walkInForm.tenXe,
+      bienSo: 'XE-LAI-THU',
+      ngayHen: todayStr,
+      gioHen: nowTimeStr,
+      trangThai: 'DaXacNhan',
+      nhanVienPhuTrach: walkInForm.nhanVienPhuTrach || currentStaff?.hoTen || 'Trần Văn Quản Lý',
+      ghiChu: `${walkInForm.ghiChu.trim()}${walkInForm.soGPLX ? ` (GPLX: ${walkInForm.soGPLX.trim()})` : ''} - [Khách vãng lai tại Showroom]`,
+      createdDate: todayStr,
+    };
+
+    appointmentApi.create(newAppt);
+    setAppointments(prev => [newAppt, ...prev]);
+    setShowWalkInTestDriveModal(false);
+
+    if (proceedToInvoice && onNavigateToCreateVehicleOrder) {
+      onNavigateToCreateVehicleOrder(newAppt);
+    }
+  };
+
   // LH22: Hoàn tất dịch vụ
   function handleCompleteAppointment(id: string) {
     const target = appointments.find(a => a.id === id);
@@ -953,7 +1020,28 @@ export default function AppointmentsPage({
 
         {/* View toggle (Table vs Calendar) */}
         {moduleType !== 'calendar' && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            {moduleType === 'test-drives' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setWalkInErrors({});
+                  setWalkInForm({
+                    hoTenKH: '',
+                    soDienThoai: '',
+                    tenXe: testDriveVehicles[0]?.tenXe || 'Honda SH 160i ABS 2025',
+                    nhanVienPhuTrach: currentStaff?.hoTen || 'Trần Văn Quản Lý',
+                    soGPLX: '',
+                    ghiChu: 'Khách hàng vãng lai trực tiếp tại Showroom đăng ký lái thử',
+                  });
+                  setShowWalkInTestDriveModal(true);
+                }}
+                className="px-3.5 py-2 rounded-xl text-xs font-black bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-700 hover:to-rose-800 text-white shadow-sm hover:shadow transition flex items-center gap-1.5 cursor-pointer"
+                title="Ghi nhận khách hàng vãng lai tại showroom và tạo hóa đơn bán xe ngay"
+              >
+                <span>🧾</span> <span>Tạo hóa đơn cho khách vãng lai</span>
+              </button>
+            )}
             <div className="flex items-center bg-zinc-100 p-1 rounded-xl border border-zinc-200">
               <button
                 type="button"
@@ -2777,6 +2865,162 @@ export default function AppointmentsPage({
                 className="px-4 py-2 rounded-xl text-xs font-bold bg-red-700 hover:bg-red-800 text-white shadow-md cursor-pointer"
               >
                 Xác nhận hủy lịch
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL: TẠO HÓA ĐƠN CHO KHÁCH HÀNG VÃNG LAI LÁI THỬ (YÊU CẦU LÁI THỬ ADMIN) ── */}
+      {showWalkInTestDriveModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-7 shadow-2xl border border-zinc-200 space-y-5 max-h-[92vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
+              <div className="flex items-center gap-2">
+                <span className="p-2 bg-red-100 text-red-700 rounded-xl text-lg">🧾</span>
+                <div>
+                  <h3 className="font-extrabold text-base text-zinc-900 uppercase font-display">
+                    TẠO HÓA ĐƠN CHO KHÁCH HÀNG VÃNG LAI
+                  </h3>
+                  <p className="text-xs text-zinc-500">Tiếp nhận khách hàng trực tiếp tại Showroom lái thử & lập đơn bán xe</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowWalkInTestDriveModal(false)}
+                className="w-8 h-8 rounded-full bg-zinc-100 text-zinc-500 hover:text-zinc-900 flex items-center justify-center font-bold text-xs cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              {/* Họ tên */}
+              <div>
+                <label className="block text-xs font-bold text-zinc-700 mb-1">
+                  Họ và tên khách hàng <span className="text-red-600">*</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ví dụ: Nguyễn Văn Khách"
+                  value={walkInForm.hoTenKH}
+                  onChange={e => {
+                    setWalkInForm({ ...walkInForm, hoTenKH: e.target.value });
+                    if (walkInErrors.hoTenKH) setWalkInErrors({ ...walkInErrors, hoTenKH: '' });
+                  }}
+                  className={`w-full p-2.5 rounded-xl border font-medium ${
+                    walkInErrors.hoTenKH ? 'border-red-500 bg-red-50/20' : 'border-zinc-300 focus:border-red-600'
+                  }`}
+                />
+                {walkInErrors.hoTenKH && <p className="text-[11px] text-red-600 mt-1 font-semibold">{walkInErrors.hoTenKH}</p>}
+              </div>
+
+              {/* Số điện thoại */}
+              <div>
+                <label className="block text-xs font-bold text-zinc-700 mb-1">
+                  Số điện thoại liên hệ <span className="text-red-600">*</span>
+                </label>
+                <input
+                  type="tel"
+                  placeholder="Ví dụ: 0912345678 (10 chữ số)"
+                  value={walkInForm.soDienThoai}
+                  onChange={e => {
+                    setWalkInForm({ ...walkInForm, soDienThoai: e.target.value.replace(/\D/g, '').slice(0, 10) });
+                    if (walkInErrors.soDienThoai) setWalkInErrors({ ...walkInErrors, soDienThoai: '' });
+                  }}
+                  className={`w-full p-2.5 rounded-xl border font-mono ${
+                    walkInErrors.soDienThoai ? 'border-red-500 bg-red-50/20' : 'border-zinc-300 focus:border-red-600'
+                  }`}
+                />
+                {walkInErrors.soDienThoai && <p className="text-[11px] text-red-600 mt-1 font-semibold">{walkInErrors.soDienThoai}</p>}
+              </div>
+
+              {/* Chọn xe lái thử */}
+              <div>
+                <label className="block text-xs font-bold text-zinc-700 mb-1">
+                  Mẫu xe khách chọn lái thử <span className="text-red-600">*</span>
+                </label>
+                <select
+                  value={walkInForm.tenXe}
+                  onChange={e => setWalkInForm({ ...walkInForm, tenXe: e.target.value })}
+                  className="w-full p-2.5 rounded-xl border border-zinc-300 bg-white font-medium focus:border-red-600"
+                >
+                  {testDriveVehicles.map(v => (
+                    <option key={v.id} value={v.tenXe}>
+                      {v.tenXe} ({v.hang} - {formatVND(v.giaNiemYet)})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Số GPLX & Nhân viên */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-zinc-700 mb-1">
+                    Số GPLX (Nếu có)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="VD: 790123456789"
+                    value={walkInForm.soGPLX}
+                    onChange={e => setWalkInForm({ ...walkInForm, soGPLX: e.target.value.toUpperCase() })}
+                    className="w-full p-2.5 rounded-xl border border-zinc-300 font-mono uppercase"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-zinc-700 mb-1">
+                    Nhân viên tư vấn
+                  </label>
+                  <select
+                    value={walkInForm.nhanVienPhuTrach}
+                    onChange={e => setWalkInForm({ ...walkInForm, nhanVienPhuTrach: e.target.value })}
+                    className="w-full p-2.5 rounded-xl border border-zinc-300 bg-white font-medium"
+                  >
+                    <option value={currentStaff?.hoTen || 'Trần Văn Quản Lý'}>
+                      {currentStaff?.hoTen || 'Trần Văn Quản Lý'}
+                    </option>
+                    {technicianList.filter(t => t !== 'Chưa phân công').map(t => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Ghi chú */}
+              <div>
+                <label className="block text-xs font-bold text-zinc-700 mb-1">
+                  Ghi chú yêu cầu / Trải nghiệm
+                </label>
+                <textarea
+                  rows={2}
+                  value={walkInForm.ghiChu}
+                  onChange={e => setWalkInForm({ ...walkInForm, ghiChu: e.target.value })}
+                  className="w-full p-2.5 rounded-xl border border-zinc-300 font-sans"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-center justify-end gap-2.5 pt-4 border-t border-zinc-100">
+              <button
+                type="button"
+                onClick={() => setShowWalkInTestDriveModal(false)}
+                className="w-full sm:w-auto px-4 py-2.5 rounded-xl text-xs font-bold bg-zinc-100 hover:bg-zinc-200 text-zinc-700 transition cursor-pointer"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSaveWalkInTestDrive(false)}
+                className="w-full sm:w-auto px-4 py-2.5 rounded-xl text-xs font-bold bg-zinc-800 hover:bg-zinc-900 text-white transition cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <span>✓</span> Ghi nhận lái thử
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSaveWalkInTestDrive(true)}
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-xs font-black bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-700 hover:to-rose-800 text-white shadow-md shadow-red-700/20 transition cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <span>🧾</span> Lưu & Tạo hóa đơn bán xe ngay
               </button>
             </div>
           </div>

@@ -2223,16 +2223,22 @@ export default function CustomerDashboard({
   }, [allAppts, currentCustomer, myOrders]);
 
   // Upcoming appointments (LH14) - Tự động sắp xếp theo thời gian tăng dần, lịch gần nhất lên đầu
+  // Điều kiện lọc chuẩn nghiệp vụ:
+  // 1. Chỉ nhắc những lịch hẹn ĐÃ ĐƯỢC XÁC NHẬN (a.trangThai === 'DaXacNhan')
+  // 2. Chỉ hiển thị khi thời gian còn lại đến lịch hẹn từ 72 tiếng (3 ngày) trở xuống (diffHours >= 0 && diffHours <= 72)
+  // 3. Không hiển thị các lịch hẹn chưa được xác nhận hoặc còn hơn 72 tiếng mới đến lịch hẹn
   const upcomingAppts = useMemo(() => {
-    const todayStr = new Date().toISOString().split('T')[0];
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowStr = tomorrow.toISOString().split('T')[0];
+    const nowMs = Date.now();
 
-    const upcoming = myAppts.filter(a =>
-      (a.trangThai === 'ChoXacNhan' || a.trangThai === 'DaXacNhan' || a.trangThai === 'ChoDuyet') &&
-      (a.ngayHen === todayStr || a.ngayHen === tomorrowStr || a.ngayHen >= todayStr)
-    );
+    const upcoming = myAppts.filter(a => {
+      if (a.trangThai !== 'DaXacNhan') return false;
+      if (!a.ngayHen) return false;
+      const apptDateTimeStr = `${a.ngayHen}T${a.gioHen || '08:00'}:00`;
+      const apptMs = new Date(apptDateTimeStr).getTime();
+      if (isNaN(apptMs)) return false;
+      const diffHours = (apptMs - nowMs) / (1000 * 60 * 60);
+      return diffHours >= 0 && diffHours <= 72;
+    });
 
     return upcoming.sort((a, b) => {
       const dtA = `${a.ngayHen || ''} ${a.gioHen || '00:00'}`;
@@ -3013,9 +3019,17 @@ export default function CustomerDashboard({
                   NHẮC LỊCH HẸN DỊCH VỤ SẮP TỚI
                 </div>
                 <div className="text-xs text-blue-100 mt-0.5">
-                  Bạn có <strong>{upcomingAppts.length} lịch hẹn</strong> ({SVC_LABELS[upcomingAppts[0].loaiDichVu] || upcomingAppts[0].loaiDichVu}) cho xe{' '}
+                  Bạn có <strong>{upcomingAppts.length} lịch hẹn đã xác nhận</strong> ({SVC_LABELS[upcomingAppts[0].loaiDichVu] || upcomingAppts[0].loaiDichVu}) cho xe{' '}
                   <strong>{upcomingAppts[0].tenXe || 'của bạn'}</strong> vào lúc <strong className="font-mono text-red-400">{upcomingAppts[0].gioHen}</strong> ngày <strong className="font-mono text-blue-300">{upcomingAppts[0].ngayHen}</strong>{' '}
-                  ({upcomingAppts[0].ngayHen === new Date().toISOString().split('T')[0] ? 'Hôm nay' : 'Ngày mai'}).
+                  <span className="font-semibold text-emerald-300">
+                    ({(() => {
+                      const curMs = Date.now();
+                      const targetMs = new Date(`${upcomingAppts[0].ngayHen}T${upcomingAppts[0].gioHen || '08:00'}:00`).getTime();
+                      const leftH = Math.max(0, Math.round((targetMs - curMs) / (1000 * 60 * 60)));
+                      if (upcomingAppts[0].ngayHen === new Date().toISOString().split('T')[0]) return `Hôm nay - còn ~${leftH}h`;
+                      return `Còn ~${leftH}h nữa`;
+                    })()})
+                  </span>.
                 </div>
               </div>
             </div>

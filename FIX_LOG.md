@@ -5033,3 +5033,71 @@ pm run build thành công 100% trong 1.41s, **0 lỗi TypeScript**.
   - `npm --prefix crm-frontend run build`: **0 lỗi TypeScript / Vite** (hoàn thành trong 1.11s).
   - `dotnet build CrmBackend/CrmBackend.csproj`: **0 lỗi C#** (hoàn thành trong 1.93s).
   - Bảo toàn nguyên vẹn 100% các điều kiện bất biến (System Invariants) trong `QUY_TAC_KIEM_TRA_VA_BAO_TOAN_FIX.md`.
+
+
+---
+
+## [Bản Fix 97] - Hoàn thiện 4 Yêu Cầu: Chặn Trùng Biển Số Khi Đặt Lịch, Giới Hạn Đặt Lịch Tối Đa 1 Tháng, Thanh Nhắc Lịch Chuẩn 72h, Nút Tạo Hóa Đơn Khách Vãng Lai Lái Thử
+
+- **Ngày thực hiện:** 07/11/2026
+- **Mục tiêu:**
+  1. **Chặn trùng biển số xe khi thêm phương tiện mới trong Đặt lịch hẹn ([`ServiceBooking.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/ServiceBooking.tsx)):**
+     - Đọc toàn bộ danh sách phương tiện trên hệ thống (`vehicleApi.getAll()`) và xe thuộc khách hàng đang đăng nhập (`myVehicles`).
+     - Chuẩn hóa biển số xe (`normalizePlate(plate)`: loại bỏ dấu cách, dấu gạch ngang, dấu chấm, viết hoa toàn bộ).
+     - Kiểm tra tính duy nhất của biển số khi người dùng nhập mới:
+       * Khi rời khỏi ô nhập (`onBlur`): nếu biển số đã tồn tại trên hệ thống, lập tức báo lỗi đỏ cảnh báo: *"⚠️ Biển số xe này đã tồn tại trên hệ thống! Vui lòng kiểm tra lại biển số hoặc chọn từ danh sách xe của bạn."*
+       * Khi submit form: chặn tuyệt đối không cho lưu xe và không cho tạo lịch hẹn nếu biển số trùng lặp.
+  2. **Giới hạn thời gian đặt lịch hẹn tối đa 1 tháng ([`ServiceBooking.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/ServiceBooking.tsx)):**
+     - Thiết lập biên trên ngày đặt lịch `maxBookingDate`: tính toán chính xác `today + 1 month` (30 ngày tiếp theo).
+     - Gán thuộc tính `min={today}` và `max={maxBookingDate}` trên thẻ `<input type="date" />`, vô hiệu hóa trên lịch các ngày trong quá khứ và các ngày vượt quá 1 tháng.
+     - Xác thực chặt chẽ trong `onChange` và hàm `validateForm()`: từ chối và báo lỗi nếu người dùng nhập ngày vượt quá 1 tháng hoặc ngày trong quá khứ.
+  3. **Thanh nhắc lịch hẹn chuẩn 72 tiếng và chỉ lịch Đã xác nhận ([`CustomerDashboard.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/CustomerDashboard.tsx)):**
+     - Cập nhật bộ lọc `upcomingAppts`:
+       * Điều kiện 1: Bắt buộc trạng thái lịch hẹn phải là `DaXacNhan` (chỉ nhắc những lịch hẹn đã được duyệt/xác nhận, loại bỏ hoàn toàn lịch `ChoXacNhan`, `Huy`, `HoanThanh`).
+       * Điều kiện 2: Khoảng thời gian từ hiện tại đến lịch hẹn phải nằm trong phạm vi từ 0 đến 72 tiếng (`diffHours >= 0 && diffHours <= 72`).
+     - Thanh banner thông minh hiển thị đếm ngược chính xác số giờ còn lại: *"Sắp tới lịch hẹn dịch vụ của bạn trong ~{leftH}h nữa!"* giúp khách hàng sắp xếp thời gian hợp lý.
+  4. **Nút & Modal Tạo hóa đơn cho khách hàng vãng lai trang Lái thử Admin ([`Appointments.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/Appointments.tsx)):**
+     - Trên giao diện Quản lý lái thử (`moduleType === 'test-drives'`), bổ sung nút nổi bật trên thanh tiêu đề: `🧾 Tạo hóa đơn cho khách vãng lai`.
+     - Xây dựng Modal thông minh `WalkInTestDriveModal`: cho phép nhân viên showroom nhập nhanh thông tin khách hàng vãng lai (Họ tên, SĐT, Email, Dòng xe lái thử / quan tâm, Ngày lái thử, Kỹ thuật viên / Tư vấn viên phụ trách, Ghi chú).
+     - Hỗ trợ 2 luồng xử lý:
+       * Lưu ghi nhận khách lái thử vãng lai vào hệ thống với biển số đại diện `XE-LAI-THU` và trạng thái `DaXacNhan`.
+       * Nút hành động nhanh `Lưu & Tạo hóa đơn bán xe ngay`: tự động chuyển đổi thông tin khách sang POS Bán Xe (`onNavigateToCreateVehicleOrder`), tự động điền thông tin và mở chức năng in hóa đơn bán xe ngay tại showroom mà không cần khách phải đặt lịch hẹn trước.
+- **Các tệp đã chỉnh sửa:**
+  - [`crm-frontend/src/pages/customer/ServiceBooking.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/ServiceBooking.tsx): Thêm kiểm tra trùng biển số xe toàn hệ thống và giới hạn ngày đặt tối đa 1 tháng.
+  - [`crm-frontend/src/pages/customer/CustomerDashboard.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/CustomerDashboard.tsx): Lọc chuẩn lịch hẹn đã xác nhận và trong vòng 72 tiếng trên banner nhắc lịch.
+  - [`crm-frontend/src/pages/admin/Appointments.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/Appointments.tsx): Thêm nút và modal tạo hóa đơn khách vãng lai lái thử, tích hợp tạo đơn bán xe POS.
+  - [`crm-frontend/tests/verify_booking_plate_duplicate_1month_reminder_and_walkin_invoice.test.cjs`](file:///d:/crm-project/crm-frontend/tests/verify_booking_plate_duplicate_1month_reminder_and_walkin_invoice.test.cjs): Bộ test TDD tự động hóa kiểm chứng toàn bộ 4 chức năng mới.
+- **Kết quả kiểm thử & Nghiệm thu:**
+  - Bộ test mới `verify_booking_plate_duplicate_1month_reminder_and_walkin_invoice.test.cjs`: **PASS 100% (4/4)**.
+  - Toàn bộ 24/24 test suites trong hệ thống (`crm-frontend/tests/*.cjs`): **PASS 24/24 (0 failed)**.
+  - `npm --prefix crm-frontend run build`: **0 lỗi TypeScript / Vite** (dist tạo thành công trong 822ms).
+  - Bảo toàn nguyên vẹn 100% các điều kiện bất biến (System Invariants) trong `QUY_TAC_KIEM_TRA_VA_BAO_TOAN_FIX.md`.
+
+
+---
+
+## [Bản Fix 98] - Gỡ bỏ Banner Khảo Sát Thừa Trên Showroom & Tái Cấu Trúc Bố Cục Hồ Sơ 360° Khách Hàng (Chống Mất Thanh Slide/Tab Khi Nhiều Dịch Vụ)
+
+- **Ngày thực hiện:** 07/11/2026
+- **Mục tiêu:**
+  1. **Gỡ bỏ banner khảo sát thừa trên Showroom xe ([`VehiclesShowroom.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/VehiclesShowroom.tsx)):**
+     - Xóa bỏ khối JSX banner `THÔNG BÁO KHẢO SÁT MỚI TỪ ĐẠI LÝ: Bạn có 23 cuộc khảo sát ý kiến đang chờ hoàn thành` kèm nút `Làm khảo sát ngay →` nằm chèn ở đầu trang Showroom.
+     - Dọn dẹp biến tính toán `pendingSurveysCount` và các import không còn sử dụng (`computeSurveyStatus`, `surveyApi`) giúp tối ưu hiệu năng và giải phóng tài nguyên render.
+     - Quy trình khảo sát ý kiến khách hàng vẫn được bảo toàn nguyên vẹn tại **Trang cá nhân** (Tab Đánh giá & Khảo sát) và **Thông báo quả chuông**.
+  2. **Tái cấu trúc bố cục Hồ sơ 360° khách hàng ([`Customers.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/Customers.tsx)):**
+     - **Khắc phục triệt để lỗi mất thanh slide/tab:** Khi khách hàng có nhiều dữ liệu (nhiều lịch hẹn dịch vụ, nhiều đơn hàng hoặc xe), CSS Flexbox trước đây tự động ép co rút thanh Tab xuống 16px (chỉ còn thanh trượt xám `◄ [========] ►`) và làm ẩn mất 5 tab điều hướng.
+     - **Giải pháp bố cục vững chắc:**
+       * Đặt kích thước Modal 360° cố định chuẩn `h-[90vh] max-h-[90vh] max-w-5xl flex flex-col`.
+       * Bổ sung thuộc tính `shrink-0` cho Header khách hàng và Tab Header, đảm bảo thanh 5 tab (`👑 CLV`, `📦 Đơn hàng`, `📅 Lịch hẹn`, `⭐ Đánh giá`, `🏍️ Xe & Bảo hành`) **100% không bao giờ bị co cụm hay biến mất**.
+       * Bổ sung thuộc tính `min-h-0 flex-1 overflow-y-auto` cho phần thân Tab Body, kích hoạt thanh cuộn dọc mượt mà bên trong modal kể cả khi khách hàng có hàng chục dịch vụ bảo dưỡng/sửa chữa.
+       * Thêm `sticky top-0 z-10 shadow-xs` cho tiêu đề bảng Lịch sử Đặt hẹn dịch vụ và Đơn hàng, giúp nhân viên luôn nhìn thấy tên cột khi cuộn danh sách dài.
+       * Cố định Modal Footer (`shrink-0`) kèm thông tin tóm tắt và nút "Đóng cửa sổ" luôn ghim vững chắc ở đáy modal.
+- **Các tệp đã chỉnh sửa:**
+  - [`crm-frontend/src/pages/customer/VehiclesShowroom.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/VehiclesShowroom.tsx): Xóa bỏ banner khảo sát thừa và logic pendingSurveysCount.
+  - [`crm-frontend/src/pages/admin/Customers.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/Customers.tsx): Tái cấu trúc Flexbox cho `Customer360Modal` (`shrink-0`, `min-h-0`, `sticky table header`, `fixed footer`).
+  - [`crm-frontend/tests/verify_customer_360_layout_and_remove_survey_banner.test.cjs`](file:///d:/crm-project/crm-frontend/tests/verify_customer_360_layout_and_remove_survey_banner.test.cjs): Bộ test TDD kiểm chứng tự động cả 2 tính năng.
+- **Kết quả kiểm thử & Nghiệm thu:**
+  - Bộ test mới `verify_customer_360_layout_and_remove_survey_banner.test.cjs`: **PASS 100% (2/2)**.
+  - Toàn bộ 25/25 test suites trong hệ thống (`crm-frontend/tests/*.cjs`): **PASS 25/25 (0 failed)**.
+  - `npm --prefix crm-frontend run build`: **0 lỗi TypeScript / Vite** (hoàn tất trong 611ms).
+  - Bảo toàn nguyên vẹn 100% các điều kiện bất biến (System Invariants) trong `QUY_TAC_KIEM_TRA_VA_BAO_TOAN_FIX.md`.
