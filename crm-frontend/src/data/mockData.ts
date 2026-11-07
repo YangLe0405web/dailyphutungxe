@@ -378,6 +378,11 @@ export interface VehicleOrderDetails {
   diaChiGiao?: string;
   maLichHen?: string;
   bienSo?: string;
+  bienSoXe?: string;
+  soKhung?: string;
+  namSanXuat?: string | number;
+  doiXe?: string | number;
+  hanBaoHanh?: string;
   daXacNhanNgayNhan?: boolean;
   ngayNhanXacNhan?: string;
   gioNhanXacNhan?: string;

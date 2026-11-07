@@ -48,6 +48,7 @@ import {
   insuranceApi,
   warrantyApi,
   addAdminNotification,
+  addCustomerNotification,
   chatApi,
   formatCustomerId,
   type PinnedChatContext,
@@ -2897,6 +2898,39 @@ export default function CustomerDashboard({
     window.addEventListener('crm-data-refresh', loadVouchers);
     return () => window.removeEventListener('crm-data-refresh', loadVouchers);
   }, [currentCustomer]);
+
+  // Tự động tặng voucher đặc quyền theo hạng thành viên (Bản Fix 94)
+  useEffect(() => {
+    if (!currentCustomer) return;
+    const tierInfo = getCustomerTier(realCustomerSpending);
+    const custId = formatCustomerId(currentCustomer.id);
+    const allPromos = promotionApi.getAll();
+
+    // 1. Nếu đạt hạng VIP (chi tiêu >= 10.000.000đ): Tự động lưu voucher VIP vào ví
+    if (tierInfo.tier === 'VIP' || realCustomerSpending >= 10000000) {
+      const vipPromos = allPromos.filter(p => p.doiTuongKhachHang === 'VIP' || p.maVoucher === 'VIPCUSTOMER');
+      let giftedNew = false;
+      vipPromos.forEach(vp => {
+        if (!vp.maVoucher) return;
+        const saved = promotionApi.getSavedVoucherCodes(custId);
+        if (!saved.includes(vp.maVoucher.toUpperCase())) {
+          promotionApi.saveVoucherToCustomerWallet(vp.maVoucher, custId);
+          giftedNew = true;
+        }
+      });
+      if (giftedNew) {
+        setCustomerVouchers(promotionApi.getVouchersForCustomer(currentCustomer));
+        addCustomerNotification({
+          customerId: currentCustomer.id,
+          category: 'membership',
+          title: '🎉 Chúc mừng bạn đã thăng hạng VIP!',
+          message: 'Bạn đã đạt hạng VIP và được tặng mã giảm giá đặc quyền VIPCUSTOMER (Giảm 20%) trong Kho Voucher.',
+          icon: '🎉',
+          page: 'dashboard',
+        });
+      }
+    }
+  }, [realCustomerSpending, currentCustomer?.id]);
 
   const handleClaimVoucherInWallet = () => {
     if (!inputVoucherCode.trim()) {

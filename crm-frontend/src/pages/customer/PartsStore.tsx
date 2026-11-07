@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { mockParts, formatVND, Part, mockProductReviews, ProductReview, Customer, mockOrders, Order, countWords } from '../../data/mockData';
 import { useCart } from '../../contexts/CartContext';
 import { matchVietnameseSearch } from '../../utils/vietnameseSearch';
-import { feedbackApi, partApi, promotionApi, orderApi } from '../../services/api';
+import { feedbackApi, partApi, promotionApi, orderApi, chatApi, formatCustomerId, type PinnedChatContext } from '../../services/api';
 
 const categories = ['Tất cả', 'Nhớt', 'Lọc', 'Phanh', 'Bugi', 'Đèn', 'Lốp xe', 'Phụ kiện', 'Trang trí', 'Truyền động', 'Thân máy'];
 
@@ -389,17 +389,46 @@ export default function PartsStore({ currentCustomer, onRequireLogin, onNavigate
     return filtered.slice(start, start + ITEMS_PER_PAGE);
   }, [filtered, currentPage]);
 
-  // Flash Sale Items (TC06): Items with promotion discount
-  const flashSaleItems = useMemo(() => {
-    return partsWithPromo.filter(p => p.giaKhuyenMai !== null).slice(0, 4);
-  }, [partsWithPromo]);
+  // Bản đồ tổng hợp số lượt mua (sales count) thực tế của từng phụ tùng từ các đơn hàng
+  const partSalesCountMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    realOrders.forEach(order => {
+      const items = (order.items && order.items.length > 0)
+        ? order.items
+        : ((order as any).chiTiet || []);
+      items.forEach((it: any) => {
+        const qty = Number(it.soLuong) || 1;
+        const pId = it.maPhuTung ? (it.maPhuTung < 10 ? `PT00${it.maPhuTung}` : `PT0${it.maPhuTung}`) : (it.id || it.maSP);
+        const pName = (it.tenSanPham || it.tenSP || '').trim().toLowerCase();
+        if (pId) map[pId] = (map[pId] || 0) + qty;
+        if (pName) map[pName] = (map[pName] || 0) + qty;
+      });
+    });
+    return map;
+  }, [realOrders]);
 
-  // Best Seller Items (TC06): Top rated with highest ratings & reviews
-  const bestSellers = useMemo(() => {
+  const getSalesCount = (part: Part): number => {
+    const byId = partSalesCountMap[part.id] || 0;
+    const byName = partSalesCountMap[part.tenSanPham.trim().toLowerCase()] || 0;
+    const realCount = Math.max(byId, byName);
+    if (realCount > 0) return realCount;
+    return (part as any).daBan || (part as any).luotMua || (part.luotDanh ? part.luotDanh * 8 : 12);
+  };
+
+  // Flash Sale Items (TC06): Sắp xếp theo giá thấp nhất trước (giá khuyến mãi tăng dần)
+  const flashSaleItems = useMemo(() => {
     return [...partsWithPromo]
-      .sort((a, b) => (b.rating * (b.luotDanh || 10)) - (a.rating * (a.luotDanh || 10)))
+      .filter(p => p.giaKhuyenMai !== null && p.giaKhuyenMai !== undefined)
+      .sort((a, b) => (a.giaKhuyenMai || a.giaGoc) - (b.giaKhuyenMai || b.giaGoc))
       .slice(0, 4);
   }, [partsWithPromo]);
+
+  // Best Seller Items (TC06): Sắp xếp dựa vào lượt mua (sales count) thực tế từ các đơn hàng
+  const bestSellers = useMemo(() => {
+    return [...partsWithPromo]
+      .sort((a, b) => getSalesCount(b) - getSalesCount(a))
+      .slice(0, 4);
+  }, [partsWithPromo, partSalesCountMap]);
 
   // Related parts when viewing details
   const relatedParts = useMemo(() => {
@@ -553,6 +582,12 @@ export default function PartsStore({ currentCustomer, onRequireLogin, onNavigate
     ? allReviews.filter(r => isMatchPartReview(r, selectedPart.id, selectedPart.tenSanPham))
     : [];
 
+  const selectedPartAvgScore = selectedPartReviews.length > 0
+    ? Number((selectedPartReviews.reduce((sum, r) => sum + r.soSao, 0) / selectedPartReviews.length).toFixed(1))
+    : (selectedPart?.rating || 5.0);
+  const selectedPartStarsFilled = Math.round(selectedPartAvgScore);
+  const selectedPartStarDisplay = '★'.repeat(selectedPartStarsFilled) + '☆'.repeat(5 - selectedPartStarsFilled);
+
   const [partReviewRatingFilter, setPartReviewRatingFilter] = useState<'All' | number>('All');
   const [partReviewHasImageFilter, setPartReviewHasImageFilter] = useState<boolean>(false);
 
@@ -684,16 +719,16 @@ export default function PartsStore({ currentCustomer, onRequireLogin, onNavigate
                   {/* Rating & Sold count */}
                   <div className="flex items-center gap-4 text-xs flex-wrap pb-2 border-b border-zinc-100">
                     <div className="flex items-center gap-1.5 text-amber-500">
-                      <span className="font-bold text-sm text-zinc-900 underline">{selectedPart.rating}</span>
-                      <span>★★★★★</span>
+                      <span className="font-bold text-sm text-zinc-900 underline">{selectedPartAvgScore}</span>
+                      <span>{selectedPartStarDisplay}</span>
                     </div>
                     <span className="text-zinc-300">|</span>
                     <span className="text-zinc-600">
-                      <strong className="text-zinc-900">{selectedPartReviews.length || selectedPart.luotDanh}</strong> Đánh giá
+                      <strong className="text-zinc-900">{selectedPartReviews.length}</strong> Đánh giá
                     </span>
                     <span className="text-zinc-300">|</span>
                     <span className="text-emerald-700 font-semibold flex items-center gap-1">
-                      <span>✓</span> Đã bán {(selectedPart.luotDanh || 10) * 8} sản phẩm
+                      <span>✓</span> Đã bán {getSalesCount(selectedPart)} sản phẩm
                     </span>
                   </div>
 
@@ -786,26 +821,53 @@ export default function PartsStore({ currentCustomer, onRequireLogin, onNavigate
                       </button>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <button
-                        onClick={() => handleAdd(selectedPart, detailQty)}
-                        className={`py-3.5 px-6 rounded-2xl font-bold text-xs uppercase tracking-wider transition-all duration-200 cursor-pointer flex items-center justify-center gap-2 border-2 ${
-                          isAdded
-                            ? 'bg-emerald-600 border-emerald-600 text-white'
-                            : 'bg-red-50 hover:bg-red-100/80 border-red-700 text-red-700'
-                        }`}
-                      >
-                        <span className="text-base">{isAdded ? '✓' : '🛒'}</span>
-                        <span>{isAdded ? 'Đã thêm vào giỏ hàng!' : 'Thêm vào giỏ hàng'}</span>
-                      </button>
+                    <>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <button
+                          onClick={() => handleAdd(selectedPart, detailQty)}
+                          className={`py-3.5 px-6 rounded-2xl font-bold text-xs uppercase tracking-wider transition-all duration-200 cursor-pointer flex items-center justify-center gap-2 border-2 ${
+                            isAdded
+                              ? 'bg-emerald-600 border-emerald-600 text-white'
+                              : 'bg-red-50 hover:bg-red-100/80 border-red-700 text-red-700'
+                          }`}
+                        >
+                          <span className="text-base">{isAdded ? '✓' : '🛒'}</span>
+                          <span>{isAdded ? 'Đã thêm vào giỏ hàng!' : 'Thêm vào giỏ hàng'}</span>
+                        </button>
+
+                        <button
+                          onClick={() => handleBuyNow(selectedPart, detailQty)}
+                          className="py-3.5 px-6 rounded-2xl bg-red-700 hover:bg-red-800 text-white font-bold text-xs uppercase tracking-wider transition-all shadow-md shadow-red-700/30 cursor-pointer flex items-center justify-center gap-2"
+                        >
+                          <span>⚡</span> Mua ngay với giá ưu đãi
+                        </button>
+                      </div>
 
                       <button
-                        onClick={() => handleBuyNow(selectedPart, detailQty)}
-                        className="py-3.5 px-6 rounded-2xl bg-red-700 hover:bg-red-800 text-white font-bold text-xs uppercase tracking-wider transition-all shadow-md shadow-red-700/30 cursor-pointer flex items-center justify-center gap-2"
+                        type="button"
+                        onClick={() => {
+                          const custId = currentCustomer ? formatCustomerId(currentCustomer.id) : 'KH-GUEST';
+                          const pinned: PinnedChatContext = {
+                            title: '📌 BẠN ĐANG HỎI VỀ PHỤ TÙNG',
+                            productName: selectedPart.tenSanPham,
+                            productImage: selectedPart.hinhAnh,
+                            orderId: `Mã SP: ${selectedPart.id} · Giá: ${formatVND(selectedPart.giaGoc)}`,
+                            comment: `Danh mục: ${selectedPart.danhMuc} · Xuất xứ: ${selectedPart.xuatXu || 'Chính hãng'}`,
+                          };
+                          chatApi.syncPinnedContext(custId, pinned);
+                          window.dispatchEvent(new CustomEvent('crm-open-chat', {
+                            detail: {
+                              pinnedContext: pinned,
+                              prefillMessage: `Dạ chào Shop, em muốn tư vấn thêm về phụ tùng "${selectedPart.tenSanPham}" (giá: ${formatVND(selectedPart.giaGoc)}) ạ!`,
+                            }
+                          }));
+                        }}
+                        className="w-full py-3 px-4 rounded-2xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 font-bold text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 mt-2"
                       >
-                        <span>⚡</span> Mua ngay với giá ưu đãi
+                        <span className="text-base">💬</span>
+                        <span>Liên hệ với shop để tư vấn phụ tùng này</span>
                       </button>
-                    </div>
+                    </>
                   )}
 
                   {!currentCustomer && (
@@ -918,11 +980,13 @@ export default function PartsStore({ currentCustomer, onRequireLogin, onNavigate
                   {/* Rating Overview */}
                   <div className="p-4 sm:p-5 rounded-2xl bg-zinc-50 border border-zinc-200 flex items-center justify-between flex-wrap gap-4">
                     <div className="flex items-center gap-3">
-                      <div className="text-4xl font-extrabold text-zinc-900 font-mono">4.9</div>
+                      <div className="text-4xl font-extrabold text-zinc-900 font-mono">{selectedPartAvgScore}</div>
                       <div>
-                        <div className="flex text-amber-500 text-sm">★★★★★</div>
+                        <div className="flex text-amber-500 text-sm">{selectedPartStarDisplay}</div>
                         <div className="text-[11px] text-zinc-500 font-mono">
-                          Dựa trên {selectedPartReviews.length || 2} nhận xét thực tế từ khách mua hàng
+                          {selectedPartReviews.length > 0
+                            ? `Dựa trên ${selectedPartReviews.length} nhận xét thực tế từ khách mua hàng`
+                            : 'Sản phẩm mới - 5.0 ★ tiêu chuẩn Showroom'}
                         </div>
                       </div>
                     </div>
@@ -1639,7 +1703,7 @@ export default function PartsStore({ currentCustomer, onRequireLogin, onNavigate
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between text-[11px]">
                     <span className="text-zinc-500 font-mono">{p.thuongHieu}</span>
-                    <span className="text-amber-500 font-bold">★ {p.rating}</span>
+                    <span className="text-amber-600 font-bold font-mono">🔥 Đã bán {getSalesCount(p)}</span>
                   </div>
                   <div className="text-xs font-bold text-zinc-900 line-clamp-1 group-hover:text-red-700 transition">
                     {p.tenSanPham}
@@ -1920,6 +1984,32 @@ export default function PartsStore({ currentCustomer, onRequireLogin, onNavigate
                             className="py-2 px-2.5 rounded-xl border border-zinc-200 hover:bg-zinc-100 text-zinc-700 font-semibold text-[11px] transition cursor-pointer text-center"
                           >
                             Chi tiết
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const custId = currentCustomer ? formatCustomerId(currentCustomer.id) : 'KH-GUEST';
+                              const pinned: PinnedChatContext = {
+                                title: '📌 BẠN ĐANG HỎI VỀ PHỤ TÙNG',
+                                productName: p.tenSanPham,
+                                productImage: p.hinhAnh,
+                                orderId: `Mã SP: ${p.id} · Giá: ${formatVND(p.giaGoc)}`,
+                                comment: `Danh mục: ${p.danhMuc} · Xuất xứ: ${p.xuatXu || 'Chính hãng'}`,
+                              };
+                              chatApi.syncPinnedContext(custId, pinned);
+                              window.dispatchEvent(new CustomEvent('crm-open-chat', {
+                                detail: {
+                                  pinnedContext: pinned,
+                                  prefillMessage: `Dạ chào Shop, em muốn tư vấn thêm về phụ tùng "${p.tenSanPham}" (giá: ${formatVND(p.giaGoc)}) ạ!`,
+                                }
+                              }));
+                            }}
+                            className="p-2 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-800 transition cursor-pointer flex items-center justify-center shrink-0"
+                            title="Liên hệ tư vấn phụ tùng này"
+                          >
+                            <span className="text-xs">💬</span>
                           </button>
 
                           {p.soLuongTon <= 0 ? (

@@ -394,6 +394,15 @@ export default function AdminLayout({
     setNotifications(getAdminNotifications());
     setNotifOpen(false);
 
+    // 0. Nếu là thông báo tin nhắn chat từ khách hàng (Bản Fix 94)
+    if (n.type === 'customer_chat_message' || n.type?.includes('chat')) {
+      if (n.meta?.customerId) {
+        setSelectedChatCustId(formatCustomerId(n.meta.customerId));
+      }
+      setChatModalOpen(true);
+      return;
+    }
+
     // 1. Phân giải trang đích chuẩn xác
     let targetPage = n.linkPage || 'sales';
     if (n.category === 'order' || n.category === 'payment' || n.type?.includes('order') || n.title?.toLowerCase().includes('đơn hàng') || n.title?.toLowerCase().includes('đơn xe')) {
@@ -1317,6 +1326,22 @@ export default function AdminLayout({
                                 : 'bg-white text-zinc-900 border border-zinc-200 rounded-tl-xs shadow-2xs'
                             }`}
                           >
+                            {m.pinnedContext && (
+                              <div className="mb-2 p-2 rounded-xl bg-amber-50/90 border border-amber-200 flex items-center gap-2.5 text-left text-zinc-900">
+                                <img
+                                  src={m.pinnedContext.productImage || '/images/phutung/motul_7100.png'}
+                                  alt={m.pinnedContext.productName}
+                                  className="w-12 h-12 rounded-lg bg-white p-0.5 object-contain shrink-0 border border-zinc-300"
+                                  onError={(e: any) => { e.target.src = '/images/phutung/motul_7100.png'; }}
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <div className="text-[11px] font-bold text-zinc-900 line-clamp-1">{m.pinnedContext.productName}</div>
+                                  {m.pinnedContext.orderId && (
+                                    <div className="text-[10px] text-zinc-500 font-mono line-clamp-1">{m.pinnedContext.orderId}</div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
                             {m.content}
                           </div>
                         </div>

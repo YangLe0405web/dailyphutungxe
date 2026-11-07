@@ -4651,90 +4651,158 @@ function PrintInvoiceModal({
           </div>
 
           {/* Bảng Chi Tiết Mục Hàng */}
-          {isVehicle && order.thongTinXe ? (
-            <div className="space-y-3">
-              <table className="w-full text-xs border-collapse">
-                <thead>
-                  <tr className="border-b-2 border-zinc-900 bg-zinc-100 font-mono text-left">
-                    <th className="py-2 px-3">MÔ TẢ MẶT HÀNG / DỊCH VỤ</th>
-                    <th className="py-2 px-3">ĐƠN VỊ</th>
-                    <th className="py-2 px-3 text-right">THÀNH TIỀN (VND)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-200 font-mono">
-                  <tr>
-                    <td className="py-2.5 px-3">
-                      <div className="font-bold font-sans text-zinc-900">{order.thongTinXe.tenXe}</div>
-                      <div className="text-[11px] text-zinc-500">Màu: {order.thongTinXe.mauSac} · Số VIN: {order.thongTinXe.soKhungVIN || 'Đang chờ cấp'}</div>
-                    </td>
-                    <td className="py-2.5 px-3">Chiếc</td>
-                    <td className="py-2.5 px-3 text-right font-bold">{formatVND(order.thongTinXe.giaNiemYet)}</td>
-                  </tr>
-                  <tr>
-                    <td className="py-2 px-3">Lệ phí trước bạ xe máy</td>
-                    <td className="py-2 px-3">Gói</td>
-                    <td className="py-2 px-3 text-right">{formatVND(order.thongTinXe.phiTruocBa)}</td>
-                  </tr>
-                  <tr>
-                    <td className="py-2 px-3">Phí đăng ký & bấm biển số</td>
-                    <td className="py-2 px-3">Gói</td>
-                    <td className="py-2 px-3 text-right">{formatVND(order.thongTinXe.phiDangKyBienSo)}</td>
-                  </tr>
-                  {order.thongTinXe.phiBaoHiem > 0 && (
-                    <tr>
-                      <td className="py-2 px-3">{order.thongTinXe.goiBaoHiem || 'Gói bảo hiểm xe máy'}</td>
-                      <td className="py-2 px-3">Hợp đồng</td>
-                      <td className="py-2 px-3 text-right">{formatVND(order.thongTinXe.phiBaoHiem)}</td>
-                    </tr>
-                  )}
-                  {order.thongTinXe.khuyenMai > 0 && (
-                    <tr className="text-emerald-700">
-                      <td className="py-2 px-3">Chiết khấu ưu đãi khuyến mãi</td>
-                      <td className="py-2 px-3">Voucher</td>
-                      <td className="py-2 px-3 text-right">-{formatVND(order.thongTinXe.khuyenMai)}</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+          {isVehicle && order.thongTinXe ? (() => {
+            const isPaidFull = order.trangThaiThanhToan === 'DaThanhToan' || daThuDuTien;
+            const depositPaid = isPaidFull ? order.tongTien : (order.thongTinXe.soTienDatCoc || 2000000);
+            const remainingBal = isPaidFull ? 0 : (order.thongTinXe.soTienConLai || Math.max(0, order.tongTien - depositPaid));
+            const plateNo = order.thongTinXe.bienSoXe || (order as any).bienSoXe || (order as any).bienSo || 'Đang cập nhật';
+            const engineNo = order.thongTinXe.soMay || (order as any).soMay || 'KF12E-9000961';
+            const vinNo = order.thongTinXe.soKhungVIN || order.thongTinXe.soKhung || (order as any).soKhung || 'Đang chờ cấp';
+            const vehicleYear = order.thongTinXe.namSanXuat || order.thongTinXe.doiXe || '2025 - 2026';
+            const warrantyPeriod = order.thongTinXe.hanBaoHanh || '3 năm hoặc 30.000 km (Bảo hành điện tử chính hãng)';
 
-              <div className="p-4 bg-zinc-50 rounded-xl space-y-1.5 text-xs font-mono text-right">
-                <div>TỔNG GIÁ TRỊ XE LĂN BÁNH: <strong className="text-base text-red-700">{formatVND(order.tongTien)}</strong></div>
-                <div>Số tiền đã đặt cọc: <strong className="text-emerald-700">{formatVND(order.thongTinXe.soTienDatCoc)}</strong></div>
-                <div className="text-sm font-bold border-t border-zinc-200 pt-1.5">
-                  SỐ TIỀN CÒN PHẢI THU: <span className="text-zinc-900">{formatVND(order.thongTinXe.soTienConLai)}</span>
+            return (
+              <div className="space-y-3">
+                <table className="w-full text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b-2 border-zinc-900 bg-zinc-100 font-mono text-left">
+                      <th className="py-2 px-3">MÔ TẢ MẶT HÀNG / THÔNG TIN XE</th>
+                      <th className="py-2 px-3">ĐƠN VỊ</th>
+                      <th className="py-2 px-3 text-right">THÀNH TIỀN (VND)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-200 font-mono">
+                    <tr>
+                      <td className="py-2.5 px-3">
+                        <div className="font-bold font-sans text-zinc-900 text-sm">{order.thongTinXe.tenXe}</div>
+                        <div className="text-[11px] text-zinc-600 mt-1 grid grid-cols-2 gap-x-4 gap-y-1 font-mono">
+                          <div>• Màu sắc: <strong>{order.thongTinXe.mauSac || 'Tiêu chuẩn'}</strong></div>
+                          <div>• Đời xe: <strong>{vehicleYear}</strong></div>
+                          <div>• Biển số xe: <strong className="text-red-700 font-bold">{plateNo}</strong></div>
+                          <div>• Số máy: <strong>{engineNo}</strong></div>
+                          <div className="col-span-2">• Số khung (VIN): <strong className="text-blue-900">{vinNo}</strong></div>
+                          <div className="col-span-2 text-emerald-700">• Hạn bảo hành: <strong>{warrantyPeriod}</strong></div>
+                        </div>
+                      </td>
+                      <td className="py-2.5 px-3">Chiếc</td>
+                      <td className="py-2.5 px-3 text-right font-bold">{formatVND(order.thongTinXe.giaNiemYet)}</td>
+                    </tr>
+                    <tr>
+                      <td className="py-2 px-3">Lệ phí trước bạ xe máy</td>
+                      <td className="py-2 px-3">Gói</td>
+                      <td className="py-2 px-3 text-right">{formatVND(order.thongTinXe.phiTruocBa)}</td>
+                    </tr>
+                    <tr>
+                      <td className="py-2 px-3">Phí đăng ký & bấm biển số</td>
+                      <td className="py-2 px-3">Gói</td>
+                      <td className="py-2 px-3 text-right">{formatVND(order.thongTinXe.phiDangKyBienSo)}</td>
+                    </tr>
+                    {order.thongTinXe.phiBaoHiem > 0 && (
+                      <tr>
+                        <td className="py-2 px-3">{order.thongTinXe.goiBaoHiem || 'Gói bảo hiểm xe máy'}</td>
+                        <td className="py-2 px-3">Hợp đồng</td>
+                        <td className="py-2 px-3 text-right">{formatVND(order.thongTinXe.phiBaoHiem)}</td>
+                      </tr>
+                    )}
+                    {order.thongTinXe.khuyenMai > 0 && (
+                      <tr className="text-emerald-700">
+                        <td className="py-2 px-3">Chiết khấu ưu đãi khuyến mãi</td>
+                        <td className="py-2 px-3">Voucher</td>
+                        <td className="py-2 px-3 text-right">-{formatVND(order.thongTinXe.khuyenMai)}</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+
+                <div className="p-4 bg-zinc-50 rounded-xl space-y-1.5 text-xs font-mono text-right border border-zinc-200">
+                  <div>TỔNG GIÁ TRỊ XE LĂN BÁNH: <strong className="text-base text-red-700">{formatVND(order.tongTien)}</strong></div>
+                  <div>Đã thanh toán / Đặt cọc: <strong className="text-emerald-700">{formatVND(depositPaid)} {isPaidFull ? '(100% - Đã thu đủ)' : ''}</strong></div>
+                  <div className="text-sm font-bold border-t border-zinc-200 pt-1.5 flex justify-between items-center">
+                    <span className={`px-2 py-0.5 rounded text-[11px] uppercase ${isPaidFull ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                      {isPaidFull ? '✓ ĐÃ THANH TOÁN ĐỦ' : '⏳ CÒN PHẢI THU'}
+                    </span>
+                    <span>
+                      SỐ TIỀN CÒN PHẢI THU: <span className={isPaidFull ? 'text-emerald-700 font-extrabold' : 'text-red-700 font-extrabold'}>{formatVND(remainingBal)}</span>
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
-          ) : (
-            <div>
-              <table className="w-full text-xs border-collapse">
-                <thead>
-                  <tr className="border-b-2 border-zinc-900 bg-zinc-100 font-mono text-left">
-                    <th className="py-2 px-3">STT</th>
-                    <th className="py-2 px-3">TÊN PHỤ TÙNG</th>
-                    <th className="py-2 px-3 text-center">SỐ LƯỢNG</th>
-                    <th className="py-2 px-3 text-right">ĐƠN GIÁ</th>
-                    <th className="py-2 px-3 text-right">THÀNH TIỀN</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-200 font-mono">
-                  {order.items?.map((it, idx) => (
-                    <tr key={idx}>
-                      <td className="py-2.5 px-3 text-zinc-500">{idx + 1}</td>
-                      <td className="py-2.5 px-3 font-sans font-medium text-zinc-900">{it.tenSanPham}</td>
-                      <td className="py-2.5 px-3 text-center">{it.soLuong}</td>
-                      <td className="py-2.5 px-3 text-right">{formatVND(it.donGia)}</td>
-                      <td className="py-2.5 px-3 text-right font-bold">{formatVND(it.donGia * it.soLuong)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            );
+          })() : (() => {
+            const rawItems = (order.items && order.items.length > 0)
+              ? order.items
+              : ((order as any).chiTiet || (order as any).items || []);
+            const partsList = rawItems.map((it: any, i: number) => ({
+              stt: i + 1,
+              sku: it.maPhuTung || it.sku || it.maSP || (it.id ? `PT00${it.id}` : `PT00${i + 1}`),
+              tenSanPham: it.tenSanPham || it.tenSP || 'Phụ tùng chính hãng',
+              donViTinh: it.donViTinh || it.dvt || 'Bộ',
+              soLuong: it.soLuong || 1,
+              donGia: it.donGia || it.gia || 0,
+              thanhTien: (it.donGia || it.gia || 0) * (it.soLuong || 1),
+            }));
+            const subtotalParts = partsList.reduce((sum: number, it: any) => sum + it.thanhTien, 0);
+            const discount = (order as any).tienGiam || (order as any).voucherDiscount || (order as any).giamGia || (subtotalParts > order.tongTien ? (subtotalParts - order.tongTien) : 0);
+            const shippingFee = (order as any).phiVanChuyen || 0;
+            const finalTotal = order.tongTien || (subtotalParts - discount + shippingFee);
+            const isPartsPaid = order.trangThaiThanhToan === 'DaThanhToan';
 
-              <div className="p-4 bg-zinc-50 rounded-xl text-right font-mono text-xs mt-3">
-                <div>TỔNG TIỀN THANH TOÁN: <strong className="text-base text-red-700">{formatVND(order.tongTien)}</strong></div>
+            return (
+              <div>
+                <table className="w-full text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b-2 border-zinc-900 bg-zinc-100 font-mono text-left">
+                      <th className="py-2 px-3 text-center w-10">STT</th>
+                      <th className="py-2 px-3">MÃ / SKU</th>
+                      <th className="py-2 px-3">TÊN PHỤ TÙNG</th>
+                      <th className="py-2 px-3 text-center">ĐƠN VỊ</th>
+                      <th className="py-2 px-3 text-center">SL</th>
+                      <th className="py-2 px-3 text-right">ĐƠN GIÁ</th>
+                      <th className="py-2 px-3 text-right">THÀNH TIỀN</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-200 font-mono">
+                    {partsList.map((it: any) => (
+                      <tr key={it.stt}>
+                        <td className="py-2.5 px-3 text-center text-zinc-500">{it.stt}</td>
+                        <td className="py-2.5 px-3 text-zinc-600 font-mono">{it.sku}</td>
+                        <td className="py-2.5 px-3 font-sans font-medium text-zinc-900">{it.tenSanPham}</td>
+                        <td className="py-2.5 px-3 text-center text-zinc-600">{it.donViTinh}</td>
+                        <td className="py-2.5 px-3 text-center font-bold">{it.soLuong}</td>
+                        <td className="py-2.5 px-3 text-right">{formatVND(it.donGia)}</td>
+                        <td className="py-2.5 px-3 text-right font-bold">{formatVND(it.thanhTien)}</td>
+                      </tr>
+                    ))}
+                    {partsList.length === 0 && (
+                      <tr>
+                        <td colSpan={7} className="py-4 text-center text-zinc-400 italic">
+                          Không có thông tin chi tiết phụ tùng
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+
+                <div className="p-4 bg-zinc-50 rounded-xl space-y-1.5 text-xs font-mono text-right mt-3 border border-zinc-200">
+                  <div>Tiền hàng (Tạm tính): <strong className="text-zinc-800">{formatVND(subtotalParts || finalTotal)}</strong></div>
+                  {discount > 0 && (
+                    <div className="text-emerald-700">Chiết khấu Voucher / Khuyến mãi: <strong>-{formatVND(discount)}</strong></div>
+                  )}
+                  {shippingFee > 0 ? (
+                    <div>Phí vận chuyển: <strong>{formatVND(shippingFee)}</strong></div>
+                  ) : (
+                    <div className="text-zinc-500">Phí vận chuyển: <strong>Miễn phí (0 đ)</strong></div>
+                  )}
+                  <div className="text-sm font-bold border-t border-zinc-200 pt-1.5 flex justify-between items-center">
+                    <span className={`px-2 py-0.5 rounded text-[11px] uppercase ${isPartsPaid ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                      {isPartsPaid ? '✓ ĐÃ THANH TOÁN ĐỦ' : '⏳ CHỜ THANH TOÁN COD'}
+                    </span>
+                    <div>TỔNG TIỀN THANH TOÁN: <strong className="text-base text-red-700">{formatVND(finalTotal)}</strong></div>
+                  </div>
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Chữ Ký Khách & Đại Diện */}
           <div className="grid grid-cols-2 gap-8 text-center text-xs pt-8 border-t border-zinc-200">

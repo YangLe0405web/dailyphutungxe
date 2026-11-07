@@ -242,6 +242,8 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
   const [surveyCallNotes, setSurveyCallNotes] = useState('');
   const [editingSurvey, setEditingSurvey] = useState<Survey | null>(null);
   const [surveyStatusTab, setSurveyStatusTab] = useState<'ALL' | 'DangDienRa' | 'SapDienRa' | 'DaKetThuc' | 'Nhap'>('ALL');
+  // Phân loại mức độ đánh giá khảo sát: Tốt / Bình thường / Tệ
+  const [surveyRatingFilter, setSurveyRatingFilter] = useState<'ALL' | 'Tot' | 'BinhThuong' | 'Te'>('ALL');
 
   // Bộ lọc khảo sát Admin nâng cao
   const [surveySearchTerm, setSurveySearchTerm] = useState('');
@@ -1737,92 +1739,183 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
               {detailSubTab === 'responses' && (
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start animate-in fade-in duration-200">
                   {/* CỘT TRÁI: BẢNG DANH SÁCH KHÁCH HÀNG (7 CỘT) */}
-                  <div className="lg:col-span-7 bg-white p-5 rounded-2xl border border-zinc-200 shadow-sm space-y-4">
-                    <div>
-                      <h3 className="text-sm font-extrabold text-zinc-900 uppercase tracking-wider font-mono flex items-center gap-2">
-                        <span>👥</span>
-                        <span>DANH SÁCH KHÁCH HÀNG ĐÃ ĐÁNH GIÁ ({detailResponses.length})</span>
-                      </h3>
-                      <p className="text-xs text-zinc-500 mt-0.5">
-                        Nhấp vào từng khách hàng để xem chi tiết câu trả lời bên phải
-                      </p>
-                    </div>
+                  {(() => {
+                    const isGood = (str: string) => str.includes('Tốt') || str.includes('Rất hài lòng') || str.includes('Hài lòng');
+                    const isNeutral = (str: string) => str.includes('Bình thường') || str.includes('Tạm ổn');
+                    const isBad = (str: string) => str.includes('Tệ') || str.includes('Chưa hài lòng') || str.includes('Cần chăm sóc') || str.includes('Kém') || str.includes('Không hài lòng');
 
-                    {detailResponses.length === 0 ? (
-                      <div className="text-center py-12 text-zinc-400 font-mono text-xs bg-zinc-50 rounded-xl border border-zinc-200">
-                        Chưa có khách hàng nào gửi câu trả lời cho khảo sát này.
-                      </div>
-                    ) : (
-                      <div className="overflow-x-auto rounded-xl border border-zinc-200">
-                        <table className="w-full text-xs text-left">
-                          <thead className="bg-zinc-50 border-b border-zinc-200 text-zinc-700 font-bold uppercase font-mono text-[11px]">
-                            <tr>
-                              <th className="p-3 text-center w-12">STT</th>
-                              <th className="p-3">Khách hàng</th>
-                              <th className="p-3">Số điện thoại</th>
-                              <th className="p-3">Biển số / Mã xe</th>
-                              <th className="p-3">Đánh giá chung</th>
-                              <th className="p-3">Ngày gửi</th>
-                              <th className="p-3 text-center">Hành động</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-zinc-200 font-sans">
-                            {detailResponses.map((r, idx) => {
-                              const isSelected = activeResponse?.id === r.id;
+                    const countTot = detailResponses.filter(r => isGood(r.danhGiaChung || 'Tốt / Rất hài lòng 😊') && !isBad(r.danhGiaChung || '')).length;
+                    const countBinhThuong = detailResponses.filter(r => isNeutral(r.danhGiaChung || '')).length;
+                    const countTe = detailResponses.filter(r => isBad(r.danhGiaChung || '')).length;
 
-                              const ratingStr = r.danhGiaChung || 'Rất hài lòng 😊';
-                              let ratingBadgeClass = 'bg-emerald-50 text-emerald-700 border-emerald-200';
-                              if (ratingStr.includes('Chưa hài lòng')) {
-                                ratingBadgeClass = 'bg-red-50 text-red-700 border-red-200';
-                              } else if (ratingStr.includes('Bình thường')) {
-                                ratingBadgeClass = 'bg-amber-50 text-amber-700 border-amber-200';
-                              }
+                    const filteredResponses = detailResponses.filter(r => {
+                      const rStr = r.danhGiaChung || 'Tốt / Rất hài lòng 😊';
+                      if (surveyRatingFilter === 'Tot') return isGood(rStr) && !isBad(rStr);
+                      if (surveyRatingFilter === 'BinhThuong') return isNeutral(rStr);
+                      if (surveyRatingFilter === 'Te') return isBad(rStr);
+                      return true;
+                    });
 
-                              return (
-                                <tr
-                                  key={r.id}
-                                  onClick={() => setSelectedResponseItem(r)}
-                                  className={`hover:bg-blue-50/50 transition cursor-pointer ${
-                                    isSelected ? 'bg-blue-50/70 font-semibold' : ''
-                                  }`}
-                                >
-                                  <td className="p-3 text-center font-mono text-zinc-500">{idx + 1}</td>
-                                  <td className="p-3">
-                                    <div className="font-bold text-zinc-900">{r.customerName}</div>
-                                    <div className="text-[10px] font-mono text-zinc-400">{r.customerId}</div>
-                                  </td>
-                                  <td className="p-3 font-mono text-zinc-600">{r.soDienThoai || '0901***890'}</td>
-                                  <td className="p-3 font-mono font-bold text-zinc-800">{r.bienSoXe || '29K1-123.45'}</td>
-                                  <td className="p-3">
-                                    <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold border font-mono whitespace-nowrap ${ratingBadgeClass}`}>
-                                      {ratingStr}
-                                    </span>
-                                  </td>
-                                  <td className="p-3 font-mono text-zinc-500 whitespace-nowrap">{r.submittedDate}</td>
-                                  <td className="p-3 text-center">
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setSelectedResponseItem(r);
-                                      }}
-                                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition shadow-xs cursor-pointer whitespace-nowrap ${
-                                        isSelected
-                                          ? 'bg-blue-700 text-white ring-2 ring-blue-400'
-                                          : 'bg-blue-600 hover:bg-blue-700 text-white'
-                                      }`}
-                                    >
-                                      {isSelected ? 'Đang xem' : 'Xem câu trả lời'}
-                                    </button>
-                                  </td>
+                    return (
+                      <div className="lg:col-span-7 bg-white p-5 rounded-2xl border border-zinc-200 shadow-sm space-y-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div>
+                            <h3 className="text-sm font-extrabold text-zinc-900 uppercase tracking-wider font-mono flex items-center gap-2">
+                              <span>👥</span>
+                              <span>DANH SÁCH KHÁCH HÀNG ĐÃ ĐÁNH GIÁ ({filteredResponses.length}/{detailResponses.length})</span>
+                            </h3>
+                            <p className="text-xs text-zinc-500 mt-0.5">
+                              Nhấp vào từng khách hàng để xem chi tiết câu trả lời bên phải
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Thanh bộ lọc mức độ đánh giá Tốt / Bình thường / Tệ */}
+                        <div className="flex items-center gap-2 flex-wrap pt-1 border-t border-zinc-100">
+                          <button
+                            type="button"
+                            onClick={() => setSurveyRatingFilter('ALL')}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                              surveyRatingFilter === 'ALL'
+                                ? 'bg-zinc-900 text-white shadow-xs'
+                                : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+                            }`}
+                          >
+                            Tất cả ({detailResponses.length})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSurveyRatingFilter('Tot')}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
+                              surveyRatingFilter === 'Tot'
+                                ? 'bg-emerald-700 text-white shadow-xs'
+                                : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200'
+                            }`}
+                          >
+                            <span>😊 Tốt / Rất hài lòng</span>
+                            <span className="font-mono">({countTot})</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSurveyRatingFilter('BinhThuong')}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
+                              surveyRatingFilter === 'BinhThuong'
+                                ? 'bg-amber-600 text-white shadow-xs'
+                                : 'bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200'
+                            }`}
+                          >
+                            <span>😐 Bình thường</span>
+                            <span className="font-mono">({countBinhThuong})</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSurveyRatingFilter('Te')}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
+                              surveyRatingFilter === 'Te'
+                                ? 'bg-red-700 text-white shadow-xs'
+                                : 'bg-red-50 text-red-800 hover:bg-red-100 border border-red-200'
+                            }`}
+                          >
+                            <span>⚠️ Tệ / Cần chăm sóc CSKH</span>
+                            <span className="font-mono">({countTe})</span>
+                          </button>
+                        </div>
+
+                        {filteredResponses.length === 0 ? (
+                          <div className="text-center py-12 text-zinc-400 font-mono text-xs bg-zinc-50 rounded-xl border border-zinc-200">
+                            Không có phản hồi nào phù hợp với bộ lọc đánh giá này.
+                          </div>
+                        ) : (
+                          <div className="overflow-x-auto rounded-xl border border-zinc-200">
+                            <table className="w-full text-xs text-left">
+                              <thead className="bg-zinc-50 border-b border-zinc-200 text-zinc-700 font-bold uppercase font-mono text-[11px]">
+                                <tr>
+                                  <th className="p-3 text-center w-12">STT</th>
+                                  <th className="p-3">Khách hàng</th>
+                                  <th className="p-3">Số điện thoại</th>
+                                  <th className="p-3">Biển số / Mã xe</th>
+                                  <th className="p-3">Đánh giá chung</th>
+                                  <th className="p-3">Ngày gửi</th>
+                                  <th className="p-3 text-center">Hành động</th>
                                 </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
+                              </thead>
+                              <tbody className="divide-y divide-zinc-200 font-sans">
+                                {filteredResponses.map((r, idx) => {
+                                  const isSelected = activeResponse?.id === r.id;
+
+                                  const ratingStr = r.danhGiaChung || 'Tốt / Rất hài lòng 😊';
+                                  const bad = isBad(ratingStr);
+                                  const neutral = isNeutral(ratingStr);
+                                  let ratingBadgeClass = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                                  if (bad) {
+                                    ratingBadgeClass = 'bg-red-50 text-red-700 border-red-200 font-bold';
+                                  } else if (neutral) {
+                                    ratingBadgeClass = 'bg-amber-50 text-amber-700 border-amber-200';
+                                  }
+
+                                  return (
+                                    <tr
+                                      key={r.id}
+                                      onClick={() => setSelectedResponseItem(r)}
+                                      className={`hover:bg-blue-50/50 transition cursor-pointer ${
+                                        isSelected ? 'bg-blue-50/70 font-semibold' : ''
+                                      } ${bad ? 'bg-red-50/30' : ''}`}
+                                    >
+                                      <td className="p-3 text-center font-mono text-zinc-500">{idx + 1}</td>
+                                      <td className="p-3">
+                                        <div className="font-bold text-zinc-900">{r.customerName}</div>
+                                        <div className="text-[10px] font-mono text-zinc-400">{r.customerId}</div>
+                                      </td>
+                                      <td className="p-3 font-mono text-zinc-600">{r.soDienThoai || '0901***890'}</td>
+                                      <td className="p-3 font-mono font-bold text-zinc-800">{r.bienSoXe || '29K1-123.45'}</td>
+                                      <td className="p-3">
+                                        <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold border font-mono whitespace-nowrap ${ratingBadgeClass}`}>
+                                          {ratingStr}
+                                        </span>
+                                      </td>
+                                      <td className="p-3 font-mono text-zinc-500 whitespace-nowrap">{r.submittedDate}</td>
+                                      <td className="p-3 text-center">
+                                        <div className="flex items-center justify-center gap-1.5">
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setSelectedResponseItem(r);
+                                            }}
+                                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition shadow-xs cursor-pointer whitespace-nowrap ${
+                                              isSelected
+                                                ? 'bg-blue-700 text-white ring-2 ring-blue-400'
+                                                : 'bg-blue-600 hover:bg-blue-700 text-white'
+                                            }`}
+                                          >
+                                            {isSelected ? 'Đang xem' : 'Xem câu trả lời'}
+                                          </button>
+                                          {bad && (
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setSelectedResponseItem(r);
+                                                setSurveyCallCareModal(r);
+                                              }}
+                                              className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-red-600 hover:bg-red-700 text-white shadow-xs transition flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                                              title="Gọi điện chăm sóc xử lý đánh giá xấu ngay"
+                                            >
+                                              <span>📞</span> CSKH
+                                            </button>
+                                          )}
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
+                    );
+                  })()}
 
                   {/* CỘT PHẢI: CHI TIẾT CÂU TRẢ LỜI CỦA KHÁCH HÀNG ĐƯỢC CHỌN */}
                   <div className="lg:col-span-5 bg-white p-5 rounded-2xl border border-zinc-200 shadow-sm space-y-4 sticky top-6">

@@ -1023,6 +1023,22 @@ export default function CustomerLayout({ children, activePage, onNavigate, onHom
                               : 'bg-zinc-200 text-zinc-900 rounded-tl-xs shadow-md font-normal'
                           }`}
                         >
+                          {m.pinnedContext && (
+                            <div className="mb-2 p-2 rounded-xl bg-black/25 border border-white/10 flex items-center gap-2.5 text-left">
+                              <img
+                                src={m.pinnedContext.productImage || '/images/phutung/motul_7100.png'}
+                                alt={m.pinnedContext.productName}
+                                className="w-12 h-12 rounded-lg bg-white p-0.5 object-contain shrink-0 border border-zinc-700"
+                                onError={(e: any) => { e.target.src = '/images/phutung/motul_7100.png'; }}
+                              />
+                              <div className="min-w-0 flex-1">
+                                <div className="text-[11px] font-bold text-amber-300 line-clamp-1">{m.pinnedContext.productName}</div>
+                                {m.pinnedContext.orderId && (
+                                  <div className="text-[10px] text-zinc-300 font-mono line-clamp-1">{m.pinnedContext.orderId}</div>
+                                )}
+                              </div>
+                            </div>
+                          )}
                           {m.content}
                         </div>
                       </div>

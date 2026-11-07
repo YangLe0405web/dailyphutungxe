@@ -4922,3 +4922,114 @@ pm run build thành công 100% trong 1.41s, **0 lỗi TypeScript**.
   - `npm --prefix crm-frontend run build`: **0 lỗi TypeScript / Vite**.
   - `dotnet build CrmBackend/CrmBackend.csproj`: **0 lỗi C#**.
   - Bảo toàn nguyên vẹn toàn bộ 10 System Invariants, không ảnh hưởng bất kỳ chức năng nào của các bản Fix trước.
+
+
+---
+
+## [Bản Fix 94] - Bộ lọc Đánh giá Xe máy, Nâng cấp Live Chat CSKH & Tự động tặng Voucher Hạng VIP
+
+- **Ngày thực hiện:** 07/11/2026
+- **Mục tiêu:**
+  1. **Bổ sung Bộ lọc Đánh giá Xe máy:**
+     - Trong Modal xem chi tiết xe máy (`activeModalTab === 'reviews'`) tại [`VehiclesShowroom.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/VehiclesShowroom.tsx), bổ sung thanh bộ lọc đánh giá xe phong cách Shopee / Tiki trực quan:
+       * Nút `Tất cả ({vReviews.length})`
+       * Các nút sao: `5★`, `4★`, `3★`, `2★`, `1★` kèm đếm số lượng
+       * Nút lọc `📷 Có hình ảnh / Video` kèm số lượng
+       * Nút `✕ Xóa bộ lọc` khi có tiêu chí đang kích hoạt
+       * Khung thông báo thân thiện khi không có nhận xét phù hợp kèm nút xóa bộ lọc.
+  2. **Nâng cấp Hỗ trợ trực tuyến (Live Chat) & Nút "Liên hệ với shop" ở từng sản phẩm:**
+     - Khắc phục lỗi khách nhắn tin Admin không nhận được thông báo:
+       * Trong `chatApi.sendMessage` tại [`api.ts`](file:///d:/crm-project/crm-frontend/src/services/api.ts), khi khách hàng gửi tin nhắn (`msg.sender === 'customer'`), tự động gọi `addAdminNotification` phát thông báo chuông và popup thời gian thực cho Admin.
+       * Trong [`AdminLayout.tsx`](file:///d:/crm-project/crm-frontend/src/layouts/AdminLayout.tsx), khi Admin click vào thông báo tin nhắn, hệ thống tự động mở khung chat và chọn đúng khách hàng.
+     - Thêm nút **`[💬 Liên hệ với shop / Tư vấn]`** trên từng sản phẩm xe máy ([`VehiclesShowroom.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/VehiclesShowroom.tsx)) và phụ tùng ([`PartsStore.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/PartsStore.tsx)).
+     - Khi bấm nút, hệ thống tự động mở khung chat mang theo ngữ cảnh sản phẩm (`PinnedChatContext`) hiển thị hình ảnh, tên sản phẩm và giá bán ngay trong khung chat ở cả phía Khách hàng ([`CustomerLayout.tsx`](file:///d:/crm-project/crm-frontend/src/layouts/CustomerLayout.tsx)) và phía Admin ([`AdminLayout.tsx`](file:///d:/crm-project/crm-frontend/src/layouts/AdminLayout.tsx)).
+  3. **Khắc phục Voucher theo Hạng thành viên (VIP / Thân thiết) tự động gửi về tài khoản:**
+     - Trong `promotionApi` tại [`api.ts`](file:///d:/crm-project/crm-frontend/src/services/api.ts): Sửa điều kiện nhận diện khách hàng VIP ở `getVouchersForCustomer` và `validateVoucherForCheckout` chuẩn hóa theo hàm `getCustomerTier` và mức chi tiêu thực tế (>= 10.000.000đ là VIP) thay vì phụ thuộc vào các trường tĩnh không tồn tại (`customer.loaiKhach`).
+     - Bổ sung helper `promotionApi.getSavedVoucherCodes(customerId)`.
+     - Trong [`CustomerDashboard.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/CustomerDashboard.tsx): Khi khách hàng đạt hạng VIP (hoặc chi tiêu >= 10.000.000đ), hệ thống tự động quét và lưu mã voucher VIP (`VIPCUSTOMER`) vào Kho Ví của khách (`saveVoucherToCustomerWallet`), đồng thời gửi thông báo chúc mừng thăng hạng tới tài khoản khách hàng.
+- **Các tệp đã chỉnh sửa:**
+  - [`crm-frontend/src/pages/customer/VehiclesShowroom.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/VehiclesShowroom.tsx): Thêm bộ lọc đánh giá xe máy & nút liên hệ tư vấn xe.
+  - [`crm-frontend/src/pages/customer/PartsStore.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/PartsStore.tsx): Thêm nút liên hệ tư vấn phụ tùng trong modal chi tiết & trên từng thẻ sản phẩm.
+  - [`crm-frontend/src/layouts/CustomerLayout.tsx`](file:///d:/crm-project/crm-frontend/src/layouts/CustomerLayout.tsx): Hiển thị thẻ ảnh & thông tin sản phẩm trong tin nhắn chat.
+  - [`crm-frontend/src/layouts/AdminLayout.tsx`](file:///d:/crm-project/crm-frontend/src/layouts/AdminLayout.tsx): Mở nhanh hội thoại từ thông báo tin nhắn & hiển thị thẻ sản phẩm trong chat Admin.
+  - [`crm-frontend/src/services/api.ts`](file:///d:/crm-project/crm-frontend/src/services/api.ts): Gửi `addAdminNotification` khi khách chat; chuẩn hóa nhận diện voucher VIP theo `getCustomerTier`.
+  - [`crm-frontend/src/pages/customer/CustomerDashboard.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/CustomerDashboard.tsx): Tự động lưu voucher VIP vào ví và bắn thông báo chúc mừng khi đạt hạng.
+  - [`crm-frontend/tests/verify_vehicle_review_filter_chat_and_tier_voucher.test.cjs`](file:///d:/crm-project/crm-frontend/tests/verify_vehicle_review_filter_chat_and_tier_voucher.test.cjs): Bộ test TDD tự động hóa toàn bộ 3 nhóm tính năng.
+- **Kết quả kiểm thử & Nghiệm thu:**
+  - Bộ test mới `verify_vehicle_review_filter_chat_and_tier_voucher.test.cjs`: **PASS 100%**.
+  - Toàn bộ 21/21 test suites trong hệ thống (`crm-frontend/tests/*.cjs`): **PASS 21/21 (0 failed)**.
+  - `npm --prefix crm-frontend run build`: **0 lỗi TypeScript / Vite**.
+  - `dotnet build CrmBackend/CrmBackend.csproj`: **0 lỗi C#**.
+  - Bảo toàn nguyên vẹn 100% các điều kiện bất biến (System Invariants) trong `QUY_TAC_KIEM_TRA_VA_BAO_TOAN_FIX.md`.
+
+---
+
+## [Bản Fix 95] - Khắc phục trùng lặp xe (Double Xe) Hồ sơ 360 Admin & Nâng cấp Phê duyệt biển số 1 chạm
+
+- **Ngày thực hiện:** 07/11/2026
+- **Mục tiêu:**
+  1. **Khắc phục lỗi Double Xe (Trùng lặp 2 thẻ xe giống nhau về biển số nhưng khác số khung):**
+     - Giải quyết triệt để tình trạng xe đặt mua trực tuyến tạo bản ghi tạm mang số khung sinh theo mã đơn (`RLHKD160CB0270000`) bị tách rời khỏi bản ghi chính thức từ SQL Server (`MaXeSoHuu = 121` mang số khung thực tế `RLHKD160CB9000961` kèm ảnh Cà vẹt).
+     - Trong [`api.ts`](file:///d:/crm-project/crm-frontend/src/services/api.ts) (`vehicleApi.getAll`): Nâng cấp thuật toán khử trùng lặp đa tầng thông minh `dedupKey` ưu tiên nhóm theo Biển số thực tế của khách hàng `PLATE_${custIdNum}_${plate}` hoặc theo dòng xe cốt lõi `CUST_${custIdNum}_MODEL_${modelKey}`.
+     - Khi hợp nhất: Tự động ưu tiên giữ Số khung (VIN) thực tế, Số máy thực tế, ID chuẩn DB (`XE121`), bảo toàn 100% ảnh Cà vẹt xe (`anhCaVet`), giữ nguyên trạng thái `DaDuyet` và dọn dẹp các bản ghi tạm dư thừa.
+     - Trong [`Customers.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/Customers.tsx):
+       * Tab 5 "🏍️ Xe & Bảo hành": Bổ sung bộ lọc hợp nhất `mergedVehicleMap` đảm bảo chỉ hiển thị duy nhất 1 thẻ xe hoàn chỉnh cho mỗi phương tiện thực tế của khách hàng.
+       * Cột Phương tiện sở hữu trên bảng khách hàng: Bổ sung bộ lọc khử trùng lặp, badge hiển thị chính xác số lượng xe (ví dụ: `🏍️ 1 xe`).
+       * Hàm `handleApprovePlate`: Tự động đồng bộ và gộp tất cả bản ghi cùng xe sau khi Admin duyệt biển số.
+  2. **Nâng cấp Phê duyệt biển số 1 chạm (Khắc phục lỗi "phải bấm 2 lần"):**
+     - Trong [`LicensePlateApproval.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/LicensePlateApproval.tsx):
+       * `plateRecords`: Khử trùng lặp đa tầng trước khi hiển thị lên bảng duyệt, loại bỏ tận gốc tình trạng cùng 1 xe hiển thị 2 dòng khiến Admin phải duyệt 2 lần.
+       * `handleQuickApprove`: Bỏ hộp thoại chặn `window.confirm`, đưa thao tác duyệt nhanh thành 1 chạm thực thụ, hiển thị Toast thông báo xanh lá và cập nhật UI ngay lập tức.
+       * Chuẩn hóa nhận diện khách hàng `isSameCustomer` đa định dạng (`KH045` và `45`).
+     - Trong [`api.ts`](file:///d:/crm-project/crm-frontend/src/services/api.ts) (`vehicleApi.approveLicensePlate`): Tự động phát hiện và dọn dẹp các bản ghi xe tạm từ đơn hàng khỏi cache `crm_customer_vehicles` và `mockVehicles`, đồng bộ sang `crm_orders`.
+- **Các tệp đã chỉnh sửa:**
+  - [`crm-frontend/src/services/api.ts`](file:///d:/crm-project/crm-frontend/src/services/api.ts): Thuật toán khử trùng lặp đa tầng trong `vehicleApi.getAll()` & tự động gộp dọn dẹp bản ghi tạm trong `vehicleApi.approveLicensePlate()`.
+  - [`crm-frontend/src/pages/admin/LicensePlateApproval.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/LicensePlateApproval.tsx): Khử trùng lặp danh sách `plateRecords` & duyệt nhanh 1 chạm không vướng confirm.
+  - [`crm-frontend/src/pages/admin/Customers.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/Customers.tsx): Bộ lọc gộp xe `mergedVehicleMap` cho Tab 5 và bảng danh sách khách hàng.
+  - [`crm-frontend/tests/verify_license_plate_single_click_and_dedup.test.cjs`](file:///d:/crm-project/crm-frontend/tests/verify_license_plate_single_click_and_dedup.test.cjs): Bộ test TDD kiểm thử tự động toàn diện.
+- **Kết quả kiểm thử & Nghiệm thu:**
+  - Bộ test mới `verify_license_plate_single_click_and_dedup.test.cjs`: **PASS 100%**.
+  - Toàn bộ 22/22 test suites trong hệ thống (`crm-frontend/tests/*.cjs`): **PASS 22/22 (0 failed)**.
+  - `npm --prefix crm-frontend run build`: **0 lỗi TypeScript / Vite** (hoàn thành trong 1.22s).
+  - `dotnet build CrmBackend/CrmBackend.csproj`: **0 lỗi C#** (hoàn thành trong 1.31s).
+  - Bảo toàn nguyên vẹn 100% các điều kiện bất biến (System Invariants) trong `QUY_TAC_KIEM_TRA_VA_BAO_TOAN_FIX.md`.
+
+---
+
+## [Bản Fix 96] - Hoàn thiện 5 Yêu Cầu Mới: In Hóa Đơn Bán Xe & Phụ Tùng, Phân Loại Khảo Sát Nhận Xe Tốt/Tệ, Đánh Giá Sao Động, Flash Sale & Bán Chạy Nhất Phụ Tùng
+
+- **Ngày thực hiện:** 07/11/2026
+- **Mục tiêu:**
+  1. **In hóa đơn bán xe & đơn hàng phụ tùng bên Admin (`PrintInvoiceModal` trong [`Sales.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/Sales.tsx)):**
+     - Xe máy: Bổ sung đầy đủ Biển số xe (`bienSo`), Số máy (`soMay`), Số khung (VIN), Đời xe / Năm sản xuất (`doiXe`), và Hạn bảo hành điện tử chính hãng (`hanBaoHanh`).
+     - Chuẩn hóa số tiền xe: Khi đơn hàng đã thanh toán đủ (`DaThanhToan` hoặc nhân viên tích `daThuDuTien`), hóa đơn hiển thị: Đã thanh toán: 100% (Tổng tiền), Số tiền còn lại: 0 đ (Đã tất toán toàn bộ), Trạng thái: "✓ ĐÃ THANH TOÁN ĐỦ".
+     - Phụ tùng: Hỗ trợ tự động trích xuất từ cả `order.items` và `order.chiTiet` (SQL Server), hiển thị STT, Mã/SKU, Tên phụ tùng, Đơn vị tính (ĐVT), Số lượng, Đơn giá, Thành tiền. Bổ sung dòng Tiền hàng (Tạm tính), Chiết khấu Voucher / Khuyến mãi, Phí vận chuyển, Tổng tiền thanh toán và Trạng thái thanh toán (Đã thanh toán đủ vs Chờ thanh toán COD).
+  2. **Duyệt biển số 1 chạm:**
+     - Kế thừa và bảo toàn bản Fix 95, không còn pop-up confirm hay phải bấm 2 lần.
+  3. **Phân loại khảo sát nhận xe Tốt / Tệ (Khách hàng & Admin):**
+     - Trong [`api.ts`](file:///d:/crm-project/crm-frontend/src/services/api.ts) (`surveyApi.submitResponse`): Tự động phân tích sentiment cảm xúc từ các câu trả lời khảo sát để gán `danhGiaChung`:
+       * Tích cực: "Tốt / Rất hài lòng 😊" (badge xanh lá)
+       * Trung tính: "Bình thường 😐" (badge vàng cam)
+       * Tiêu cực: "Tệ / Cần chăm sóc CSKH ⚠️" (badge đỏ viền nổi bật)
+     - Trong [`Feedback.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/Feedback.tsx): Bổ sung thanh 4 nút bấm lọc phân loại: Tất cả / 😊 Tốt / 😐 Bình thường / ⚠️ Tệ, kèm nút gọi nhanh CSKH `📞 CSKH` trên các hàng đánh giá tiêu cực để liên hệ xử lý khiếu nại ngay.
+  4. **Tính toán số sao hiển thị động theo nhận xét thực tế:**
+     - Trong [`VehiclesShowroom.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/VehiclesShowroom.tsx): Thay thế điểm 4.9 và sao tĩnh bằng điểm trung bình thực tế `vAvgScore` tính từ các nhận xét trong `feedbackApi.getAll()`. Render chính xác số sao vàng và sao rỗng (`★` / `☆`). Dòng xe mới hiển thị rõ tiêu chuẩn 5.0 ★ Showroom.
+     - Trong [`PartsStore.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/PartsStore.tsx): Thay thế các khối sao cứng bằng điểm trung bình `selectedPartAvgScore` và chuỗi sao động `selectedPartStarDisplay`.
+  5. **Flash Sale & Bán chạy nhất phụ tùng theo yêu cầu nghiệp vụ:**
+     - Trong [`PartsStore.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/PartsStore.tsx):
+       * Flash Sale (`flashSaleItems`): Lọc các sản phẩm có khuyến mãi và sắp xếp tăng dần theo giá bán thực tế `(a.giaKhuyenMai || a.giaGoc) - (b.giaKhuyenMai || b.giaGoc)` (sản phẩm giá thấp nhất lên đầu tiên).
+       * Bán chạy nhất (`bestSellers`): Tổng hợp số lượt mua (sales count) thực tế từ các đơn hàng phụ tùng trong hệ thống (`orderApi.getAllSync()` / `realOrders`), sắp xếp giảm dần theo lượt mua và hiển thị huy hiệu `🔥 Đã bán: {salesCount}` trên từng thẻ sản phẩm.
+- **Các tệp đã chỉnh sửa:**
+  - [`crm-frontend/src/pages/admin/Sales.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/Sales.tsx): Nâng cấp toàn diện mẫu in hóa đơn A4 cho cả xe máy và phụ tùng.
+  - [`crm-frontend/src/services/api.ts`](file:///d:/crm-project/crm-frontend/src/services/api.ts): Bổ sung thuật toán phân loại tự động `danhGiaChung` và thông báo CSKH ưu tiên khi có khảo sát tiêu cực.
+  - [`crm-frontend/src/pages/admin/Feedback.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/Feedback.tsx): Thêm bộ lọc phân loại khảo sát 4 mức và nút gọi CSKH khẩn cấp.
+  - [`crm-frontend/src/pages/customer/VehiclesShowroom.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/VehiclesShowroom.tsx): Tính toán sao và số lượng đánh giá động từ dữ liệu thực tế.
+  - [`crm-frontend/src/pages/customer/PartsStore.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/PartsStore.tsx): Tính sao động, sắp xếp Flash Sale theo giá thấp nhất và Bán chạy nhất theo lượt mua thực tế.
+  - [`crm-frontend/src/data/mockData.ts`](file:///d:/crm-project/crm-frontend/src/data/mockData.ts): Khai báo bổ sung các thuộc tính mở rộng cho `VehicleOrderDetails`.
+  - [`crm-frontend/tests/verify_invoice_survey_rating_and_parts_sorting.test.cjs`](file:///d:/crm-project/crm-frontend/tests/verify_invoice_survey_rating_and_parts_sorting.test.cjs): File kiểm thử TDD tự động hóa toàn bộ 5 yêu cầu mới.
+- **Kết quả kiểm thử & Nghiệm thu:**
+  - Bộ test mới `verify_invoice_survey_rating_and_parts_sorting.test.cjs`: **PASS 100%**.
+  - Toàn bộ 23/23 test suites trong hệ thống (`crm-frontend/tests/*.cjs`): **PASS 23/23 (0 failed)**.
+  - `npm --prefix crm-frontend run build`: **0 lỗi TypeScript / Vite** (hoàn thành trong 1.11s).
+  - `dotnet build CrmBackend/CrmBackend.csproj`: **0 lỗi C#** (hoàn thành trong 1.93s).
+  - Bảo toàn nguyên vẹn 100% các điều kiện bất biến (System Invariants) trong `QUY_TAC_KIEM_TRA_VA_BAO_TOAN_FIX.md`.
