@@ -229,6 +229,7 @@ export default function ServiceBooking({
   }, [currentCustomer]);
 
   // ── 3. Chọn phương tiện (Step 3) ──
+  const [allSystemVehicles, setAllSystemVehicles] = useState<Vehicle[]>([]);
   const [myVehicles, setMyVehicles] = useState<Vehicle[]>([]);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>('');
   const [isAddingNewVehicle, setIsAddingNewVehicle] = useState(false);
@@ -319,6 +320,24 @@ export default function ServiceBooking({
   };
 
   const today = new Date().toISOString().split('T')[0];
+  // Giới hạn đặt lịch hẹn tối đa 1 tháng kể từ ngày hiện tại
+  const maxBookingDate = useMemo(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() + 1);
+    return d.toISOString().split('T')[0];
+  }, []);
+
+  // Tải danh sách toàn bộ xe trên hệ thống để kiểm tra trùng biển số xe
+  useEffect(() => {
+    const loadAllVehicles = () => {
+      vehicleApi.getAll().then(data => {
+        if (data && data.length > 0) setAllSystemVehicles(data);
+      }).catch(() => {});
+    };
+    loadAllVehicles();
+    window.addEventListener('crm-data-refresh', loadAllVehicles);
+    return () => window.removeEventListener('crm-data-refresh', loadAllVehicles);
+  }, []);
 
   // Tải danh sách lịch hẹn hiện có trong hệ thống để kiểm tra trùng lịch (LH04)
   useEffect(() => {
@@ -681,6 +700,14 @@ export default function ServiceBooking({
           vErrors.bienSo = 'Vui lòng nhập biển số xe';
         } else if (!isValidLicensePlate(newVehicleForm.bienSo)) {
           vErrors.bienSo = 'Biển số xe không hợp lệ (VD: 51K-123.45, 59F1-234.56)';
+        } else {
+          // Kiểm tra tính duy nhất của biển số xe trên toàn hệ thống
+          const normInputPlate = normalizePlate(newVehicleForm.bienSo);
+          const isPlateDuplicate = allSystemVehicles.some(v => normalizePlate(v.bienSo) === normInputPlate) ||
+            myVehicles.some(v => normalizePlate(v.bienSo) === normInputPlate);
+          if (isPlateDuplicate) {
+            vErrors.bienSo = '⚠️ Biển số xe này đã tồn tại trên hệ thống! Vui lòng kiểm tra lại biển số hoặc chọn từ danh sách xe của bạn.';
+          }
         }
 
         if (newVehicleForm.namSanXuat) {
@@ -717,9 +744,13 @@ export default function ServiceBooking({
       }
     }
 
-    // 4. Ngày hẹn (LH09: Chặn Chủ nhật)
+    // 4. Ngày hẹn (LH09: Chặn Chủ nhật & Giới hạn tối đa 1 tháng)
     if (!date) {
       errs['field-booking-date'] = 'Vui lòng chọn ngày hẹn tiếp nhận xe!';
+    } else if (date < today) {
+      errs['field-booking-date'] = 'Không thể đặt lịch hẹn cho ngày trong quá khứ!';
+    } else if (date > maxBookingDate) {
+      errs['field-booking-date'] = `Hệ thống chỉ cho phép đặt lịch hẹn tối đa 1 tháng kể từ ngày hiện tại (đến ngày ${maxBookingDate})! Các ngày vượt quá thời hạn này không được phép lựa chọn.`;
     } else if (isSundayDate(date)) {
       errs['field-booking-date'] = 'Showroom không hoạt động vào Chủ nhật. Vui lòng chọn ngày khác từ thứ Hai đến thứ Bảy.';
     } else {
@@ -2127,13 +2158,13 @@ export default function ServiceBooking({
             <div id="field-booking-date">
               <div className="flex items-center justify-between mb-1.5">
                 <label className="block text-xs font-semibold text-zinc-700">Ngày hẹn mong muốn *</label>
-                <span className="text-[11px] text-zinc-400 font-mono">Tối thiểu từ hôm nay</span>
+                <span className="text-[11px] text-zinc-400 font-mono">Hôm nay - tối đa 1 tháng</span>
               </div>
               <input
                 type="date"
                 required
                 min={today}
-                max={`${new Date().getFullYear() + 2}-12-31`}
+                max={maxBookingDate}
                 value={date}
                 onChange={e => {
                   const newDate = e.target.value;
@@ -2144,6 +2175,20 @@ export default function ServiceBooking({
                       setFormErrors(prev => ({
                         ...prev,
                         'field-booking-date': 'Năm không hợp lệ! Năm chỉ được phép có tối đa 4 chữ số.'
+                      }));
+                      return;
+                    }
+                    if (newDate < today) {
+                      setFormErrors(prev => ({
+                        ...prev,
+                        'field-booking-date': 'Không thể đặt lịch hẹn cho ngày trong quá khứ!'
+                      }));
+                      return;
+                    }
+                    if (newDate > maxBookingDate) {
+                      setFormErrors(prev => ({
+                        ...prev,
+                        'field-booking-date': `Hệ thống chỉ cho phép đặt lịch hẹn tối đa 1 tháng kể từ ngày hiện tại (đến ngày ${maxBookingDate})! Các ngày vượt quá thời hạn này không được phép lựa chọn.`
                       }));
                       return;
                     }

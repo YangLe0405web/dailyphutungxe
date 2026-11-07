@@ -991,9 +991,9 @@ function Customer360Modal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
-      <div className="bg-white rounded-2xl max-w-4xl w-full my-6 shadow-2xl border border-zinc-200 overflow-hidden flex flex-col max-h-[92vh]">
+      <div className="bg-white rounded-2xl max-w-5xl w-full my-auto shadow-2xl border border-zinc-200 overflow-hidden flex flex-col h-[90vh] max-h-[90vh]">
         {/* Header */}
-        <div className="px-6 py-5 bg-zinc-950 text-white flex items-center justify-between border-b border-zinc-800">
+        <div className="px-6 py-4 bg-zinc-950 text-white flex items-center justify-between border-b border-zinc-800 shrink-0">
           <div className="flex items-center gap-4">
             {customer.avatar ? (
               <img src={customer.avatar} alt={customer.hoTen} className="w-14 h-14 rounded-full object-cover border-2 border-red-600" />
@@ -1050,7 +1050,7 @@ function Customer360Modal({
         </div>
 
         {/* Tab Header */}
-        <div className="flex border-b border-zinc-200 bg-zinc-50 px-6 gap-2 overflow-x-auto">
+        <div className="flex border-b border-zinc-200 bg-zinc-100/90 px-6 gap-2 overflow-x-auto shrink-0 select-none">
           {[
             { key: 'clv', label: '👑 Phân tích CLV & Ưu đãi', count: undefined },
             { key: 'orders', label: '📦 Lịch sử Đơn hàng', count: orders.length },
@@ -1061,7 +1061,7 @@ function Customer360Modal({
             <button
               key={t.key}
               onClick={() => setActiveTab(t.key as any)}
-              className={`py-3 px-4 text-xs font-bold border-b-2 transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+              className={`py-3 px-4 text-xs font-bold border-b-2 transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 shrink-0 ${
                 activeTab === t.key
                   ? 'border-red-600 text-red-700 bg-white shadow-xs rounded-t-lg'
                   : 'border-transparent text-zinc-500 hover:text-zinc-800'
@@ -1078,7 +1078,7 @@ function Customer360Modal({
         </div>
 
         {/* Tab Body */}
-        <div className="p-6 overflow-y-auto flex-1 bg-zinc-50/50">
+        <div className="p-6 overflow-y-auto flex-1 min-h-0 bg-zinc-50/50">
           {/* TAB 1: CLV */}
           {activeTab === 'clv' && (
             <div className="space-y-6">
@@ -1163,7 +1163,7 @@ function Customer360Modal({
                 <div className="bg-white rounded-xl border border-zinc-200 overflow-hidden shadow-xs">
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs text-left">
-                      <thead className="bg-zinc-100 text-zinc-600 font-mono uppercase text-[11px]">
+                      <thead className="bg-zinc-100 text-zinc-600 font-mono uppercase text-[11px] sticky top-0 z-10 shadow-xs">
                         <tr>
                           <th className="p-3">Mã đơn</th>
                           <th className="p-3">Loại đơn</th>
@@ -1223,7 +1223,7 @@ function Customer360Modal({
                 <div className="bg-white rounded-xl border border-zinc-200 overflow-hidden shadow-xs">
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs text-left">
-                      <thead className="bg-zinc-100 text-zinc-600 font-mono uppercase text-[11px]">
+                      <thead className="bg-zinc-100 text-zinc-600 font-mono uppercase text-[11px] sticky top-0 z-10 shadow-xs">
                         <tr>
                           <th className="p-3">Mã hẹn</th>
                           <th className="p-3">Dịch vụ</th>
@@ -1489,7 +1489,10 @@ function Customer360Modal({
         </div>
 
         {/* Modal Footer */}
-        <div className="p-4 bg-white border-t border-zinc-200 flex justify-end">
+        <div className="p-4 bg-white border-t border-zinc-200 flex items-center justify-between shrink-0">
+          <div className="text-xs text-zinc-500 font-mono">
+            Hồ sơ khách hàng 360° • Mã: <strong className="text-zinc-800">{customer.id}</strong> ({customer.hoTen})
+          </div>
           <button
             onClick={onClose}
             className="px-6 py-2 rounded-xl text-xs font-bold bg-zinc-900 hover:bg-black text-white transition cursor-pointer"
