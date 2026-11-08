@@ -5243,3 +5243,31 @@ pm run build thành công 100% trong 1.41s, **0 lỗi TypeScript**.
   - `npm --prefix crm-frontend run build`: **0 lỗi TypeScript / Vite** (hoàn tất trong 1.09s).
   - Bảo toàn nguyên vẹn 100% các điều kiện bất biến (System Invariants) trong `QUY_TAC_KIEM_TRA_VA_BAO_TOAN_FIX.md`.
 
+---
+
+## [Bản Fix 103] - Tinh Chỉnh Bố Cục Cụm Nút Thao Tác Thẻ Phụ Tùng (PartsStore.tsx) Cân Đối & Đẹp Mắt Theo Chuẩn E-Commerce
+
+- **Ngày thực hiện:** 08/11/2026
+- **Mục tiêu:**
+  1. **Khắc phục lỗi bố cục bất đối xứng và khuyết rỗng (Asymmetric Button Layout Bug):**
+     - Thay thế khối `grid grid-cols-2` chứa 3 nút lẻ (nút `+ Thêm giỏ` chỉ nằm ở nửa trái và nút `💬` chiếm cả nửa cột nhưng chỉ có icon nhỏ lẻ loi).
+  2. **Bố cục lại cụm nút 2 hàng cân đối tuyệt đối theo Phương án 1:**
+     - **Hàng 1 (2 nút phụ chia đều 50% - 50%):**
+       * Nút trái: `[ 🔍 Chi tiết ]` viền xám sáng `border-zinc-200`, nền trắng thanh lịch, căn giữa cân đối.
+       * Nút phải: `[ 💬 Tư vấn ]` bổ sung đầy đủ nhãn chữ "Tư vấn" kèm icon, nền vàng nhạt `bg-amber-50 border-amber-300 text-amber-800` vừa vặn, đồng bộ phong cách với trang Showroom xe máy.
+     - **Hàng 2 (Nút chính trải dài 100% Full-width `w-full`):**
+       * Khi còn hàng: `[ 🛒 + Thêm vào giỏ ]` đỏ tươi Motoshop, bo góc sang trọng, phủ trọn chiều ngang của thẻ, có hiệu ứng chuyển trạng thái tức thì sang `[ ✓ Đã thêm vào giỏ ]` màu xanh ngọc.
+       * Khi hết hàng: `[ 🚫 Hết hàng trong kho ]` màu xám mờ vô hiệu hóa, trải dài 100% rõ ràng.
+       * Loại bỏ hoàn toàn khoảng trống rỗng ở góc dưới bên phải, mang lại trải nghiệm thị giác cân xứng, chuyên nghiệp.
+  3. **Bảo toàn 100% Logic Nghiệp Vụ & Dữ Liệu:**
+     - Giữ nguyên toàn bộ logic thêm vào giỏ hàng (`handleAdd`), ghim ngữ cảnh chat tư vấn phụ tùng (`chatApi.syncPinnedContext`), mở modal chi tiết sản phẩm (`setSelectedPart`) và kiểm tra số lượng tồn kho.
+- **Các tệp đã chỉnh sửa:**
+  - [`crm-frontend/src/pages/customer/PartsStore.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/PartsStore.tsx): Bố cục lại cụm nút thẻ phụ tùng.
+  - [`crm-frontend/tests/verify_parts_card_buttons_layout.test.cjs`](file:///d:/crm-project/crm-frontend/tests/verify_parts_card_buttons_layout.test.cjs): Bộ test TDD kiểm thử cấu trúc 2 hàng, tỷ lệ 50-50 và full-width nút chính.
+- **Kết quả kiểm thử & Nghiệm thu:**
+  - Bộ test mới `verify_parts_card_buttons_layout.test.cjs`: **PASS 100% (4/4)**.
+  - Toàn bộ 30/30 test suites trong hệ thống (`crm-frontend/tests/*.cjs`): **PASS 30/30 (0 failed)**.
+  - `npm --prefix crm-frontend run build`: **0 lỗi TypeScript / Vite** (hoàn tất trong 1.30s).
+  - Bảo toàn nguyên vẹn 100% các điều kiện bất biến (System Invariants) trong `QUY_TAC_KIEM_TRA_VA_BAO_TOAN_FIX.md`.
+
+
