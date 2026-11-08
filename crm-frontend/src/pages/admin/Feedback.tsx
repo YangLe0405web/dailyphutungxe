@@ -834,25 +834,28 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
       {/* Header - Chuẩn Image 2 */}
       <div className="mb-6 flex items-center justify-between flex-wrap gap-4">
         <div>
-          <div className="text-2xl font-extrabold tracking-tight text-white uppercase flex items-center gap-2.5">
+          <h1
+            className="text-2xl font-extrabold tracking-tight text-zinc-950 uppercase flex items-center gap-2.5"
+            style={{ fontFamily: 'var(--font-display)', letterSpacing: '0.02em' }}
+          >
             <span>PHẢN HỒI & ĐÁNH GIÁ KHÁCH HÀNG</span>
-          </div>
-          <p className="text-xs text-zinc-400 mt-1">
+          </h1>
+          <p className="text-xs text-zinc-500 mt-1 font-mono">
             Lắng nghe ý kiến khách hàng và quản lý đánh giá sản phẩm, dịch vụ
           </p>
         </div>
 
         {/* Right side: Current Staff Badge & Manage Surveys Button */}
         <div className="flex items-center gap-3 flex-wrap">
-          <div className="flex items-center gap-2 px-3.5 py-2 rounded-full bg-[#1c1d22] text-white text-xs border border-zinc-800 shadow-sm">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span className="text-zinc-400 text-xs">Nhân viên đang xử lý:</span>
-            <span className="font-bold text-red-400">{getStaffHandlingName()}</span>
+          <div className="flex items-center gap-2 px-3.5 py-2 rounded-full bg-white text-zinc-800 text-xs border border-zinc-200/90 shadow-2xs">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span className="text-zinc-500 text-xs">Nhân viên đang xử lý:</span>
+            <span className="font-bold text-red-600">{getStaffHandlingName()}</span>
           </div>
 
           <button
             onClick={() => setActiveMainTab(activeMainTab === 'survey' ? 'feedback' : 'survey')}
-            className="px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-lg shadow-red-950/40 cursor-pointer"
+            className="px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-lg shadow-red-950/20 cursor-pointer"
           >
             {activeMainTab === 'survey' ? (
               <>
@@ -868,13 +871,13 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
       </div>
 
       {toast && (
-        <div className="mb-5 p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 text-xs font-bold flex items-center justify-between shadow-sm">
+        <div className="mb-5 p-3.5 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs font-bold flex items-center justify-between shadow-2xs">
           <span>{toast}</span>
-          <button onClick={() => setToast(null)} className="text-emerald-400 hover:text-white font-bold cursor-pointer">✕</button>
+          <button onClick={() => setToast(null)} className="text-emerald-700 hover:text-emerald-950 font-bold cursor-pointer">✕</button>
         </div>
       )}
 
-      {/* ── TAB 1: FEEDBACK & REVIEWS (CHUẨN 100% THEO ẢNH 2) ── */}
+      {/* ── TAB 1: FEEDBACK & REVIEWS (CHUẨN 100% THEO ẢNH 2 & LIGHT SLATE THEME) ── */}
       {activeMainTab === 'feedback' && (
         <div className="space-y-4">
           {/* Top Filter Bar: 2 Big Tabs (Xe vs Phụ Tùng) + 3 Dropdowns */}
@@ -886,8 +889,8 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
                 onClick={() => setProductSectionTab('All')}
                 className={`px-3.5 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition cursor-pointer border ${
                   productSectionTab === 'All'
-                    ? 'bg-[#18181b] text-red-400 border-red-600 shadow-md ring-1 ring-red-500/30'
-                    : 'bg-[#141416] text-zinc-400 hover:text-zinc-200 border-zinc-800'
+                    ? 'bg-zinc-900 text-white border-zinc-900 shadow-sm'
+                    : 'bg-white text-zinc-700 hover:text-zinc-900 hover:bg-zinc-50 border-zinc-200 shadow-2xs'
                 }`}
               >
                 <span>📋</span>
@@ -899,8 +902,8 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
                 onClick={() => setProductSectionTab('Xe')}
                 className={`px-3.5 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition cursor-pointer border ${
                   productSectionTab === 'Xe'
-                    ? 'bg-[#18181b] text-red-400 border-red-600 shadow-md ring-1 ring-red-500/30'
-                    : 'bg-[#141416] text-zinc-400 hover:text-zinc-200 border-zinc-800'
+                    ? 'bg-zinc-900 text-white border-zinc-900 shadow-sm'
+                    : 'bg-white text-zinc-700 hover:text-zinc-900 hover:bg-zinc-50 border-zinc-200 shadow-2xs'
                 }`}
               >
                 <span>🏍️</span>
@@ -912,8 +915,8 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
                 onClick={() => setProductSectionTab('PhuTung')}
                 className={`px-3.5 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition cursor-pointer border ${
                   productSectionTab === 'PhuTung'
-                    ? 'bg-[#18181b] text-red-400 border-red-600 shadow-md ring-1 ring-red-500/30'
-                    : 'bg-[#141416] text-zinc-400 hover:text-zinc-200 border-zinc-800'
+                    ? 'bg-zinc-900 text-white border-zinc-900 shadow-sm'
+                    : 'bg-white text-zinc-700 hover:text-zinc-900 hover:bg-zinc-50 border-zinc-200 shadow-2xs'
                 }`}
               >
                 <span>⚙️</span>
@@ -927,7 +930,7 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
               <select
                 value={typeFilter}
                 onChange={e => setTypeFilter(e.target.value as any)}
-                className="bg-[#141416] border border-zinc-800 text-zinc-300 text-xs font-semibold px-3 py-2 rounded-xl focus:outline-none focus:border-red-600 cursor-pointer"
+                className="bg-white border border-zinc-200 text-zinc-800 text-xs font-semibold px-3 py-2 rounded-xl focus:outline-hidden focus:border-red-600 shadow-2xs cursor-pointer"
               >
                 <option value="All">Phân loại: Tất cả</option>
                 <option value="DanhGiaMoi">✨ Đánh giá mới ({feedbacks.filter(f => f.trangThai === 'ChoXuLy').length})</option>
@@ -938,7 +941,7 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
               <select
                 value={ratingFilter}
                 onChange={e => setRatingFilter(e.target.value === 'All' ? 'All' : Number(e.target.value))}
-                className="bg-[#141416] border border-zinc-800 text-zinc-300 text-xs font-semibold px-3 py-2 rounded-xl focus:outline-none focus:border-red-600 cursor-pointer"
+                className="bg-white border border-zinc-200 text-zinc-800 text-xs font-semibold px-3 py-2 rounded-xl focus:outline-hidden focus:border-red-600 shadow-2xs cursor-pointer"
               >
                 <option value="All">Đánh giá: Tất cả sao</option>
                 <option value="5">⭐⭐⭐⭐⭐ (5 sao)</option>
@@ -952,7 +955,7 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
               <select
                 value={categoryFilter}
                 onChange={e => setCategoryFilter(e.target.value as any)}
-                className="bg-[#141416] border border-zinc-800 text-zinc-300 text-xs font-semibold px-3 py-2 rounded-xl focus:outline-none focus:border-red-600 cursor-pointer"
+                className="bg-white border border-zinc-200 text-zinc-800 text-xs font-semibold px-3 py-2 rounded-xl focus:outline-hidden focus:border-red-600 shadow-2xs cursor-pointer"
               >
                 <option value="All">Danh mục: Tất cả</option>
                 <option value="SanPham">Sản phẩm</option>
@@ -971,13 +974,13 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
                 placeholder="🔍 Tìm theo tên khách hàng, nội dung, tên sản phẩm, mã SP (SKU)..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                className="w-full bg-[#141416] text-zinc-200 placeholder-zinc-500 pl-3.5 pr-8 py-2.5 rounded-xl border border-zinc-800 text-xs focus:outline-none focus:border-red-600 shadow-sm"
+                className="w-full bg-white text-zinc-900 placeholder-zinc-400 pl-3.5 pr-8 py-2.5 rounded-xl border border-zinc-200 text-xs focus:outline-hidden focus:border-red-600 shadow-2xs"
               />
               {searchQuery && (
                 <button
                   type="button"
                   onClick={() => setSearchQuery('')}
-                  className="absolute right-3 top-2.5 text-zinc-400 hover:text-white text-xs font-bold"
+                  className="absolute right-3 top-2.5 text-zinc-400 hover:text-zinc-700 text-xs font-bold cursor-pointer"
                 >
                   ✕
                 </button>
@@ -986,14 +989,14 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
 
             {/* Status Filter Pills */}
             <div className="flex items-center gap-2 shrink-0">
-              <span className="text-xs text-zinc-400 font-semibold hidden sm:inline">Trạng thái:</span>
+              <span className="text-xs text-zinc-500 font-semibold hidden sm:inline">Trạng thái:</span>
               <button
                 type="button"
                 onClick={() => setStatusFilter('All')}
                 className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer border ${
                   statusFilter === 'All'
-                    ? 'bg-zinc-200 text-zinc-950 border-zinc-100 shadow'
-                    : 'bg-[#141416] text-zinc-400 hover:text-white border-zinc-800'
+                    ? 'bg-zinc-900 text-white border-zinc-900 shadow-xs'
+                    : 'bg-white text-zinc-700 hover:bg-zinc-50 border-zinc-200 shadow-2xs'
                 }`}
               >
                 Tất cả
@@ -1003,8 +1006,8 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
                 onClick={() => setStatusFilter('ChoXuLy')}
                 className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer border ${
                   statusFilter === 'ChoXuLy'
-                    ? 'bg-amber-600 text-white border-amber-500 shadow'
-                    : 'bg-[#18181b] text-amber-400 hover:text-amber-300 border-amber-900/40'
+                    ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                    : 'bg-amber-50 hover:bg-amber-100/80 text-amber-800 border-amber-200 shadow-2xs'
                 }`}
               >
                 Chờ xử lý ({feedbacks.filter(f => f.trangThai === 'ChoXuLy').length})
@@ -1014,8 +1017,8 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
                 onClick={() => setStatusFilter('DaXuLy')}
                 className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer border ${
                   statusFilter === 'DaXuLy'
-                    ? 'bg-emerald-600 text-white border-emerald-500 shadow'
-                    : 'bg-[#18181b] text-emerald-400 hover:text-emerald-300 border-emerald-900/40'
+                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                    : 'bg-emerald-50 hover:bg-emerald-100/80 text-emerald-800 border-emerald-200 shadow-2xs'
                 }`}
               >
                 Đã xử lý
@@ -1026,7 +1029,7 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
           {/* Feedbacks Cards List */}
           <div className="flex flex-col gap-4">
             {filteredFeedbacks.length === 0 ? (
-              <div className="p-12 text-center text-zinc-500 bg-[#141416] rounded-2xl border border-zinc-800 text-sm">
+              <div className="p-12 text-center text-zinc-500 bg-white rounded-2xl border border-zinc-200 shadow-xs text-sm">
                 Không tìm thấy phản hồi nào phù hợp với bộ lọc hiện tại.
               </div>
             ) : (
@@ -1068,12 +1071,12 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
                     id={`target-feedback-${f.id}`}
                     data-feedback-id={f.id}
                     data-customer-id={f.customerId}
-                    className={`rounded-2xl p-5 transition-all duration-300 border ${
+                    className={`rounded-2xl p-5 transition-all duration-300 border bg-white shadow-xs ${
                       isHighlighted
-                        ? 'ring-4 ring-red-500 bg-red-950/40 border-red-500 shadow-xl shadow-red-500/20'
+                        ? 'ring-4 ring-red-500 bg-red-50/40 border-red-500 shadow-xl shadow-red-500/10'
                         : isNewReview
-                        ? 'bg-[#141416] border-amber-500/40 shadow-sm'
-                        : 'bg-[#141416] border-zinc-800'
+                        ? 'border-zinc-200 border-l-4 border-l-amber-500 hover:border-zinc-300 hover:shadow-sm'
+                        : 'border-zinc-200 hover:border-zinc-300 hover:shadow-sm'
                     }`}
                   >
                     {isHighlighted && (
@@ -1085,24 +1088,24 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
                     {/* Top Row: Customer Info + Badges + Stars + Chat button */}
                     <div className="flex items-start justify-between gap-4 flex-wrap">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm bg-zinc-800 text-amber-300 border border-zinc-700 uppercase">
+                        <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm bg-zinc-100 text-zinc-800 border border-zinc-200 uppercase shadow-2xs">
                           {f.hoTen ? f.hoTen[0] : 'K'}
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
-                            <span className="font-bold text-sm text-zinc-100">{f.hoTen}</span>
+                            <span className="font-bold text-sm text-zinc-900">{f.hoTen}</span>
                             {f.customerId && <span className="text-xs text-zinc-500 font-mono">({f.customerId})</span>}
                           </div>
                           <div className="text-[11px] text-zinc-400 font-mono mt-0.5">{f.ngayGui}</div>
                         </div>
                         <div className="flex items-center gap-2 ml-2">
-                          <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-mono">
+                          <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 font-mono">
                             {isNewReview ? '✨ Đánh giá mới' : '⭐ Đánh giá'}
                           </span>
-                          <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full font-mono border ${
+                          <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full font-mono border ${
                             f.trangThai === 'ChoXuLy'
-                              ? 'bg-red-500/20 text-red-400 border-red-500/30'
-                              : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                              ? 'bg-red-50 text-red-600 border-red-200'
+                              : 'bg-emerald-50 text-emerald-700 border-emerald-200'
                           }`}>
                             {f.trangThai === 'ChoXuLy' ? 'Chờ xử lý' : 'Đã xử lý'}
                           </span>
@@ -1126,7 +1129,7 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
                             chatApi.syncPinnedContext(f.customerId, pinned);
                             chatApi.getMessages(formatCustomerId(f.customerId)).then(setChatMessages);
                           }}
-                          className="px-3.5 py-1.5 rounded-xl border border-blue-500/50 bg-blue-950/30 hover:bg-blue-900/40 text-blue-400 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                          className="px-3.5 py-1.5 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
                         >
                           <span>💬</span> Chat với Khách hàng
                         </button>
@@ -1134,44 +1137,44 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
                     </div>
 
                     {/* Product Box: Thumbnail + Tag + SKU + Title + "Đã mua trên website" */}
-                    <div className="mt-3.5 p-3.5 rounded-xl bg-[#1c1d22] border border-zinc-800 flex items-center justify-between gap-3 flex-wrap sm:flex-nowrap">
+                    <div className="mt-3.5 p-3.5 rounded-xl bg-zinc-50 border border-zinc-200/90 flex items-center justify-between gap-3 flex-wrap sm:flex-nowrap">
                       <div className="flex items-center gap-3.5 min-w-0">
                         <img
                           src={thumbnail}
                           alt={cleanProductTitle}
-                          className="w-14 h-14 rounded-xl object-contain bg-[#141416] border border-zinc-700/80 p-1 shrink-0 shadow-sm"
+                          className="w-14 h-14 rounded-xl object-contain bg-white border border-zinc-200 p-1 shrink-0 shadow-2xs"
                         />
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
                             <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${
-                              isVehicle ? 'bg-red-500/20 text-red-400 border-red-500/30' : 'bg-blue-500/20 text-blue-400 border-blue-500/30'
+                              isVehicle ? 'bg-red-50 text-red-700 border-red-200' : 'bg-blue-50 text-blue-700 border-blue-200'
                             }`}>
                               {isVehicle ? '🏍️ XE MÁY' : '📦 PHỤ TÙNG'}
                             </span>
-                            <span className="text-[10px] text-zinc-400 font-mono font-semibold">
+                            <span className="text-[10px] text-zinc-500 font-mono font-semibold">
                               Mã SKU: {sku}
                             </span>
                           </div>
-                          <div className="font-extrabold text-sm text-zinc-100 mt-1 truncate">
+                          <div className="font-bold text-sm text-zinc-900 mt-1 truncate">
                             {cleanProductTitle}
                           </div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-semibold shrink-0">
+                      <div className="flex items-center gap-1.5 text-xs text-emerald-700 font-semibold shrink-0">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                         <span>Đã mua trên website</span>
                       </div>
                     </div>
 
                     {/* Customer Review Content Box */}
-                    <div className="mt-3 text-xs sm:text-sm text-zinc-200 bg-[#1c1d22] p-3.5 rounded-xl border border-zinc-800 leading-relaxed font-sans">
+                    <div className="mt-3 text-xs sm:text-sm text-zinc-800 bg-zinc-50/80 p-3.5 rounded-xl border border-zinc-200 leading-relaxed font-sans">
                       {f.noiDung}
                     </div>
 
                     {/* Customer Media Attachments (if any) */}
                     {f.hinhAnhDinhKem && f.hinhAnhDinhKem.length > 0 && (
-                      <div className="mt-3 p-3 rounded-xl bg-[#1c1d22] border border-zinc-800 space-y-2">
-                        <div className="text-[11px] font-bold text-zinc-400 flex items-center gap-1.5 font-mono">
+                      <div className="mt-3 p-3 rounded-xl bg-zinc-50 border border-zinc-200 space-y-2">
+                        <div className="text-[11px] font-bold text-zinc-500 flex items-center gap-1.5 font-mono">
                           <span>📷</span> MEDIA ĐÍNH KÈM CỦA KHÁCH HÀNG ({f.hinhAnhDinhKem.length}):
                         </div>
                         <div className="flex flex-wrap gap-2.5">
@@ -1183,7 +1186,7 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
                                   key={mIdx}
                                   src={mediaUrl}
                                   controls
-                                  className="w-32 h-24 rounded-xl object-cover border border-zinc-700 bg-black shadow-xs"
+                                  className="w-32 h-24 rounded-xl object-cover border border-zinc-300 bg-black shadow-xs"
                                 />
                               );
                             }
@@ -1193,7 +1196,7 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
                                 src={mediaUrl}
                                 alt={`Ảnh đính kèm ${mIdx + 1}`}
                                 onClick={() => setPreviewMedia(mediaUrl)}
-                                className="w-20 h-20 rounded-xl object-cover border border-zinc-700 hover:opacity-90 hover:scale-105 transition cursor-pointer shadow-xs bg-black"
+                                className="w-20 h-20 rounded-xl object-cover border border-zinc-300 hover:opacity-90 hover:scale-105 transition cursor-pointer shadow-xs bg-white"
                                 title="Bấm để xem ảnh phóng to"
                               />
                             );
@@ -1203,14 +1206,14 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
                     )}
 
                     {/* Customer Contact Details Bar */}
-                    <div className="mt-3 p-3 rounded-xl bg-[#18181b] border border-zinc-800/80 flex flex-wrap items-center justify-between gap-3 text-xs">
-                      <div className="flex flex-wrap items-center gap-4 text-zinc-300">
+                    <div className="mt-3 p-3 rounded-xl bg-zinc-50 border border-zinc-200 flex flex-wrap items-center justify-between gap-3 text-xs">
+                      <div className="flex flex-wrap items-center gap-4 text-zinc-700">
                         {/* Phone */}
                         <div className="flex items-center gap-1.5">
                           <span className="text-zinc-500">📞 SĐT:</span>
                           <a
                             href={`tel:${f.soDienThoai || '0901234567'}`}
-                            className="font-bold text-red-400 hover:underline font-mono"
+                            className="font-bold text-red-600 hover:underline font-mono"
                           >
                             {f.soDienThoai || '0901234567'}
                           </a>
@@ -1221,7 +1224,7 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
                           <span className="text-zinc-500">✉️ Email:</span>
                           <a
                             href={`mailto:${f.email || 'khachhang@motoshop.vn'}`}
-                            className="font-semibold text-blue-400 hover:underline"
+                            className="font-semibold text-blue-600 hover:underline"
                           >
                             {f.email || 'khachhang@motoshop.vn'}
                           </a>
@@ -1229,7 +1232,7 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
 
                         {/* Address */}
                         {f.diaChi && (
-                          <div className="flex items-center gap-1.5 text-zinc-400">
+                          <div className="flex items-center gap-1.5 text-zinc-600">
                             <span className="text-zinc-500">📍 Địa chỉ:</span>
                             <span>{f.diaChi}</span>
                           </div>
@@ -1245,7 +1248,7 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
                             setCallNotes(f.ghiChuXuLy || '');
                             setCallStatus('DaNgheMay');
                           }}
-                          className="px-3 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold rounded-lg transition border border-zinc-700 flex items-center gap-1 cursor-pointer"
+                          className="px-3 py-1.5 bg-white hover:bg-zinc-100 text-zinc-700 font-bold rounded-lg transition border border-zinc-200 shadow-2xs flex items-center gap-1 cursor-pointer"
                           title="Mở popup gọi điện"
                         >
                           <span>📞</span> Gọi khách
@@ -1258,7 +1261,7 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
                             setEmailSubject(`[Motoshop Showroom] Phản hồi đánh giá của Quý khách ${f.hoTen}`);
                             setEmailBody(`Kính gửi Quý khách ${f.hoTen},\n\nShowroom Motoshop xin chân thành cảm ơn Quý khách đã tin tưởng mua sắm và gửi đánh giá cho sản phẩm "${cleanProductTitle}".\n\nNếu Quý khách cần hỗ trợ thêm thông tin hoặc dịch vụ bảo dưỡng, xin vui lòng liên hệ hotline: 1900 6868.\n\nTrân trọng,\nĐội ngũ CSKH Showroom Motoshop.`);
                           }}
-                          className="px-3 py-1 bg-zinc-800 hover:bg-zinc-700 text-blue-400 font-bold rounded-lg transition border border-zinc-700 flex items-center gap-1 cursor-pointer"
+                          className="px-3 py-1.5 bg-white hover:bg-zinc-100 text-blue-600 font-bold rounded-lg transition border border-zinc-200 shadow-2xs flex items-center gap-1 cursor-pointer"
                           title="Soạn và gửi email phản hồi"
                         >
                           <span>✉️</span> Gửi mail
@@ -1279,7 +1282,7 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
                             chatApi.syncPinnedContext(f.customerId, pinned);
                             chatApi.getMessages(formatCustomerId(f.customerId)).then(setChatMessages);
                           }}
-                          className="px-3 py-1 bg-zinc-800 hover:bg-zinc-700 text-emerald-400 font-bold rounded-lg transition border border-zinc-700 flex items-center gap-1 cursor-pointer"
+                          className="px-3 py-1.5 bg-white hover:bg-zinc-100 text-emerald-600 font-bold rounded-lg transition border border-zinc-200 shadow-2xs flex items-center gap-1 cursor-pointer"
                           title="Nhắn tin trực tiếp"
                         >
                           <span>💬</span> Nhắn tin
@@ -1289,16 +1292,16 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
 
                     {/* Shop Reply Content (If present) */}
                     {(f.phanHoiCuaShop || f.ghiChuXuLy) && (
-                      <div className="mt-3 p-3.5 rounded-xl bg-red-950/20 border border-red-500/30 text-xs">
-                        <div className="flex items-center justify-between text-red-400 font-bold uppercase mb-1">
+                      <div className="mt-3 p-3.5 rounded-xl bg-red-50/70 border border-red-200 text-xs">
+                        <div className="flex items-center justify-between text-red-700 font-bold uppercase mb-1">
                           <span className="flex items-center gap-1.5 font-mono tracking-wider">
                             <span>🏢</span> Phản hồi từ Showroom Motoshop:
                           </span>
-                          <span className="text-[11px] text-zinc-400 font-mono font-normal">
+                          <span className="text-[11px] text-zinc-500 font-mono font-normal">
                             {f.ngayPhanHoi || f.ngayXuLy || f.ngayGui} {f.nhanVienXuLy ? `• Bởi ${f.nhanVienXuLy}` : ''}
                           </span>
                         </div>
-                        <p className="text-zinc-200 leading-relaxed font-sans">{f.phanHoiCuaShop || f.ghiChuXuLy}</p>
+                        <p className="text-zinc-800 leading-relaxed font-sans">{f.phanHoiCuaShop || f.ghiChuXuLy}</p>
                       </div>
                     )}
 
@@ -1314,12 +1317,12 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
                             handleSendShopReply(f.id);
                           }
                         }}
-                        className="flex-1 bg-[#18181b] border border-zinc-700 text-zinc-100 rounded-xl px-3.5 py-2 text-xs focus:outline-none focus:border-red-500 placeholder-zinc-500"
+                        className="flex-1 bg-white border border-zinc-300 text-zinc-900 rounded-xl px-3.5 py-2 text-xs focus:outline-hidden focus:border-red-600 placeholder-zinc-400 shadow-2xs"
                       />
                       <button
                         type="button"
                         onClick={() => handleSendShopReply(f.id)}
-                        className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs transition cursor-pointer shadow flex items-center gap-1 shrink-0"
+                        className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs transition cursor-pointer shadow-xs flex items-center gap-1 shrink-0"
                       >
                         <span>Gửi phản hồi</span>
                       </button>
@@ -1327,7 +1330,7 @@ export default function FeedbackPage({ currentStaff }: FeedbackPageProps = {}) {
                         <button
                           type="button"
                           onClick={() => handleResolveDirectly(f.id)}
-                          className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition cursor-pointer shadow flex items-center gap-1 shrink-0"
+                          className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition cursor-pointer shadow-xs flex items-center gap-1 shrink-0"
                         >
                           <span>✓ Xác nhận đã xử lý</span>
                         </button>
