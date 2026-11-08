@@ -2452,7 +2452,10 @@ export const orderApi = {
           ghiChuKTV: assignedGhiChuKtv
         } : {}),
         ...(finalPayment === 'DaThanhToan' ? { soTienConLai: 0 } : {})
-      } as any) : undefined;
+      } as any) : (o.loaiDon === 'DichVu' ? ({
+        ...(existingInCache?.thongTinXe || {}),
+        ...(o.thongTinXe || {}),
+      } as any) : undefined);
 
       combinedMap.set(o.id, {
         ...existingInCache,
@@ -4218,6 +4221,8 @@ export const appointmentApi = {
               daThanhToan100: cachedMatch?.daThanhToan100 ?? mockMatch?.daThanhToan100,
               soKhungVIN: cachedMatch?.soKhungVIN || mockMatch?.soKhungVIN,
               soMay: cachedMatch?.soMay || mockMatch?.soMay,
+              chiPhiThucTe: cachedMatch?.chiPhiThucTe ?? (item as any).chiPhiThucTe,
+              maHoaDon: cachedMatch?.maHoaDon ?? (item as any).maHoaDon,
             };
           });
         }
@@ -4425,11 +4430,19 @@ export const appointmentApi = {
           }
         }
 
-        if (appt.loaiDichVu === 'BaoDuong' || appt.loaiDichVu === 'SuaChua' || appt.loaiDichVu === 'BaoHanh') {
+        if (appt.loaiDichVu === 'BaoDuong' || appt.loaiDichVu === 'BaoHanh') {
           try {
             surveyApi.createMaintenanceSurvey(appt);
           } catch (mErr) {
             console.warn('Lỗi tự động tạo bài khảo sát bảo dưỡng:', mErr);
+          }
+        }
+
+        if (appt.loaiDichVu === 'SuaChua') {
+          try {
+            surveyApi.createRepairSurvey(appt);
+          } catch (scErr) {
+            console.warn('Lỗi tự động tạo bài khảo sát sửa chữa:', scErr);
           }
         }
 
@@ -7330,13 +7343,29 @@ export const surveyApi = {
   },
 
   createMaintenanceSurvey(appt: any, customer?: any): Survey {
-    const custId = appt.customerId || customer?.id || 'KH001';
-    const rawBikeName = appt.tenXe || 'xe máy';
+    let custId = appt.customerId || customer?.id;
+    if (!custId && appt.soDienThoai) {
+      const match = mockCustomers.find(c => c.soDienThoai && c.soDienThoai.replace(/\D/g, '') === appt.soDienThoai.replace(/\D/g, ''));
+      if (match) custId = match.id;
+    }
+    if (!custId) {
+      try {
+        const saved = localStorage.getItem('crm_current_customer');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed?.id) custId = parsed.id;
+        }
+      } catch {}
+    }
+    if (!custId) custId = 'KH001';
+
+    const rawBikeName = appt.tenXe || appt.thongTinXe?.tenXe || 'xe máy';
     const bikeName = cleanBikeName(rawBikeName);
-    const surveyId = 'KS-BD-DINH-KY';
+    const modelSlug = toSurveyModelSlug(bikeName);
+    const surveyId = `KS-BD-${modelSlug || 'DINH-KY'}`;
 
     const allSurveys = surveyApi.getAll();
-    let existing = allSurveys.find(s => s.id === surveyId || s.id === 'KS001');
+    let existing = allSurveys.find(s => s.id === surveyId || (s.id.startsWith('KS-BD-') && s.title.toLowerCase().includes(bikeName.toLowerCase())));
 
     if (existing) {
       const curIds = existing.targetCustomerIds || (existing.targetCustomerId && existing.targetCustomerId !== 'ALL' ? [existing.targetCustomerId] : []);
@@ -7347,6 +7376,7 @@ export const surveyApi = {
         existing = surveyApi.update(existing.id, {
           targetCustomerIds: nextIds,
           targetCount: nextTargetCount,
+          status: 'DangDienRa',
         }) || existing;
       }
 
@@ -7364,19 +7394,25 @@ export const surveyApi = {
       return existing;
     }
 
+    const now = Date.now();
+    const ktvName = appt.nhanVienPhuTrach || appt.thongTinXe?.ktvPhuTrach || 'KTV Phụ trách';
     const newSurvey = surveyApi.create({
       id: surveyId,
-      title: 'Khảo sát chất lượng Dịch vụ Bảo dưỡng & Sửa chữa định kỳ',
-      description: 'Dịch vụ bảo dưỡng xe của bạn tại Motoshop đã hoàn tất. Chúng tôi trân trọng mời bạn dành 1 phút thực hiện khảo sát tự động để nâng cao chất lượng phục vụ và nhận mã ưu đãi giảm giá!',
+      title: `Khảo sát chất lượng dịch vụ bảo dưỡng xe: ${bikeName}`,
+      description: `Dịch vụ bảo dưỡng định kỳ cho xe ${bikeName} của bạn tại Motoshop đã hoàn tất. Chúng tôi trân trọng mời bạn dành 1 phút thực hiện khảo sát tự động để nâng cao chất lượng phục vụ và nhận mã ưu đãi giảm giá!`,
       targetCustomerId: custId,
       targetCustomerTier: 'ALL',
       targetCustomerIds: [custId],
       targetCount: 1,
       responseCount: 0,
+      publishDate: new Date(now - 60000).toISOString().slice(0, 16),
+      startDate: new Date(now - 60000).toISOString().slice(0, 16),
+      endDate: new Date(now + 30 * 86400000).toISOString().slice(0, 16),
+      status: 'DangDienRa',
       questions: [
         {
           id: 'q1',
-          text: 'Bạn đánh giá thế nào về thái độ tiếp đón và tác phong của nhân viên kỹ thuật?',
+          text: `Bạn đánh giá thế nào về thái độ tiếp đón và tác phong của kỹ thuật viên phụ trách (${ktvName})?`,
           opts: ['Rất hài lòng, nhiệt tình chu đáo', 'Hài lòng, đúng quy trình', 'Bình thường', 'Chưa hài lòng'],
         },
         {
@@ -7386,12 +7422,12 @@ export const surveyApi = {
         },
         {
           id: 'q3',
-          text: 'Chất lượng vận hành và độ êm ái của xe sau khi hoàn tất bảo dưỡng?',
+          text: `Chất lượng vận hành và độ êm ái của xe ${bikeName} sau khi hoàn tất bảo dưỡng?`,
           opts: ['Xe chạy rất êm, máy bốc', 'Tốt, các hạng mục đều hoàn thiện', 'Bình thường', 'Cần kiểm tra lại'],
         },
         {
           id: 'q4',
-          text: 'Mức độ minh bạch về chi phí dịch vụ và phụ tùng thay thế định kỳ?',
+          text: 'Mức độ minh bạch về chi phí gói dịch vụ và phụ tùng thay thế định kỳ?',
           opts: ['Rất minh bạch, bảng giá rõ ràng', 'Hợp lý, đúng báo giá', 'Hơi cao so với mặt bằng', 'Chưa rõ ràng'],
         },
       ],
@@ -7403,6 +7439,111 @@ export const surveyApi = {
       icon: '📋',
       title: `📋 Khảo sát chất lượng bảo dưỡng xe ${bikeName}`,
       message: `Dịch vụ bảo dưỡng cho xe ${bikeName} đã hoàn tất. Kính mời bạn dành 1 phút tham gia khảo sát tự động để nhận ưu đãi!`,
+      page: 'dashboard',
+      tab: 'surveys',
+      targetId: newSurvey.id,
+    });
+
+    return newSurvey;
+  },
+
+  createRepairSurvey(appt: any, customer?: any): Survey {
+    let custId = appt.customerId || customer?.id;
+    if (!custId && appt.soDienThoai) {
+      const match = mockCustomers.find(c => c.soDienThoai && c.soDienThoai.replace(/\D/g, '') === appt.soDienThoai.replace(/\D/g, ''));
+      if (match) custId = match.id;
+    }
+    if (!custId) {
+      try {
+        const saved = localStorage.getItem('crm_current_customer');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed?.id) custId = parsed.id;
+        }
+      } catch {}
+    }
+    if (!custId) custId = 'KH001';
+
+    const rawBikeName = appt.tenXe || appt.thongTinXe?.tenXe || 'xe máy';
+    const bikeName = cleanBikeName(rawBikeName);
+    const modelSlug = toSurveyModelSlug(bikeName);
+    const surveyId = `KS-SC-${modelSlug || 'SUA-CHUA'}`;
+
+    const allSurveys = surveyApi.getAll();
+    let existing = allSurveys.find(s => s.id === surveyId || (s.id.startsWith('KS-SC-') && s.title.toLowerCase().includes(bikeName.toLowerCase())));
+
+    if (existing) {
+      const curIds = existing.targetCustomerIds || (existing.targetCustomerId && existing.targetCustomerId !== 'ALL' ? [existing.targetCustomerId] : []);
+      const hasCust = curIds.includes(custId);
+      if (!hasCust) {
+        const nextIds = [...curIds, custId];
+        const nextTargetCount = Math.max(existing.targetCount || 0, nextIds.length);
+        existing = surveyApi.update(existing.id, {
+          targetCustomerIds: nextIds,
+          targetCount: nextTargetCount,
+          status: 'DangDienRa',
+        }) || existing;
+      }
+
+      addCustomerNotification({
+        customerId: custId,
+        category: 'survey',
+        icon: '📋',
+        title: `📋 Khảo sát chất lượng sửa chữa xe ${bikeName}`,
+        message: `Dịch vụ sửa chữa khắc phục sự cố xe ${bikeName} đã hoàn tất. Kính mời bạn dành 1 phút tham gia đánh giá chất lượng phục vụ!`,
+        page: 'dashboard',
+        tab: 'surveys',
+        targetId: existing.id,
+      });
+
+      return existing;
+    }
+
+    const now = Date.now();
+    const ktvName = appt.nhanVienPhuTrach || appt.thongTinXe?.ktvPhuTrach || 'KTV Phụ trách';
+    const newSurvey = surveyApi.create({
+      id: surveyId,
+      title: `Khảo sát chất lượng dịch vụ sửa chữa xe: ${bikeName}`,
+      description: `Dịch vụ sửa chữa khắc phục sự cố cho xe ${bikeName} của quý khách tại Motoshop đã hoàn tất. Trân trọng kính mời quý khách dành 1 phút đánh giá hiệu quả khắc phục sự cố và tay nghề của kỹ thuật viên.`,
+      targetCustomerId: custId,
+      targetCustomerTier: 'ALL',
+      targetCustomerIds: [custId],
+      targetCount: 1,
+      responseCount: 0,
+      publishDate: new Date(now - 60000).toISOString().slice(0, 16),
+      startDate: new Date(now - 60000).toISOString().slice(0, 16),
+      endDate: new Date(now + 30 * 86400000).toISOString().slice(0, 16),
+      status: 'DangDienRa',
+      questions: [
+        {
+          id: 'q1',
+          text: `Sau khi nhận lại xe, quý khách thấy sự cố của xe ${bikeName} đã được khắc phục dứt điểm chưa?`,
+          opts: ['Đã khắc phục hoàn toàn - Xe chạy êm, máy bốc', 'Đã xử lý cơ bản - Cần theo dõi thêm', 'Tạm ổn', 'Chưa khắc phục được triệt để'],
+        },
+        {
+          id: 'q2',
+          text: `Thái độ tư vấn giải thích nguyên nhân hỏng hóc và tay nghề của kỹ thuật viên (${ktvName})?`,
+          opts: ['Rất tận tình, tay nghề giỏi, giải thích dễ hiểu', 'Lịch sự, chu đáo', 'Bình thường', 'Cần tư vấn rõ ràng hơn'],
+        },
+        {
+          id: 'q3',
+          text: 'Mức độ hài lòng về chất lượng linh kiện thay thế và tính minh bạch của bảng giá công thợ?',
+          opts: ['Phụ tùng chính hãng chuẩn 100%, giá công thợ rất hợp lý', 'Hợp lý, đúng báo giá ban đầu', 'Hơi cao so với dự tính', 'Chưa rõ ràng'],
+        },
+        {
+          id: 'q4',
+          text: 'Mức độ hài lòng chung và quý khách có sẵn sàng giới thiệu Motoshop cho bạn bè, người thân không?',
+          opts: ['Rất hài lòng, chắc chắn sẽ tiếp tục ủng hộ', 'Hài lòng', 'Bình thường', 'Cần cải thiện chất lượng phục vụ'],
+        },
+      ],
+    });
+
+    addCustomerNotification({
+      customerId: custId,
+      category: 'survey',
+      icon: '📋',
+      title: `📋 Khảo sát chất lượng sửa chữa xe ${bikeName}`,
+      message: `Dịch vụ sửa chữa khắc phục sự cố xe ${bikeName} đã hoàn tất. Kính mời bạn dành 1 phút tham gia đánh giá chất lượng phục vụ!`,
       page: 'dashboard',
       tab: 'surveys',
       targetId: newSurvey.id,

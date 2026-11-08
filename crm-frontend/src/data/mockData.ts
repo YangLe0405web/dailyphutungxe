@@ -3,7 +3,7 @@ export type CustomerStatus = 'HoatDong' | 'BiKhoa';
 export type OrderStatus = 'ChoDuyet' | 'ChoKhachXacNhanNgayNhan' | 'DaXacNhan' | 'DangGiao' | 'DaGiao' | 'HoanThanh' | 'DaHuy' | 'ChoGiaoXe';
 export type PaymentStatus = 'ChuaThanhToan' | 'DaCoc' | 'DaThanhToan';
 export type OrderChannel = 'TaiQuay' | 'Online';
-export type OrderType = 'PhuTung' | 'Xe';
+export type OrderType = 'PhuTung' | 'Xe' | 'DichVu';
 export type AppointmentStatus = 'ChoXacNhan' | 'DaXacNhan' | 'TuChoi' | 'DaHoanThanh' | 'DaHuy' | 'ChoDuyet' | 'DangThucHien' | 'HoanThanh';
 export type ServiceType = 'BaoDuong' | 'SuaChua' | 'LaiThu' | 'NhanXe' | 'BaoHanh';
 export type AdminRole = 'SuperAdmin' | 'NhanVienBanHang' | 'NhanVienKyThuat';
@@ -431,6 +431,7 @@ export interface Order {
   qrCodeUrl?: string;
   maKTV?: string;
   tenKTV?: string;
+  nhanVienPhuTrach?: string;
   maVoucher?: string;
   giamVoucher?: number;
 }
@@ -474,6 +475,9 @@ export interface Appointment {
   hinhThucGiao?: 'Showroom' | 'HomeDelivery';
   diaChiGiao?: string;
   timeline?: AppointmentTimelineItem[];
+  khachDaDen?: boolean;
+  chiPhiThucTe?: number;
+  maHoaDon?: string;
 }
 
 /* ───────────────────────── MOTORBIKE INSURANCE (BHX01 - BHX05) ───────────────────────── */
@@ -818,6 +822,54 @@ export const PART_IMAGES_LIST = [
 
 
 export const mockParts: Part[] = [
+  {
+    id: 'PT-MT300V',
+    tenSanPham: 'Nhớt Motul 300V (1L) Factory Line 10W40',
+    thuongHieu: 'Motul',
+    giaGoc: 390000,
+    giaKhuyenMai: 350000,
+    soLuongTon: 65,
+    danhMuc: 'Nhớt',
+    moTa: 'Nhớt Motul 300V 10W40 1L chính hãng cao cấp công nghệ Ester Core đỉnh cao cho xe máy.',
+    hinhAnh: '/images/phutung/dan_ao_ab_125_den_nham.webp',
+    rating: 5.0,
+    luotDanh: 412,
+    dongXePhuHop: 'Tất cả dòng xe ga & xe số',
+    xuatXu: 'Pháp',
+    baoHanh: 'Chính hãng 100%',
+  },
+  {
+    id: 'PT-IRC14',
+    tenSanPham: 'Ruột xe [Săm] IRC 14 inch chính hãng',
+    thuongHieu: 'IRC',
+    giaGoc: 110000,
+    giaKhuyenMai: 90000,
+    soLuongTon: 150,
+    danhMuc: 'Vỏ xe',
+    moTa: 'Ruột xe máy IRC 14 inch cao su thiên nhiên độ bền cao, kín hơi tuyệt đối.',
+    hinhAnh: '/images/phutung/heo_mfz_4_pis_cho_xe_tay_ga.webp',
+    rating: 4.8,
+    luotDanh: 180,
+    dongXePhuHop: 'Honda Vision, Air Blade, Vario',
+    xuatXu: 'Việt Nam',
+    baoHanh: 'Chính hãng 100%',
+  },
+  {
+    id: 'PT-BTVS',
+    tenSanPham: 'Bố thắng (Má phanh) trước Vision chính hãng',
+    thuongHieu: 'Honda',
+    giaGoc: 180000,
+    giaKhuyenMai: 150000,
+    soLuongTon: 95,
+    danhMuc: 'Hệ thống phanh',
+    moTa: 'Bố thắng đĩa trước Honda Vision chính hãng, phanh êm, không trượt nước, không xước đĩa.',
+    hinhAnh: '/images/phutung/heo_mfz_4_pis_cho_xe_tay_ga.webp',
+    rating: 4.9,
+    luotDanh: 290,
+    dongXePhuHop: 'Honda Vision, Lead 125',
+    xuatXu: 'Honda VN',
+    baoHanh: 'Chính hãng 100%',
+  },
   {
     id: 'PT001',
     tenSanPham: 'Nhớt Motul 7100 4T 10W40 1L (100% Tổng Hợp Ester)',
