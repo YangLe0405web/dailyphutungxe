@@ -5271,3 +5271,190 @@ pm run build thành công 100% trong 1.41s, **0 lỗi TypeScript**.
   - Bảo toàn nguyên vẹn 100% các điều kiện bất biến (System Invariants) trong `QUY_TAC_KIEM_TRA_VA_BAO_TOAN_FIX.md`.
 
 
+---
+
+## [Bản Fix 104] - Tích Hợp Luồng Tiếp Nhận Bảo Dưỡng, Sửa Chữa & Tạo Hóa Đơn Dịch Vụ Theo Mockup Thiết Kế (Appointments.tsx)
+
+- **Ngày thực hiện:** 08/11/2026
+- **Mục tiêu:**
+  1. **Luồng Tiếp Nhận Khách Hàng Tại Showroom:**
+     - Khi lịch hẹn được xác nhận (`isConfirmed`), hiển thị 2 nút tương tác nhanh trực quan:
+       * `[ Khách đã đến ]` (Xanh lá, cập nhật trạng thái có mặt tại showroom).
+       * `[ Khách không đến ]` (Xám tro, cập nhật trạng thái vắng mặt / không đến).
+     - Khi bấm `"Khách đã đến"`, trạng thái tự động chuyển sang đã đến (`khachDaDen = true`), nút hành động tự động biến đổi thành `[ 🧾 Tạo hóa đơn ]` màu đỏ nổi bật.
+  2. **Modal Tạo Hóa Đơn Dịch Vụ Chuẩn 4 Ảnh Mockup:**
+     - **Tạo Hóa Đơn Bảo Dưỡng (Ảnh 1 & 2):**
+       * Tự động điền đầy đủ thông tin Khách hàng, SĐT, Tên xe, Biển số từ lịch hẹn (hoặc từ công cụ tìm kiếm).
+       * Khối gói bảo dưỡng áp dụng (mặc định Gói Bảo Dưỡng Toàn Diện 2 Năm - 600.000 đ) kèm nút `[ ✏ Thay đổi gói ]` cho phép chuyển đổi linh hoạt sang Gói Cơ Bản (300.000 đ) hoặc Gói Chuyên Sâu (900.000 đ).
+       * Khối phụ tùng phát sinh: Hỗ trợ tìm kiếm nhanh phụ tùng từ kho (mockParts), bảng danh sách sản phẩm với stepper số lượng `[-] [1] [+]`, đơn giá, thành tiền và nút xóa.
+       * Tự động tính toán tổng tiền tạm tính / tổng thanh toán thời gian thực (`Gói bảo dưỡng + Phụ tùng phát sinh`).
+       * Nút `[ 🖨️ Tạo & In Hóa Đơn ]` màu đỏ cam chuẩn Motoshop.
+     - **Tạo Hóa Đơn Sửa Chữa (Ảnh 3 & 4):**
+       * Khối thông tin tiếp nhận: Khách hàng, Xe, Biển số, SĐT, kèm khung textarea nhập "Tình trạng xe / Yêu cầu sửa chữa" (chẩn đoán lỗi xe chi tiết).
+       * Khối phụ tùng thay thế: Tìm kiếm phụ tùng, stepper số lượng, đơn giá, thành tiền.
+       * Khối tiền công dịch vụ: Cho phép nhân viên tự thêm các hạng mục công thợ với nút `[ + Thêm công thợ ]`, tùy chỉnh tên công việc và chi phí công thợ.
+       * Hiển thị tổng phụ tùng + tổng tiền công dịch vụ, tính ra tổng thanh toán chính xác.
+       * Nút `[ 🖨️ Tạo & In Hóa Đơn ]`.
+  3. **Cụm Nút Tạo Hóa Đơn Bên Ngoài Ở Header (Dành Cho Nhân Viên Chủ Động Tạo):**
+     - Đặt tại Header trang Lịch hẹn: `[ 🔧 + Tạo Hóa Đơn Bảo Dưỡng ]` và `[ ⚙️ + Tạo Hóa Đơn Sửa Chữa ]`.
+     - Tích hợp thanh tìm kiếm khách hàng thông minh (tìm theo tên / SĐT / xe) với danh sách dropdown gợi ý và tự động điền (autofill).
+     - Hỗ trợ nút `[ + Khách mới ]` / `[ 🔍 Tìm khách có sẵn ]` để nhân viên nhập trực tiếp thông tin khách hàng vãng lai chưa có trên hệ thống.
+  4. **Modal In Hóa Đơn Dịch Vụ Chuẩn A4:**
+     - Thiết kế giao diện phiếu thu A4 chuyên nghiệp mang thương hiệu Motoshop Showroom.
+     - Đầy đủ thông tin khách hàng, biển số xe, chi tiết từng hạng mục (gói dịch vụ, linh kiện, tiền công thợ), tổng thanh toán, ngày giờ và chữ ký xác nhận của Cố vấn dịch vụ & Khách hàng.
+     - Lưu trữ đơn hàng loại `'DichVu'` vào hệ thống đơn hàng chung (`crm_orders`) để đồng bộ báo cáo doanh thu.
+  5. **Bảo Toàn Tuyệt Đối 10 Quy Tắc Hệ Thống (System Invariants):**
+     - Giữ nguyên toàn bộ logic phân công kỹ thuật viên (KTV) khi duyệt lịch.
+     - Không làm ảnh hưởng đến luồng nhận xe lái thử / đón khách nhận xe mới.
+     - Đảm bảo tương thích 100% với CustomerDashboard và không gây lỗi TypeScript.
+- **Các tệp đã chỉnh sửa:**
+  - [`crm-frontend/src/data/mockData.ts`](file:///d:/crm-project/crm-frontend/src/data/mockData.ts): Mở rộng `OrderType = 'PhuTung' | 'Xe' | 'DichVu'` và thêm thuộc tính `khachDaDen?: boolean` vào interface `Appointment`.
+  - [`crm-frontend/src/pages/admin/Appointments.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/Appointments.tsx): Cụm nút chuyển trạng thái tại dòng lịch hẹn, các nút Header tạo hóa đơn nhanh, Modal Tạo Hóa Đơn Dịch Vụ (Bảo Dưỡng & Sửa Chữa) và Modal In Hóa Đơn A4.
+  - [`crm-frontend/tests/verify_maintenance_and_repair_invoice_flow.test.cjs`](file:///d:/crm-project/crm-frontend/tests/verify_maintenance_and_repair_invoice_flow.test.cjs): Bộ test TDD 5 kịch bản kiểm thử toàn diện.
+- **Kết quả kiểm thử & Nghiệm thu:**
+  - Bộ test mới `verify_maintenance_and_repair_invoice_flow.test.cjs`: **PASS 100% (5/5)**.
+  - Toàn bộ 31/31 test suites trong hệ thống (`crm-frontend/tests/*.cjs`): **PASS 31/31 (0 failed)**.
+  - `npm --prefix crm-frontend run build`: **0 lỗi TypeScript / Vite** (hoàn tất trong 1.36s).
+  - Bảo toàn nguyên vẹn 100% các điều kiện bất biến (System Invariants) trong `QUY_TAC_KIEM_TRA_VA_BAO_TOAN_FIX.md`.
+
+- **Bản Fix 105: Chuẩn hóa tính toán số tiền hóa đơn dịch vụ, phụ tùng phát sinh và tự động gửi khảo sát chất lượng Bảo dưỡng & Sửa chữa**
+  - **Mô tả vấn đề:**
+    1. Khi tạo hóa đơn dịch vụ từ lịch hẹn bảo dưỡng, hệ thống mặc định gói 2 Năm (600.000 đ) thay vì bóc tách đúng gói bảo dưỡng khách đã đặt lịch (ví dụ Gói Tiêu Chuẩn 150.000 đ), phụ tùng phát sinh chọn kèm chưa được tính dồn chính xác vào tổng hóa đơn.
+    2. Kho phụ tùng thiếu các linh kiện phát sinh chuẩn theo mockup (`Nhớt Motul 300V` 350.000 đ, `Ruột xe [Săm] IRC 14 inch` 90.000 đ, `Bố thắng trước Vision` 150.000 đ) và chưa hỗ trợ tùy biến thêm phụ tùng phát sinh ngoài danh mục với giá linh hoạt.
+    3. Sau khi hoàn tất dịch vụ bảo dưỡng hoặc sửa chữa (hoặc tạo hóa đơn trực tiếp tại quầy), khách hàng không nhận được bài khảo sát chất lượng dịch vụ bảo dưỡng/sửa chữa tại Tab Khảo sát của CustomerDashboard do hàm cũ tái sử dụng mã dummy `KS001` bị bộ lọc chặn.
+  - **Giải pháp thực hiện:**
+    1. **Bổ sung phụ tùng chuẩn mockup vào `mockParts`:**
+       * `PT-MT300V`: Nhớt Motul 300V (1L) Factory Line 10W40 (350.000 đ).
+       * `PT-IRC14`: Ruột xe [Săm] IRC 14 inch chính hãng (90.000 đ).
+       * `PT-BTVS`: Bố thắng (Má phanh) trước Vision chính hãng (150.000 đ).
+    2. **Nhận diện chính xác gói bảo dưỡng và phụ tùng từ lịch hẹn (`Appointments.tsx`):**
+       * Tự động quét `a.ghiChu` để trích xuất đúng gói: Tiêu chuẩn (150k), Chuyên sâu (350k), VIP (650k), Spa (120k), Toàn diện 2 năm (600k).
+       * Bóc tách phụ tùng chọn kèm từ ghi chú hoặc tải sẵn phụ tùng phát sinh tương ứng theo ngữ cảnh lịch hẹn.
+       * Hỗ trợ nút `[ + Thêm phụ tùng khác ]` và tùy chọn `➕ Thêm phụ tùng phát sinh khác: "[tên]"` trong thanh tìm kiếm để thêm linh kiện ngoài danh mục.
+       * Cho phép chỉnh sửa đơn giá linh hoạt (`input number`) ngay tại từng dòng phụ tùng.
+       * Tính toán tổng thanh toán thời gian thực chuẩn 100%: Bảo dưỡng = Gói + Phụ tùng phát sinh; Sửa chữa = Phụ tùng thay thế + Tiền công dịch vụ.
+    3. **Tự động kích hoạt khảo sát dịch vụ theo phương tiện & loại dịch vụ (`api.ts` & `CustomerDashboard.tsx`):**
+       * Xây dựng `surveyApi.createMaintenanceSurvey`: Sinh bài khảo sát `KS-BD-[slug_xe]` với 4 câu hỏi chuyên sâu về chất lượng vận hành sau bảo dưỡng, thái độ KTV, quy trình tư vấn và điểm đánh giá tổng quát.
+       * Xây dựng `surveyApi.createRepairSurvey`: Sinh bài khảo sát `KS-SC-[slug_xe]` với 4 câu hỏi chuyên sâu về khắc phục triệt để sự cố, minh bạch chi phí công thợ, chất lượng linh kiện thay thế.
+       * Tích hợp gọi tự động ngay khi nhân viên bấm `[ Tạo & In Hóa Đơn ]` (kể cả tạo từ lịch hẹn lẫn tạo hóa đơn tại quầy cho khách hàng có sẵn).
+       * Cập nhật `CustomerDashboard.tsx` kiểm tra hợp lệ và hiển thị cả hai định dạng mã `KS-BD-` và `KS-SC-`.
+       * Bắn thông báo chuông trực tiếp sang tài khoản khách hàng (`category: 'survey'`, `tab: 'surveys'`).
+  - **Các tệp đã chỉnh sửa:**
+    - [`crm-frontend/src/data/mockData.ts`](file:///d:/crm-project/crm-frontend/src/data/mockData.ts): Thêm 3 phụ tùng mockup chuẩn.
+    - [`crm-frontend/src/services/api.ts`](file:///d:/crm-project/crm-frontend/src/services/api.ts): Thêm `createRepairSurvey`, nâng cấp `createMaintenanceSurvey` theo slug xe và bảo toàn `thongTinXe` cho đơn hàng dịch vụ.
+    - [`crm-frontend/src/pages/customer/CustomerDashboard.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/CustomerDashboard.tsx): Điều kiện mở bài khảo sát `KS-BD-` và `KS-SC-` và cơ chế đồng bộ tự động.
+    - [`crm-frontend/src/pages/admin/Appointments.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/Appointments.tsx): Nhận diện gói bảo dưỡng, phụ tùng phát sinh, nhập phụ tùng tùy chỉnh, tính tổng tiền và kích hoạt khảo sát khi tạo hóa đơn.
+    - [`crm-frontend/tests/verify_service_invoice_pricing_and_surveys.test.cjs`](file:///d:/crm-project/crm-frontend/tests/verify_service_invoice_pricing_and_surveys.test.cjs): Bộ test TDD 5 kịch bản tự động.
+  - **Kết quả kiểm thử & Nghiệm thu:**
+    - Test mới `verify_service_invoice_pricing_and_surveys.test.cjs`: **PASS 100% (5/5)**.
+    - Toàn bộ 32/32 test suites trong hệ thống (`crm-frontend/tests/*.cjs`): **PASS 32/32 (0 failed)**.
+    - `npm --prefix crm-frontend run build`: **0 lỗi TypeScript / Vite** (hoàn tất trong 1.06s).
+    - Bảo toàn nguyên vẹn 100% các điều kiện bất biến (System Invariants) trong `QUY_TAC_KIEM_TRA_VA_BAO_TOAN_FIX.md`.
+
+- **Bản Fix 106: Khắc phục hiển thị sai số tiền và thông tin hóa đơn dịch vụ Bảo dưỡng & Sửa chữa bên phía Khách hàng**
+  - **Mô tả vấn đề:**
+    1. Trong modal xem hóa đơn dịch vụ (`selectedServiceInvoice`) tại Tab "Lịch sử dịch vụ" của `CustomerDashboard.tsx`, thông tin và số tiền hóa đơn bị gán cứng (hardcode): Sửa chữa hiển thị cố định 450.000 đ (Công 150k + Phụ tùng 300k); Bảo dưỡng hiển thị cố định 350.000 đ (Công 200k + Dầu nhớt 150k), hoàn toàn không đồng bộ với hóa đơn thực tế tạo bên Admin hoặc nội dung khách đặt.
+    2. Tên kỹ thuật viên (KTV) phụ trách bị ghi đè thành chuỗi chung chung `"KTV Xưởng Dịch vụ Kỹ thuật"` hoặc `"KTV Xưởng Bảo dưỡng Motoshop"`, thay vì hiển thị đúng KTV được phân công (ví dụ `NVTV. Nguyễn Thị Ánh` trên lịch hẹn #LH027).
+    3. Hệ thống chưa liên kết ngược từ lịch hẹn sang đơn hàng dịch vụ (`loaiDon === 'DichVu'`) để trích xuất các hạng mục, phụ tùng và tổng tiền thực tế.
+  - **Giải pháp thực hiện:**
+    1. **Tìm kiếm và liên kết tự động `matchedServiceOrder`:**
+       * Trong `CustomerDashboard.tsx`: Tìm kiếm đơn hàng loại `DichVu` tương ứng với lịch hẹn theo `maLichHen`, `maHoaDon`, hoặc theo biển số xe / mã đơn hàng.
+       * Nếu có đơn hàng dịch vụ thực tế: Render toàn bộ danh sách `docItems`, tên phụ tùng, số lượng, đơn giá và tổng thanh toán `totalPaymentText` trực tiếp từ `matchedServiceOrder.items` và `matchedServiceOrder.tongTien`.
+    2. **Xóa bỏ triệt để các giá trị và phụ tùng hardcode sai lệch:**
+       * Xóa bỏ hoàn toàn giá trị gán cứng 350.000 đ và 450.000 đ.
+       * Đối với lịch hẹn chưa lập hóa đơn (hoặc dữ liệu mockup):
+         - Bảo dưỡng: Tự động bóc tách đúng gói (Tiêu chuẩn 150k, Chuyên sâu 350k, VIP 650k, Spa 120k, 2 Năm 600k) và phụ tùng phát sinh (Nhớt Motul 300V 350k) từ ghi chú hoặc `chiPhiThucTe`.
+         - Sửa chữa: Hiển thị đúng các hạng mục chuẩn mockup (Tiền công 100k + Ruột xe IRC 90k + Bố thắng Vision 150k = 340.000 đ) hoặc theo `chiPhiThucTe`.
+    3. **Hiển thị chính xác nhân viên / KTV phụ trách:**
+       * Ưu tiên hiển thị đúng `appt.nhanVienPhuTrach` (ví dụ `NVTV. Nguyễn Thị Ánh`), không còn bị ghi đè chuỗi chung chung.
+    4. **Cập nhật `Appointments.tsx`:**
+       * Gắn `maLichHen`, `nhanVienPhuTrach`, `tenNV` vào `newOrder` khi nhân viên tạo hóa đơn dịch vụ.
+       * Cập nhật `chiPhiThucTe` và `maHoaDon` vào lịch hẹn trong bộ nhớ cache để khách hàng xem hóa đơn được đồng bộ ngay tức thì.
+  - **Các tệp đã chỉnh sửa:**
+    - [`crm-frontend/src/data/mockData.ts`](file:///d:/crm-project/crm-frontend/src/data/mockData.ts): Thêm thuộc tính `nhanVienPhuTrach?: string` vào interface `Order`.
+    - [`crm-frontend/src/pages/customer/CustomerDashboard.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/CustomerDashboard.tsx): Tích hợp `matchedServiceOrder`, render chi tiết hạng mục động, bóc tách gói bảo dưỡng / sửa chữa chuẩn xác và hiển thị KTV thật.
+    - [`crm-frontend/src/pages/admin/Appointments.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/Appointments.tsx): Lưu `maLichHen`, `nhanVienPhuTrach` vào đơn hàng dịch vụ và cập nhật `chiPhiThucTe` cho lịch hẹn.
+    - [`crm-frontend/tests/verify_customer_service_invoice_details.test.cjs`](file:///d:/crm-project/crm-frontend/tests/verify_customer_service_invoice_details.test.cjs): Bộ test TDD 5 kịch bản tự động.
+  - **Kết quả kiểm thử & Nghiệm thu:**
+    - Test mới `verify_customer_service_invoice_details.test.cjs`: **PASS 100% (5/5)**.
+    - Toàn bộ 33/33 test suites trong hệ thống (`crm-frontend/tests/*.cjs`): **PASS 33/33 (0 failed)**.
+    - `npm --prefix crm-frontend run build`: **0 lỗi TypeScript / Vite** (hoàn tất trong 1.09s).
+    - Bảo toàn nguyên vẹn 100% các điều kiện bất biến (System Invariants) trong `QUY_TAC_KIEM_TRA_VA_BAO_TOAN_FIX.md`.
+
+- **Bản Fix 107: Khắc phục lỗi hiển thị sai chi phí (2.500.000 VND) trong bảng Lịch sử dịch vụ phương tiện**
+  - **Mô tả vấn đề:**
+    1. Trong modal xem chi tiết phương tiện -> tab "Lịch sử dịch vụ" (`getVehicleServicesList`) của `CustomerDashboard.tsx`, cột **"CHI PHÍ"** bị gán cứng biểu thức: `chiPhi: (a as any).tongTien || (a.loaiDichVu === 'BaoHanh' ? 0 : 2500000)`.
+    2. Dẫn đến mọi lượt dịch vụ chưa gắn `tongTien` trực tiếp trên object lịch hẹn đều bị ép giá trị `2.500.000 VND`:
+       - Dòng **Nhận xe mới (`NhanXe`)**: Lẽ ra chi phí bàn giao xe là `0 VND` (Miễn phí) lại hiển thị `2.500.000 VND`.
+       - Dòng **Bảo dưỡng (`BaoDuong`)**: Dù ghi chú ghi rõ `Gói Chăm Sóc & Vệ Sinh Chi Tiết (120.000 đ)`, cột chi phí vẫn hiển thị `2.500.000 VND`.
+       - Dòng **Sửa chữa (`SuaChua`)**: Bị gán `2.500.000 VND` thay vì đồng bộ từ hóa đơn hoặc chi phí thực tế.
+       - Dòng **Lái thử (`LaiThu`)**: Lẽ ra là `0 VND` (Miễn phí) lại hiển thị `2.500.000 VND`.
+  - **Giải pháp thực hiện:**
+    1. **Tính toán chi phí thông minh cho từng loại dịch vụ trong `getVehicleServicesList`:**
+       * Tìm kiếm đơn hàng hóa đơn dịch vụ tương ứng (`matchedOrder`) từ `myOrders` và `allOrders` theo `maLichHen`, `maHoaDon` hoặc `id`.
+       * **`NhanXe`, `LaiThu`, `BaoHanh`:** Luôn hiển thị `0 VND` (Miễn phí bàn giao / trải nghiệm / bảo hành chính hãng).
+       * **Nếu có `matchedOrder`:** Lấy `matchedOrder.tongTien` (Đã được tính chuẩn xác từng gói dịch vụ, phụ tùng phát sinh, tiền công).
+       * **Nếu có `chiPhiThucTe`, `(a as any).tongTien`, `chiPhiBaoGia`:** Lấy giá trị thực tế này.
+       * **Nếu là `BaoDuong` chưa lập hóa đơn:** Tự động bóc tách giá tiền từ ghi chú gói bảo dưỡng (ví dụ `(120.000 đ)` ra đúng `120.000 VND`, hoặc các mốc 150k, 350k, 600k, 650k).
+       * **Nếu là `SuaChua` chưa lập hóa đơn:** Bóc tách giá từ ghi chú hoặc áp dụng chi phí sửa chữa chuẩn xưởng (340.000 VND).
+    2. **Đồng bộ KTV phụ trách:**
+       * Ưu tiên hiển thị `a.nhanVienPhuTrach` hoặc `matchedOrder.nhanVienPhuTrach` thay vì mặc định chung chung.
+    3. **Cập nhật Interface & API:**
+       * Bổ sung `chiPhiThucTe?: number` và `maHoaDon?: string` vào `interface Appointment` trong `mockData.ts`.
+       * Bảo toàn `chiPhiThucTe` và `maHoaDon` trong hàm `appointmentApi.getAll()` của `api.ts`.
+  - **Các tệp đã chỉnh sửa:**
+    - [`crm-frontend/src/data/mockData.ts`](file:///d:/crm-project/crm-frontend/src/data/mockData.ts): Bổ sung `chiPhiThucTe` và `maHoaDon` vào `interface Appointment`.
+    - [`crm-frontend/src/services/api.ts`](file:///d:/crm-project/crm-frontend/src/services/api.ts): Bảo toàn `chiPhiThucTe` và `maHoaDon` khi map dữ liệu lịch hẹn trong `appointmentApi.getAll()`.
+    - [`crm-frontend/src/pages/customer/CustomerDashboard.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/CustomerDashboard.tsx): Loại bỏ hoàn toàn fallback `2500000`, xử lý `0 VND` cho Nhận xe mới/Lái thử/Bảo hành, bóc tách giá gói bảo dưỡng từ ghi chú và đồng bộ đơn hàng dịch vụ.
+    - [`crm-frontend/tests/verify_vehicle_service_history_pricing.test.cjs`](file:///d:/crm-project/crm-frontend/tests/verify_vehicle_service_history_pricing.test.cjs): Bộ test TDD 5 kịch bản tự động.
+  - **Kết quả kiểm thử & Nghiệm thu:**
+    - Test mới `verify_vehicle_service_history_pricing.test.cjs`: **PASS 100% (5/5)**.
+    - Toàn bộ 34/34 test suites trong hệ thống (`crm-frontend/tests/*.cjs`): **PASS 34/34 (0 failed)**.
+    - `npm --prefix crm-frontend run build`: **0 lỗi TypeScript / Vite** (hoàn tất trong 753ms).
+    - Bảo toàn nguyên vẹn 100% các điều kiện bất biến (System Invariants) trong `QUY_TAC_KIEM_TRA_VA_BAO_TOAN_FIX.md`.
+
+- **Bản Fix 108: Cô lập lịch nhận xe mới theo đúng đơn hàng và số khung của từng phương tiện**
+  - **Mô tả vấn đề:**
+    1. Trong modal xem chi tiết phương tiện -> tab "Lịch sử dịch vụ" (`getVehicleServicesList`) của `CustomerDashboard.tsx`, khi khách hàng mở xem 1 chiếc xe mới mua hoặc xe thử nghiệm, bảng hiển thị đồng thời 4 dòng "Nhận xe mới" thuộc về 4 đơn hàng khác nhau (`#DH-XE-022`, `#DH-XE-037`, `#DH-XE-035`, `#DH-XE-023`).
+    2. Nguyên nhân là do bộ lọc cũ sử dụng `matchName` (`vName.includes(aName)`) và `matchOrderXe` kiểm tra lỏng lẻo (`myOrders.some(...)` chỉ kiểm tra đơn có trong danh sách khách mà không đối chiếu đơn đó có thuộc về chiếc xe `v` đang xem hay không).
+    3. Hậu quả là tất cả các đơn mua xe cùng model hoặc tên dòng xe đều bị dồn toàn bộ lịch nhận xe mới vào cùng 1 chiếc xe.
+  - **Giải pháp thực hiện:**
+    1. **Xác định chính xác định danh đơn hàng gốc của phương tiện:**
+       * Trích xuất `vOrderId` từ `(v as any).orderId`, `v.id.replace(/^XE-/, '')`, `v.maDonHang` hoặc khớp qua số khung VIN trong `myOrders`.
+       * Trích xuất `aOrderId` từ `a.maDonHangXe`, mã đơn hàng trong `a.ghiChu` (regex `#DH-XE-...`), hoặc `(a as any).orderId`.
+    2. **Ràng buộc nghiêm ngặt cho lịch "Nhận xe mới" (`a.loaiDichVu === 'NhanXe'`):**
+       * Bắt buộc phải khớp đúng mã đơn hàng (`vOrderId === aOrderId`), hoặc đúng số khung (`vVin === aVin`), hoặc đúng `vehicleId`.
+       * Tuyệt đối không dùng `matchName` độc lập để ngăn chặn việc gom lịch của đơn xe khác.
+       * Mỗi xe chỉ có tối đa 1 mốc "Nhận xe mới" duy nhất tương ứng với đơn hàng sinh ra chiếc xe đó.
+    3. **Ràng buộc an toàn cho các dịch vụ khác (`BaoDuong`, `SuaChua`, `BaoHanh`):**
+       * Xe đã có biển số thực tế: Bắt buộc khớp biển số (`cleanVPlate === cleanAPlate`), số khung VIN hoặc `vehicleId`. Không dùng `matchName` để tránh nhầm lẫn giữa 2 xe cùng dòng của cùng một khách hàng.
+  - **Các tệp đã chỉnh sửa:**
+    - [`crm-frontend/src/pages/customer/CustomerDashboard.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/CustomerDashboard.tsx): Chuẩn hóa `getVehicleServicesList`, bổ sung `vOrderId`, `aOrderId`, ràng buộc `matchOrderStrict`, `matchVinStrict` và bảo đảm mỗi xe chỉ có 1 lịch nhận xe mới.
+    - [`crm-frontend/tests/verify_vehicle_service_isolation_by_order.test.cjs`](file:///d:/crm-project/crm-frontend/tests/verify_vehicle_service_isolation_by_order.test.cjs): Bộ test TDD tự động kiểm tra tính cô lập.
+  - **Kết quả kiểm thử & Nghiệm thu:**
+    - Test mới `verify_vehicle_service_isolation_by_order.test.cjs`: **PASS 100%**.
+    - Toàn bộ 35/35 test suites trong hệ thống (`crm-frontend/tests/*.cjs`): **PASS 35/35 (0 failed)**.
+    - `npm --prefix crm-frontend run build`: **0 lỗi TypeScript / Vite** (hoàn tất trong 1.42s).
+    - Củng cố mạnh mẽ Điều kiện Bất biến số 9 (System Invariant 9) trong `QUY_TAC_KIEM_TRA_VA_BAO_TOAN_FIX.md`.
+
+- **Bản Fix 109: Khắc phục lỗi xe mới mua không hiển thị lịch nhận xe (Cơ chế 2 tầng nhận diện đơn hàng)**
+  - **Mô tả vấn đề:**
+    1. Sau khi siết chặt điều kiện ở Bản Fix 108, khi khách hàng mở xem chi tiết một chiếc xe mới mua (`Yamaha NVX 155 VVA 2026`) chưa được gán biển số thực tế và mã phương tiện có định dạng kho `XE013` hoặc ngẫu nhiên, hệ thống không tìm thấy `vOrderId` (bị trả về chuỗi rỗng `""`).
+    2. Hậu quả là lịch nhận xe của chính chiếc xe đó cũng bị từ chối theo, khiến bảng lịch sử dịch vụ hiển thị trống (`0 / 0 lượt dịch vụ`), mất luôn lịch nhận xe.
+  - **Giải pháp thực hiện:**
+    1. **Cơ chế 2 tầng nhận diện đơn hàng của phương tiện (`vOrder` & `vOrderId`):**
+       * Tầng 1: Đối chiếu trực tiếp qua `orderId`, `v.id.replace(/^XE-/, '')`, hoặc số khung `soKhungVIN` trong danh sách đơn mua xe của khách (`myOrders`).
+       * Tầng 2: Nếu chưa tìm thấy bằng ID, đối chiếu thông minh qua tên dòng xe chuẩn hóa (`vCleanName` vs `oBikeName`) trong danh sách đơn mua xe của khách. Tự động xác định đúng đơn hàng gốc `vOrderId` và số khung `vVin`.
+    2. **Quy tắc nhận diện & Cô lập Lịch nhận xe mới (`a.loaiDichVu === 'NhanXe'`):**
+       * Ưu tiên khớp chính xác mã đơn hàng (`matchOrderStrict: vOrderId === aOrderId`) hoặc khớp số khung VIN (`matchVinStrict: vVin === aVin`).
+       * Safe Model Match (`matchNameSafe`): Cho phép khớp theo tên dòng xe khi mã đơn của lịch hẹn `aOrderId` không bị xung đột với đơn của xe khác.
+       * Cho phép hiển thị lịch nhận xe hợp lệ của xe đang sở hữu khi lịch ở trạng thái `DaXacNhan` hoặc `DaHoanThanh`.
+       * Mỗi xe hiển thị duy nhất tối đa 1 mốc nhận xe mới (`hasNhanXe`).
+  - **Các tệp đã chỉnh sửa:**
+    - [`crm-frontend/src/pages/customer/CustomerDashboard.tsx`](file:///d:/crm-project/crm-frontend/src/pages/customer/CustomerDashboard.tsx): Bổ sung cơ chế 2 tầng nhận diện `vOrder`, backfill `vOrderId` và `vVin`, tích hợp `matchNameSafe` cho `NhanXe`.
+    - [`crm-frontend/tests/verify_vehicle_single_delivery_history.test.cjs`](file:///d:/crm-project/crm-frontend/tests/verify_vehicle_single_delivery_history.test.cjs): Bộ test TDD tự động kiểm thử.
+  - **Kết quả kiểm thử & Nghiệm thu:**
+    - Test mới `verify_vehicle_single_delivery_history.test.cjs`: **PASS 100%**.
+    - Toàn bộ 36/36 test suites trong hệ thống (`crm-frontend/tests/*.cjs`): **PASS 36/36 (0 failed)**.
+    - `npm --prefix crm-frontend run build`: **0 lỗi TypeScript / Vite** (hoàn tất trong 1.45s).
+    - Củng cố bền vững Điều kiện Bất biến số 9 (System Invariant 9) trong `QUY_TAC_KIEM_TRA_VA_BAO_TOAN_FIX.md`.

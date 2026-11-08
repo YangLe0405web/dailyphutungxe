@@ -219,13 +219,18 @@ export function isSurveyEligibleForCustomer(
     return hasCompletedXeOrder;
   }
 
-  // 6. Khảo sát Bảo dưỡng định kỳ (KS-BD-...): BẮT BUỘC có lịch bảo dưỡng ĐÃ HOÀN THÀNH
-  if (s.id.startsWith('KS-BD-')) {
+  // 6. Khảo sát Bảo dưỡng định kỳ (KS-BD-...) & Sửa chữa (KS-SC-...)
+  if (s.id.startsWith('KS-BD-') || s.id.startsWith('KS-SC-')) {
     const hasCompletedMaintenance = myAppts.some(a =>
       (a.loaiDichVu === 'BaoDuong' || a.loaiDichVu === 'SuaChua') &&
       (a.trangThai === 'DaHoanThanh' || a.trangThai === 'HoanThanh')
+    ) || myOrders.some(o =>
+      (o.loaiDon === 'DichVu' || o.id.startsWith('HD-DV-')) &&
+      (o.trangThai === 'HoanThanh' || o.trangThai === 'DaGiao')
     );
-    const isTargeted = s.targetCustomerId === customer.id || (s.targetCustomerIds || []).includes(customer.id);
+    const isTargeted = s.targetCustomerId === customer.id ||
+      (s.targetCustomerIds || []).includes(customer.id) ||
+      (!isNaN(cNum) && (s.targetCustomerIds || []).some(id => parseInt(id.replace(/\D/g, ''), 10) === cNum));
     return hasCompletedMaintenance && isTargeted;
   }
 
@@ -2258,9 +2263,26 @@ export default function CustomerDashboard({
         });
 
       myAppts
-        .filter(a => (a.trangThai === 'DaHoanThanh' || a.trangThai === 'HoanThanh') && (a.loaiDichVu === 'BaoDuong' || a.loaiDichVu === 'SuaChua'))
+        .filter(a => (a.trangThai === 'DaHoanThanh' || a.trangThai === 'HoanThanh') && a.loaiDichVu === 'BaoDuong')
         .forEach(a => {
           surveyApi.createMaintenanceSurvey(a, currentCustomer);
+        });
+
+      myAppts
+        .filter(a => (a.trangThai === 'DaHoanThanh' || a.trangThai === 'HoanThanh') && a.loaiDichVu === 'SuaChua')
+        .forEach(a => {
+          surveyApi.createRepairSurvey(a, currentCustomer);
+        });
+
+      myOrders
+        .filter(o => o.loaiDon === 'DichVu' && (o.trangThai === 'HoanThanh' || o.trangThai === 'DaGiao'))
+        .forEach(o => {
+          const isRepair = (o.ghiChu || '').toLowerCase().includes('sửa chữa') || (o.items || []).some(i => i.tenSanPham.toLowerCase().includes('công'));
+          if (isRepair) {
+            surveyApi.createRepairSurvey({ ...o, tenXe: o.thongTinXe?.tenXe, bienSo: o.thongTinXe?.bienSo }, currentCustomer);
+          } else {
+            surveyApi.createMaintenanceSurvey({ ...o, tenXe: o.thongTinXe?.tenXe, bienSo: o.thongTinXe?.bienSo }, currentCustomer);
+          }
         });
 
       myAppts
@@ -6487,7 +6509,39 @@ export default function CustomerDashboard({
           const cleanVPlate = (v.bienSo || '').toUpperCase().replace(/[\s\-\.]/g, '');
           const isChuaCoBien = !cleanVPlate || cleanVPlate === 'CHUACOBIENSO' || cleanVPlate.includes('CHUACO') || cleanVPlate.startsWith('TAM');
           const vName = (v.tenXe || '').toLowerCase().trim();
-          const vVin = (v.soKhung || '').toUpperCase().trim();
+          const vCleanName = (v.tenXe || '')
+            .toLowerCase()
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            .replace(/\b(abs|cbs|smartkey|the thao|dac biet|tieu chuan|cao cap|naked bike|scrambler|hybrid|202\d)\b/gi, '')
+            .replace(/[^a-z0-9]/g, '');
+
+          // FIX 109: Cơ chế nhận diện 2 tầng tìm đơn hàng gốc vOrder của xe v
+          let vOrder = (myOrders || []).find(o => {
+            const oId = (o.id || '').toUpperCase();
+            if ((v as any).orderId && (v as any).orderId.toUpperCase() === oId) return true;
+            if (v.id.startsWith('XE-') && v.id.replace(/^XE-/, '').toUpperCase() === oId) return true;
+            if (v.id.includes(oId.replace(/\D/g, ''))) return true;
+            if (v.soKhung && o.thongTinXe?.soKhungVIN && o.thongTinXe.soKhungVIN.toUpperCase().trim() === v.soKhung.toUpperCase().trim()) return true;
+            return false;
+          });
+
+          // Tầng 2: Nếu chưa tìm thấy bằng ID, tìm bằng tên dòng xe trong danh sách đơn mua xe của khách:
+          if (!vOrder) {
+            vOrder = (myOrders || []).find(o => {
+              const isXeOrder = o.loaiDon !== 'PhuTung' && (o.loaiDon === 'Xe' || !!o.thongTinXe || (o.id && o.id.includes('XE')));
+              if (!isXeOrder) return false;
+              const oBikeName = (o.thongTinXe?.tenXe || '')
+                .toLowerCase()
+                .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                .replace(/\b(abs|cbs|smartkey|the thao|dac biet|tieu chuan|cao cap|naked bike|scrambler|hybrid|202\d)\b/gi, '')
+                .replace(/[^a-z0-9]/g, '');
+              if (!oBikeName || !vCleanName) return false;
+              return oBikeName === vCleanName || oBikeName.includes(vCleanName) || vCleanName.includes(oBikeName);
+            });
+          }
+
+          const vOrderId = vOrder ? vOrder.id : ((v as any).orderId || (v.id.startsWith('XE-') ? v.id.replace(/^XE-/, '') : '') || (v as any).maDonHang || '');
+          const vVin = (v.soKhung || vOrder?.thongTinXe?.soKhungVIN || '').toUpperCase().trim();
 
           // Danh sách tổng hợp tất cả lịch hẹn của khách hàng
           const allApptsPool = appointmentApi.getAllSync();
@@ -6500,20 +6554,56 @@ export default function CustomerDashboard({
             })
           ];
 
-          // 1. Từ lịch hẹn hoàn thành của khách hàng (Khớp chính xác xe)
+          // 1. Từ lịch hẹn hoàn thành của khách hàng (Khớp chính xác xe & cô lập theo đơn)
+          let hasNhanXe = false; // Mỗi chiếc xe chỉ có tối đa 1 lần nhận xe mới
           mergedCustomerAppts.forEach(a => {
-            if (a.trangThai !== 'DaHoanThanh' && a.trangThai !== 'HoanThanh') return;
+            const isCompleted = a.trangThai === 'DaHoanThanh' || a.trangThai === 'HoanThanh';
+            const isConfirmedNhanXe = a.loaiDichVu === 'NhanXe' && (a.trangThai === 'DaXacNhan' || isCompleted);
+            if (!isCompleted && !isConfirmedNhanXe) return;
+
             const cleanAPlate = (a.bienSo || '').toUpperCase().replace(/[\s\-\.]/g, '');
             const aName = (a.tenXe || '').toLowerCase().trim();
-            const aVin = ((a as any).soKhung || '').toUpperCase().trim();
+            const aCleanName = (a.tenXe || '')
+              .toLowerCase()
+              .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+              .replace(/\b(abs|cbs|smartkey|the thao|dac biet|tieu chuan|cao cap|naked bike|scrambler|hybrid|202\d)\b/gi, '')
+              .replace(/[^a-z0-9]/g, '');
+            const aVin = ((a as any).soKhung || (a as any).soKhungVIN || '').toUpperCase().trim();
 
-            const matchPlate = !isChuaCoBien && cleanAPlate && (cleanVPlate === cleanAPlate || cleanAPlate.includes(cleanVPlate) || cleanVPlate.includes(cleanAPlate));
-            const matchVehId = (a as any).vehicleId === v.id;
-            const matchVin = vVin && aVin && vVin === aVin;
-            const matchOrderXe = isChuaCoBien && (a as any).maDonHangXe && myOrders.some(o => o.id === (a as any).maDonHangXe && (o.thongTinXe?.tenXe?.toLowerCase().trim() === vName || o.thongTinXe?.soKhungVIN === vVin));
-            const matchName = vName && aName && (vName.includes(aName) || aName.includes(vName));
+            // Mã đơn hàng liên kết của lịch hẹn a (aOrderId)
+            const noteOrderMatch = a.ghiChu ? (a.ghiChu.match(/#(DH-XE-\w+|DH\w+)/i)?.[1] || a.ghiChu.match(/(DH-XE-\w+|DH\w+)/i)?.[1] || '') : '';
+            const aOrderId = (a as any).maDonHangXe || noteOrderMatch || (a as any).orderId || '';
 
-            if (matchVehId || matchPlate || matchVin || matchOrderXe || matchName) {
+            let isMatch = false;
+
+            if (a.loaiDichVu === 'NhanXe') {
+              // NGHIỆP VỤ NHẬN XE MỚI: Mỗi xe chỉ nhận đúng 1 lần từ đơn mua của chính nó
+              if (hasNhanXe) return;
+
+              const matchOrderStrict = vOrderId && aOrderId && vOrderId.toUpperCase() === aOrderId.toUpperCase();
+              const matchVinStrict = vVin && aVin && vVin === aVin;
+              const matchVehIdStrict = (a as any).vehicleId === v.id;
+              const matchNameClean = aCleanName && vCleanName && (aCleanName === vCleanName || aCleanName.includes(vCleanName) || vCleanName.includes(aCleanName));
+              const matchNameSafe = matchNameClean && (!aOrderId || (vOrderId && aOrderId.toUpperCase() === vOrderId.toUpperCase()));
+
+              if (matchOrderStrict || matchVinStrict || matchVehIdStrict || matchNameSafe) {
+                isMatch = true;
+                hasNhanXe = true;
+              }
+            } else {
+              // CÁC DỊCH VỤ KHÁC (Bảo dưỡng, Sửa chữa, Bảo hành, Lái thử):
+              const matchVehId = (a as any).vehicleId === v.id;
+              const matchVin = vVin && aVin && vVin === aVin;
+              const matchPlate = !isChuaCoBien && cleanAPlate && (cleanVPlate === cleanAPlate || cleanAPlate.includes(cleanVPlate) || cleanVPlate.includes(cleanAPlate));
+              const matchOrder = isChuaCoBien && vOrderId && aOrderId && vOrderId.toUpperCase() === aOrderId.toUpperCase();
+              const matchNameFallback = isChuaCoBien && (!aOrderId || aOrderId === vOrderId) && vName && aName && (vName === aName || vName.includes(aName));
+
+              if (matchVehId || matchPlate || matchVin || matchOrder || matchNameFallback) {
+                isMatch = true;
+              }
+            }
+
+            if (isMatch) {
               const d = a.ngayHen ? new Date(a.ngayHen) : new Date();
               const formattedDate = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
               const monthYear = `${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
@@ -6526,14 +6616,60 @@ export default function CustomerDashboard({
               else if (a.loaiDichVu === 'LaiThu') loaiBadgeText = 'Lái thử';
               else if (a.loaiDichVu === 'NhanXe') loaiBadgeText = 'Nhận xe mới';
 
+              // FIX 107: Tính toán chi phí chính xác theo từng dịch vụ, loại bỏ 2.500.000 VND hardcoded
+              let finalCost = 0;
+              const matchedOrder = (myOrders || []).concat(allOrders || []).find(o =>
+                (o.maLichHen && o.maLichHen === a.id) ||
+                ((a as any).maHoaDon && o.id === (a as any).maHoaDon) ||
+                (o.id === a.id)
+              );
+
+              if (a.loaiDichVu === 'NhanXe' || a.loaiDichVu === 'LaiThu' || a.loaiDichVu === 'BaoHanh') {
+                // Nhận xe mới, Lái thử, Bảo hành luôn là 0 VND (Miễn phí)
+                finalCost = 0;
+              } else if (matchedOrder && typeof matchedOrder.tongTien === 'number' && matchedOrder.tongTien > 0) {
+                finalCost = matchedOrder.tongTien;
+              } else if (typeof a.chiPhiThucTe === 'number' && a.chiPhiThucTe > 0) {
+                finalCost = a.chiPhiThucTe;
+              } else if (typeof (a as any).tongTien === 'number' && (a as any).tongTien > 0) {
+                finalCost = (a as any).tongTien;
+              } else if (typeof (a as any).chiPhiBaoGia === 'number' && (a as any).chiPhiBaoGia > 0) {
+                finalCost = (a as any).chiPhiBaoGia;
+              } else if (a.loaiDichVu === 'BaoDuong') {
+                // Bóc tách giá gói dịch vụ từ ghi chú lịch hẹn (vd: "[GÓI BẢO DƯỠNG]: Gói Chăm Sóc & Vệ Sinh Chi Tiết (120.000 đ)")
+                const note = a.ghiChu || '';
+                const priceMatch = note.match(/\(([\d\.]+)\s*(?:đ|vnd|đồng)\)/i);
+                if (priceMatch && priceMatch[1]) {
+                  finalCost = parseInt(priceMatch[1].replace(/\./g, ''), 10) || 120000;
+                } else if (note.toLowerCase().includes('toàn diện') || note.includes('2 Năm')) {
+                  finalCost = 600000;
+                } else if (note.toLowerCase().includes('vip')) {
+                  finalCost = 650000;
+                } else if (note.toLowerCase().includes('nâng cao')) {
+                  finalCost = 350000;
+                } else if (note.toLowerCase().includes('chăm sóc') || note.toLowerCase().includes('vệ sinh')) {
+                  finalCost = 120000;
+                } else {
+                  finalCost = 150000;
+                }
+              } else if (a.loaiDichVu === 'SuaChua') {
+                const note = a.ghiChu || '';
+                const priceMatch = note.match(/\(([\d\.]+)\s*(?:đ|vnd|đồng)\)/i);
+                if (priceMatch && priceMatch[1]) {
+                  finalCost = parseInt(priceMatch[1].replace(/\./g, ''), 10) || 340000;
+                } else {
+                  finalCost = 340000;
+                }
+              }
+
               list.push({
                 id: a.id,
                 ngayDichVu: formattedDate,
                 monthYear,
                 loaiDichVu: loaiKey,
                 loaiBadgeText,
-                nhanVien: a.nhanVienPhuTrach || 'Nguyễn Văn An',
-                chiPhi: (a as any).tongTien || (a.loaiDichVu === 'BaoHanh' ? 0 : 2500000),
+                nhanVien: a.nhanVienPhuTrach || matchedOrder?.nhanVienPhuTrach || 'Nguyễn Văn An',
+                chiPhi: finalCost,
                 noiDung: a.ghiChu || 'Kiểm tra và thực hiện dịch vụ xe.',
                 rawDate: d.getTime(),
               });
@@ -8061,6 +8197,29 @@ export default function CustomerDashboard({
           ))
         );
 
+        // FIX 106: Tìm đơn hàng dịch vụ thực tế tương ứng nếu là Bảo dưỡng hoặc Sửa chữa
+        const matchedServiceOrder = allOrders.find(o =>
+          o.loaiDon === 'DichVu' && (
+            (o.maLichHen && (o.maLichHen === appt.id || o.maLichHen === (appt as any).maLichHen)) ||
+            (appt.id && (o.id.includes(appt.id) || (o.ghiChu && o.ghiChu.includes(appt.id)))) ||
+            ((appt as any).maHoaDon && o.id === (appt as any).maHoaDon) ||
+            (appt.bienSo && o.thongTinXe?.bienSo && (
+              o.thongTinXe.bienSo.replace(/\s|-|\./g, '').toLowerCase() === appt.bienSo.replace(/\s|-|\./g, '').toLowerCase()
+            ))
+          )
+        ) || myOrders.find(o =>
+          o.loaiDon === 'DichVu' && (
+            (o.maLichHen && o.maLichHen === appt.id) ||
+            (appt.bienSo && o.thongTinXe?.bienSo && (
+              o.thongTinXe.bienSo.replace(/\s|-|\./g, '').toLowerCase() === appt.bienSo.replace(/\s|-|\./g, '').toLowerCase()
+            )) ||
+            (appt.tenXe && o.thongTinXe?.tenXe && (
+              o.thongTinXe.tenXe.toLowerCase().includes(appt.tenXe.toLowerCase()) ||
+              appt.tenXe.toLowerCase().includes(o.thongTinXe.tenXe.toLowerCase())
+            ))
+          )
+        );
+
         let docTitle = 'HÓA ĐƠN DỊCH VỤ & BIÊN BẢN BÀN GIAO';
         let docCode = `#HD-DV-${appt.id}`;
         let docBadge = '✓ ĐÃ HOÀN TẤT & NGHIỆM THU';
@@ -8291,50 +8450,97 @@ export default function CustomerDashboard({
           ];
         } else if (loai === 'SuaChua') {
           docTitle = 'HÓA ĐƠN DỊCH VỤ SỬA CHỮA & THAY THẾ PHỤ TÙNG';
-          docCode = `#HD-SC-${appt.id}`;
+          docCode = matchedServiceOrder ? `#${matchedServiceOrder.id}` : `#HD-SC-${appt.id}`;
           docBadge = '✓ ĐÃ HOÀN TẤT SỬA CHỮA';
           customerSignLabel = 'KHÁCH HÀNG NHẬN XE';
           staffSignLabel = 'KỸ THUẬT VIÊN SỬA CHỮA';
-          staffRole = 'KTV Xưởng Dịch vụ Kỹ thuật';
 
-          displayVehicleName = appt.tenXe || 'Xe sửa chữa kỹ thuật';
-          displayBienSo = appt.bienSo || 'Chưa bấm biển';
+          const finalKtv = appt.nhanVienPhuTrach && appt.nhanVienPhuTrach !== 'Chưa phân công'
+            ? appt.nhanVienPhuTrach
+            : (matchedServiceOrder?.tenNV || (matchedServiceOrder as any)?.nhanVienPhuTrach || 'KTV. Trần Minh Long');
+          staffRole = finalKtv.startsWith('KTV') || finalKtv.startsWith('NVTV') ? finalKtv : `KTV ${finalKtv}`;
 
-          totalPaymentText = '450.000 đ';
-          invoiceNote = 'Linh kiện thay thế được bảo hành chính hãng 06 tháng hoặc 5.000 km.';
+          displayVehicleName = matchedServiceOrder?.thongTinXe?.tenXe || appt.tenXe || 'Xe sửa chữa kỹ thuật';
+          displayBienSo = matchedServiceOrder?.thongTinXe?.bienSo || appt.bienSo || 'Chưa bấm biển';
 
-          docItems = [
-            {
-              stt: '01',
-              name: 'Tiền công thợ kiểm tra, chẩn đoán & sửa chữa kỹ thuật',
-              desc: appt.ghiChu || 'Sửa chữa, khắc phục sự cố vận hành và phục hồi tính năng an toàn cho xe theo yêu cầu.',
-              unit: 'Công',
-              qty: 1,
-              priceText: '150.000 đ',
-              totalText: '150.000 đ',
-              isFree: false
-            },
-            {
-              stt: '02',
-              name: 'Phụ tùng / Vật tư kỹ thuật chính hãng thay thế',
-              desc: 'Vật tư phụ tùng thay thế chính hãng Motoshop, bảo hành kỹ thuật 06 tháng.',
-              unit: 'Gói',
-              qty: 1,
-              priceText: '300.000 đ',
-              totalText: '300.000 đ',
-              isFree: false
-            },
-            {
-              stt: '03',
+          invoiceNote = matchedServiceOrder?.ghiChu || appt.ghiChu || 'Linh kiện thay thế được bảo hành chính hãng 06 tháng hoặc 5.000 km.';
+
+          if (matchedServiceOrder && matchedServiceOrder.items && matchedServiceOrder.items.length > 0) {
+            totalPaymentText = formatVND(matchedServiceOrder.tongTien);
+            docItems = matchedServiceOrder.items.map((it, idx) => ({
+              stt: String(idx + 1).padStart(2, '0'),
+              name: it.tenSanPham,
+              desc: it.tenSanPham.includes('Công')
+                ? 'Tiền công kỹ thuật viên kiểm tra & thực hiện sửa chữa'
+                : 'Linh kiện phụ tùng thay thế chính hãng Motoshop',
+              unit: it.tenSanPham.includes('Công') ? 'Công' : 'Cái/Bộ',
+              qty: it.soLuong || 1,
+              priceText: formatVND(it.donGia),
+              totalText: formatVND(it.donGia * (it.soLuong || 1)),
+              isFree: it.donGia === 0,
+            }));
+            docItems.push({
+              stt: String(docItems.length + 1).padStart(2, '0'),
               name: 'Vệ sinh chi tiết & kiểm tra an toàn sau sửa chữa',
               desc: 'Tra dầu mỡ xích sên, cân chỉnh phanh lốp và rửa xe tiêu chuẩn bàn giao.',
               unit: 'Lần',
               qty: 1,
               priceText: 'Miễn phí',
               totalText: '0 đ',
-              isFree: true
-            }
-          ];
+              isFree: true,
+            });
+          } else {
+            const laborCost = 100000;
+            const part1Cost = 90000;
+            const part2Cost = 150000;
+            const totalCost = (appt as any).chiPhiThucTe && (appt as any).chiPhiThucTe > 0
+              ? (appt as any).chiPhiThucTe
+              : (laborCost + part1Cost + part2Cost);
+            totalPaymentText = formatVND(totalCost);
+
+            docItems = [
+              {
+                stt: '01',
+                name: 'Tiền công thợ kiểm tra, chẩn đoán & sửa chữa kỹ thuật',
+                desc: appt.ghiChu || 'Công vá/thay ruột, thay má phanh và căn chỉnh tổng quát.',
+                unit: 'Công',
+                qty: 1,
+                priceText: formatVND(laborCost),
+                totalText: formatVND(laborCost),
+                isFree: false
+              },
+              {
+                stt: '02',
+                name: 'Ruột xe [Săm] IRC 14 inch chính hãng',
+                desc: 'SKU: IRC-14-R · Ruột xe máy chính hãng IRC, độ bền cao, chống xì hơi.',
+                unit: 'Cái',
+                qty: 1,
+                priceText: formatVND(part1Cost),
+                totalText: formatVND(part1Cost),
+                isFree: false
+              },
+              {
+                stt: '03',
+                name: 'Bố thắng (Má phanh) trước Vision chính hãng',
+                desc: 'SKU: BT-VS-TR · Má phanh đĩa trước tiêu chuẩn an toàn chính hãng.',
+                unit: 'Bộ',
+                qty: 1,
+                priceText: formatVND(part2Cost),
+                totalText: formatVND(part2Cost),
+                isFree: false
+              },
+              {
+                stt: '04',
+                name: 'Vệ sinh chi tiết & kiểm tra an toàn sau sửa chữa',
+                desc: 'Tra dầu mỡ xích sên, cân chỉnh phanh lốp và rửa xe tiêu chuẩn bàn giao.',
+                unit: 'Lần',
+                qty: 1,
+                priceText: 'Miễn phí',
+                totalText: '0 đ',
+                isFree: true
+              }
+            ];
+          }
         } else if (loai === 'GiaHanBaoHanh') {
           docTitle = 'HÓA ĐƠN GIA HẠN BẢO HÀNH MỞ RỘNG (CARE+)';
           docCode = `#HD-GHBH-${appt.id}`;
@@ -8392,50 +8598,114 @@ export default function CustomerDashboard({
         } else {
           // Mặc định: BaoDuong
           docTitle = 'HÓA ĐƠN DỊCH VỤ BẢO DƯỠNG ĐỊNH KỲ';
-          docCode = `#HD-BD-${appt.id}`;
+          docCode = matchedServiceOrder ? `#${matchedServiceOrder.id}` : `#HD-BD-${appt.id}`;
           docBadge = '✓ ĐÃ HOÀN TẤT BẢO DƯỠNG';
           customerSignLabel = 'KHÁCH HÀNG NHẬN XE';
           staffSignLabel = 'KỸ THUẬT VIÊN BẢO DƯỠNG';
-          staffRole = 'KTV Xưởng Bảo dưỡng Motoshop';
 
-          displayVehicleName = appt.tenXe || 'Xe bảo dưỡng';
-          displayBienSo = appt.bienSo || 'Chưa bấm biển';
+          const finalKtv = appt.nhanVienPhuTrach && appt.nhanVienPhuTrach !== 'Chưa phân công'
+            ? appt.nhanVienPhuTrach
+            : (matchedServiceOrder?.tenNV || (matchedServiceOrder as any)?.nhanVienPhuTrach || 'KTV. Trần Minh Long');
+          staffRole = finalKtv.startsWith('KTV') || finalKtv.startsWith('NVTV') ? finalKtv : `KTV ${finalKtv}`;
 
-          totalPaymentText = '350.000 đ';
-          invoiceNote = 'Bảo hành dịch vụ bảo dưỡng định kỳ trong 01 tháng hoặc 1.000 km đầu tiên.';
+          displayVehicleName = matchedServiceOrder?.thongTinXe?.tenXe || appt.tenXe || 'Xe bảo dưỡng';
+          displayBienSo = matchedServiceOrder?.thongTinXe?.bienSo || appt.bienSo || 'Chưa bấm biển';
 
-          docItems = [
-            {
-              stt: '01',
-              name: 'Gói công bảo dưỡng định kỳ tiêu chuẩn Motoshop Care',
-              desc: appt.ghiChu || 'Kiểm tra tổng quát 15 hạng mục an toàn, vệ sinh lọc gió, bugi, buồng đốt và cân chỉnh phanh.',
-              unit: 'Gói',
-              qty: 1,
-              priceText: '200.000 đ',
-              totalText: '200.000 đ',
-              isFree: false
-            },
-            {
-              stt: '02',
-              name: 'Dầu nhớt động cơ 4T cao cấp chính hãng (Motul / Castrol 0.8L)',
-              desc: 'Dầu nhớt máy chính hãng chuyên dụng cho xe số & xe tay ga bôi trơn tối ưu, tiết kiệm nhiên liệu.',
-              unit: 'Chai',
-              qty: 1,
-              priceText: '150.000 đ',
-              totalText: '150.000 đ',
-              isFree: false
-            },
-            {
-              stt: '03',
+          invoiceNote = matchedServiceOrder?.ghiChu || appt.ghiChu || 'Bảo hành dịch vụ bảo dưỡng định kỳ trong 01 tháng hoặc 1.000 km đầu tiên.';
+
+          if (matchedServiceOrder && matchedServiceOrder.items && matchedServiceOrder.items.length > 0) {
+            totalPaymentText = formatVND(matchedServiceOrder.tongTien);
+            docItems = matchedServiceOrder.items.map((it, idx) => ({
+              stt: String(idx + 1).padStart(2, '0'),
+              name: it.tenSanPham,
+              desc: it.tenSanPham.includes('Gói')
+                ? 'Gói bảo dưỡng định kỳ tiêu chuẩn Motoshop Care'
+                : (it.tenSanPham.includes('Công') ? 'Tiền công kỹ thuật' : 'Phụ tùng dầu nhớt chính hãng Motoshop'),
+              unit: it.tenSanPham.includes('Công') ? 'Công' : (it.tenSanPham.includes('Gói') ? 'Gói' : 'Chai/Cái'),
+              qty: it.soLuong || 1,
+              priceText: formatVND(it.donGia),
+              totalText: formatVND(it.donGia * (it.soLuong || 1)),
+              isFree: it.donGia === 0,
+            }));
+            docItems.push({
+              stt: String(docItems.length + 1).padStart(2, '0'),
               name: 'Kiểm tra áp suất lốp, phanh và rửa xe tiêu chuẩn miễn phí',
               desc: 'Gói chăm sóc khách hàng định kỳ tiêu chuẩn Motoshop Care.',
               unit: 'Lần',
               qty: 1,
               priceText: 'Miễn phí',
               totalText: '0 đ',
-              isFree: true
+              isFree: true,
+            });
+          } else {
+            // Bóc tách gói bảo dưỡng chính xác từ ghi chú lịch hẹn
+            const noteLower = (appt.ghiChu || '').toLowerCase();
+            let pkgName = 'Gói Tiêu Chuẩn (Cấp 1)';
+            let pkgPrice = 150000;
+            let pkgDesc = 'Thay nhớt máy, kiểm tra bugi, áp suất lốp, vệ sinh cụm phanh cơ bản';
+
+            if (noteLower.includes('chuyên sâu') || noteLower.includes('cấp 2') || noteLower.includes('350.000') || noteLower.includes('350000')) {
+              pkgName = 'Gói Chuyên Sâu (Cấp 2)';
+              pkgPrice = 350000;
+              pkgDesc = 'Bao gồm Cấp 1 + Vệ sinh kim phun, bộ nồi, lọc gió, ắc quy';
+            } else if (noteLower.includes('toàn diện vip') || noteLower.includes('cấp 3') || noteLower.includes('650.000') || noteLower.includes('650000')) {
+              pkgName = 'Gói Toàn Diện VIP (Cấp 3)';
+              pkgPrice = 650000;
+              pkgDesc = 'Bao gồm Cấp 2 + Súc buồng đốt, tra mỡ toàn bộ 18 hạng mục';
+            } else if (noteLower.includes('spa') || noteLower.includes('120.000') || noteLower.includes('120000')) {
+              pkgName = 'Gói Spa Chăm Sóc Toàn Diện';
+              pkgPrice = 120000;
+              pkgDesc = 'Rửa xe bọt tuyết, dưỡng dàn áo bóng sơn, vệ sinh chi tiết';
+            } else if (noteLower.includes('2 năm') || noteLower.includes('600.000') || noteLower.includes('600000')) {
+              pkgName = 'Gói Bảo Dưỡng Toàn Diện (2 Năm)';
+              pkgPrice = 600000;
+              pkgDesc = 'Gói chăm sóc toàn diện 2 năm chuẩn hãng';
             }
-          ];
+
+            if ((appt as any).chiPhiThucTe && (appt as any).chiPhiThucTe > 0) {
+              pkgPrice = (appt as any).chiPhiThucTe;
+            }
+
+            const hasMotul = noteLower.includes('motul') || noteLower.includes('300v');
+            const motulPrice = 350000;
+            const finalTotal = pkgPrice + (hasMotul ? motulPrice : 0);
+            totalPaymentText = formatVND(finalTotal);
+
+            docItems = [
+              {
+                stt: '01',
+                name: pkgName,
+                desc: pkgDesc,
+                unit: 'Gói',
+                qty: 1,
+                priceText: formatVND(pkgPrice),
+                totalText: formatVND(pkgPrice),
+                isFree: false
+              },
+              ...(hasMotul ? [
+                {
+                  stt: '02',
+                  name: 'Nhớt Motul 300V (1L) Factory Line 10W40',
+                  desc: 'SKU: MT300V · Nhớt tổng hợp 100% cao cấp công nghệ Ester Core chính hãng.',
+                  unit: 'Chai',
+                  qty: 1,
+                  priceText: formatVND(motulPrice),
+                  totalText: formatVND(motulPrice),
+                  isFree: false
+                }
+              ] : []),
+              {
+                stt: hasMotul ? '03' : '02',
+                name: 'Kiểm tra áp suất lốp, phanh và rửa xe tiêu chuẩn miễn phí',
+                desc: 'Gói chăm sóc khách hàng định kỳ tiêu chuẩn Motoshop Care.',
+                unit: 'Lần',
+                qty: 1,
+                priceText: 'Miễn phí',
+                totalText: '0 đ',
+                isFree: true
+              }
+            ];
+          }
         }
 
         return (
