@@ -5101,3 +5101,145 @@ pm run build thành công 100% trong 1.41s, **0 lỗi TypeScript**.
   - Toàn bộ 25/25 test suites trong hệ thống (`crm-frontend/tests/*.cjs`): **PASS 25/25 (0 failed)**.
   - `npm --prefix crm-frontend run build`: **0 lỗi TypeScript / Vite** (hoàn tất trong 611ms).
   - Bảo toàn nguyên vẹn 100% các điều kiện bất biến (System Invariants) trong `QUY_TAC_KIEM_TRA_VA_BAO_TOAN_FIX.md`.
+
+
+---
+
+## [Bản Fix 99] - Nâng Cấp Toàn Diện Trang Báo Cáo & Thống Kê CRM Thành 5 Phân Hệ Chuyên Sâu Chuẩn 100% Số Liệu Mockup
+
+- **Ngày thực hiện:** 08/11/2026
+- **Mục tiêu:**
+  1. **Tái cấu trúc giao diện trang Báo cáo & Thống kê ([`Reports.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/Reports.tsx)) theo chuẩn Dark Theme quản trị cao cấp:**
+     - Thiết kế thanh Top Header chuyên nghiệp với bộ chọn thời gian (`01/11/2026 - 30/11/2026`, Tháng trước, Quý này, Cả năm), chọn chi nhánh (Tất cả chi nhánh, Hà Nội, Đà Nẵng, TP.HCM) và nút chức năng `📥 Xuất Báo Cáo`.
+     - Phân chia thanh điều hướng thành **5 Tab độc lập** chuyển đổi linh hoạt:
+       * `[ Tổng quan Điều hành ]`
+       * `[ Kinh doanh & Đơn hàng ]`
+       * `[ Dịch vụ & Hậu mãi ]`
+       * `[ Khách Hàng ]`
+       * `[ Khảo sát & Đánh giá ]`
+  2. **Hoàn thiện chính xác 100% số liệu & biểu đồ theo 5 ảnh mẫu giao diện:**
+     - **Tab 1 - Tổng quan Điều hành (Ảnh 1):** 4 thẻ KPI lớn (Tổng Doanh Thu 1.45 Tỷ VNĐ +8.2%, 115 Chiếc xe bán +5.2%, 1,120 Khách giao dịch +8.5%, CSAT 4.6/5.0★ +0.2); Dải Sub-KPI (Doanh số xe 1.15 Tỷ, Phụ tùng 195.3 Tr, Công dịch vụ 101.2 Tr, NV xuất sắc Nguyễn Văn A 28 xe); 4 biểu đồ: Cơ cấu doanh thu toàn cục (Xe mới 79.3%, Phụ tùng 13.5%, Tiền công 7.2%), So sánh tăng trưởng doanh thu cùng kỳ theo 4 tuần (10/2026 vs 11/2026), Cơ cấu doanh thu theo hạng thẻ (Thường, Bạc, Vàng, VIP trên 3 mảng), Phân khúc khách hàng theo giá trị chi tiêu (Dưới 10Tr, 10-30Tr, 30-60Tr, Trên 60Tr).
+     - **Tab 2 - Kinh doanh & Đơn hàng (Ảnh 2):** 4 thẻ KPI lớn (Doanh thu xe 1.15 Tỷ, Doanh thu phụ tùng 296.5 Tr, 115 Xe đã bán, 1,850 Món xuất kho); 7 biểu đồ: Doanh thu theo dòng xe (SH 45.2%, Air Blade 27.0%, Vision 16.1%, Khác 11.7%), Doanh thu phụ tùng theo danh mục (Dầu nhớt 32.1%, Săm lốp 23.0%, Phanh 18.6%, Khác 26.3%), Top 5 dòng xe bán chạy (SH 160i 42 xe, Air Blade 35 xe, Vision 20 xe...), Top 5 phụ tùng bán chạy (Nhớt máy 450, Má phanh 280...), Tình trạng đơn hàng (850 hoàn thành, 320 đang xử lý, 110 chờ xác nhận, 45 đã hủy), Kênh bán hàng Web vs Showroom (tỷ trọng Xe mới vs Phụ tùng), Biểu đồ donut 45 ca đơn hủy từ khách hàng.
+     - **Tab 3 - Dịch vụ & Hậu mãi (Ảnh 3):** 4 thẻ KPI lớn (2,450 Lượt đón tiếp +12.5%, 658.5 Tr Doanh thu dịch vụ +14.2%, 42 Phiếu chờ duyệt, 18 Xe đang làm); Dải Sub-KPI (Hiệu suất thợ 92.5%, Tỷ lệ đặt lịch 42.4%, Bàn nâng trống 4/12, Lượt tiếp nhận TB 81 xe/ngày); 5 biểu đồ: Số lượng sử dụng 5 dịch vụ (Bảo dưỡng 1,120, Sửa chữa 645, Lái thử 358, Bảo hành 215, Bảo hiểm 112), Tình trạng xử lý dịch vụ (Hoàn thành 80.8%, Đang xử lý 11.4%...), Doanh thu từng dịch vụ, Đặt lịch trước vs Vãng lai, Mật độ yêu cầu theo thứ trong tuần (T2-CN); Bảng tác vụ yêu cầu chờ duyệt & phân công thợ (#DV-8042, #DV-8041, #DV-8040, #DV-8039).
+     - **Tab 4 - Khách Hàng (Ảnh 4):** 4 thẻ KPI lớn (12,850 Khách hàng +5.4%, 450 Khách mới +12.3%, 1,120 Khách giao dịch +8.5%, 3,250 Lượt ghé thăm +15.2%); Dải Sub-KPI (Khách VIP 400 người, Sinh nhật trong tháng 128 khách, Trả góp 42.5%, Tiền mặt 57.5%); 4 biểu đồ: Phân hạng thẻ thành viên (Thường 9,500, Đồng 2,100, Bạc 850, Vàng 400, VIP 200), Cơ cấu độ tuổi & giới tính Nam vs Nữ (18-25 đến Trên 55), Mật độ khách tới theo khung giờ (8h - 20h), Phân loại trạng thái hoạt động khách hàng (1,120 khách tương tác).
+     - **Tab 5 - Khảo sát & Đánh giá (Ảnh 5):** 4 thẻ KPI lớn (1,250 Ý kiến đóng góp +14.2%, CSAT 4.6/5.0★ +0.2, Tỷ lệ phản hồi 34.5%, 42 Lượt khiếu nại); Dải Sub-KPI kênh khảo sát (Zalo ZNS 65.2%, SMS 22.4%, Email 8.5%, CSKH gọi 3.9%); 5 biểu đồ: Đánh giá xe 1-5 sao, Đánh giá phụ tùng 1-5 sao, So sánh mức hài lòng theo từng dịch vụ, Xu hướng điểm CSAT theo 4 tuần, Donut trạng thái xử lý 42 khiếu nại (Đã giải quyết 57.1%, Đang xử lý 28.6%, Chưa tiếp nhận 14.3%).
+  3. **Tính năng Xuất Báo Cáo:**
+     - Modal Xuất Báo Cáo hỗ trợ In bản A4 quản trị ban giám đốc (`window.print()`) và Tải dữ liệu báo cáo dạng Excel / CSV.
+- **Các tệp đã chỉnh sửa:**
+  - [`crm-frontend/src/pages/admin/Reports.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/Reports.tsx): Thiết kế lại toàn bộ 5 phân hệ và Recharts Dark theme.
+  - [`crm-frontend/tests/verify_reports_and_analytics_5_tabs.test.cjs`](file:///d:/crm-project/crm-frontend/tests/verify_reports_and_analytics_5_tabs.test.cjs): Bộ test TDD tự động hóa kiểm tra cả 5 tab và số liệu.
+- **Kết quả kiểm thử & Nghiệm thu:**
+  - Bộ test mới `verify_reports_and_analytics_5_tabs.test.cjs`: **PASS 100% (6/6)**.
+  - Toàn bộ 26/26 test suites trong hệ thống (`crm-frontend/tests/*.cjs`): **PASS 26/26 (0 failed)**.
+  - `npm --prefix crm-frontend run build`: **0 lỗi TypeScript / Vite** (hoàn tất trong 1.25s).
+  - Bảo toàn nguyên vẹn 100% các điều kiện bất biến (System Invariants) trong `QUY_TAC_KIEM_TRA_VA_BAO_TOAN_FIX.md`.
+
+
+---
+
+## [Bản Fix 100] - Đồng Bộ Số Liệu Thật CRM, Kích Hoạt Bộ Lọc Thời Gian Động & Nút Xuất Báo Cáo CSV UTF-8 BOM, Gỡ Bỏ Khối Chờ Duyệt & Lọc Chi Nhánh Thừa
+
+- **Ngày thực hiện:** 08/11/2026
+- **Mục tiêu:**
+  1. **Gỡ bỏ dropdown lọc chi nhánh thừa trên Header (theo Ảnh 2):**
+     - Đã xóa bỏ hoàn toàn dropdown `📍 Tất cả chi nhánh ▾` khỏi header trang [`Reports.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/Reports.tsx) theo đúng phản hồi của người dùng.
+  2. **Gỡ bỏ khối danh sách chờ duyệt & phân công thợ ở Tab 3 (theo Ảnh 1):**
+     - Đã xóa bỏ hoàn toàn khối `DANH SÁCH YÊU CẦU CHỜ DUYỆT & PHÂN CÔNG THỢ` (#DV-8042, #DV-8041...) vốn bị dư thừa trong trang Báo cáo dịch vụ.
+     - Tái cấu trúc Hàng 2 của Tab Dịch vụ & Hậu mãi thành bố cục 2 cột cân đối và trực quan (`lg:grid-cols-2`): Cột 1 là biểu đồ so sánh `Khách Đặt Lịch vs Khách Vãng Lai` và Cột 2 là biểu đồ đường `Mật Độ Yêu Cầu Theo Thứ Trong Tuần`.
+  3. **Kết nối số liệu thống kê thực tế từ Cơ sở dữ liệu / API hệ thống CRM:**
+     - Tải và đồng bộ dữ liệu thực tế từ các endpoint: `orderApi.getAll()`, `customerApi.getAll()`, `appointmentApi.getAll()`, `feedbackApi.getAll()`, `insuranceApi.getAll()`.
+     - Tính toán động toàn diện:
+       * Tổng Doanh Thu Hệ Thống: Tổng tiền từ đơn hàng thực tế không bị hủy + doanh thu hợp đồng bảo hiểm hiệu lực.
+       * Tổng Số Xe Đã Bán: Đếm chính xác số lượng đơn hàng xe thành công.
+       * Khách Phát Sinh Giao Dịch: Đếm số lượng khách hàng duy nhất (Unique customerId/SĐT/Email) có phát sinh giao dịch trong kỳ.
+       * Điểm CSAT Thực Tế: Tính trung bình cộng điểm số từ bảng đánh giá phản hồi `feedbacks.diemDanhGia` (thang điểm 5 sao).
+       * Doanh thu xe, phụ tùng và dịch vụ bóc tách chính xác theo từng danh mục.
+       * Cơ chế Fallback an toàn hiển thị chỉ số chuẩn khi hệ thống mới khởi tạo hoặc chưa có dữ liệu giao dịch trong kỳ.
+  4. **Kích hoạt Bộ Lọc Thời Gian Động (Date Filter Engine):**
+     - Hỗ trợ các mốc lọc thời gian: `Toàn bộ thời gian (Tất cả)`, `Hôm nay`, `7 ngày gần nhất`, `Tháng này (11/2026)`, `Tháng trước (10/2026)`, `Cả năm 2026`.
+     - Tự động lọc các bản ghi `ngayDat`, `ngayHen`, `ngayGui`, `ngayDangKy` và tái tính toán tức thì toàn bộ KPI và biểu đồ trên cả 5 Tab.
+  5. **Kích hoạt Nút Xuất Báo Cáo Thực Tế (Export Engine):**
+     - Bổ sung hàm xuất file `downloadReportCsv` với chuẩn mã hóa UTF-8 BOM (`\uFEFF`), đảm bảo Microsoft Excel tiếng Việt mở file không bị lỗi font chữ.
+     - Tệp xuất ra tự động tổng hợp: Tiêu đề báo cáo, Ngày kết xuất, Khoảng thời gian lọc, Phân hệ đang xem, Tóm tắt KPI (Doanh thu, Đơn hàng, Số khách, Lượt dịch vụ, Điểm CSAT) và Danh sách chi tiết các đơn hàng trong kỳ lọc.
+     - Nút `In Bản A4 Quản Trị` kích hoạt lệnh in chuẩn `window.print()` hỗ trợ xem trước và xuất PDF trực tiếp từ trình duyệt.
+- **Các tệp đã chỉnh sửa:**
+  - [`crm-frontend/src/pages/admin/Reports.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/Reports.tsx): Gỡ dropdown chi nhánh, gỡ khối #DV-8042, đồng bộ số liệu thật, gắn Date Filter Engine và xuất CSV/Excel UTF-8 BOM.
+  - [`crm-frontend/tests/verify_reports_real_data_filter_and_cleanup.test.cjs`](file:///d:/crm-project/crm-frontend/tests/verify_reports_real_data_filter_and_cleanup.test.cjs): Bộ test TDD kiểm chứng gỡ bỏ khối thừa, kích hoạt bộ lọc và xuất file CSV.
+  - [`crm-frontend/tests/verify_reports_and_analytics_5_tabs.test.cjs`](file:///d:/crm-project/crm-frontend/tests/verify_reports_and_analytics_5_tabs.test.cjs): Cập nhật kiểm tra tương thích số liệu động trên 5 phân hệ.
+- **Kết quả kiểm thử & Nghiệm thu:**
+  - Bộ test mới `verify_reports_real_data_filter_and_cleanup.test.cjs`: **PASS 100% (4/4)**.
+  - Bộ test `verify_reports_and_analytics_5_tabs.test.cjs`: **PASS 100% (6/6)**.
+  - Toàn bộ 27/27 test suites trong hệ thống (`crm-frontend/tests/*.cjs`): **PASS 27/27 (0 failed)**.
+  - `npm --prefix crm-frontend run build`: **0 lỗi TypeScript / Vite** (hoàn tất trong 1.09s).
+  - Bảo toàn nguyên vẹn 100% các điều kiện bất biến (System Invariants) trong `QUY_TAC_KIEM_TRA_VA_BAO_TOAN_FIX.md`.
+
+
+---
+
+## [Bản Fix 101] - Đồng Bộ Số Liệu Động Toàn Diện Cho Toàn Bộ Biểu Đồ CRM (Phân Hạng Thẻ, Đặt Lịch vs Vãng Lai, Trạng Thái Đơn, Dịch Vụ) & Hoàn Thiện Tính Năng In Bản A4 Quản Trị Chuẩn Tiêu Chuẩn
+
+- **Ngày thực hiện:** 08/11/2026
+- **Mục tiêu:**
+  1. **Đồng bộ hóa 100% số liệu động cho Biểu đồ Phân hạng thẻ thành viên ([`Reports.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/Reports.tsx)):**
+     - Xây dựng hook `dynamicTierStats` tính toán chi tiêu tích lũy thực tế của từng khách hàng (`tongChiTieu` kết hợp tổng tiền các đơn hàng hoàn tất).
+     - Phân loại chính xác 5 nhóm thứ bậc: **Thường, Đồng, Bạc, Vàng, VIP**.
+     - Khi số lượng khách hàng tăng hoặc khi khách phát sinh đơn hàng làm tăng chi tiêu, biểu đồ cột tự động cập nhật độ cao tức thì mà không cần can thiệp thủ công.
+     - Đồng bộ số lượng khách VIP hiển thị trên dải Sub-KPI card của Tab 4.
+  2. **Đồng bộ hóa 100% số liệu động cho Biểu đồ Khách đặt lịch vs Khách vãng lai:**
+     - Xây dựng hook `dynamicBookingVsWalkIn` bóc tách từ cơ sở dữ liệu lịch hẹn / đón tiếp thực tế theo 5 nhóm dịch vụ chính (Bảo dưỡng, Sửa chữa, Lái thử, Bảo hành, Bảo hiểm).
+     - Tự động nhận diện nguồn tạo phiếu: Đặt lịch trước (Web / App) vs Khách vãng lai tại Showroom (`KH-VANGLAI`, Showroom, tại quầy).
+     - Tính toán tỷ trọng % động và cung cấp số ca tiếp nhận thực tế vào Tooltip.
+  3. **Cơ chế Phản hồi dữ liệu thời gian thực (Real-time Reactivity):**
+     - Bổ sung cơ chế lắng nghe đa nguồn: sự kiện `storage`, sự kiện cửa sổ `focus`, sự kiện tùy chỉnh `crm-data-refresh` và cơ chế đồng bộ nền (polling 2.5s).
+     - Đảm bảo bất cứ khi nào khách hàng hoặc quản trị viên có tương tác làm thay đổi dữ liệu (đăng ký tài khoản, đặt xe, mua phụ tùng, đặt lịch hẹn, gửi đánh giá), toàn bộ các bảng biểu và KPI trong trang Báo cáo tự động tái tính toán và cập nhật lại ngay lập tức.
+  4. **Khắc phục triệt để tính năng In Bản A4 Quản Trị:**
+     - Tạo khối tài liệu in riêng biệt `#print-reports-a4-document` với cấu trúc báo cáo quản trị doanh nghiệp tiêu chuẩn.
+     - Tích hợp khối CSS `@media print` chuẩn hóa A4 portrait (`@page { size: A4 portrait; margin: 10mm 12mm; }`), ẩn toàn bộ giao diện dark web, sidebar và navbar khi in.
+     - Nội dung bản in A4 gồm: Tiêu đề Quốc hiệu & Đại lý Motoshop CRM, Tên báo cáo, Khoảng thời gian lọc, Bảng 4 KPI tài chính cốt lõi kẻ khung sắc nét, Bảng Cơ cấu Hạng thẻ thành viên, Bảng Đặt lịch trước vs Vãng lai, Danh sách đơn hàng trong kỳ và Khung ký tên hành chính 3 bên (Người lập báo cáo, Kế toán trưởng, Giám đốc đại lý).
+- **Các tệp đã chỉnh sửa:**
+  - [`crm-frontend/src/pages/admin/Reports.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/Reports.tsx): Đồng bộ số liệu động toàn diện, tích hợp cơ chế reactive đa kênh và xây dựng khối tài liệu in A4 tiêu chuẩn.
+  - [`crm-frontend/tests/verify_tier_distribution_walkin_and_a4_print.test.cjs`](file:///d:/crm-project/crm-frontend/tests/verify_tier_distribution_walkin_and_a4_print.test.cjs): Bộ test TDD kiểm chứng tính năng động và bản in A4.
+- **Kết quả kiểm thử & Nghiệm thu:**
+  - Bộ test mới `verify_tier_distribution_walkin_and_a4_print.test.cjs`: **PASS 100% (4/4)**.
+  - Bộ test 5 phân hệ `verify_reports_and_analytics_5_tabs.test.cjs`: **PASS 100% (6/6)**.
+  - Bộ test bộ lọc `verify_reports_real_data_filter_and_cleanup.test.cjs`: **PASS 100% (4/4)**.
+  - Toàn bộ 28/28 test suites trong hệ thống (`crm-frontend/tests/*.cjs`): **PASS 28/28 (0 failed)**.
+  - `npm --prefix crm-frontend run build`: **0 lỗi TypeScript / Vite** (hoàn tất trong 831ms).
+  - Bảo toàn nguyên vẹn 100% các điều kiện bất biến (System Invariants) trong `QUY_TAC_KIEM_TRA_VA_BAO_TOAN_FIX.md`.
+
+---
+
+## [Bản Fix 102] - Đồng Bộ Toàn Diện Giao Diện Phản Hồi & Đánh Giá Khách Hàng (Feedback.tsx) Theo Chuẩn Light Slate CRM Theme Của Hệ Thống
+
+- **Ngày thực hiện:** 08/11/2026
+- **Mục tiêu:**
+  1. **Khắc phục triệt để lỗi tiêu đề bị chìm / mất chữ (Invisible Title Bug):**
+     - Sửa tiêu đề trang `"PHẢN HỒI & ĐÁNH GIÁ KHÁCH HÀNG"` từ màu chữ trắng `text-white` thành màu chữ than đậm tương phản cao `text-zinc-950 font-extrabold uppercase font-display`, hiển thị sắc nét nổi bật trên nền xám Slate `var(--color-zinc-100)` của layout chung.
+  2. **Đồng bộ hóa 100% bảng màu Giao diện Phản hồi & Đánh giá (Feedback & Reviews) sang Light Slate CRM Theme:**
+     - Thay thế toàn bộ các mã màu tối hardcoded (`#141416`, `#1c1d22`, `#12141a`, `#18181b`) thành các class nền sáng hiện đại `bg-white`, `bg-zinc-50`, viền `border-zinc-200/90`, chữ `text-zinc-900`/`text-zinc-700`.
+     - **Thanh điều hướng & Bộ lọc:**
+       * Nút phân loại sản phẩm (Tất cả, Đánh giá xe, Đánh giá phụ tùng) thiết kế theo phong cách Tab hiện đại (Active: `bg-zinc-900 text-white`, Inactive: `bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-100`).
+       * 3 dropdown bộ lọc (Phân loại, Đánh giá sao, Danh mục) chuyển sang nền trắng viền sáng `bg-white border-zinc-200 text-zinc-800 shadow-2xs`.
+       * Thanh tìm kiếm chuyển sang nền trắng `bg-white text-zinc-900 placeholder-zinc-400 border-zinc-200 shadow-2xs`.
+       * Bộ 3 nút trạng thái (Tất cả, Chờ xử lý, Đã xử lý) làm sắc nét với badge đếm số lượng trực quan.
+     - **Thẻ Đánh giá & Phản hồi Khách hàng (Feedback Cards):**
+       * Nền thẻ chuyển từ đen kịt sang thẻ trắng `bg-white border border-zinc-200/90 rounded-2xl shadow-xs hover:border-zinc-300`.
+       * Avatar khách hàng chuyển sang `bg-zinc-100 text-zinc-800 border border-zinc-200 font-bold`.
+       * Khối thông tin sản phẩm (Xe / Phụ tùng) chuyển sang nền sáng `bg-zinc-50 border border-zinc-200/90` làm nổi bật ảnh sản phẩm, huy hiệu phân loại và nhãn mua hàng đã xác thực.
+       * Khối nội dung nhận xét của khách hàng chuyển sang nền `bg-zinc-50/80 text-zinc-800 border border-zinc-200/80` dễ đọc.
+       * Thanh thông tin liên lạc (SĐT, Email, Địa chỉ) hiển thị nền sáng `bg-zinc-50 border border-zinc-200 text-zinc-700`.
+       * Bộ 3 nút liên hệ nhanh (Gọi khách, Gửi mail, Nhắn tin) chuyển sang nút thẻ sáng `bg-white hover:bg-zinc-100 border border-zinc-200 text-zinc-700`.
+       * Khung hiển thị câu trả lời của shop chuyển sang nền hồng cam nhạt cao cấp `bg-red-50/70 border border-red-200 text-zinc-800` với huy hiệu Motoshop đỏ tươi.
+       * Ô nhập câu trả lời của shop chuyển sang nền trắng `bg-white border border-zinc-300 text-zinc-900 placeholder-zinc-400`.
+  3. **Bảo toàn 100% Logic & Tính năng Nghiệp vụ:**
+     - Giữ nguyên toàn bộ logic tương tác: Tìm kiếm, lọc sao, lọc phân loại, phân trang, gọi điện, gửi mail, mở cửa sổ Live Chat CSKH, gửi phản hồi của shop và nút "✓ Xác nhận đã xử lý".
+     - Giữ nguyên tab "Quản lý khảo sát" (Tab này vốn đã ở phong cách Light Theme).
+- **Các tệp đã chỉnh sửa:**
+  - [`crm-frontend/src/pages/admin/Feedback.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/Feedback.tsx): Cải tạo và đồng bộ hóa toàn diện UI/CSS sang Light Slate CRM Theme.
+  - [`crm-frontend/tests/verify_feedback_ui_theme_harmony.test.cjs`](file:///d:/crm-project/crm-frontend/tests/verify_feedback_ui_theme_harmony.test.cjs): Bộ test TDD kiểm thử độ tương phản tiêu đề, màu nền thẻ, dropdown và ô tìm kiếm.
+- **Kết quả kiểm thử & Nghiệm thu:**
+  - Bộ test mới `verify_feedback_ui_theme_harmony.test.cjs`: **PASS 100% (4/4)**.
+  - Toàn bộ 29/29 test suites trong hệ thống (`crm-frontend/tests/*.cjs`): **PASS 29/29 (0 failed)**.
+  - `npm --prefix crm-frontend run build`: **0 lỗi TypeScript / Vite** (hoàn tất trong 1.09s).
+  - Bảo toàn nguyên vẹn 100% các điều kiện bất biến (System Invariants) trong `QUY_TAC_KIEM_TRA_VA_BAO_TOAN_FIX.md`.
+
