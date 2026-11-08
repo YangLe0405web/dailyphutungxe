@@ -94,28 +94,56 @@ export default function ReportsPage() {
     };
   }, []);
 
+  // Helper lấy chuỗi ngày địa phương (YYYY-MM-DD) chuẩn xác theo múi giờ Việt Nam
+  const getLocalDateString = (d: Date = new Date()): string => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
+  // Helper nhận diện chuẩn xác đơn xe máy
+  const isVehicleOrder = (o: Order): boolean => {
+    return (
+      o.loaiDon === 'Xe' ||
+      (!!o.thongTinXe && (!o.items || o.items.length === 0)) ||
+      (Boolean(o.id && o.id.includes('XE')) && (!o.items || o.items.length === 0))
+    );
+  };
+
+  // Helper tính giá trị thực của xe bán ra (không lấy tiền cọc 2tr làm doanh thu bán xe)
+  const getVehicleOrderRealValue = (o: Order): number => {
+    return o.thongTinXe?.giaNiemYet || o.thongTinXe?.tongGiaTri || (o.tongTien >= 10000000 ? o.tongTien : 0);
+  };
+
   // Lọc dữ liệu theo khoảng thời gian thực tế
   const matchDate = (dateStr?: string): boolean => {
     if (!dateStr || dateFilter === 'all') return true;
     const cleanDate = dateStr.split('T')[0];
-    const today = new Date().toISOString().split('T')[0];
+    const today = getLocalDateString(new Date());
 
     if (dateFilter === 'today') {
-      return cleanDate === today || cleanDate === '2026-11-08';
+      return cleanDate === today;
     }
     if (dateFilter === '7days') {
       const targetTime = new Date(cleanDate).getTime();
-      const sevenDaysAgo = Date.now() - 7 * 24 * 3600 * 1000;
-      return targetTime >= sevenDaysAgo || cleanDate.startsWith('2026-11');
+      const now = new Date();
+      const sevenDaysAgo = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7).getTime();
+      return targetTime >= sevenDaysAgo;
     }
     if (dateFilter === 'thisMonth') {
-      return cleanDate.startsWith('2026-11') || cleanDate.startsWith(today.slice(0, 7));
+      const curMonth = today.slice(0, 7);
+      return cleanDate.startsWith(curMonth);
     }
     if (dateFilter === 'lastMonth') {
-      return cleanDate.startsWith('2026-10');
+      const now = new Date();
+      const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const prevMonthStr = `${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth() + 1).padStart(2, '0')}`;
+      return cleanDate.startsWith(prevMonthStr);
     }
     if (dateFilter === 'thisYear') {
-      return cleanDate.startsWith('2026');
+      const curYear = String(new Date().getFullYear());
+      return cleanDate.startsWith(curYear);
     }
     return true;
   };
@@ -130,13 +158,19 @@ export default function ReportsPage() {
 
   // 1. Phân hệ Tổng quan
   const totalSystemRevenue = useMemo(() => {
-    const orderSum = filteredOrders.reduce((sum, o) => sum + ((o.trangThai as any) !== 'DaHuy' && (o.trangThai as any) !== 'Đã hủy' ? (o.tongTien || 0) : 0), 0);
+    const orderSum = filteredOrders.reduce((sum, o) => {
+      if ((o.trangThai as any) === 'DaHuy' || (o.trangThai as any) === 'Đã hủy') return sum;
+      if (isVehicleOrder(o)) {
+        return sum + getVehicleOrderRealValue(o);
+      }
+      return sum + (o.tongTien || 0);
+    }, 0);
     const insSum = rawInsurance.reduce((sum, i) => sum + (i.trangThai === 'HieuLuc' ? i.phiBaoHiem : 0), 0);
     return orderSum + insSum;
   }, [filteredOrders, rawInsurance]);
 
   const totalVehiclesSold = useMemo(() => {
-    return filteredOrders.filter(o => (o.loaiDon === 'Xe' || !!o.thongTinXe || o.id?.includes('XE')) && (o.trangThai as any) !== 'DaHuy' && (o.trangThai as any) !== 'Đã hủy').length;
+    return filteredOrders.filter(o => isVehicleOrder(o) && (o.trangThai as any) !== 'DaHuy' && (o.trangThai as any) !== 'Đã hủy').length;
   }, [filteredOrders]);
 
   const uniqueTransactionCustomers = useMemo(() => {
@@ -153,21 +187,30 @@ export default function ReportsPage() {
   // Bóc tách cơ cấu doanh thu thực tế
   const vehicleRevenue = useMemo(() => {
     return filteredOrders
-      .filter(o => (o.loaiDon === 'Xe' || !!o.thongTinXe || o.id?.includes('XE')) && (o.trangThai as any) !== 'DaHuy' && (o.trangThai as any) !== 'Đã hủy')
-      .reduce((s, o) => s + (o.tongTien || 0), 0);
+      .filter(o => isVehicleOrder(o) && (o.trangThai as any) !== 'DaHuy' && (o.trangThai as any) !== 'Đã hủy')
+      .reduce((s, o) => s + getVehicleOrderRealValue(o), 0);
   }, [filteredOrders]);
 
   const partsRevenue = useMemo(() => {
     return filteredOrders
-      .filter(o => (o.loaiDon === 'PhuTung' || (!o.thongTinXe && !o.id?.includes('XE'))) && (o.trangThai as any) !== 'DaHuy' && (o.trangThai as any) !== 'Đã hủy')
+      .filter(o => 
+        o.loaiDon === 'PhuTung' && 
+        !o.thongTinXe && 
+        (!o.id || !o.id.includes('XE')) && 
+        (o.trangThai as any) !== 'DaHuy' && (o.trangThai as any) !== 'Đã hủy'
+      )
       .reduce((s, o) => s + (o.tongTien || 0), 0);
   }, [filteredOrders]);
 
   const serviceRevenue = useMemo(() => {
-    return filteredAppts
-      .filter(a => a.trangThai === 'HoanThanh' || a.trangThai === 'DaXacNhan')
-      .reduce((s, a) => s + ((a as any).chiPhi || 250000), 0);
-  }, [filteredAppts]);
+    const apptRev = filteredAppts
+      .filter(a => a.trangThai === 'HoanThanh' || a.trangThai === 'DaHoanThanh' || a.trangThai === 'DaXacNhan')
+      .reduce((s, a) => s + ((a as any).chiPhiThucTe || (a as any).tongTien || (a as any).chiPhi || 250000), 0);
+    const orderSvcRev = filteredOrders
+      .filter(o => o.loaiDon === 'DichVu' && (o.trangThai as any) !== 'DaHuy' && (o.trangThai as any) !== 'Đã hủy')
+      .reduce((s, o) => s + (o.tongTien || 0), 0);
+    return apptRev + orderSvcRev;
+  }, [filteredAppts, filteredOrders]);
 
   const partsQuantityExported = useMemo(() => {
     let count = 0;
@@ -227,10 +270,11 @@ export default function ReportsPage() {
     filteredOrders.forEach(o => {
       if ((o.trangThai as any) === 'DaHuy' || (o.trangThai as any) === 'Đã hủy') return;
       const tier = tierMap.get(o.customerId) || 'Thuong';
-      const isXe = o.loaiDon === 'Xe' || !!o.thongTinXe || o.id?.includes('XE');
-      const valTr = Number(((o.tongTien || 0) / 1000000).toFixed(1));
+      const isXe = isVehicleOrder(o);
+      const val = isXe ? getVehicleOrderRealValue(o) : (o.tongTien || 0);
+      const valTr = Number((val / 1000000).toFixed(1));
       if (isXe) xeRev[tier] += valTr;
-      else ptRev[tier] += valTr;
+      else if (o.loaiDon === 'PhuTung') ptRev[tier] += valTr;
     });
 
     const dvRev = { Thuong: 0, Bac: 0, Vang: 0, VIP: 0 };
