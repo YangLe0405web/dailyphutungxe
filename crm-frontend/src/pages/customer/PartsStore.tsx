@@ -1972,67 +1972,73 @@ export default function PartsStore({ currentCustomer, onRequireLogin, onNavigate
                           )}
                         </div>
 
-                        {/* Action buttons (TC04 & TC03 & Stock check) */}
-                        <div className="grid grid-cols-2 gap-2 pt-1">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedPart(p);
-                              setDetailQty(1);
-                              window.scrollTo({ top: 0, behavior: 'smooth' });
-                            }}
-                            className="py-2 px-2.5 rounded-xl border border-zinc-200 hover:bg-zinc-100 text-zinc-700 font-semibold text-[11px] transition cursor-pointer text-center"
-                          >
-                            Chi tiết
-                          </button>
+                        {/* Action buttons (Cân đối 2 hàng chuẩn E-commerce) */}
+                        <div className="space-y-2 pt-1">
+                          {/* Hàng 1: 2 nút phụ chia đều 50% - 50% */}
+                          <div className="grid grid-cols-2 gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedPart(p);
+                                setDetailQty(1);
+                                window.scrollTo({ top: 0, behavior: 'smooth' });
+                              }}
+                              className="py-2 px-2.5 rounded-xl border border-zinc-200 hover:bg-zinc-100 text-zinc-700 font-semibold text-[11px] transition cursor-pointer flex items-center justify-center gap-1.5"
+                            >
+                              <span>🔍</span>
+                              <span>Chi tiết</span>
+                            </button>
 
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const custId = currentCustomer ? formatCustomerId(currentCustomer.id) : 'KH-GUEST';
-                              const pinned: PinnedChatContext = {
-                                title: '📌 BẠN ĐANG HỎI VỀ PHỤ TÙNG',
-                                productName: p.tenSanPham,
-                                productImage: p.hinhAnh,
-                                orderId: `Mã SP: ${p.id} · Giá: ${formatVND(p.giaGoc)}`,
-                                comment: `Danh mục: ${p.danhMuc} · Xuất xứ: ${p.xuatXu || 'Chính hãng'}`,
-                              };
-                              chatApi.syncPinnedContext(custId, pinned);
-                              window.dispatchEvent(new CustomEvent('crm-open-chat', {
-                                detail: {
-                                  pinnedContext: pinned,
-                                  prefillMessage: `Dạ chào Shop, em muốn tư vấn thêm về phụ tùng "${p.tenSanPham}" (giá: ${formatVND(p.giaGoc)}) ạ!`,
-                                }
-                              }));
-                            }}
-                            className="p-2 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-800 transition cursor-pointer flex items-center justify-center shrink-0"
-                            title="Liên hệ tư vấn phụ tùng này"
-                          >
-                            <span className="text-xs">💬</span>
-                          </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const custId = currentCustomer ? formatCustomerId(currentCustomer.id) : 'KH-GUEST';
+                                const pinned: PinnedChatContext = {
+                                  title: '📌 BẠN ĐANG HỎI VỀ PHỤ TÙNG',
+                                  productName: p.tenSanPham,
+                                  productImage: p.hinhAnh,
+                                  orderId: `Mã SP: ${p.id} · Giá: ${formatVND(p.giaGoc)}`,
+                                  comment: `Danh mục: ${p.danhMuc} · Xuất xứ: ${p.xuatXu || 'Chính hãng'}`,
+                                };
+                                chatApi.syncPinnedContext(custId, pinned);
+                                window.dispatchEvent(new CustomEvent('crm-open-chat', {
+                                  detail: {
+                                    pinnedContext: pinned,
+                                    prefillMessage: `Dạ chào Shop, em muốn tư vấn thêm về phụ tùng "${p.tenSanPham}" (giá: ${formatVND(p.giaGoc)}) ạ!`,
+                                  }
+                                }));
+                              }}
+                              className="py-2 px-2.5 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-800 font-semibold text-[11px] transition cursor-pointer flex items-center justify-center gap-1.5"
+                              title="Liên hệ tư vấn phụ tùng này"
+                            >
+                              <span>💬</span>
+                              <span>Tư vấn</span>
+                            </button>
+                          </div>
 
+                          {/* Hàng 2: Nút chính Full-width 100% */}
                           {p.soLuongTon <= 0 ? (
                             <button
                               type="button"
                               disabled
-                              className="py-2 px-2.5 rounded-xl font-bold text-[11px] bg-zinc-100 text-zinc-400 cursor-not-allowed flex items-center justify-center gap-1 border border-zinc-200"
+                              className="w-full py-2.5 px-3 rounded-xl font-bold text-xs bg-zinc-100 text-zinc-400 cursor-not-allowed flex items-center justify-center gap-1.5 border border-zinc-200"
                             >
                               <span>🚫</span>
-                              <span>Hết hàng</span>
+                              <span>Hết hàng trong kho</span>
                             </button>
                           ) : (
                             <button
                               type="button"
                               onClick={(e) => handleAdd(p, 1, e)}
-                              className={`py-2 px-2.5 rounded-xl font-bold text-[11px] transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                              className={`w-full py-2.5 px-3 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-xs ${
                                 isAdded
-                                  ? 'bg-emerald-600 text-white shadow-xs'
-                                  : 'bg-red-700 hover:bg-red-800 text-white shadow-xs shadow-red-700/20'
+                                  ? 'bg-emerald-600 text-white shadow-emerald-600/20'
+                                  : 'bg-red-700 hover:bg-red-800 text-white shadow-red-700/20 active:scale-[0.99]'
                               }`}
                             >
-                              <span>{isAdded ? '✓' : '+'}</span>
-                              <span>{isAdded ? 'Đã thêm' : 'Thêm giỏ'}</span>
+                              <span>{isAdded ? '✓' : '🛒 +'}</span>
+                              <span>{isAdded ? 'Đã thêm vào giỏ' : 'Thêm vào giỏ'}</span>
                             </button>
                           )}
                         </div>
