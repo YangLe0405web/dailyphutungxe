@@ -5458,3 +5458,32 @@ pm run build thành công 100% trong 1.41s, **0 lỗi TypeScript**.
     - Toàn bộ 36/36 test suites trong hệ thống (`crm-frontend/tests/*.cjs`): **PASS 36/36 (0 failed)**.
     - `npm --prefix crm-frontend run build`: **0 lỗi TypeScript / Vite** (hoàn tất trong 1.45s).
     - Củng cố bền vững Điều kiện Bất biến số 9 (System Invariant 9) trong `QUY_TAC_KIEM_TRA_VA_BAO_TOAN_FIX.md`.
+
+- **Bản Fix 110: Chuẩn hóa bộ lọc thời gian theo giờ địa phương Việt Nam & bóc tách chính xác doanh thu bán xe mới, phụ tùng, dịch vụ trên trang Báo cáo Admin (Reports.tsx)**
+  - **Mô tả vấn đề:**
+    1. Khi người dùng chuyển bộ lọc thời gian trên trang Báo cáo & Thống kê (`/admin/reports` - `Reports.tsx`) sang "Hôm nay", chỉ số hiển thị "Doanh Thu Bán Xe Mới: 2.000.000 đ" và "Doanh Thu Phụ Tùng: 3.440.000 đ".
+    2. Vấn đề 1: Một chiếc xe máy bán ra có giá trị từ 30 triệu đến trên 100 triệu VND (ví dụ: Yamaha Grande ~46 triệu, NVX ~55 triệu, Honda SH ~105 triệu). Giá trị 2.000.000 đ thực chất là số tiền đặt cọc online (`soTienDatCoc`) của đơn mua xe máy khi khách chọn đặt cọc, nhưng logic trang Báo cáo cũ lại lấy `o.tongTien` để tính doanh thu bán xe mới thay vì lấy tổng giá trị thực của chiếc xe bán ra (`thongTinXe.giaNiemYet` hoặc `thongTinXe.tongGiaTri`).
+    3. Vấn đề 2: Logic phân loại phụ tùng cũ dùng `o.loaiDon === 'PhuTung' || (!o.thongTinXe && !o.id?.includes('XE'))`, dẫn đến việc gộp nhầm các đơn dịch vụ / bảo dưỡng / sửa chữa vào danh mục phụ tùng.
+    4. Vấn đề 3: Hàm `matchDate` dùng `new Date().toISOString().split('T')[0]`, bị lệch 7 tiếng so với múi giờ Việt Nam (UTC+7), khiến rạng sáng hôm nay (09/11) bị tính là ngày hôm qua (08/11) theo UTC, đồng thời mã nguồn có điều kiện hardcode `cleanDate === '2026-11-08'`.
+  - **Giải pháp thực hiện:**
+    1. **Chuẩn hóa bộ lọc thời gian theo Local Time Việt Nam (`getLocalDateString`):**
+       * Tạo helper `getLocalDateString(d)` định dạng ngày địa phương chuẩn `YYYY-MM-DD`.
+       * Bộ lọc `today`: Khớp chính xác ngày hiện tại theo giờ địa phương, xóa bỏ hoàn toàn hardcode `2026-11-08`.
+       * Bộ lọc `7days`: Lấy chính xác khoảng thời gian từ `(Hôm nay - 7 ngày)` đến `Hôm nay`.
+       * Bộ lọc `thisMonth`, `lastMonth`, `thisYear`: Khớp chính xác tháng/năm hiện tại theo ngày địa phương.
+    2. **Chuẩn hóa Doanh thu Bán Xe Mới (`vehicleRevenue`):**
+       * Tích hợp helper `isVehicleOrder(o)` và `getVehicleOrderRealValue(o)`.
+       * Doanh thu xe được tính theo giá niêm yết/tổng giá trị xe thực tế (`o.thongTinXe?.giaNiemYet || o.thongTinXe?.tongGiaTri || (o.tongTien >= 10000000 ? o.tongTien : 0)`).
+       * Tuyệt đối không lấy tiền đặt cọc 2 triệu làm doanh thu bán xe.
+    3. **Tách bạch Phụ Tùng & Dịch Vụ:**
+       * `partsRevenue`: Chỉ tính cho đơn phụ tùng thật sự (`o.loaiDon === 'PhuTung' && !o.thongTinXe && !o.id?.includes('XE')`).
+       * `serviceRevenue`: Tính chuẩn xác từ các lịch hẹn hoàn thành và đơn dịch vụ (`o.loaiDon === 'DichVu'`).
+       * Đồng bộ công thức cho `totalSystemRevenue`, `totalVehiclesSold`, và cơ cấu doanh thu theo hạng thẻ (`tierRevenueBreakdown`).
+  - **Các tệp đã chỉnh sửa:**
+    - [`crm-frontend/src/pages/admin/Reports.tsx`](file:///d:/crm-project/crm-frontend/src/pages/admin/Reports.tsx): Chuẩn hóa `matchDate`, bổ sung `getLocalDateString`, `isVehicleOrder`, `getVehicleOrderRealValue`, tối ưu `vehicleRevenue`, `partsRevenue`, `serviceRevenue`, `tierRevenueBreakdown`.
+    - [`crm-frontend/tests/verify_reports_date_filter_and_revenue_accuracy.test.cjs`](file:///d:/crm-project/crm-frontend/tests/verify_reports_date_filter_and_revenue_accuracy.test.cjs): Bộ test TDD tự động kiểm tra bộ lọc ngày và công thức doanh thu.
+  - **Kết quả kiểm thử & Nghiệm thu:**
+    - Test mới `verify_reports_date_filter_and_revenue_accuracy.test.cjs`: **PASS 100%**.
+    - Toàn bộ 37/37 test suites trong hệ thống (`crm-frontend/tests/*.cjs`): **PASS 37/37 (0 failed)**.
+    - `npm --prefix crm-frontend run build`: **0 lỗi TypeScript / Vite** (hoàn tất trong 1.10s).
+    - Bảo toàn nguyên vẹn 100% các điều kiện bất biến (System Invariants) trong `QUY_TAC_KIEM_TRA_VA_BAO_TOAN_FIX.md`.
