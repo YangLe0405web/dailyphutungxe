@@ -1,0 +1,890 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chương 4: Triển Khai, Bảo Trì & Hướng Dẫn Sử Dụng - MotoShop CRM</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #1e3a8a;
+      --primary-light: #eff6ff;
+      --secondary: #0284c7;
+      --accent-red: #dc2626;
+      --accent-red-bg: #fee2e2;
+      --bg-page: #f8fafc;
+      --paper: #ffffff;
+      --text: #0f172a;
+      --text-muted: #475569;
+      --border: #cbd5e1;
+      --success: #16a34a;
+      --warning: #d97706;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Be Vietnam Pro', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg-page);
+      color: var(--text);
+      line-height: 1.7;
+      font-size: 14.5px;
+    }
+
+    /* Container theo chuẩn trang báo cáo A4 */
+    .document-wrapper {
+      max-width: 1200px;
+      margin: 24px auto;
+      padding: 0 16px;
+    }
+
+    /* Thanh tác vụ trên cùng */
+    .top-toolbar {
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 24px;
+      margin-bottom: 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .badge-doc {
+      display: inline-block;
+      padding: 4px 12px;
+      background: #eff6ff;
+      color: #1e40af;
+      border: 1px solid #bfdbfe;
+      border-radius: 999px;
+      font-size: 12.5px;
+      font-weight: 600;
+    }
+    .btn-print {
+      background: #2563eb;
+      color: #ffffff;
+      border: none;
+      padding: 9px 18px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 13.5px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s;
+    }
+    .btn-print:hover { background: #1d4ed8; }
+
+    /* Nội dung trang văn bản */
+    .paper-sheet {
+      background: var(--paper);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 48px 56px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+      margin-bottom: 40px;
+    }
+
+    /* Tiêu đề chương */
+    .chapter-header {
+      text-align: center;
+      margin-bottom: 40px;
+      padding-bottom: 24px;
+      border-bottom: 2px solid #e2e8f0;
+    }
+    .chapter-title {
+      font-size: 26px;
+      font-weight: 800;
+      color: #1e3a8a;
+      letter-spacing: -0.5px;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .chapter-subtitle {
+      font-size: 15px;
+      color: var(--text-muted);
+    }
+
+    /* Các cấp mục */
+    h2.section-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: #1e40af;
+      margin: 36px 0 16px 0;
+      padding-bottom: 8px;
+      border-bottom: 1.5px solid #bfdbfe;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    h3.subsection-title {
+      font-size: 16.5px;
+      font-weight: 700;
+      color: #0f172a;
+      margin: 28px 0 12px 0;
+    }
+    h4.step-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #1e3a8a;
+      margin: 20px 0 8px 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    p { margin-bottom: 12px; }
+
+    /* Bảng chuẩn báo cáo */
+    .doc-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0 24px 0;
+      font-size: 13.5px;
+    }
+    .doc-table th, .doc-table td {
+      border: 1px solid var(--border);
+      padding: 10px 14px;
+      text-align: left;
+    }
+    .doc-table th {
+      background: #f1f5f9;
+      color: #1e293b;
+      font-weight: 600;
+    }
+    .doc-table tr:nth-child(even) { background: #f8fafc; }
+
+    /* Code block */
+    pre, code {
+      font-family: 'JetBrains Mono', Consolas, monospace;
+    }
+    pre {
+      background: #0f172a;
+      color: #e2e8f0;
+      padding: 14px 18px;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-size: 13px;
+      margin: 12px 0 18px 0;
+      line-height: 1.5;
+    }
+    code.inline-code {
+      background: #f1f5f9;
+      color: #0f172a;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 12.5px;
+      border: 1px solid #e2e8f0;
+    }
+
+    /* Callout Alert Boxes */
+    .callout {
+      padding: 14px 18px;
+      border-radius: 8px;
+      margin: 16px 0;
+      font-size: 13.5px;
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+    .callout-info {
+      background: #eff6ff;
+      border-left: 4px solid #3b82f6;
+      color: #1e40af;
+    }
+    .callout-success {
+      background: #f0fdf4;
+      border-left: 4px solid #22c55e;
+      color: #15803d;
+    }
+    .callout-warning {
+      background: #fffbeb;
+      border-left: 4px solid #f59e0b;
+      color: #b45309;
+    }
+
+    /* KHUNG MINH HỌA GIAO DIỆN (UI MOCKUP) CÓ KHOANH ĐỎ CHUẨN ĐỒ ÁN */
+    .mockup-container {
+      background: #f8fafc;
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      padding: 18px;
+      margin: 16px 0 28px 0;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.03);
+    }
+    .mockup-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 10px;
+      margin-bottom: 14px;
+      border-bottom: 1px solid #e2e8f0;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: #64748b;
+    }
+    .mockup-screen {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 20px;
+      position: relative;
+    }
+
+    /* KHOANH ĐỎ CÁC NÚT BẤM (RED CALLOUT BOXES & HIGHLIGHTS) */
+    .highlight-red-box {
+      position: relative;
+      border: 2.5px solid var(--accent-red) !important;
+      background-color: rgba(254, 226, 226, 0.35) !important;
+      border-radius: 6px;
+      padding: 2px 6px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.2);
+      animation: pulse-red 2s infinite;
+    }
+    @keyframes pulse-red {
+      0%, 100% { box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.2); }
+      50% { box-shadow: 0 0 0 6px rgba(220, 38, 38, 0.4); }
+    }
+
+    .red-pointer {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--accent-red);
+      color: #ffffff;
+      font-size: 11px;
+      font-weight: 700;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      margin-right: 6px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+    .callout-note {
+      font-size: 12.5px;
+      color: #b91c1c;
+      font-weight: 600;
+      margin-top: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* Chú thích hình */
+    .fig-caption {
+      text-align: center;
+      font-size: 13px;
+      font-style: italic;
+      color: #475569;
+      margin-top: 10px;
+    }
+
+    /* Layout 2 cột luồng nghiệp vụ */
+    .flow-badge {
+      display: inline-block;
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 13.5px;
+      margin-bottom: 12px;
+    }
+    .flow-admin { background: #eff6ff; color: #1e3a8a; border: 1.5px solid #3b82f6; }
+    .flow-customer { background: #fdf2f8; color: #9d174d; border: 1.5px solid #ec4899; }
+
+    /* Print settings */
+    @media print {
+      body { background: white; padding: 0; }
+      .top-toolbar { display: none; }
+      .document-wrapper { max-width: 100%; margin: 0; padding: 0; }
+      .paper-sheet { border: none; box-shadow: none; padding: 0; }
+      .highlight-red-box { animation: none; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="document-wrapper">
+
+  <!-- Top Toolbar -->
+  <div class="top-toolbar">
+    <div>
+      <span class="badge-doc">Báo cáo Đồ án tốt nghiệp / Khóa luận</span>
+      <h3 style="margin-top:4px; font-size:16px; color:#1e3a8a;">Tài liệu Chương 4: Triển Khai, Bảo Trì &amp; Hướng Dẫn Sử Dụng</h3>
+    </div>
+    <button class="btn-print" onclick="window.print()">🖨️ In ấn / Xuất file PDF (A4)</button>
+  </div>
+
+  <!-- BẮT ĐẦU NỘI DUNG CHƯƠNG 4 -->
+  <div class="paper-sheet">
+
+    <div class="chapter-header">
+      <div class="chapter-title">CHƯƠNG 4: TRIỂN KHAI, BẢO TRÌ &amp; HƯỚNG DẪN SỬ DỤNG</div>
+      <div class="chapter-subtitle">Hệ thống Quản lý Quan hệ Khách hàng &amp; Kinh doanh Showroom Xe máy, Phụ tùng chính hãng MotoShop CRM</div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- 4.1 PHƯƠNG ÁN CÀI ĐẶT VÀ CHUYỂN ĐỔI HỆ THỐNG -->
+    <!-- ========================================================================= -->
+    <h2 class="section-title">4.1 PHƯƠNG ÁN CÀI ĐẶT VÀ CHUYỂN ĐỔI HỆ THỐNG</h2>
+
+    <!-- 4.1.1 Phương án cài đặt hệ thống mới -->
+    <h3 class="subsection-title">4.1.1 Phương án cài đặt hệ thống mới</h3>
+    <p>Hệ thống MotoShop CRM được xây dựng theo kiến trúc 3 tầng (3-Tier Architecture) hiện đại gồm Tầng trình diễn (React 19 Single Page Application), Tầng xử lý nghiệp vụ (ASP.NET Core Web API .NET 10) và Tầng cơ sở dữ liệu (Microsoft SQL Server 2022). Quá trình cài đặt mới hệ thống tại showroom được thực hiện theo quy chuẩn sau:</p>
+
+    <h4 class="step-title">1. Yêu cầu cấu hình phần cứng &amp; phần mềm</h4>
+    <table class="doc-table">
+      <thead>
+        <tr>
+          <th>Thành phần</th>
+          <th>Cấu hình tối thiểu (Minimum)</th>
+          <th>Cấu hình khuyến nghị (Recommended)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><b>Máy chủ Showroom (Server)</b></td>
+          <td>CPU 4 cores, RAM 8GB, SSD 120GB</td>
+          <td>CPU Intel Core i7 / Xeon 8 cores, RAM 16GB, SSD NVMe 512GB</td>
+        </tr>
+        <tr>
+          <td><b>Máy trạm nhân viên (Client POS)</b></td>
+          <td>CPU Intel Core i3, RAM 4GB, Màn hình 1366x768</td>
+          <td>CPU Intel Core i5, RAM 8GB, Màn hình Full HD 1920x1080</td>
+        </tr>
+        <tr>
+          <td><b>Hệ điều hành</b></td>
+          <td>Windows 10 Pro 64-bit</td>
+          <td>Windows 11 Pro 64-bit / Windows Server 2022 Datacenter</td>
+        </tr>
+        <tr>
+          <td><b>Môi trường thực thi</b></td>
+          <td>.NET Runtime 8.0/10.0, Node.js 18.x LTS, SQL Server 2019</td>
+          <td>.NET SDK 10.0, Node.js 22.x LTS, SQL Server 2022 Express/Standard</td>
+        </tr>
+        <tr>
+          <td><b>Trình duyệt Web</b></td>
+          <td>Google Chrome 110+, Microsoft Edge 110+</td>
+          <td>Bản Chrome / Edge mới nhất (hỗ trợ hiển thị canvas QR và Recharts)</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h4 class="step-title">2. Quy trình cài đặt step-by-step</h4>
+    <p><b>Bước 1: Khởi tạo Cơ sở dữ liệu SQL Server</b></p>
+    <ul>
+      <li>Mở SQL Server Management Studio (SSMS), kết nối tới máy chủ <code class="inline-code">localhost</code>.</li>
+      <li>Chạy tập tin kịch bản <code class="inline-code">d:\crm-project\init-db\init.sql</code> để tạo CSDL <code class="inline-code">CRM_XeMayPhuTung</code>, toàn bộ cấu trúc 12 bảng thực thể và nạp dữ liệu mẫu ban đầu (tài khoản, danh mục xe máy, kho phụ tùng chính hãng).</li>
+    </ul>
+
+    <p style="margin-top:10px;"><b>Bước 2: Cấu hình Backend ASP.NET Core API</b></p>
+    <ul>
+      <li>Mở tập tin <code class="inline-code">CrmBackend\appsettings.json</code>, kiểm tra chuỗi kết nối:
+        <pre>{
+  "ConnectionStrings": {
+    "DefaultConnection": "Server=localhost;Database=CRM_XeMayPhuTung;Integrated Security=True;TrustServerCertificate=True;"
+  }
+}</pre>
+      </li>
+      <li>Kiểm tra cổng API tại <code class="inline-code">Properties\launchSettings.json</code>: Chạy tại cổng <code class="inline-code">http://localhost:5208</code>.</li>
+    </ul>
+
+    <p style="margin-top:10px;"><b>Bước 3: Khởi động tự động hệ thống bằng 1-Click</b></p>
+    <ul>
+      <li>Nhấp đúp chuột vào tập tin điều phối tự động: <code class="inline-code">D:\crm-project\CHAY_DO_AN.bat</code>.</li>
+      <li>Tập tin sẽ tự động mở 2 tiến trình chạy độc lập: Backend API (:5208) và Frontend React (:5173), đồng thời tự bật trình duyệt truy cập ngay vào hệ thống.</li>
+    </ul>
+
+    <!-- 4.1.2 Phương án chuyển đổi từ hệ thống cũ sang hệ thống mới -->
+    <h3 class="subsection-title">4.1.2 Phương án chuyển đổi từ hệ thống cũ sang hệ thống mới</h3>
+    <p>Trước khi đưa MotoShop CRM vào vận hành, showroom đang quản lý việc bán xe, đặt cọc và dịch vụ sửa chữa thông qua sổ sách giấy truyền thống kết hợp các bảng tính Microsoft Excel phân tán (gồm file theo dõi cọc, sổ bảo hành giấy 3 năm và phiếu sửa chữa xưởng). Để chuyển đổi sang hệ thống mới, nhóm đề xuất phương án chuyển đổi khoa học như sau:</p>
+
+    <h4 class="step-title">1. Đánh giá và lựa chọn chiến lược chuyển đổi</h4>
+    <table class="doc-table">
+      <thead>
+        <tr>
+          <th>Chiến lược</th>
+          <th>Đặc điểm vận hành</th>
+          <th>Ưu điểm</th>
+          <th>Nhược điểm &amp; Đánh giá</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><b>Chuyển đổi trực tiếp (Direct Cutover)</b></td>
+          <td>Dừng hoàn toàn hệ thống cũ, kích hoạt ngay hệ thống mới tại một thời điểm.</td>
+          <td>Chi phí thấp, nhanh gọn.</td>
+          <td><b>Rủi ro rất cao</b> nếu nhân viên chưa quen hoặc có sự cố kỹ thuật xảy ra trong giờ cao điểm.</td>
+        </tr>
+        <tr>
+          <td><b>Chuyển đổi song song (Parallel Conversion)</b><br><span style="color:#15803d; font-weight:700;">★ ĐƯỢC CHỌN</span></td>
+          <td>Vận hành song song hệ thống cũ và MotoShop CRM mới trong thời gian <b>02 đến 04 tuần</b>.</td>
+          <td><b>An toàn tuyệt đối</b>, dữ liệu được đối soát chéo 100%, không gián đoạn việc nhận xe của khách.</td>
+          <td>Tăng khối lượng công việc nhập liệu tạm thời cho nhân viên trong giai đoạn song hành.</td>
+        </tr>
+        <tr>
+          <td><b>Chuyển đổi thí điểm (Pilot Conversion)</b></td>
+          <td>Áp dụng trước tại 1 quầy hoặc 1 chi nhánh thử nghiệm.</td>
+          <td>Khoanh vùng rủi ro tốt.</td>
+          <td>Phù hợp với chuỗi đại lý lớn nhiều chi nhánh, quy mô 1 showroom độc lập chưa cần thiết.</td>
+        </tr>
+        <tr>
+          <td><b>Chuyển đổi từng giai đoạn (Phased)</b><br><span style="color:#15803d; font-weight:700;">★ KẾT HỢP</span></td>
+          <td>Triển khai trước phân hệ Khách hàng CRM &rarr; Bán xe cọc &rarr; Xưởng dịch vụ.</td>
+          <td>Nhân viên dễ thích nghi từng bước.</td>
+          <td>Được lựa chọn kết hợp cùng phương án song song.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-success">
+      <div>
+        <strong>Phương án tối ưu được lựa chọn:</strong> Áp dụng <b>Chuyển đổi song song kết hợp từng giai đoạn (Phased Parallel Conversion)</b> trong 30 ngày. Tuần 1-2 đưa phân hệ Xem xe &amp; Quản lý Khách hàng vào hoạt động; tuần 3-4 kích hoạt đầy đủ phân hệ Cọc xe VietQR, Sổ bảo hành điện tử và Nghiệm thu bàn nâng xưởng.
+      </div>
+    </div>
+
+    <h4 class="step-title">2. Kế hoạch di chuyển dữ liệu (Data Migration - ETL)</h4>
+    <ul>
+      <li><b>Trích xuất (Extract):</b> Xuất toàn bộ danh sách khách hàng, công nợ, lịch sử bảo dưỡng và kho phụ tùng từ các file Excel cũ (<code class="inline-code">danh_sach_khach_hang.xlsx</code>, <code class="inline-code">nhan_vien_ban_hang.xlsx</code>).</li>
+      <li><b>Làm sạch &amp; Chuẩn hóa (Transform):</b> Định dạng lại số điện thoại chuẩn 10 chữ số, chuẩn hóa mã số định danh CCCD, loại bỏ các bản ghi trùng lặp và phân loại hạng CLV ban đầu (Đồng/Bạc/Vàng) dựa trên tổng chi tiêu lịch sử.</li>
+      <li><b>Nạp dữ liệu (Load):</b> Dùng kịch bản SQL Bulk Insert để nạp trực tiếp vào các bảng <code class="inline-code">KHACH_HANG</code>, <code class="inline-code">XE_KHACH_HANG</code>, <code class="inline-code">PHU_TUNG</code> đảm bảo toàn vẹn khóa ngoại.</li>
+    </ul>
+
+    <!-- ========================================================================= -->
+    <!-- 4.2 PHƯƠNG ÁN BẢO MẬT, SAO LƯU VÀ PHỤC HỒI CƠ SỞ DỮ LIỆU -->
+    <!-- ========================================================================= -->
+    <h2 class="section-title">4.2 PHƯƠNG ÁN BẢO MẬT, SAO LƯU VÀ PHỤC HỒI CƠ SỞ DỮ LIỆU</h2>
+
+    <h3 class="subsection-title">4.2.1 Chính sách bảo mật hệ thống toàn diện</h3>
+    <table class="doc-table">
+      <thead>
+        <tr>
+          <th>Phạm vi bảo mật</th>
+          <th>Cơ chế kỹ thuật triển khai</th>
+          <th>Mục tiêu bảo vệ</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><b>Phân quyền truy cập (RBAC)</b></td>
+          <td>Phân định 4 vai trò rõ rệt: <code class="inline-code">SuperAdmin</code>, <code class="inline-code">NhanVienBanHang</code>, <code class="inline-code">NhanVienKyThuat</code>, <code class="inline-code">KhachHang</code>. Kiểm tra quyền tại API Controllers và React Route Guards.</td>
+          <td>Chống truy cập trái phép, nhân viên xưởng không xem được doanh thu cấp giám đốc.</td>
+        </tr>
+        <tr>
+          <td><b>Bảo mật CSDL &amp; Chống tấn công</b></td>
+          <td>Sử dụng tham số hóa truy vấn 100% qua Micro-ORM Dapper (<code class="inline-code">new { Id = id }</code>), không nối chuỗi SQL thủ công.</td>
+          <td>Triệt tiêu hoàn toàn nguy cơ tấn công SQL Injection.</td>
+        </tr>
+        <tr>
+          <td><b>Bảo mật giao tiếp (API Security)</b></td>
+          <td>Cấu hình CORS Policy nghiêm ngặt tại <code class="inline-code">Program.cs</code>, chỉ chấp nhận truy vấn từ tên miền Frontend đã cấp phép (<code class="inline-code">localhost:5173</code>).</td>
+          <td>Ngăn chặn tấn công Cross-Origin Request Forgery (CSRF).</td>
+        </tr>
+        <tr>
+          <td><b>Chống gian lận ODO &amp; Bảo hành</b></td>
+          <td>Sổ bảo hành điện tử chính hãng 36 tháng khóa chặt theo Số khung &amp; Số máy; ODO chỉ được cập nhật tăng dần qua biên bản nghiệm thu xưởng có chữ ký KTV.</td>
+          <td>Ngăn chặn tua đồng hồ km và gian lận quyền lợi bảo hành miễn phí.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3 class="subsection-title">4.2.2 Kế hoạch sao lưu và phục hồi CSDL tự động (Disaster Recovery Plan)</h3>
+    <p>Áp dụng nguyên tắc sao lưu <b>RPO &le; 1 giờ</b> và <b>RTO &le; 15 phút</b> với quy trình tự động hóa đã được cấu hình trong Windows Task Scheduler:</p>
+
+    <div class="mockup-container">
+      <div class="mockup-header">
+        <span>⚙️ BẢNG ĐIỀU KHIỂN TÁC VỤ SAO LƯU TỰ ĐỘNG (WINDOWS TASK SCHEDULER)</span>
+        <span style="color:#15803d; font-weight:700;">● STATUS: READY (ĐÃ KÍCH HOẠT)</span>
+      </div>
+      <div class="mockup-screen">
+        <table class="doc-table" style="margin:0;">
+          <tr>
+            <td style="width:25%;"><b>Tên tác vụ tự động:</b></td>
+            <td><code class="inline-code">MotoShopCRM_AutoBackup_Daily</code></td>
+          </tr>
+          <tr>
+            <td><b>Lịch chạy ngầm:</b></td>
+            <td><b>23:00 hàng ngày</b> (Ngoài giờ làm việc của đại lý xe máy)</td>
+          </tr>
+          <tr>
+            <td><b>Kịch bản thực thi:</b></td>
+            <td><code class="inline-code">powershell.exe -ExecutionPolicy Bypass -File D:\crm-project\scripts\Backup_Database_Auto.ps1</code></td>
+          </tr>
+          <tr>
+            <td><b>Thư mục lưu trữ:</b></td>
+            <td><code class="inline-code">D:\crm-project\backup\CRM_XeMayPhuTung_AutoBackup_YYYYMMDD_HHMMSS.bak</code></td>
+          </tr>
+          <tr>
+            <td><b>Chính sách lưu trữ (Retention):</b></td>
+            <td>Tự động quét và xóa sạch các bản sao lưu cũ quá <b>30 ngày</b> để chống tràn ổ cứng.</td>
+          </tr>
+          <tr>
+            <td><b>Phục hồi nhanh khi sập:</b></td>
+            <td>Chạy file <code class="inline-code">scripts\Restore_Database_Latest.bat</code> &rarr; CSDL phục hồi 100% trong <b>5 giây</b>.</td>
+          </tr>
+        </table>
+      </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- 4.3 TÀI LIỆU HƯỚNG DẪN SỬ DỤNG -->
+    <!-- ========================================================================= -->
+    <h2 class="section-title">4.3 TÀI LIỆU HƯỚNG DẪN SỬ DỤNG CHI TIẾT</h2>
+    <p>Tài liệu được chia làm <b>02 luồng thao tác tác nghiệp độc lập</b> theo đúng yêu cầu đề cương: <i>Dành cho Quản lý / Nhân viên cửa hàng xe máy</i> và <i>Dành cho Khách hàng mua xe &amp; làm dịch vụ</i>. Các bước đều có ảnh minh họa giao diện với <b>vòng tròn và khung viền màu đỏ</b> khoanh trực tiếp vào nút thao tác.</p>
+
+    <!-- ----------------------------------------------------------------------- -->
+    <!-- LUỒNG 1: DÀNH CHO QUẢN LÝ CỬA HÀNG XE MÁY -->
+    <!-- ----------------------------------------------------------------------- -->
+    <div style="margin-top:24px;">
+      <span class="flow-badge flow-admin">LUỒNG 1: DÀNH CHO QUẢN LÝ &amp; NHÂN VIÊN CỬA HÀNG XE MÁY</span>
+    </div>
+
+    <!-- Bước 1 Admin -->
+    <h4 class="step-title"><span class="red-pointer">1</span> Bước 1: Đăng nhập hệ thống quản trị</h4>
+    <p>Người dùng mở trình duyệt truy cập <code class="inline-code">http://localhost:5173/admin/login</code>, nhập tên đăng nhập và mật khẩu được cấp.</p>
+
+    <div class="mockup-container">
+      <div class="mockup-header">
+        <span>GIAO DIỆN ĐĂNG NHẬP QUẢN TRỊ (ADMIN LOGIN)</span>
+        <span>URL: /admin/login</span>
+      </div>
+      <div class="mockup-screen" style="max-width:550px; margin:0 auto; text-align:center;">
+        <h4 style="color:#1e3a8a; margin-bottom:12px;">ĐĂNG NHẬP HỆ THỐNG MOTOSHOP CRM</h4>
+        <div style="text-align:left; margin-bottom:10px;">
+          <label style="font-size:12px; font-weight:600;">Tên đăng nhập:</label>
+          <input type="text" value="admin" readonly style="width:100%; padding:6px 10px; border:1px solid #cbd5e1; border-radius:6px; background:#f8fafc;" />
+        </div>
+        <div style="text-align:left; margin-bottom:14px;">
+          <label style="font-size:12px; font-weight:600;">Mật khẩu:</label>
+          <input type="password" value="••••••" readonly style="width:100%; padding:6px 10px; border:1px solid #cbd5e1; border-radius:6px; background:#f8fafc;" />
+        </div>
+        <div>
+          <!-- NÚT ĐƯỢC KHOANH ĐỎ -->
+          <div class="highlight-red-box">
+            <button style="background:#2563eb; color:#fff; border:none; padding:8px 24px; border-radius:6px; font-weight:700; cursor:pointer;">
+              ĐĂNG NHẬP VÀO HỆ THỐNG
+            </button>
+          </div>
+        </div>
+        <div class="callout-note">🔴 Khoanh đỏ: Nhấp vào nút "ĐĂNG NHẬP VÀO HỆ THỐNG" để truy cập bảng điều khiển trung tâm.</div>
+      </div>
+      <div class="fig-caption">Hình 4.1: Màn hình đăng nhập quản trị với vị trí nút bấm được khoanh đỏ</div>
+    </div>
+
+    <!-- Bước 2 Admin -->
+    <h4 class="step-title"><span class="red-pointer">2</span> Bước 2: Giám sát Dashboard Báo cáo Doanh thu &amp; Chỉ số CSAT</h4>
+    <p>Ban giám đốc và Quản lý theo dõi doanh thu bán xe mới, phụ tùng và dịch vụ sửa chữa theo thời gian thực.</p>
+
+    <div class="mockup-container">
+      <div class="mockup-header">
+        <span>BẢNG ĐIỀU KHIỂN DOANH THU &amp; CHỈ SỐ CSAT (REPORTS &amp; ANALYTICS)</span>
+        <span>URL: /admin/reports</span>
+      </div>
+      <div class="mockup-screen">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:8px;">
+          <span style="font-weight:700; color:#1e3a8a;">TỔNG QUAN DOANH THU TOÀN HỆ THỐNG</span>
+          <!-- KHOANH ĐỎ BỘ LỌC NGÀY -->
+          <div class="highlight-red-box">
+            <span style="font-size:12.5px; font-weight:600; color:#b91c1c;">📅 Bộ lọc thời gian: [Tháng Này ▼]</span>
+          </div>
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px;">
+          <div style="background:#f0fdf4; border:1px solid #bbf7d0; padding:12px; border-radius:8px;">
+            <div style="font-size:11px; color:#166534; font-weight:700;">TỔNG DOANH THU</div>
+            <div style="font-size:18px; font-weight:800; color:#14532d;">1.550.551.350 đ</div>
+            <div style="font-size:10.5px; color:#16a34a;">(44 đơn hoàn tất)</div>
+          </div>
+          <div style="background:#eff6ff; border:1px solid #bfdbfe; padding:12px; border-radius:8px;">
+            <div style="font-size:11px; color:#1e40af; font-weight:700;">XE MÁY ĐÃ BÁN</div>
+            <div style="font-size:18px; font-weight:800; color:#1e3a8a;">23 Chiếc</div>
+            <div style="font-size:10.5px; color:#2563eb;">(Doanh thu: 1.539.106.850đ)</div>
+          </div>
+          <div style="background:#fffbeb; border:1px solid #fde68a; padding:12px; border-radius:8px;">
+            <div style="font-size:11px; color:#92400e; font-weight:700;">PHỤ TÙNG XUẤT KHO</div>
+            <div style="font-size:18px; font-weight:800; color:#78350f;">7.656.500 đ</div>
+            <div style="font-size:10.5px; color:#d97706;">(26 món phụ tùng)</div>
+          </div>
+          <div style="background:#fdf2f8; border:1px solid #fbcfe8; padding:12px; border-radius:8px;">
+            <div style="font-size:11px; color:#9d174d; font-weight:700;">ĐỘ HÀI LÒNG CSAT</div>
+            <div style="font-size:18px; font-weight:800; color:#831843;">4.2 / 5.0 ★</div>
+            <div style="font-size:10.5px; color:#db2777;">(17 lượt đánh giá)</div>
+          </div>
+        </div>
+        <div class="callout-note">🔴 Khoanh đỏ: Nhấp vào menu bộ lọc thời gian để lọc chính xác số liệu theo Hôm nay, Tuần này hoặc Tháng này.</div>
+      </div>
+      <div class="fig-caption">Hình 4.2: Màn hình Dashboard quản trị với khung đỏ vị trí chọn bộ lọc doanh thu</div>
+    </div>
+
+    <!-- Bước 3 Admin -->
+    <h4 class="step-title"><span class="red-pointer">3</span> Bước 3: Quản lý Bán xe &amp; Quét mã QR nhận xe tại Showroom</h4>
+    <p>Nhân viên bán hàng tiếp nhận khách hàng đã đặt cọc online đến nhận xe thực tế tại Showroom.</p>
+
+    <div class="mockup-container">
+      <div class="mockup-header">
+        <span>QUẢN LÝ ĐƠN HÀNG &amp; BÀN GIAO XE (SALES &amp; ORDERS)</span>
+        <span>URL: /admin/sales</span>
+      </div>
+      <div class="mockup-screen">
+        <table class="doc-table" style="margin:0 0 12px 0;">
+          <thead>
+            <tr>
+              <th>Mã Đơn</th>
+              <th>Khách Hàng</th>
+              <th>Dòng Xe Mua</th>
+              <th>Tiền Cọc Đã Nộp</th>
+              <th>Trạng Thái</th>
+              <th>Thao Tác Nghiệp Vụ</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><b>#DH-1089</b></td>
+              <td>Nguyễn Văn An (0912.345.678)</td>
+              <td>Yamaha NVX 155 VVA</td>
+              <td><span style="color:#16a34a; font-weight:700;">2.000.000 đ</span></td>
+              <td><span style="background:#fef3c7; color:#92400e; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:600;">Chờ bàn giao</span></td>
+              <td>
+                <!-- NÚT KHOANH ĐỎ BÀN GIAO -->
+                <div class="highlight-red-box">
+                  <button style="background:#16a34a; color:#fff; border:none; padding:5px 12px; border-radius:4px; font-size:12px; font-weight:700; cursor:pointer;">
+                    🔍 Quét Mã QR Nhận Xe
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="callout-note">🔴 Khoanh đỏ: Bấm "Quét Mã QR Nhận Xe", đưa máy quét mã hoặc nhập mã QR từ điện thoại của khách hàng để đối soát hồ sơ và hoàn tất thủ tục giao xe.</div>
+      </div>
+      <div class="fig-caption">Hình 4.3: Màn hình quản lý đơn bán xe với nút Quét mã QR được khoanh đỏ</div>
+    </div>
+
+    <!-- Bước 4 Admin -->
+    <h4 class="step-title"><span class="red-pointer">4</span> Bước 4: Điều phối Lịch hẹn Kỹ thuật &amp; Phân bổ Bàn nâng KTV</h4>
+    <p>Điều phối viên tiếp nhận xe vào xưởng và phân công kỹ thuật viên phụ trách sửa chữa/bảo dưỡng.</p>
+
+    <div class="mockup-container">
+      <div class="mockup-header">
+        <span>ĐIỀU PHỐI DỊCH VỤ XƯỞNG &amp; BÀN NÂNG KTV (APPOINTMENTS)</span>
+        <span>URL: /admin/appointments</span>
+      </div>
+      <div class="mockup-screen">
+        <div style="border:1px solid #cbd5e1; border-radius:6px; padding:12px; background:#f8fafc; margin-bottom:12px;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <span style="font-weight:700; color:#1e3a8a;">Lịch hẹn #LH-402: Bảo dưỡng định kỳ 5.000 km</span><br>
+              <span style="font-size:12px; color:#475569;">Biển số: 29B1-987.65 | Khách hàng: Trần Thị Bích</span>
+            </div>
+            <!-- NÚT KHOANH ĐỎ PHÂN BỔ BÀN NÂNG -->
+            <div class="highlight-red-box">
+              <button style="background:#2563eb; color:#fff; border:none; padding:6px 14px; border-radius:5px; font-size:12px; font-weight:700; cursor:pointer;">
+                🔧 Xếp Bàn Nâng Số 2 &amp; Giao KTV Thành
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="callout-note">🔴 Khoanh đỏ: Bấm chọn bàn nâng xưởng còn trống và chỉ định Kỹ thuật viên phụ trách ca sửa chữa.</div>
+      </div>
+      <div class="fig-caption">Hình 4.4: Màn hình điều phối xưởng với nút gán bàn nâng được khoanh đỏ</div>
+    </div>
+
+    <!-- Bước 5 Admin -->
+    <h4 class="step-title"><span class="red-pointer">5</span> Bước 5: Giám định Bảo hành chính hãng &amp; Xuất hóa đơn dịch vụ</h4>
+    <p>Kỹ thuật viên đối soát điều kiện bảo hành 36 tháng / 30.000 km và xuất phiếu thanh toán.</p>
+
+    <div class="mockup-container">
+      <div class="mockup-header">
+        <span>THẨM ĐỊNH BẢO HÀNH CHÍNH HÃNG (WARRANTY INSPECTION)</span>
+        <span>URL: /admin/warranty</span>
+      </div>
+      <div class="mockup-screen">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:12px;">
+          <div style="border:1px solid #cbd5e1; border-radius:6px; padding:10px;">
+            <div style="font-size:12px; font-weight:700; color:#475569;">TÌNH TRẠNG ODO &amp; HẠN BẢO HÀNH</div>
+            <div style="font-size:14px; font-weight:700; color:#16a34a; margin-top:4px;">✓ ĐỦ ĐIỀU KIỆN BẢO HÀNH CHÍNH HÃNG (ODO: 1.200 km)</div>
+          </div>
+          <div style="text-align:right;">
+            <!-- NÚT KHOANH ĐỎ DUYỆT 0Đ -->
+            <div class="highlight-red-box">
+              <button style="background:#16a34a; color:#fff; border:none; padding:8px 16px; border-radius:6px; font-size:12.5px; font-weight:700; cursor:pointer;">
+                ✓ DUYỆT BẢO DƯỠNG 0Đ &amp; CẬP NHẬT SỔ ĐIỆN TỬ
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="callout-note">🔴 Khoanh đỏ: Nhấp vào nút "DUYỆT BẢO DƯỠNG 0Đ" để hệ thống tự động ghi nhận vào Sổ bảo hành điện tử và không tính tiền khách hàng.</div>
+      </div>
+      <div class="fig-caption">Hình 4.5: Màn hình thẩm định bảo hành với nút duyệt miễn phí được khoanh đỏ</div>
+    </div>
+
+    <!-- ----------------------------------------------------------------------- -->
+    <!-- LUỒNG 2: DÀNH CHO KHÁCH HÀNG -->
+    <!-- ----------------------------------------------------------------------- -->
+    <div style="margin-top:36px;">
+      <span class="flow-badge flow-customer">LUỒNG 2: DÀNH CHO KHÁCH HÀNG (TRẢI NGHIỆM MUA SẮM &amp; DỊCH VỤ)</span>
+    </div>
+
+    <!-- Bước 1 KH -->
+    <h4 class="step-title"><span class="red-pointer">1</span> Bước 1: Xem Showroom 360 &amp; Đặt cọc xe máy online</h4>
+    <p>Khách hàng truy cập website <code class="inline-code">http://localhost:5173</code>, chọn dòng xe yêu thích, chọn màu sắc và nhấn nút đặt cọc giữ xe.</p>
+
+    <div class="mockup-container">
+      <div class="mockup-header">
+        <span>SHOWROOM XE MÁY TRỰC TUYẾN (CUSTOMER VEHICLES SHOWROOM)</span>
+        <span>URL: /showroom</span>
+      </div>
+      <div class="mockup-screen">
+        <div style="display:flex; gap:20px; align-items:center; flex-wrap:wrap;">
+          <div style="width:140px; height:100px; background:#f1f5f9; border-radius:8px; display:flex; align-items:center; justify-content:center; font-weight:700; color:#64748b;">
+            🏍️ [Ảnh Xe]
+          </div>
+          <div style="flex:1;">
+            <h4 style="color:#1e3a8a; margin-bottom:4px;">Yamaha NVX 155 VVA Thế Hệ Mới (2026)</h4>
+            <div style="font-size:12.5px; color:#475569; margin-bottom:8px;">Giá niêm yết: <b>55.000.000 đ</b> | Số tiền đặt cọc: <b>2.000.000 đ</b></div>
+            <!-- NÚT KHOANH ĐỎ ĐẶT CỌC -->
+            <div class="highlight-red-box">
+              <button style="background:#dc2626; color:#fff; border:none; padding:8px 20px; border-radius:6px; font-weight:700; font-size:13px; cursor:pointer;">
+                ⚡ ĐẶT CỌC NGAY (2.000.000 đ)
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="callout-note">🔴 Khoanh đỏ: Khách hàng nhấp vào nút "ĐẶT CỌC NGAY" màu đỏ để chuyển sang cổng thanh toán VietQR.</div>
+      </div>
+      <div class="fig-caption">Hình 4.6: Màn hình chọn xe mẫu với nút Đặt cọc online được khoanh đỏ</div>
+    </div>
+
+    <!-- Bước 2 KH -->
+    <h4 class="step-title"><span class="red-pointer">2</span> Bước 2: Quét mã VietQR thanh toán cọc &amp; Nhận Mã QR nhận xe</h4>
+    <p>Khách hàng quét mã QR qua App ngân hàng bất kỳ để hoàn tất đặt cọc 2 triệu đồng và nhận ngay Mã QR bàn giao xe.</p>
+
+    <div class="mockup-container">
+      <div class="mockup-header">
+        <span>XÁC NHẬN THANH TOÁN VIETQR &amp; MÃ NHẬN XE TẠI SHOWROOM</span>
+        <span>URL: /checkout/success</span>
+      </div>
+      <div class="mockup-screen" style="text-align:center;">
+        <div style="display:inline-block; border:2px dashed #16a34a; border-radius:8px; padding:16px; background:#f0fdf4; margin-bottom:12px;">
+          <div style="font-size:28px;">📱</div>
+          <div style="font-weight:700; color:#15803d; font-size:15px;">MÃ QR BÀN GIAO XE: #MOTO-QR-8899</div>
+          <div style="font-size:12px; color:#475569; margin-top:4px;">Vui lòng xuất trình mã này kèm CCCD khi đến nhận xe tại đại lý</div>
+        </div>
+        <div>
+          <!-- NÚT KHOANH ĐỎ LƯU QR -->
+          <div class="highlight-red-box">
+            <button style="background:#2563eb; color:#fff; border:none; padding:7px 18px; border-radius:6px; font-weight:700; font-size:12.5px; cursor:pointer;">
+              💾 TẢI VỀ MÃ QR XÁC NHẬN
+            </button>
+          </div>
+        </div>
+        <div class="callout-note">🔴 Khoanh đỏ: Bấm "TẢI VỀ MÃ QR XÁC NHẬN" để lưu ảnh mã QR vào điện thoại mang đến Showroom.</div>
+      </div>
+      <div class="fig-caption">Hình 4.7: Màn hình cấp Mã QR nhận xe với nút tải về được khoanh đỏ</div>
+    </div>
+
+    <!-- Bước 3 KH -->
+    <h4 class="step-title"><span class="red-pointer">3</span> Bước 3: Đặt lịch hẹn bảo dưỡng / sửa chữa trực tuyến</h4>
+    <p>Khách hàng chủ động chọn ngày, giờ và loại dịch vụ trước khi mang xe đến để không phải chờ đợi.</p>
+
+    <div class="mockup-container">
+      <div class="mockup-header">
+        <span>ĐẶT LỊCH HẸN DỊCH VỤ TRỰC TUYẾN (SERVICE BOOKING)</span>
+        <span>URL: /booking</span>
+      </div>
+      <div class="mockup-screen">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:12px;">
+          <div>
+            <label style="font-size:12px; font-weight:600;">Chọn loại dịch vụ:</label>
+            <select style="width:100%; padding:6px; border:1px solid #cbd5e1; border-radius:4px;">
+              <option>Bảo dưỡng định kỳ (0đ theo sổ BH)</option>
+              <option>Sửa chữa &amp; Thay thế phụ tùng</option>
+              <option>Đăng ký lái thử xe mới</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:12px; font-weight:600;">Chọn ngày &amp; giờ hẹn:</label>
+            <input type="text" value="Thứ Bảy, 10:00 Sáng" readonly style="width:100%; padding:6px; border:1px solid #cbd5e1; border-radius:4px; background:#f8fafc;" />
+          </div>
+        </div>
+        <div style="text-align:right;">
+          <!-- NÚT KHOANH ĐỎ XÁC NHẬN ĐẶT HẸN -->
+          <div class="highlight-red-box">
+            <button style="background:#2563eb; color:#fff; border:none; padding:8px 22px; border-radius:6px; font-weight:700; font-size:12.5px; cursor:pointer;">
+              📅 XÁC NHẬN ĐẶT LỊCH HẸN XƯỞNG
+            </button>
+          </div>
+        </div>
+        <div class="callout-note">🔴 Khoanh đỏ: Nhấp vào nút "XÁC NHẬN ĐẶT LỊCH HẸN XƯỞNG" để hoàn tất giữ chỗ bàn nâng.</div>
+      </div>
+      <div class="fig-caption">Hình 4.8: Màn hình đặt lịch hẹn với nút Xác nhận đặt lịch được khoanh đỏ</div>
+    </div>
+
+    <!-- Bước 4 KH -->
+    <h4 class="step-title"><span class="red-pointer">4</span> Bước 4: Tra cứu Sổ bảo hành điện tử chính hãng 36 tháng</h4>
+    <p>Khách hàng kiểm tra lịch sử các mốc bảo dưỡng, tiến độ ODO và thời hạn bảo hành còn lại ngay trên tài khoản cá nhân.</p>
+
+    <div class="mockup-container">
+      <div class="mockup-header">
+        <span>SỔ BẢO HÀNH ĐIỆN TỬ &amp; HỒ SƠ PHƯƠNG TIỆN (CUSTOMER PROFILE)</span>
+        <span>URL: /customer/profile</span>
+      </div>
+      <div class="mockup-screen">
+        <div style="background:#eff6ff; border:1.5px solid #3b82f6; border-radius:8px; padding:14px; margin-bottom:12px;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <span style="font-weight:700; color:#1e3a8a; font-size:15px;">🛡️ SỔ BẢO HÀNH CHÍNH HÃNG MOTOSHOP (36 THÁNG / 30.000 KM)</span>
+              <div style="font-size:12.5px; color:#475569; margin-top:2px;">Số khung: <b>RLC-2026-99881</b> | ODO hiện tại: <b>1.200 km</b> | Còn lại: <b>34 tháng</b></div>
+            </div>
+            <!-- NÚT KHOANH ĐỎ XEM CHI TIẾT SỔ BH -->
+            <div class="highlight-red-box">
+              <button style="background:#1d4ed8; color:#fff; border:none; padding:6px 14px; border-radius:5px; font-size:12px; font-weight:700; cursor:pointer;">
+                📄 Xem Lịch Sử 6 Lần Bảo Dưỡng
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="callout-note">🔴 Khoanh đỏ: Bấm "Xem Lịch Sử 6 Lần Bảo Dưỡng" để xem chi tiết danh mục phụ tùng đã thay và chi phí 0đ được đại lý tài trợ.</div>
+      </div>
+      <div class="fig-caption">Hình 4.9: Màn hình tra cứu sổ bảo hành điện tử với nút xem lịch sử được khoanh đỏ</div>
+    </div>
+
+    <!-- Bước 5 KH -->
+    <h4 class="step-title"><span class="red-pointer">5</span> Bước 5: Đánh giá độ hài lòng CSAT sau khi nhận xe / làm dịch vụ</h4>
+    <p>Sau khi nhận xe hoặc bảo dưỡng xong, khách hàng gửi đánh giá chất lượng phục vụ để đại lý nâng cao chất lượng.</p>
+
+    <div class="mockup-container">
+      <div class="mockup-header">
+        <span>ĐÁNH GIÁ CHẤT LƯỢNG DỊCH VỤ (CSAT SURVEY)</span>
+        <span>URL: /feedback</span>
+      </div>
+      <div class="mockup-screen" style="text-align:center;">
+        <h4 style="color:#1e3a8a; margin-bottom:8px;">BẠN ĐÁNH GIÁ THẾ NÀO VỀ TRẢI NGHIỆM HÔM NAY?</h4>
+        <div style="font-size:24px; color:#f59e0b; margin-bottom:12px; letter-spacing:4px;">
+          ★ ★ ★ ★ ★
+        </div>
+        <textarea readonly style="width:80%; height:50px; padding:6px; border:1px solid #cbd5e1; border-radius:6px; background:#f8fafc; font-size:12px; margin-bottom:12px;">Kỹ thuật viên tư vấn rất tận tâm, xưởng sạch sẽ và bàn giao xe đúng giờ hẹn!</textarea>
+        <div>
+          <!-- NÚT KHOANH ĐỎ GỬI ĐÁNH GIÁ -->
+          <div class="highlight-red-box">
+            <button style="background:#16a34a; color:#fff; border:none; padding:8px 24px; border-radius:6px; font-weight:700; font-size:13px; cursor:pointer;">
+              ⭐ GỬI Ý KIẾN ĐÁNH GIÁ (CSAT)
+            </button>
+          </div>
+        </div>
+        <div class="callout-note">🔴 Khoanh đỏ: Nhấp vào nút "GỬI Ý KIẾN ĐÁNH GIÁ (CSAT)" màu xanh lá cây để lưu điểm đánh giá vào hồ sơ CRM của showroom.</div>
+      </div>
+      <div class="fig-caption">Hình 4.10: Màn hình gửi đánh giá CSAT với nút gửi được khoanh đỏ</div>
+    </div>
+
+  </div> <!-- HẾT PAPER SHEET -->
+
+</div>
+
+</body>
+</html>

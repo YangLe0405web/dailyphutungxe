@@ -1,0 +1,205 @@
+<svg viewBox="0 0 1300 960" width="1300" height="960" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrow2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#334155"/>
+    </marker>
+  </defs>
+
+  <!-- TÁC NHÂN NGOÀI -->
+  <!-- Admin -->
+  <rect x="40" y="40" width="170" height="50" rx="4" fill="#e0f2fe" stroke="#0284c7" stroke-width="2"/>
+  <text x="125" y="65" font-size="13" font-weight="bold" fill="#0369a1" text-anchor="middle">ADMIN / BAN GIÁM ĐỐC</text>
+  <text x="125" y="80" font-size="11" fill="#0c4a6e" text-anchor="middle">(Tác nhân ngoài)</text>
+
+  <!-- Khách hàng -->
+  <rect x="40" y="320" width="170" height="50" rx="4" fill="#e0f2fe" stroke="#0284c7" stroke-width="2"/>
+  <text x="125" y="345" font-size="13" font-weight="bold" fill="#0369a1" text-anchor="middle">KHÁCH HÀNG</text>
+  <text x="125" y="360" font-size="11" fill="#0c4a6e" text-anchor="middle">(Tác nhân ngoài)</text>
+
+  <!-- KTV -->
+  <rect x="1090" y="520" width="170" height="50" rx="4" fill="#e0f2fe" stroke="#0284c7" stroke-width="2"/>
+  <text x="1175" y="545" font-size="13" font-weight="bold" fill="#0369a1" text-anchor="middle">KỸ THUẬT VIÊN (KTV)</text>
+  <text x="1175" y="560" font-size="11" fill="#0c4a6e" text-anchor="middle">(Tác nhân ngoài)</text>
+
+  <!-- Sales -->
+  <rect x="1090" y="320" width="170" height="50" rx="4" fill="#e0f2fe" stroke="#0284c7" stroke-width="2"/>
+  <text x="1175" y="345" font-size="13" font-weight="bold" fill="#0369a1" text-anchor="middle">NHÂN VIÊN BÁN HÀNG</text>
+  <text x="1175" y="360" font-size="11" fill="#0c4a6e" text-anchor="middle">(Tác nhân ngoài)</text>
+
+  <!-- VietQR -->
+  <rect x="40" y="620" width="170" height="50" rx="4" fill="#e0f2fe" stroke="#0284c7" stroke-width="2"/>
+  <text x="125" y="645" font-size="13" font-weight="bold" fill="#0369a1" text-anchor="middle">CỔNG THANH TOÁN VIETQR</text>
+  <text x="125" y="660" font-size="11" fill="#0c4a6e" text-anchor="middle">(Tác nhân ngoài)</text>
+
+  <!-- TIẾN TRÌNH XỬ LÝ (MỨC 1) -->
+  <!-- 1.0 Quản trị hệ thống -->
+  <g>
+    <rect x="340" y="40" width="220" height="60" rx="12" fill="#fef3c7" stroke="#d97706" stroke-width="2"/>
+    <line x1="340" y1="65" x2="560" y2="65" stroke="#d97706" stroke-width="1.2"/>
+    <text x="450" y="58" font-size="12" font-weight="bold" fill="#b45309" text-anchor="middle">1.0</text>
+    <text x="450" y="82" font-size="13" font-weight="bold" fill="#78350f" text-anchor="middle">Quản trị Hệ thống &amp; Người dùng</text>
+  </g>
+
+  <!-- 2.0 Quản lý khách hàng CRM -->
+  <g>
+    <rect x="340" y="240" width="220" height="60" rx="12" fill="#fef3c7" stroke="#d97706" stroke-width="2"/>
+    <line x1="340" y1="265" x2="560" y2="265" stroke="#d97706" stroke-width="1.2"/>
+    <text x="450" y="258" font-size="12" font-weight="bold" fill="#b45309" text-anchor="middle">2.0</text>
+    <text x="450" y="282" font-size="13" font-weight="bold" fill="#78350f" text-anchor="middle">Quản lý Khách hàng (CRM 360)</text>
+  </g>
+
+  <!-- 3.0 Quản lý bán hàng & Showroom -->
+  <g>
+    <rect x="340" y="440" width="220" height="60" rx="12" fill="#fef3c7" stroke="#d97706" stroke-width="2"/>
+    <line x1="340" y1="465" x2="560" y2="465" stroke="#d97706" stroke-width="1.2"/>
+    <text x="450" y="458" font-size="12" font-weight="bold" fill="#b45309" text-anchor="middle">3.0</text>
+    <text x="450" y="482" font-size="13" font-weight="bold" fill="#78350f" text-anchor="middle">Quản lý Bán hàng Showroom &amp; PT</text>
+  </g>
+
+  <!-- 4.0 Tiếp nhận dịch vụ kỹ thuật -->
+  <g>
+    <rect x="340" y="640" width="220" height="60" rx="12" fill="#fef3c7" stroke="#d97706" stroke-width="2"/>
+    <line x1="340" y1="665" x2="560" y2="665" stroke="#d97706" stroke-width="1.2"/>
+    <text x="450" y="658" font-size="12" font-weight="bold" fill="#b45309" text-anchor="middle">4.0</text>
+    <text x="450" y="682" font-size="13" font-weight="bold" fill="#78350f" text-anchor="middle">Tiếp nhận &amp; Xử lý Dịch vụ KT</text>
+  </g>
+
+  <!-- 5.0 Báo cáo thống kê -->
+  <g>
+    <rect x="340" y="840" width="220" height="60" rx="12" fill="#fef3c7" stroke="#d97706" stroke-width="2"/>
+    <line x1="340" y1="865" x2="560" y2="865" stroke="#d97706" stroke-width="1.2"/>
+    <text x="450" y="858" font-size="12" font-weight="bold" fill="#b45309" text-anchor="middle">5.0</text>
+    <text x="450" y="882" font-size="13" font-weight="bold" fill="#78350f" text-anchor="middle">Thống kê Báo cáo Doanh thu &amp; CSAT</text>
+  </g>
+
+  <!-- KHO DỮ LIỆU CHUẨN GANE & SARSON (2 vạch song song) -->
+  <!-- D1: Tài khoản -->
+  <g>
+    <rect x="730" y="45" width="260" height="48" fill="#dcfce7" stroke="none"/>
+    <line x1="730" y1="45" x2="990" y2="45" stroke="#16a34a" stroke-width="2.5"/>
+    <line x1="730" y1="93" x2="990" y2="93" stroke="#16a34a" stroke-width="2.5"/>
+    <line x1="780" y1="45" x2="780" y2="93" stroke="#16a34a" stroke-width="1.5"/>
+    <text x="755" y="74" font-size="13" font-weight="bold" fill="#14532d" text-anchor="middle">D1</text>
+    <text x="880" y="74" font-size="12.5" font-weight="bold" fill="#14532d" text-anchor="middle">TÀI KHOẢN &amp; PHÂN QUYỀN</text>
+  </g>
+
+  <!-- D2: Khách hàng & Phương tiện -->
+  <g>
+    <rect x="730" y="175" width="260" height="48" fill="#dcfce7" stroke="none"/>
+    <line x1="730" y1="175" x2="990" y2="175" stroke="#16a34a" stroke-width="2.5"/>
+    <line x1="730" y1="223" x2="990" y2="223" stroke="#16a34a" stroke-width="2.5"/>
+    <line x1="780" y1="175" x2="780" y2="223" stroke="#16a34a" stroke-width="1.5"/>
+    <text x="755" y="204" font-size="13" font-weight="bold" fill="#14532d" text-anchor="middle">D2</text>
+    <text x="880" y="204" font-size="12.5" font-weight="bold" fill="#14532d" text-anchor="middle">KHÁCH HÀNG &amp; PHƯƠNG TIỆN</text>
+  </g>
+
+  <!-- D3: Xe mẫu & Phụ tùng -->
+  <g>
+    <rect x="730" y="305" width="260" height="48" fill="#dcfce7" stroke="none"/>
+    <line x1="730" y1="305" x2="990" y2="305" stroke="#16a34a" stroke-width="2.5"/>
+    <line x1="730" y1="353" x2="990" y2="353" stroke="#16a34a" stroke-width="2.5"/>
+    <line x1="780" y1="305" x2="780" y2="353" stroke="#16a34a" stroke-width="1.5"/>
+    <text x="755" y="334" font-size="13" font-weight="bold" fill="#14532d" text-anchor="middle">D3</text>
+    <text x="880" y="334" font-size="12.5" font-weight="bold" fill="#14532d" text-anchor="middle">XE MẪU &amp; KHO PHỤ TÙNG</text>
+  </g>
+
+  <!-- D4: Đơn hàng & Đặt cọc -->
+  <g>
+    <rect x="730" y="435" width="260" height="48" fill="#dcfce7" stroke="none"/>
+    <line x1="730" y1="435" x2="990" y2="435" stroke="#16a34a" stroke-width="2.5"/>
+    <line x1="730" y1="483" x2="990" y2="483" stroke="#16a34a" stroke-width="2.5"/>
+    <line x1="780" y1="435" x2="780" y2="483" stroke="#16a34a" stroke-width="1.5"/>
+    <text x="755" y="464" font-size="13" font-weight="bold" fill="#14532d" text-anchor="middle">D4</text>
+    <text x="880" y="464" font-size="12.5" font-weight="bold" fill="#14532d" text-anchor="middle">ĐƠN HÀNG &amp; ĐẶT CỌC XE</text>
+  </g>
+
+  <!-- D5: Lịch hẹn & Hóa đơn DV -->
+  <g>
+    <rect x="730" y="565" width="260" height="48" fill="#dcfce7" stroke="none"/>
+    <line x1="730" y1="565" x2="990" y2="565" stroke="#16a34a" stroke-width="2.5"/>
+    <line x1="730" y1="613" x2="990" y2="613" stroke="#16a34a" stroke-width="2.5"/>
+    <line x1="780" y1="565" x2="780" y2="613" stroke="#16a34a" stroke-width="1.5"/>
+    <text x="755" y="594" font-size="13" font-weight="bold" fill="#14532d" text-anchor="middle">D5</text>
+    <text x="880" y="594" font-size="12.5" font-weight="bold" fill="#14532d" text-anchor="middle">LỊCH HẸN &amp; HÓA ĐƠN DỊCH VỤ</text>
+  </g>
+
+  <!-- D6: Sổ bảo hành chính hãng -->
+  <g>
+    <rect x="730" y="695" width="260" height="48" fill="#dcfce7" stroke="none"/>
+    <line x1="730" y1="695" x2="990" y2="695" stroke="#16a34a" stroke-width="2.5"/>
+    <line x1="730" y1="743" x2="990" y2="743" stroke="#16a34a" stroke-width="2.5"/>
+    <line x1="780" y1="695" x2="780" y2="743" stroke="#16a34a" stroke-width="1.5"/>
+    <text x="755" y="724" font-size="13" font-weight="bold" fill="#14532d" text-anchor="middle">D6</text>
+    <text x="880" y="724" font-size="12.5" font-weight="bold" fill="#14532d" text-anchor="middle">SỔ BẢO HÀNH &amp; CARE+</text>
+  </g>
+
+  <!-- D7: Đánh giá & Khảo sát CSAT -->
+  <g>
+    <rect x="730" y="825" width="260" height="48" fill="#dcfce7" stroke="none"/>
+    <line x1="730" y1="825" x2="990" y2="825" stroke="#16a34a" stroke-width="2.5"/>
+    <line x1="730" y1="873" x2="990" y2="873" stroke="#16a34a" stroke-width="2.5"/>
+    <line x1="780" y1="825" x2="780" y2="873" stroke="#16a34a" stroke-width="1.5"/>
+    <text x="755" y="854" font-size="13" font-weight="bold" fill="#14532d" text-anchor="middle">D7</text>
+    <text x="880" y="854" font-size="12.5" font-weight="bold" fill="#14532d" text-anchor="middle">ĐÁNH GIÁ &amp; KHẢO SÁT CSAT</text>
+  </g>
+
+  <!-- CÁC LUỒNG DỮ LIỆU KẾT NỐI -->
+  <!-- Admin -> 1.0 -->
+  <line x1="210" y1="65" x2="335" y2="65" stroke="#334155" stroke-width="1.8" marker-end="url(#arrow2)"/>
+  <text x="270" y="58" font-size="10.5" font-weight="600" fill="#334155" text-anchor="middle">Tạo tài khoản / Quyền</text>
+
+  <!-- 1.0 <-> D1 -->
+  <line x1="560" y1="65" x2="725" y2="65" stroke="#334155" stroke-width="1.8" marker-end="url(#arrow2)"/>
+  <text x="645" y="58" font-size="10.5" font-weight="600" fill="#334155" text-anchor="middle">Ghi nhận User / Quyền</text>
+
+  <!-- KH -> 2.0 -->
+  <path d="M 125 320 C 125 270, 240 270, 335 270" fill="none" stroke="#334155" stroke-width="1.8" marker-end="url(#arrow2)"/>
+  <text x="230" y="262" font-size="10.5" font-weight="600" fill="#334155" text-anchor="middle">Thông tin cá nhân &amp; Cà vẹt</text>
+
+  <!-- 2.0 <-> D2 -->
+  <path d="M 560 270 C 640 270, 640 200, 725 200" fill="none" stroke="#334155" stroke-width="1.8" marker-end="url(#arrow2)"/>
+  <text x="640" y="225" font-size="10.5" font-weight="600" fill="#334155" text-anchor="middle">Lưu hồ sơ 360 &amp; CLV</text>
+
+  <!-- KH -> 3.0 -->
+  <path d="M 210 350 C 270 350, 270 460, 335 460" fill="none" stroke="#334155" stroke-width="1.8" marker-end="url(#arrow2)"/>
+  <text x="270" y="420" font-size="10.5" font-weight="600" fill="#334155" text-anchor="middle">Đặt cọc xe máy (2tr)</text>
+
+  <!-- 3.0 <-> D3 -->
+  <path d="M 560 450 C 640 450, 640 330, 725 330" fill="none" stroke="#334155" stroke-width="1.8" marker-end="url(#arrow2)"/>
+  <text x="640" y="380" font-size="10.5" font-weight="600" fill="#334155" text-anchor="middle">Tra xe mẫu &amp; Trừ tồn kho</text>
+
+  <!-- 3.0 -> D4 -->
+  <line x1="560" y1="470" x2="725" y2="460" stroke="#334155" stroke-width="1.8" marker-end="url(#arrow2)"/>
+  <text x="645" y="455" font-size="10.5" font-weight="600" fill="#334155" text-anchor="middle">Lưu đơn cọc &amp; Mã nhận xe</text>
+
+  <!-- 3.0 <-> VietQR -->
+  <path d="M 340 480 C 240 480, 240 635, 215 635" fill="none" stroke="#334155" stroke-width="1.8" marker-end="url(#arrow2)"/>
+  <text x="260" y="550" font-size="10.5" font-weight="600" fill="#334155" text-anchor="middle">Tạo QR thanh toán</text>
+  <path d="M 210 655 C 270 655, 270 500, 335 500" fill="none" stroke="#334155" stroke-width="1.8" marker-end="url(#arrow2)"/>
+  <text x="265" y="585" font-size="10.5" font-weight="600" fill="#334155" text-anchor="middle">Xác nhận thanh toán</text>
+
+  <!-- KH -> 4.0 -->
+  <path d="M 125 370 C 125 540, 240 660, 335 660" fill="none" stroke="#334155" stroke-width="1.8" marker-end="url(#arrow2)"/>
+  <text x="220" y="610" font-size="10.5" font-weight="600" fill="#334155" text-anchor="middle">Đặt lịch bảo dưỡng / SC</text>
+
+  <!-- 4.0 <-> D5 -->
+  <path d="M 560 660 C 640 660, 640 590, 725 590" fill="none" stroke="#334155" stroke-width="1.8" marker-end="url(#arrow2)"/>
+  <text x="640" y="630" font-size="10.5" font-weight="600" fill="#334155" text-anchor="middle">Phân bổ bàn nâng &amp; Hóa đơn</text>
+
+  <!-- 4.0 <-> D6 -->
+  <path d="M 560 680 C 640 680, 640 720, 725 720" fill="none" stroke="#334155" stroke-width="1.8" marker-end="url(#arrow2)"/>
+  <text x="640" y="710" font-size="10.5" font-weight="600" fill="#334155" text-anchor="middle">Kiểm tra ODO &amp; Bảo hành 36T</text>
+
+  <!-- D2, D4, D5, D7 -> 5.0 (Báo cáo) -->
+  <path d="M 860 483 C 860 780, 600 855, 565 855" fill="none" stroke="#334155" stroke-dasharray="3" stroke-width="1.5" marker-end="url(#arrow2)"/>
+  <path d="M 860 613 C 860 780, 600 870, 565 870" fill="none" stroke="#334155" stroke-dasharray="3" stroke-width="1.5" marker-end="url(#arrow2)"/>
+  <path d="M 730 850 L 565 860" stroke="#334155" stroke-dasharray="3" stroke-width="1.5" marker-end="url(#arrow2)"/>
+  <text x="645" y="845" font-size="10" fill="#475569" text-anchor="middle">Dữ liệu doanh thu &amp; CSAT</text>
+
+  <!-- 5.0 -> Admin -->
+  <path d="M 340 870 C 15 870, 15 70, 35 65" fill="none" stroke="#334155" stroke-width="1.8" marker-end="url(#arrow2)"/>
+  <text x="180" y="860" font-size="11" font-weight="600" fill="#334155" text-anchor="middle">Dashboard Báo cáo Doanh thu &amp; CSAT</text>
+
+  <!-- Chân nhãn giáo trình chuẩn -->
+  <text x="650" y="935" font-size="13" font-style="italic" fill="#475569" text-anchor="middle">Hình 2.3: Sơ đồ luồng dữ liệu (DFD) mức đỉnh (Level 1) - Hệ thống MotoShop CRM</text>
+</svg>

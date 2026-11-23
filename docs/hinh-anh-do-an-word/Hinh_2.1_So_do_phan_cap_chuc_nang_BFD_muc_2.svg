@@ -1,0 +1,141 @@
+<svg viewBox="0 0 1320 620" width="1320" height="620" xmlns="http://www.w3.org/2000/svg" style="background:#ffffff; font-family:'Be Vietnam Pro', -apple-system, Arial, sans-serif;">
+  <defs>
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="115%">
+      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000" flood-opacity="0.08"/>
+    </filter>
+  </defs>
+
+  <!-- NÚT GỐC MỨC 0 -->
+  <g filter="url(#shadow)">
+    <rect x="360" y="20" width="600" height="58" rx="8" fill="#1e40af" stroke="#0f172a" stroke-width="2"/>
+    <text x="660" y="45" font-size="14" font-weight="bold" fill="#ffffff" text-anchor="middle">HỆ THỐNG QUẢN LÝ QUAN HỆ KHÁCH HÀNG &amp; KINH DOANH MOTOSHOP</text>
+    <text x="660" y="63" font-size="12" fill="#bfdbfe" text-anchor="middle">(Mức 0 - Business Function Diagram)</text>
+  </g>
+
+  <!-- ĐƯỜNG NỐI TỪ GỐC XUỐNG MỨC 1 -->
+  <line x1="660" y1="78" x2="660" y2="120" stroke="#475569" stroke-width="2"/>
+  <line x1="130" y1="120" x2="1190" y2="120" stroke="#475569" stroke-width="2"/>
+
+  <!-- CỘT 1: 1.0 QUẢN TRỊ HỆ THỐNG -->
+  <line x1="130" y1="120" x2="130" y2="150" stroke="#475569" stroke-width="2"/>
+  <g filter="url(#shadow)">
+    <rect x="25" y="150" width="210" height="52" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="2"/>
+    <text x="130" y="172" font-size="13" font-weight="bold" fill="#78350f" text-anchor="middle">1.0 QUẢN TRỊ HỆ THỐNG</text>
+    <text x="130" y="190" font-size="12" fill="#92400e" text-anchor="middle">&amp; NGƯỜI DÙNG</text>
+  </g>
+  <!-- Các con cột 1 -->
+  <line x1="130" y1="202" x2="130" y2="440" stroke="#94a3b8" stroke-width="1.5"/>
+  <line x1="130" y1="250" x2="150" y2="250" stroke="#94a3b8" stroke-width="1.5"/>
+  <rect x="40" y="228" width="180" height="42" rx="4" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.2"/>
+  <text x="130" y="246" font-size="11.5" font-weight="600" fill="#1e3a8a" text-anchor="middle">1.1 Phân quyền &amp; Quản trị</text>
+  <text x="130" y="261" font-size="10.5" fill="#2563eb" text-anchor="middle">tài khoản (RBAC)</text>
+
+  <line x1="130" y1="320" x2="150" y2="320" stroke="#94a3b8" stroke-width="1.5"/>
+  <rect x="40" y="298" width="180" height="42" rx="4" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.2"/>
+  <text x="130" y="316" font-size="11.5" font-weight="600" fill="#1e3a8a" text-anchor="middle">1.2 Quản lý hồ sơ nhân viên</text>
+  <text x="130" y="331" font-size="10.5" fill="#2563eb" text-anchor="middle">&amp; Kỹ thuật viên (KTV)</text>
+
+  <line x1="130" y1="390" x2="150" y2="390" stroke="#94a3b8" stroke-width="1.5"/>
+  <rect x="40" y="368" width="180" height="42" rx="4" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.2"/>
+  <text x="130" y="386" font-size="11.5" font-weight="600" fill="#1e3a8a" text-anchor="middle">1.3 Cấu hình thông số</text>
+  <text x="130" y="401" font-size="10.5" fill="#2563eb" text-anchor="middle">hệ thống &amp; Danh mục chung</text>
+
+  <!-- CỘT 2: 2.0 QUẢN LÝ KHÁCH HÀNG (CRM 360) -->
+  <line x1="395" y1="120" x2="395" y2="150" stroke="#475569" stroke-width="2"/>
+  <g filter="url(#shadow)">
+    <rect x="290" y="150" width="210" height="52" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="2"/>
+    <text x="395" y="172" font-size="13" font-weight="bold" fill="#78350f" text-anchor="middle">2.0 QUẢN LÝ KHÁCH HÀNG</text>
+    <text x="395" y="190" font-size="12" fill="#92400e" text-anchor="middle">(HỒ SƠ CRM 360°)</text>
+  </g>
+  <!-- Các con cột 2 -->
+  <line x1="395" y1="202" x2="395" y2="510" stroke="#94a3b8" stroke-width="1.5"/>
+  <rect x="305" y="228" width="180" height="42" rx="4" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.2"/>
+  <text x="395" y="246" font-size="11.5" font-weight="600" fill="#1e3a8a" text-anchor="middle">2.1 Thu thập &amp; Định danh</text>
+  <text x="395" y="261" font-size="10.5" fill="#2563eb" text-anchor="middle">hồ sơ khách hàng 360°</text>
+
+  <rect x="305" y="298" width="180" height="42" rx="4" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.2"/>
+  <text x="395" y="316" font-size="11.5" font-weight="600" fill="#1e3a8a" text-anchor="middle">2.2 Phân hạng khách hàng</text>
+  <text x="395" y="331" font-size="10.5" fill="#2563eb" text-anchor="middle">tự động (CLV Đồng - KC)</text>
+
+  <rect x="305" y="368" width="180" height="42" rx="4" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.2"/>
+  <text x="395" y="386" font-size="11.5" font-weight="600" fill="#1e3a8a" text-anchor="middle">2.3 Quản lý xe khách hàng</text>
+  <text x="395" y="401" font-size="10.5" fill="#2563eb" text-anchor="middle">(Cà vẹt, Biển số, ODO)</text>
+
+  <rect x="305" y="438" width="180" height="42" rx="4" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.2"/>
+  <text x="395" y="456" font-size="11.5" font-weight="600" fill="#1e3a8a" text-anchor="middle">2.4 Khảo sát hài lòng CSAT</text>
+  <text x="395" y="471" font-size="10.5" fill="#2563eb" text-anchor="middle">&amp; Tiếp nhận khiếu nại</text>
+
+  <!-- CỘT 3: 3.0 QUẢN LÝ BÁN HÀNG & PHÂN PHỐI -->
+  <line x1="660" y1="120" x2="660" y2="150" stroke="#475569" stroke-width="2"/>
+  <g filter="url(#shadow)">
+    <rect x="555" y="150" width="210" height="52" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="2"/>
+    <text x="660" y="172" font-size="13" font-weight="bold" fill="#78350f" text-anchor="middle">3.0 QUẢN LÝ BÁN HÀNG</text>
+    <text x="660" y="190" font-size="12" fill="#92400e" text-anchor="middle">&amp; PHÂN PHỐI SHOWROOM</text>
+  </g>
+  <!-- Các con cột 3 -->
+  <line x1="660" y1="202" x2="660" y2="510" stroke="#94a3b8" stroke-width="1.5"/>
+  <rect x="570" y="228" width="180" height="42" rx="4" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.2"/>
+  <text x="660" y="246" font-size="11.5" font-weight="600" fill="#1e3a8a" text-anchor="middle">3.1 Quản lý xe mẫu</text>
+  <text x="660" y="261" font-size="10.5" fill="#2563eb" text-anchor="middle">&amp; Bảng giá niêm yết</text>
+
+  <rect x="570" y="298" width="180" height="42" rx="4" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.2"/>
+  <text x="660" y="316" font-size="11.5" font-weight="600" fill="#1e3a8a" text-anchor="middle">3.2 Xử lý đơn đặt cọc xe</text>
+  <text x="660" y="331" font-size="10.5" fill="#2563eb" text-anchor="middle">trực tuyến &amp; tại quầy</text>
+
+  <rect x="570" y="368" width="180" height="42" rx="4" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.2"/>
+  <text x="660" y="386" font-size="11.5" font-weight="600" fill="#1e3a8a" text-anchor="middle">3.3 Bán lẻ phụ tùng</text>
+  <text x="660" y="401" font-size="10.5" fill="#2563eb" text-anchor="middle">&amp; Kiểm soát tồn kho</text>
+
+  <rect x="570" y="438" width="180" height="42" rx="4" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.2"/>
+  <text x="660" y="456" font-size="11.5" font-weight="600" fill="#1e3a8a" text-anchor="middle">3.4 Bàn giao xe &amp; Duyệt</text>
+  <text x="660" y="471" font-size="10.5" fill="#2563eb" text-anchor="middle">nhận xe qua mã QR</text>
+
+  <!-- CỘT 4: 4.0 DỊCH VỤ KỸ THUẬT & HẬU MÃI -->
+  <line x1="925" y1="120" x2="925" y2="150" stroke="#475569" stroke-width="2"/>
+  <g filter="url(#shadow)">
+    <rect x="820" y="150" width="210" height="52" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="2"/>
+    <text x="925" y="172" font-size="13" font-weight="bold" fill="#78350f" text-anchor="middle">4.0 DỊCH VỤ KỸ THUẬT</text>
+    <text x="925" y="190" font-size="12" fill="#92400e" text-anchor="middle">&amp; HẬU MÃI XƯỞNG</text>
+  </g>
+  <!-- Các con cột 4 -->
+  <line x1="925" y1="202" x2="925" y2="510" stroke="#94a3b8" stroke-width="1.5"/>
+  <rect x="835" y="228" width="180" height="42" rx="4" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.2"/>
+  <text x="925" y="246" font-size="11.5" font-weight="600" fill="#1e3a8a" text-anchor="middle">4.1 Tiếp nhận &amp; Điều phối</text>
+  <text x="925" y="261" font-size="10.5" fill="#2563eb" text-anchor="middle">lịch hẹn (BD / Sửa chữa)</text>
+
+  <rect x="835" y="298" width="180" height="42" rx="4" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.2"/>
+  <text x="925" y="316" font-size="11.5" font-weight="600" fill="#1e3a8a" text-anchor="middle">4.2 Giám sát tiến độ xưởng</text>
+  <text x="925" y="331" font-size="10.5" fill="#2563eb" text-anchor="middle">&amp; Bàn nâng KTV</text>
+
+  <rect x="835" y="368" width="180" height="42" rx="4" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.2"/>
+  <text x="925" y="386" font-size="11.5" font-weight="600" fill="#1e3a8a" text-anchor="middle">4.3 Giám định bảo hành</text>
+  <text x="925" y="401" font-size="10.5" fill="#2563eb" text-anchor="middle">&amp; Sổ bảo hành điện tử</text>
+
+  <rect x="835" y="438" width="180" height="42" rx="4" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.2"/>
+  <text x="925" y="456" font-size="11.5" font-weight="600" fill="#1e3a8a" text-anchor="middle">4.4 Nghiệm thu xe, Lập</text>
+  <text x="925" y="471" font-size="10.5" fill="#2563eb" text-anchor="middle">báo giá &amp; Hóa đơn DV</text>
+
+  <!-- CỘT 5: 5.0 BÁO CÁO & PHÂN TÍCH QUẢN TRỊ -->
+  <line x1="1190" y1="120" x2="1190" y2="150" stroke="#475569" stroke-width="2"/>
+  <g filter="url(#shadow)">
+    <rect x="1085" y="150" width="210" height="52" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="2"/>
+    <text x="1190" y="172" font-size="13" font-weight="bold" fill="#78350f" text-anchor="middle">5.0 BÁO CÁO &amp; THỐNG KÊ</text>
+    <text x="1190" y="190" font-size="12" fill="#92400e" text-anchor="middle">PHÂN TÍCH QUẢN TRỊ</text>
+  </g>
+  <!-- Các con cột 5 -->
+  <line x1="1190" y1="202" x2="1190" y2="440" stroke="#94a3b8" stroke-width="1.5"/>
+  <rect x="1100" y="228" width="180" height="42" rx="4" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.2"/>
+  <text x="1190" y="246" font-size="11.5" font-weight="600" fill="#1e3a8a" text-anchor="middle">5.1 Thống kê doanh thu</text>
+  <text x="1190" y="261" font-size="10.5" fill="#2563eb" text-anchor="middle">(Xe mới, Phụ tùng, Dịch vụ)</text>
+
+  <rect x="1100" y="298" width="180" height="42" rx="4" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.2"/>
+  <text x="1190" y="316" font-size="11.5" font-weight="600" fill="#1e3a8a" text-anchor="middle">5.2 Phân tích dòng xe bán chạy</text>
+  <text x="1190" y="331" font-size="10.5" fill="#2563eb" text-anchor="middle">&amp; Hiệu suất chốt cọc</text>
+
+  <rect x="1100" y="368" width="180" height="42" rx="4" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.2"/>
+  <text x="1190" y="386" font-size="11.5" font-weight="600" fill="#1e3a8a" text-anchor="middle">5.3 Báo cáo tiếp đón xưởng</text>
+  <text x="1190" y="401" font-size="10.5" fill="#2563eb" text-anchor="middle">&amp; Chỉ số CSAT hài lòng</text>
+
+  <!-- Chân nhãn giáo trình chuẩn -->
+  <text x="660" y="580" font-size="13" font-style="italic" fill="#475569" text-anchor="middle">Hình 2.1: Sơ đồ phân cấp chức năng (BFD) mức 2 - Hệ thống MotoShop CRM</text>
+</svg>
