@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mô Hình Hóa Nghiệp Vụ - MotoShop CRM (Xuất Ảnh Cho Word Đồ Án)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-page: #f8fafc;
+      --paper-bg: #ffffff;
+      --text-main: #0f172a;
+      --text-muted: #475569;
+      --border-color: #cbd5e1;
+      
+      --entity-bg: #e0f2fe;
+      --entity-border: #0284c7;
+      --entity-text: #0369a1;
+
+      --process-bg: #fef3c7;
+      --process-border: #d97706;
+      --process-text: #78350f;
+
+      --store-bg: #dcfce7;
+      --store-border: #16a34a;
+      --store-text: #14532d;
+
+      --flow-color: #334155;
+      --accent: #2563eb;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Be Vietnam Pro', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg-page);
+      color: var(--text-main);
+      line-height: 1.6;
+      padding: 24px;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    /* Header */
+    .header-card {
+      background: var(--paper-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 24px 32px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    }
+    .header-badge {
+      display: inline-block;
+      padding: 4px 12px;
+      background: #eff6ff;
+      color: var(--accent);
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      border: 1px solid #bfdbfe;
+    }
+    h1 {
+      font-size: 24px;
+      color: #1e3a8a;
+      margin-bottom: 8px;
+      font-weight: 700;
+    }
+    .subtitle {
+      color: var(--text-muted);
+      font-size: 14.5px;
+    }
+
+    /* Quick Action Banner */
+    .quick-banner {
+      background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+      color: #ffffff;
+      padding: 16px 24px;
+      border-radius: 10px;
+      margin-bottom: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+    }
+    .quick-banner h3 {
+      font-size: 16px;
+      margin-bottom: 4px;
+    }
+    .quick-banner p {
+      font-size: 13.5px;
+      opacity: 0.95;
+    }
+
+    /* Navigation Tabs */
+    .tabs-nav {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 20px;
+      background: #e2e8f0;
+      padding: 6px;
+      border-radius: 10px;
+      flex-wrap: wrap;
+    }
+    .tab-btn {
+      padding: 10px 18px;
+      border: none;
+      background: transparent;
+      border-radius: 8px;
+      font-size: 13.5px;
+      font-weight: 600;
+      color: #334155;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .tab-btn:hover {
+      background: rgba(255, 255, 255, 0.6);
+      color: #0f172a;
+    }
+    .tab-btn.active {
+      background: var(--paper-bg);
+      color: var(--accent);
+      box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+    }
+
+    /* Vùng hiển thị sơ đồ */
+    .diagram-panel {
+      display: none;
+      background: var(--paper-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 32px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+      position: relative;
+    }
+    .diagram-panel.active {
+      display: block;
+    }
+
+    .diagram-header {
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid #e2e8f0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .diagram-title {
+      font-size: 19px;
+      font-weight: 700;
+      color: #1e3a8a;
+    }
+    .diagram-desc {
+      font-size: 13.5px;
+      color: var(--text-muted);
+      margin-top: 4px;
+      max-width: 750px;
+    }
+
+    .action-btns {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .btn-copy {
+      padding: 8px 16px;
+      background: #2563eb;
+      color: #ffffff;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+    .btn-copy:hover {
+      background: #1d4ed8;
+      transform: translateY(-1px);
+    }
+    .btn-download {
+      padding: 8px 14px;
+      background: #f8fafc;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      color: #1e293b;
+      cursor: pointer;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn-download:hover {
+      background: #f1f5f9;
+      border-color: #94a3b8;
+    }
+
+    .diagram-canvas {
+      width: 100%;
+      overflow-x: auto;
+      background: #ffffff;
+      padding: 16px 0;
+      display: flex;
+      justify-content: center;
+    }
+
+    .diagram-img {
+      max-width: 100%;
+      height: auto;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    }
+
+    /* Grid Gallery */
+    .gallery-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+      gap: 24px;
+      margin-top: 16px;
+    }
+    .gallery-card {
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      padding: 16px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .gallery-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #1e3a8a;
+      margin-bottom: 4px;
+    }
+    .gallery-desc {
+      font-size: 12.5px;
+      color: #64748b;
+      margin-bottom: 12px;
+    }
+    .gallery-preview {
+      width: 100%;
+      height: 220px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      margin-bottom: 12px;
+      cursor: pointer;
+    }
+    .gallery-preview img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
+    .gallery-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    /* Table styles */
+    .spec-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 24px;
+      font-size: 13.5px;
+    }
+    .spec-table th, .spec-table td {
+      border: 1px solid #cbd5e1;
+      padding: 10px 14px;
+      text-align: left;
+    }
+    .spec-table th {
+      background: #f1f5f9;
+      color: #1e293b;
+      font-weight: 600;
+    }
+    .spec-table tr:nth-child(even) {
+      background: #f8fafc;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <!-- Header -->
+  <div class="header-card">
+    <span class="header-badge">Tài liệu phân tích nghiệp vụ hệ thống</span>
+    <h1>2.2 MÔ HÌNH HÓA NGHIỆP VỤ - HỆ THỐNG MOTOSHOP CRM</h1>
+    <p class="subtitle">Đồ án: Hệ thống Quản lý Quan hệ Khách hàng & Kinh doanh Xe máy - Phụ tùng MotoShop | Màu sắc &amp; Ký hiệu chuẩn giáo trình PTTKHTTT</p>
+  </div>
+
+  <!-- Banner hướng dẫn copy vào Word -->
+  <div class="quick-banner">
+    <div>
+      <h3>📋 Cách chèn trực tiếp vào Microsoft Word siêu nhanh:</h3>
+      <p>1. Bấm nút <b>"📋 Sao chép ảnh dán vào Word"</b> bên dưới mỗi hình &rarr; Chuyển sang file Word và ấn <b>Ctrl + V</b>.<br>
+         2. Hoặc mở thư mục <code>docs/hinh-anh-do-an-word/</code> để kéo thả trực tiếp file <b>.png</b> (2x Retina cực nét) hoặc <b>.svg</b> (vector vô hạn sắc nét) vào Word.</p>
+    </div>
+  </div>
+
+  <!-- Tabs Navigation -->
+  <div class="tabs-nav">
+    <button class="tab-btn active" onclick="switchTab(0)">2.2.1 Sơ đồ BFD (Mức 2)</button>
+    <button class="tab-btn" onclick="switchTab(1)">2.2.2 DFD Mức ngữ cảnh</button>
+    <button class="tab-btn" onclick="switchTab(2)">2.2.3 DFD Mức đỉnh (Level 1)</button>
+    <button class="tab-btn" onclick="switchTab(3)">2.2.4 DFD Mức dưới đỉnh (Level 2)</button>
+    <button class="tab-btn" onclick="switchTab(4)">📁 Thư viện ảnh Word (Tải nhanh cả 5 hình)</button>
+  </div>
+
+  <!-- TAB 0: BFD -->
+  <div id="tab-0" class="diagram-panel active">
+    <div class="diagram-header">
+      <div>
+        <div class="diagram-title">2.2.1 SƠ ĐỒ PHÂN CẤP CHỨC NĂNG (BFD) - VẼ ĐẾN MỨC 2</div>
+        <div class="diagram-desc">Phân rã cấu trúc hình cây từ Mục tiêu hệ thống (Mức 0) xuống 5 Nhóm chức năng chính (Mức 1) và 18 Chức năng tác nghiệp chi tiết (Mức 2).</div>
+      </div>
+      <div class="action-btns">
+        <button class="btn-copy" onclick="copyImage('hinh-anh-do-an-word/Hinh_2.1_So_do_phan_cap_chuc_nang_BFD_muc_2.png', this)">📋 Sao chép ảnh dán vào Word (Ctrl+V)</button>
+        <a class="btn-download" href="hinh-anh-do-an-word/Hinh_2.1_So_do_phan_cap_chuc_nang_BFD_muc_2.png" download>💾 Tải file PNG (2x)</a>
+        <a class="btn-download" href="hinh-anh-do-an-word/Hinh_2.1_So_do_phan_cap_chuc_nang_BFD_muc_2.svg" download>💾 Tải file Vector SVG</a>
+      </div>
+    </div>
+    <div class="diagram-canvas">
+      <img class="diagram-img" src="hinh-anh-do-an-word/Hinh_2.1_So_do_phan_cap_chuc_nang_BFD_muc_2.png" alt="Hình 2.1 BFD Mức 2" />
+    </div>
+  </div>
+
+  <!-- TAB 1: DFD MỨC NGỮ CẢNH -->
+  <div id="tab-1" class="diagram-panel">
+    <div class="diagram-header">
+      <div>
+        <div class="diagram-title">2.2.2 SƠ ĐỒ LUỒNG DỮ LIỆU (DFD) MỨC NGỮ CẢNH (MỨC 0)</div>
+        <div class="diagram-desc">Ranh giới giữa Hệ thống MotoShop CRM với 5 tác nhân ngoài (Khách hàng, Admin, Sales, KTV xưởng, Cổng VietQR).</div>
+      </div>
+      <div class="action-btns">
+        <button class="btn-copy" onclick="copyImage('hinh-anh-do-an-word/Hinh_2.2_So_do_luong_du_lieu_DFD_muc_ngu_canh.png', this)">📋 Sao chép ảnh dán vào Word (Ctrl+V)</button>
+        <a class="btn-download" href="hinh-anh-do-an-word/Hinh_2.2_So_do_luong_du_lieu_DFD_muc_ngu_canh.png" download>💾 Tải file PNG (2x)</a>
+        <a class="btn-download" href="hinh-anh-do-an-word/Hinh_2.2_So_do_luong_du_lieu_DFD_muc_ngu_canh.svg" download>💾 Tải file Vector SVG</a>
+      </div>
+    </div>
+    <div class="diagram-canvas">
+      <img class="diagram-img" src="hinh-anh-do-an-word/Hinh_2.2_So_do_luong_du_lieu_DFD_muc_ngu_canh.png" alt="Hình 2.2 DFD Mức ngữ cảnh" />
+    </div>
+  </div>
+
+  <!-- TAB 2: DFD MỨC ĐỈNH -->
+  <div id="tab-2" class="diagram-panel">
+    <div class="diagram-header">
+      <div>
+        <div class="diagram-title">2.2.3 SƠ ĐỒ LUỒNG DỮ LIỆU (DFD) MỨC ĐỈNH (LEVEL 1)</div>
+        <div class="diagram-desc">Phân rã tiến trình 0.0 thành 5 tiến trình chính (1.0 đến 5.0) kết nối với 7 kho dữ liệu chuẩn Gane &amp; Sarson (D1 đến D7).</div>
+      </div>
+      <div class="action-btns">
+        <button class="btn-copy" onclick="copyImage('hinh-anh-do-an-word/Hinh_2.3_So_do_luong_du_lieu_DFD_muc_dinh.png', this)">📋 Sao chép ảnh dán vào Word (Ctrl+V)</button>
+        <a class="btn-download" href="hinh-anh-do-an-word/Hinh_2.3_So_do_luong_du_lieu_DFD_muc_dinh.png" download>💾 Tải file PNG (2x)</a>
+        <a class="btn-download" href="hinh-anh-do-an-word/Hinh_2.3_So_do_luong_du_lieu_DFD_muc_dinh.svg" download>💾 Tải file Vector SVG</a>
+      </div>
+    </div>
+    <div class="diagram-canvas">
+      <img class="diagram-img" src="hinh-anh-do-an-word/Hinh_2.3_So_do_luong_du_lieu_DFD_muc_dinh.png" alt="Hình 2.3 DFD Mức đỉnh" />
+    </div>
+  </div>
+
+  <!-- TAB 3: DFD MỨC DƯỚI ĐỈNH -->
+  <div id="tab-3" class="diagram-panel">
+    <div class="diagram-header">
+      <div>
+        <div class="diagram-title">2.2.4 SƠ ĐỒ LUỒNG DỮ LIỆU (DFD) MỨC DƯỚI ĐỈNH (LEVEL 2)</div>
+        <div class="diagram-desc">Phân rã chuyên sâu 2 phân hệ cốt lõi: Phân hệ Bán hàng (3.0) và Phân hệ Dịch vụ Xưởng (4.0).</div>
+      </div>
+    </div>
+
+    <!-- HÌNH 2.4A -->
+    <div style="margin-bottom: 32px; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+        <h3 style="color: #1e3a8a; font-size: 16px;">A. Phân rã Tiến trình 3.0: Quản lý Bán hàng &amp; Showroom (Hình 2.4A)</h3>
+        <div class="action-btns">
+          <button class="btn-copy" onclick="copyImage('hinh-anh-do-an-word/Hinh_2.4A_DFD_muc_duoi_dinh_Tien_trinh_3.0_Ban_hang.png', this)">📋 Sao chép ảnh (Ctrl+V)</button>
+          <a class="btn-download" href="hinh-anh-do-an-word/Hinh_2.4A_DFD_muc_duoi_dinh_Tien_trinh_3.0_Ban_hang.png" download>💾 Tải PNG</a>
+          <a class="btn-download" href="hinh-anh-do-an-word/Hinh_2.4A_DFD_muc_duoi_dinh_Tien_trinh_3.0_Ban_hang.svg" download>💾 Tải SVG</a>
+        </div>
+      </div>
+      <div class="diagram-canvas">
+        <img class="diagram-img" src="hinh-anh-do-an-word/Hinh_2.4A_DFD_muc_duoi_dinh_Tien_trinh_3.0_Ban_hang.png" alt="Hình 2.4A Bán hàng" />
+      </div>
+    </div>
+
+    <!-- HÌNH 2.4B -->
+    <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+        <h3 style="color: #1e3a8a; font-size: 16px;">B. Phân rã Tiến trình 4.0: Tiếp nhận &amp; Xử lý Dịch vụ Kỹ thuật Xưởng (Hình 2.4B)</h3>
+        <div class="action-btns">
+          <button class="btn-copy" onclick="copyImage('hinh-anh-do-an-word/Hinh_2.4B_DFD_muc_duoi_dinh_Tien_trinh_4.0_Dich_vu_ky_thuat.png', this)">📋 Sao chép ảnh (Ctrl+V)</button>
+          <a class="btn-download" href="hinh-anh-do-an-word/Hinh_2.4B_DFD_muc_duoi_dinh_Tien_trinh_4.0_Dich_vu_ky_thuat.png" download>💾 Tải PNG</a>
+          <a class="btn-download" href="hinh-anh-do-an-word/Hinh_2.4B_DFD_muc_duoi_dinh_Tien_trinh_4.0_Dich_vu_ky_thuat.svg" download>💾 Tải SVG</a>
+        </div>
+      </div>
+      <div class="diagram-canvas">
+        <img class="diagram-img" src="hinh-anh-do-an-word/Hinh_2.4B_DFD_muc_duoi_dinh_Tien_trinh_4.0_Dich_vu_ky_thuat.png" alt="Hình 2.4B Dịch vụ" />
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 4: THƯ VIỆN ẢNH WORD -->
+  <div id="tab-4" class="diagram-panel">
+    <div class="diagram-header">
+      <div>
+        <div class="diagram-title">📁 THƯ VIỆN HÌNH ẢNH MÔ HÌNH HÓA ĐỒ ÁN (DÀNH CHO MICROSOFT WORD)</div>
+        <div class="diagram-desc">Tất cả các hình đã được trích xuất sẵn ra file độc lập tại <code>docs/hinh-anh-do-an-word/</code>. Bạn chỉ cần bấm <b>"Sao chép ảnh"</b> rồi qua Word ấn <b>Ctrl + V</b> là xong!</div>
+      </div>
+    </div>
+
+    <div class="gallery-grid">
+      <!-- Card 1 -->
+      <div class="gallery-card">
+        <div>
+          <div class="gallery-title">Hình 2.1: Sơ đồ phân cấp chức năng (BFD) mức 2</div>
+          <div class="gallery-desc">Cấu trúc cây 5 phân hệ mức 1 và 18 chức năng mức 2</div>
+          <div class="gallery-preview">
+            <img src="hinh-anh-do-an-word/Hinh_2.1_So_do_phan_cap_chuc_nang_BFD_muc_2.png" />
+          </div>
+        </div>
+        <div class="gallery-actions">
+          <button class="btn-copy" style="flex:1;" onclick="copyImage('hinh-anh-do-an-word/Hinh_2.1_So_do_phan_cap_chuc_nang_BFD_muc_2.png', this)">📋 Sao chép (Ctrl+V)</button>
+          <a class="btn-download" href="hinh-anh-do-an-word/Hinh_2.1_So_do_phan_cap_chuc_nang_BFD_muc_2.png" download>💾 Tải PNG</a>
+        </div>
+      </div>
+
+      <!-- Card 2 -->
+      <div class="gallery-card">
+        <div>
+          <div class="gallery-title">Hình 2.2: Sơ đồ luồng dữ liệu (DFD) mức ngữ cảnh</div>
+          <div class="gallery-desc">Hệ thống 0.0 và 5 tác nhân ngoài</div>
+          <div class="gallery-preview">
+            <img src="hinh-anh-do-an-word/Hinh_2.2_So_do_luong_du_lieu_DFD_muc_ngu_canh.png" />
+          </div>
+        </div>
+        <div class="gallery-actions">
+          <button class="btn-copy" style="flex:1;" onclick="copyImage('hinh-anh-do-an-word/Hinh_2.2_So_do_luong_du_lieu_DFD_muc_ngu_canh.png', this)">📋 Sao chép (Ctrl+V)</button>
+          <a class="btn-download" href="hinh-anh-do-an-word/Hinh_2.2_So_do_luong_du_lieu_DFD_muc_ngu_canh.png" download>💾 Tải PNG</a>
+        </div>
+      </div>
+
+      <!-- Card 3 -->
+      <div class="gallery-card">
+        <div>
+          <div class="gallery-title">Hình 2.3: Sơ đồ luồng dữ liệu (DFD) mức đỉnh</div>
+          <div class="gallery-desc">5 tiến trình mức 1 và 7 kho dữ liệu D1 đến D7</div>
+          <div class="gallery-preview">
+            <img src="hinh-anh-do-an-word/Hinh_2.3_So_do_luong_du_lieu_DFD_muc_dinh.png" />
+          </div>
+        </div>
+        <div class="gallery-actions">
+          <button class="btn-copy" style="flex:1;" onclick="copyImage('hinh-anh-do-an-word/Hinh_2.3_So_do_luong_du_lieu_DFD_muc_dinh.png', this)">📋 Sao chép (Ctrl+V)</button>
+          <a class="btn-download" href="hinh-anh-do-an-word/Hinh_2.3_So_do_luong_du_lieu_DFD_muc_dinh.png" download>💾 Tải PNG</a>
+        </div>
+      </div>
+
+      <!-- Card 4 -->
+      <div class="gallery-card">
+        <div>
+          <div class="gallery-title">Hình 2.4A: DFD mức dưới đỉnh - Phân hệ 3.0 Bán hàng</div>
+          <div class="gallery-desc">Chi tiết cọc xe 2tr, mua phụ tùng và quét QR nhận xe</div>
+          <div class="gallery-preview">
+            <img src="hinh-anh-do-an-word/Hinh_2.4A_DFD_muc_duoi_dinh_Tien_trinh_3.0_Ban_hang.png" />
+          </div>
+        </div>
+        <div class="gallery-actions">
+          <button class="btn-copy" style="flex:1;" onclick="copyImage('hinh-anh-do-an-word/Hinh_2.4A_DFD_muc_duoi_dinh_Tien_trinh_3.0_Ban_hang.png', this)">📋 Sao chép (Ctrl+V)</button>
+          <a class="btn-download" href="hinh-anh-do-an-word/Hinh_2.4A_DFD_muc_duoi_dinh_Tien_trinh_3.0_Ban_hang.png" download>💾 Tải PNG</a>
+        </div>
+      </div>
+
+      <!-- Card 5 -->
+      <div class="gallery-card">
+        <div>
+          <div class="gallery-title">Hình 2.4B: DFD mức dưới đỉnh - Phân hệ 4.0 Xưởng dịch vụ</div>
+          <div class="gallery-desc">Chi tiết điều phối bàn nâng KTV, sổ bảo hành 36T và hóa đơn</div>
+          <div class="gallery-preview">
+            <img src="hinh-anh-do-an-word/Hinh_2.4B_DFD_muc_duoi_dinh_Tien_trinh_4.0_Dich_vu_ky_thuat.png" />
+          </div>
+        </div>
+        <div class="gallery-actions">
+          <button class="btn-copy" style="flex:1;" onclick="copyImage('hinh-anh-do-an-word/Hinh_2.4B_DFD_muc_duoi_dinh_Tien_trinh_4.0_Dich_vu_ky_thuat.png', this)">📋 Sao chép (Ctrl+V)</button>
+          <a class="btn-download" href="hinh-anh-do-an-word/Hinh_2.4B_DFD_muc_duoi_dinh_Tien_trinh_4.0_Dich_vu_ky_thuat.png" download>💾 Tải PNG</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  function switchTab(index) {
+    document.querySelectorAll('.tab-btn').forEach((btn, idx) => {
+      btn.classList.toggle('active', idx === index);
+    });
+    document.querySelectorAll('.diagram-panel').forEach((panel, idx) => {
+      panel.classList.toggle('active', idx === index);
+    });
+  }
+
+  async function copyImage(imagePath, btnElement) {
+    try {
+      const response = await fetch(imagePath);
+      const blob = await response.blob();
+      await navigator.clipboard.write([
+        new ClipboardItem({ 'image/png': blob })
+      ]);
+      const oldText = btnElement.innerText;
+      btnElement.innerText = "✅ Đã chép! Hãy ấn Ctrl+V vào Word";
+      btnElement.style.background = "#15803d";
+      setTimeout(() => {
+        btnElement.innerText = oldText;
+        btnElement.style.background = "";
+      }, 3000);
+    } catch (err) {
+      // Fallback nếu trình duyệt chặn Clipboard API với local file
+      const link = document.createElement('a');
+      link.href = imagePath;
+      link.download = imagePath.split('/').pop();
+      link.click();
+      alert("Đã tải ảnh về máy do chính sách bảo mật clipboard! Bạn có thể kéo thả ảnh này trực tiếp vào file Word.");
+    }
+  }
+</script>
+</body>
+</html>

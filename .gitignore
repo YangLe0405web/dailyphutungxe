@@ -25,9 +25,12 @@ Thumbs.db
 # ── Docker volumes ──
 mssql_data/
 
-# ── Word Docs & Internal Guides ──
+# ── Word Docs & Database Backups ──
 *.docx
-docs/
+*.bak
+backup/
+
+# ── Internal Logs & Audits ──
 CODEBASE_AUDIT_REPORT.md
 FIX_LOG.md
 KE_HOACH_CONG_VIEC_TIEP_THEO.md
